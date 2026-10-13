@@ -4,7 +4,7 @@
 
 ## Responsibility
 
-Placeholder driving in Phase 2; data-driven raycast controller, drivetrain, traction, telemetry, and a separated Babylon visual adapter in Phase 4.
+Placeholder driving in Phase 2; data-driven raycast controller, drivetrain, traction, telemetry, and a separated Three.js visual adapter in Phase 4.
 
 ## Planned work
 

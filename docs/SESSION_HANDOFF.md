@@ -1,128 +1,118 @@
 # Session Handoff — Endless Driver
 
 **Updated:** 2026-10-13  
-**Current stage:** Initial planning/scaffold saved to the public GitHub repository  
-**Authorized development phase:** None  
-**Next development instruction:** Wait for the user to explicitly start Phase 1
+**Current stage:** Phase 1 implemented and verified (core engine, loop, scene foundation, diagnostics)  
+**Authorized development phase:** Phase 1 only  
+**Next development instruction:** Wait for the user to explicitly authorize Phase 2
 
-## 1. User instructions and repository decision
+## 1. User instructions so far
 
-The user requested a complete Markdown project plan, initial project files/structure, durable GitHub progress retention across sessions, and no Phase 1 implementation until further instruction.
+| Instruction                                                                                         | State                                                                                     |
+| --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Plan the whole project in structured Markdown                                                       | Done — `PROJECT_PLAN.md`, `docs/PROJECT_BRIEF.md`                                         |
+| Create the initial project structure and keep progress in the dedicated GitHub repository           | Done — public [`mdraficode/Endless-Driver`](https://github.com/mdraficode/Endless-Driver) |
+| Implement Phase 1 (core engine setup and scene foundation) using Vite, TypeScript, and **Three.js** | Done — see sections 3–6                                                                   |
+| Do **not** start Phase 2 without explicit instruction                                               | Honored — no physics, vehicle, terrain, or gameplay code exists                           |
 
-The unsupported Arena GitHub connector initially required a portable ZIP/Git-bundle fallback. The user subsequently completed the official GitHub CLI device-authorization flow for `mdraficode` and explicitly instructed:
-
-> Create a Public Endless-Driver repository and push the initial setup. Do not start Phase 1.
-
-That repository was created as **public**, without an auto-generated README/license/commit, and the original scaffold was pushed to `main`. This supersedes the earlier blocked-transfer status; it does not authorize gameplay development.
-
-The original technical scope is retained in `docs/PROJECT_BRIEF.md`. The implementation specification is `PROJECT_PLAN.md`. Read `AGENTS.md` before editing.
+The Phase 1 request named Three.js APIs explicitly (`WebGLRenderer`, `PCFSoftShadowMap`,
+`ACESFilmicToneMapping`, `clock.getDelta()`, `OrbitControls`), which supersedes the Babylon.js baseline
+chosen during planning. The change is recorded in [`docs/decisions/0002-renderer-three-js.md`](decisions/0002-renderer-three-js.md).
+**Rapier is still the intended and sole physics authority** once Phase 2 begins.
 
 ## 2. Canonical repository and verified persistence
 
-- **Repository:** [`mdraficode/Endless-Driver`](https://github.com/mdraficode/Endless-Driver)
-- **HTTPS clone URL:** `https://github.com/mdraficode/Endless-Driver.git`
-- **Visibility:** Public, verified through GitHub's API.
-- **Default / pushed branch:** `main`.
-- **Original scaffold commit:** `c831a447323fb0eb5068f56bebab0340debc6566`.
-- **Initial push verification:** Local `main`, Git transport's remote `refs/heads/main`, and the GitHub API ref matched that SHA.
-- **Remote file inventory:** All 53 tracked source/documentation/configuration/placeholder files matched the local inventory; no generated dependencies/build output or credential files were included.
-- **Initial GitHub Actions run:** [Validate project #38463135418](https://github.com/mdraficode/Endless-Driver/actions/runs/38463135418), completed with **success** for the original scaffold commit.
+- **Repository:** [`mdraficode/Endless-Driver`](https://github.com/mdraficode/Endless-Driver) — **public**, default branch `main`.
+- **Clone:** `https://github.com/mdraficode/Endless-Driver.git`
+- Every session's checkpoint is pushed to `main` and its SHA verified against the GitHub API; CI
+  (`.github/workflows/ci.yml`) runs `npm ci` + `npm run check` on Node 22.
+- Obtain the current checkpoint from the repository (`git log -1 --oneline`) rather than trusting a
+  hash written here. Phase 1 push verification and CI links are recorded in the delivery message and
+  in the repository's Actions history.
 
-Repository-status documentation is saved in subsequent commits on the same `main` branch. Obtain the latest checkpoint with `git log -1 --oneline` and verify it against GitHub rather than treating the original scaffold SHA above as permanently current. The setup delivery performs another SHA check after pushing the documentation updates.
+## 3. What Phase 1 delivered
 
-## 3. Completed setup work
+| Area             | Implementation                                                                                                                                                                                                                                                                     |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Composition root | `src/core/Application.ts` — owns engine, scene, statistics and HUD; startup, loading, context-loss and error states                                                                                                                                                                |
+| Renderer/loop    | `src/core/Engine.ts` — one `WebGLRenderer` (antialias, shadows, ACES filmic tone mapping), resize handling, DPR cap of 2, clamped delta-time loop, pause/resume, context-loss recovery, renderer statistics, full disposal                                                         |
+| Scene/lighting   | `src/core/SceneManager.ts` — gradient sky dome, `AmbientLight`, shadow-casting `DirectionalLight` sun with 2048² shadow map and tuned bias, 800 m neutral ground plane with an in-shader reference grid, three temporary shadow props, debug `PerspectiveCamera` + `OrbitControls` |
+| Diagnostics      | `src/core/PerformanceMonitor.ts` (FPS/frame-time window) and `src/ui/DiagnosticsOverlay.ts` (interval-updated HUD: FPS avg/worst, frame time + p95, viewport/DPR, draw calls, triangles, scene objects, camera position, frames)                                                   |
+| Configuration    | `src/config/render.ts` — all Phase 1 tuning values (DPR cap, delta clamp, camera, shadows, sky, lighting, ground/grid, diagnostics cadence)                                                                                                                                        |
+| Shared utilities | `src/shared/math.ts` — `clamp`, `resolvePixelRatio`, `clampFrameDelta`, `secondsToMilliseconds`                                                                                                                                                                                    |
+| Entrypoint/page  | `src/main.ts`, `index.html`, `src/style.css` — canvas mount, status region, startup-failure message, dev-only `window.__ENDLESS_DRIVER__` debug handle                                                                                                                             |
 
-- Selected Babylon.js ES modules, independent Rapier physics, Vite/TypeScript, DOM/Tailwind UI, seeded simplex terrain, and a WebGL2 baseline.
-- Wrote the six-phase implementation plan, acceptance criteria, performance budgets/fallbacks, requirements traceability, risks, and continuity rules.
-- Created every requested feature directory plus input/camera/environment/assets/config/worker boundaries, each with responsibility notes.
-- Added strict TypeScript, Vite/Tailwind, ESLint, Prettier, npm scripts, exact direct dependencies, the lockfile, and GitHub Actions validation.
-- Added a static scaffold-status page only; `src/main.ts` imports a stylesheet and does not start the game.
-- Added five scaffold-only tests and future unit/physics/integration/browser/performance directories.
-- Added an empty versioned asset manifest, asset-license policy, Git transfer/recovery instructions, and an architectural decision record.
-- Validated a clean `npm ci` install and all available local checks again before the public push.
-- Created the dedicated public repository, pushed the original scaffold, verified its branch/file inventory, and confirmed the first remote CI run passed.
-- Updated repository visibility, source-of-truth, and session-continuity notes without implementing engine/gameplay code.
+## 4. Verification evidence
 
-## 4. Not implemented / phase status
+**Local checks (Node 20.20.2, npm 10.8.2):** `npm run check` passes — Prettier, ESLint, both
+TypeScript configs, **29 tests in 5 files**, and the Vite production build. Test coverage is logic
+and wiring only: math guards (including the DPR cap and delta clamp), render-config invariants,
+performance-monitor statistics, module API surfaces, page wiring, and the asset manifest.
 
-No canvas, Babylon engine or scene, rendering loop, camera, light, Rapier initialization, physics world, car/controller, terrain generator, streaming worker, game input, touch control, weather, shaders, or post-processing has been implemented. Dependencies and planned filenames do not imply runtime functionality.
+**Browser verification (out-of-repo, not committed):** Playwright + Chromium headless shell 156 with
+ANGLE/SwiftShader against the dev server and the production preview.
 
-| Milestone                | Actual state                                          |
-| ------------------------ | ----------------------------------------------------- |
-| Planning/documentation   | Complete for the initial baseline                     |
-| Tooling/module scaffold  | Complete and validated                                |
-| GitHub public repository | Created and verified                                  |
-| Initial scaffold push    | Verified on `main`; 53 tracked files                  |
-| Initial remote CI        | Passed for `c831a447323fb0eb5068f56bebab0340debc6566` |
-| Phase 1                  | Not started; awaiting explicit user authorization     |
-| Phase 2                  | Not started                                           |
-| Phase 3                  | Not started                                           |
-| Phase 4                  | Not started                                           |
-| Phase 5                  | Not started                                           |
-| Phase 6                  | Not started                                           |
+| Scenario                                          | Result                                                                                                                                       |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Desktop 800×600 at `deviceScaleFactor: 3`         | Renders lit scene; drawing buffer 1600×1200 and reported pixel ratio **2.00** (cap enforced); 8 draw calls, 1,034 triangles, 9 scene objects |
+| Mobile viewport 390×844 at `deviceScaleFactor: 3` | Correct 780×1688 buffer, ratio 2.00, no console warnings or page errors                                                                      |
+| Window resize 900×600 → 1280×720                  | Viewport, camera aspect and 2560×1440 buffer all followed the window                                                                         |
+| Pause/resume via debug handle                     | Frame counter froze while paused and resumed afterwards                                                                                      |
+| Console output                                    | No errors and no warnings (Two earlier warnings — deprecated `Clock` and the removed `PCFSoftShadowMap` — were fixed rather than ignored)    |
+| Screenshots                                       | Neutral plane with visible sun shadows on the props, blue gradient sky, horizon fog, legible grid                                            |
 
-## 5. Authentication and session portability
+**Explicit performance caveat:** these runs use a **CPU software rasterizer**, which reported roughly
+25–45 FPS at 1600×1200. That is _not_ a hardware 60 FPS measurement and must not be quoted as one.
+The 60 FPS reference target still requires a real device measurement with named hardware, recorded
+resolution, preset, and warm-up. Browser smoke checks here prove correctness, not frame rate.
 
-The Arena GitHub connector still reports unsupported. The successful route is **direct GitHub CLI/API and Git authentication**, not an enabled Arena connector.
+### Bugs found by verification and fixed
 
-The owner approved GitHub CLI OAuth scopes `repo`, `workflow`, `read:org`, and `gist`. These scopes are broader than a single repository; only operate on the dedicated project repository for authorized project work. Do not modify unrelated repositories, account/organization settings, visibility, or billing.
+1. **Sky dome occluded the scene below the horizon.** The dome is opaque geometry drawn after the
+   translucent depth-less grid, so it painted over every grid line under the horizon line. Fixed by
+   treating the dome as a backdrop: `renderOrder = -1` with `depthTest = false`.
+2. **Debug grid z-fought with the ground plane.** A `GridHelper` 2 cm above an 800 m plane cannot
+   resolve in the depth buffer at that scale. Replaced with an anti-aliased procedural grid drawn
+   inside the ground material (`onBeforeCompile`), which also fades with distance and lays the
+   groundwork for Phase 3 terrain material blending.
+3. **Deprecated timing API.** `THREE.Clock` is deprecated in r186; the loop now uses `THREE.Timer`
+   with Page Visibility integration (`update(timestamp)` / `getDelta()` / `reset()`).
+4. **Removed shadow type.** `PCFSoftShadowMap` is removed at runtime in r186 (the renderer warns and
+   falls back). `config/render.ts` now selects a supported mode — `pcf` by default, `vsm` available
+   as an opt-in soft mode — so no warning is emitted.
 
-Credentials are held in owner-permission-protected temporary runtime storage outside the project and persisted workspace. The headless CLI may use plaintext configuration rather than an encrypted vault. No access token, device code, private key, password-bearing URL, or auth configuration belongs in source, Git, archives, or chat.
+## 5. Deliberate deviations and limitations
 
-Runtime authentication, installed tools/dependencies, and local `.git/config` may not survive a session reset. The **remote source/history does survive independently**. Clone the public repository for reading, recreate `origin` from the confirmed URL only if missing after verifying the project root, and reauthorize safely when write access is unavailable. Never assume the old device code is reusable or ask the user to paste a token.
+- **Renderer:** Three.js, per explicit user instruction, replacing the Babylon.js planning baseline.
+- **Quality selector:** deferred to Phase 6 rather than shipped as a stub; the DPR cap and effect
+  settings are configuration-driven but there is no in-game quality menu yet.
+- **`PCFSoftShadowMap` literal:** not used, because the pinned release removed it; documented instead
+  of silently downgrading. Pinning an older `three` release would restore the literal constant.
+- **No gameplay:** no physics, input, camera modes, weather, HUD gameplay elements, or vehicles.
+- **Bundle size:** the production JS bundle is ~570 kB (~143 kB gzip) because Three.js is a single
+  dependency; no code splitting yet. Revisit when feature modules grow.
+- **New file `docs/decisions/0002-renderer-three-js.md`** supersedes the renderer half of ADR 0001.
 
-Portable ZIP/Git bundles remain optional recovery exports. A previously downloaded archive may precede the latest GitHub commit; prefer the canonical repository and inspect the bundle's history when recovering.
+## 6. Next authorized step
 
-## 6. Validation evidence
+Phase 2 is **not** authorized: Rapier initialization, fixed 60 Hz stepping with a bounded catch-up
+accumulator, transform snapshots, render interpolation, placeholder colliders, and a keyboard-driven
+placeholder vehicle for the author of the next instruction to approve.
 
-Local environment: Node.js `20.20.2`, npm `10.8.2`, Git `2.47.3`. GitHub Actions uses Node 22; `.nvmrc` selects 22 for ongoing development.
+When Phase 2 is authorized:
 
-| Check                           | Recorded result                                              |
-| ------------------------------- | ------------------------------------------------------------ |
-| `npm ci --no-fund`              | Passed again before the public push                          |
-| `npm run format:check`          | Passed                                                       |
-| `npm run lint`                  | Passed                                                       |
-| `npm run typecheck`             | Passed for application and tooling/tests                     |
-| `npm test`                      | Passed: one test file, five scaffold-only tests              |
-| `npm run build`                 | Passed: Vite production scaffold build                       |
-| npm install/ci audit            | Reported zero known vulnerabilities at validation time       |
-| GitHub repository visibility    | Public, API-verified                                         |
-| Git transport + GitHub API refs | Matched the initial local commit                             |
-| GitHub Actions                  | Initial `Validate project` run passed; evidence linked above |
-| Browser/device gameplay QA      | Not applicable yet; no game implementation                   |
+1. Read this handoff, `AGENTS.md`, the plan's Phase 2 section, `docs/ARCHITECTURE.md` §4/§6.
+2. Record the authorization in `AGENTS.md` and this file.
+3. Implement only Phase 2 scope; keep Rapier as the sole physics authority and Three.js as a pure
+   renderer of interpolated poses.
+4. Add deterministic physics tests, run `npm run check`, perform browser verification, and record
+   real evidence (no unverified performance claims).
+5. Commit, push to `main`, verify the remote SHA and CI result, and stop before Phase 3.
 
-Local checks are rerun after the repository-status documentation updates. The final pushed commit's Actions result is checked separately during delivery. Audit output is not a security guarantee, and scaffold CI does not establish realistic physics, browser/device support, or 60 FPS.
+## 7. Session continuity reminders
 
-## 7. Baseline decisions to preserve
-
-- Babylon renders; Rapier is the only physics authority.
-- Fixed 60 Hz physics, bounded catch-up, independent rendering, and explicit resource disposal ownership.
-- SI units, right-handed scene, +Y up, +X right, normalized vehicle -Z forward.
-- Seed/version-addressed chunks, shared road/height seams, bounded jobs/active memory, and floating-origin rebasing.
-- WebGL2 baseline; WebGPU and high-cost effects are optional and quality-gated.
-- Automatic transmission default; Shift requests a manual upshift; optional nitro remapping is deferred.
-- Performance numbers are provisional budgets, not measured guarantees.
-- Repository visibility is public by explicit owner instruction. `package.json` remains `private: true` to prevent npm publication, not to hide the GitHub repository.
-- No third-party assets or open-source distribution license have been chosen; project metadata remains `UNLICENSED`.
-
-## 8. Exact next actions
-
-### Now
-
-**Stop.** Initial repository setup is complete. Do not begin Phase 1 or deploy the scaffold until the user explicitly authorizes the relevant action.
-
-### Start of a later session
-
-1. Verify the project root, canonical `origin`, branch, working tree, and latest remote checkpoint.
-2. Read this handoff, `AGENTS.md`, the plan, architecture, and decisions.
-3. Fetch and reconcile clean history without overwriting local/remote work; reauthorize only if write access is needed and unavailable.
-4. Install from the committed lockfile with `npm ci`.
-5. Confirm the user's current phase authorization before coding.
-
-### Only after the user explicitly starts Phase 1
-
-1. Record Phase 1 authorization in `AGENTS.md` and this handoff.
-2. Replace the scaffold-entrypoint guard with genuine engine lifecycle tests as implementation begins.
-3. Implement only Phase 1: composition root, responsive engine/canvas, loop/lifecycle, camera/reference lighting, and diagnostics.
-4. Validate, record actual evidence, update documentation, commit, push to the canonical repository, verify the remote SHA, and stop before Phase 2.
-5. If a later push is blocked, record that fact and export a new bundle rather than claiming it is saved on GitHub.
+- Install with `npm ci`; the lockfile is committed and direct versions are pinned.
+- `npm run check` is the required gate before every commit.
+- Do not commit `node_modules`, `dist`, credentials, or unlicensed assets.
+- Authentication may need renewing in a fresh session; never request a token in chat and never commit
+  credential material.
+- If a push is blocked, record it plainly and export a bundle instead of claiming remote success.

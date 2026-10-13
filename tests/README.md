@@ -1,15 +1,24 @@
-# Testing strategy
+# Tests
 
-Only `scaffold.test.ts` contains executable tests initially. Its five tests verify repository infrastructure, not rendering, physics, handling, mobile support, or frame rate.
+Layered testing plan. Only the layers marked **implemented** exist today.
 
-| Directory      | Planned use                                                  |
-| -------------- | ------------------------------------------------------------ |
-| `unit/`        | Seeds, chunk math, action mapping, tuning, pure controllers  |
-| `physics/`     | Headless Rapier fixed-step/contact/handling tests            |
-| `integration/` | Streaming, ownership, worker cancellation, model binding     |
-| `browser/`     | Browser startup, inputs, touch, resize, lifecycle, fallbacks |
-| `performance/` | Documented device routes, measurements, resource soaks       |
+| Layer           | Path               | Purpose                                                                                               |
+| --------------- | ------------------ | ----------------------------------------------------------------------------------------------------- |
+| Scaffold checks | `scaffold.test.ts` | Project metadata, module boundaries, page wiring, documents, asset manifest                           |
+| Unit            | `unit/`            | **Implemented:** math helpers, render config invariants, performance monitor, core module API surface |
+| Physics         | `physics/`         | Deterministic Rapier stepping, raycast suspension, drivetrain, traction                               |
+| Integration     | `integration/`     | Chunk streaming, spawn/road seams, float-origin rebasing, save/load                                   |
+| Browser         | `browser/`         | Real rendering, mobile touch multi-contact, camera modes, context-loss recovery                       |
+| Performance     | `performance/`     | Frame budgets, streaming hitches, memory growth, draw-call limits                                     |
 
-The initial-entrypoint guard intentionally asserts that Phase 1 has not started. Replace that guard with actual engine lifecycle tests when Phase 1 is explicitly authorized. Browser automation dependencies are intentionally deferred until used. GPU performance must be measured on named real devices, not inferred from Node test success.
+## What the current suite does and does not prove
 
-Run `npm test` or `npm run check`. Record manual and automated results separately in `docs/SESSION_HANDOFF.md`.
+`npm test` (Vitest, Node environment) covers pure logic and module wiring only. It does **not**
+prove that the scene renders, that shadows appear, that physics behaves realistically, or that any
+frame-rate target is met. Those claims require the browser smoke test and named-device measurements
+recorded in `docs/SESSION_HANDOFF.md`.
+
+Browser-level verification for Phase 1 is performed out-of-repo (headless Chromium driving
+`npm run dev`) because the software rasterizer used in this environment cannot represent GPU
+performance. Results, including the FPS caveat, are recorded in the session handoff rather than
+asserted as a hardware guarantee.

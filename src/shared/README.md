@@ -1,13 +1,20 @@
-# Engine-independent utilities
+# Shared, engine-independent contracts
 
-**Status:** Placeholder; development has not started.
+**Status:** Partially implemented; `math.ts` is live.
 
 ## Responsibility
 
-Small shared types for units, poses, commands, identifiers, and seeded/hash utilities. Do not import Babylon or DOM into general simulation types.
+Small utilities and types that must not depend on the renderer, the DOM, or physics libraries, so
+they can be reused by workers, tests, and simulation code.
+
+## Implemented
+
+- `math.ts` — `clamp`, `resolvePixelRatio`, `clampFrameDelta`, `secondsToMilliseconds`. These are
+  total functions (never throw, never return `NaN`) because they run on the resize/frame path.
 
 ## Planned work
 
-Add contracts at the phase that needs them; avoid speculative implementations.
+Interpolation helpers, deterministic RNG seeding utilities, and streaming/geometry contracts used by
+the world modules in Phase 3.
 
-See [the project plan](../../PROJECT_PLAN.md) and [architecture](../../docs/ARCHITECTURE.md). Do not implement this module before the relevant phase is authorized.
+See [the project plan](../../PROJECT_PLAN.md) and [architecture](../../docs/ARCHITECTURE.md).

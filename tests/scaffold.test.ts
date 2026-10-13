@@ -17,21 +17,21 @@ interface AssetManifest {
   assets: unknown[];
 }
 
-describe('initial project scaffold — not gameplay coverage', () => {
+describe('project scaffold — infrastructure, not gameplay coverage', () => {
   it('uses private ESM project metadata and the selected rendering/physics stack', () => {
     const metadata = JSON.parse(read('package.json')) as ProjectMetadata;
     expect(metadata.name).toBe('endless-driver');
     expect(metadata.private).toBe(true);
     expect(metadata.type).toBe('module');
     expect(metadata.license).toBe('UNLICENSED');
-    expect(metadata.dependencies['@babylonjs/core']).toBeTruthy();
+    expect(metadata.dependencies['three']).toBeTruthy();
     expect(metadata.dependencies['@dimforge/rapier3d-compat']).toBeTruthy();
+    expect(metadata.dependencies['@babylonjs/core']).toBeUndefined();
   });
 
-  it('tracks all required module boundaries', () => {
+  it('tracks the module boundaries required by the plan', () => {
     const modules = [
-      'app',
-      'engine',
+      'core',
       'physics',
       'world',
       'vehicles',
@@ -48,12 +48,19 @@ describe('initial project scaffold — not gameplay coverage', () => {
     for (const module of modules) {
       expect(existsSync(new URL(`src/${module}/README.md`, root))).toBe(true);
     }
+    expect(existsSync(new URL('src/app', root))).toBe(false);
+    expect(existsSync(new URL('src/engine', root))).toBe(false);
   });
 
-  it('preserves the documented initial phase gate', () => {
-    // Replace this scaffold-only guard with runtime lifecycle tests when Phase 1 is authorized.
-    expect(read('src/main.ts').trim()).toBe("import './style.css';");
-    expect(read('index.html')).not.toContain('<canvas');
+  it('mounts the canvas and starts the composition root from the page entrypoint', () => {
+    const html = read('index.html');
+    expect(html).toContain('id="viewport-canvas"');
+    expect(html).toContain('id="diagnostics-overlay"');
+    expect(html).toContain('id="scene-status"');
+
+    const entrypoint = read('src/main.ts');
+    expect(entrypoint).toContain("import './style.css'");
+    expect(entrypoint).toContain('new Application(');
   });
 
   it('includes the plan and session-continuity instructions', () => {
@@ -65,6 +72,7 @@ describe('initial project scaffold — not gameplay coverage', () => {
       'docs/SESSION_HANDOFF.md',
       'docs/GIT_WORKFLOW.md',
       'docs/ASSET_POLICY.md',
+      'docs/decisions/0002-renderer-three-js.md',
     ];
     for (const document of documents) {
       expect(existsSync(new URL(document, root))).toBe(true);

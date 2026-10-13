@@ -1,14 +1,14 @@
 # Endless Driver — Project Plan and Implementation Instructions
 
 **Planning baseline:** 2026-10-13  
-**Project stage:** Initial documentation and repository scaffold only  
-**Development authorization:** None; wait for the user's explicit instruction to start Phase 1  
+**Project stage:** Phase 1 (core engine, loop, camera, lighting) implemented; Phases 2–6 not started  
+**Development authorization:** Phase 1 only, per explicit user instruction; Phase 2 requires a new instruction  
 **GitHub destination:** Public [`mdraficode/Endless-Driver`](https://github.com/mdraficode/Endless-Driver), branch `main`  
-**Remote synchronization:** Initial 53-file scaffold pushed and Git/API-verified; first GitHub Actions validation passed. Phase 1 remains unstarted.
+**Remote synchronization:** Initial scaffold, repository documentation, and Phase 1 pushed and verified; CI runs on each push
 
 The original requested technical scope is retained in [`docs/PROJECT_BRIEF.md`](docs/PROJECT_BRIEF.md).
 
-> This is the implementation specification, not a claim that the game is built. The initial scaffold contains build tooling, module directories, documentation, and scaffold checks. It does not initialize Babylon, a canvas, a render loop, a camera, lighting, physics, or gameplay.
+> This is the implementation specification, not a claim that the game is complete. Phase 1 ships the runtime foundation only: renderer, loop, scene, reference lighting, diagnostics, and disposal. There is still no physics, terrain, vehicle, input, weather, or gameplay implementation. The planned stack is Three.js + Rapier (see `docs/decisions/0002-renderer-three-js.md`), not Babylon.js.
 
 ## Contents
 
@@ -53,22 +53,22 @@ Build a browser-based, single-player 3D driving experience with convincing vehic
 
 ## 2. Selected technology and decisions
 
-| Area               | Selection                                               | Reason and constraint                                                                                                            |
-| ------------------ | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Rendering          | Babylon.js ES modules                                   | Integrated PBR, cameras, shadows, asset loading, and post-processing; use narrow imports and avoid the legacy all-in-one bundle. |
-| Language/build     | TypeScript + Vite                                       | Strict typing, fast development, static production distribution.                                                                 |
-| Physics            | Rapier 3D compatibility package                         | WASM rigid-body physics and a dynamic raycast vehicle controller; initialization is asynchronous.                                |
-| UI                 | Semantic DOM + Tailwind CSS Vite plugin                 | Lightweight HUD and touch overlays; no React layer is necessary for this architecture.                                           |
-| Terrain noise      | simplex-noise + a seeded random source                  | Deterministic sampling; never use unseeded randomness for world generation.                                                      |
-| Renderer baseline  | WebGL2                                                  | Broad desktop/mobile baseline; show a clear unsupported-browser message if unavailable.                                          |
-| Optional renderer  | WebGPU, after baseline validation                       | Experimental quality path, not a Phase 1 dependency; custom effects need compatible shader variants.                             |
-| Tests              | Vitest; browser automation added with relevant phases   | Pure logic and headless physics tests first; browser input and rendering checks later.                                           |
-| Package management | npm with exact direct versions and a committed lockfile | `npm ci` reproduces installs; upgrade packages deliberately, not implicitly between sessions.                                    |
+| Area               | Selection                                               | Reason and constraint                                                                                                                    |
+| ------------------ | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Rendering          | Three.js (`three`) with ES-module addons                | Selected by explicit owner instruction (ADR 0002); renderer, scene, sky, and lighting are project-owned code instead of engine defaults. |
+| Language/build     | TypeScript + Vite                                       | Strict typing, fast development, static production distribution.                                                                         |
+| Physics            | Rapier 3D compatibility package                         | WASM rigid-body physics and a dynamic raycast vehicle controller; initialization is asynchronous.                                        |
+| UI                 | Semantic DOM + Tailwind CSS Vite plugin                 | Lightweight HUD and touch overlays; no React layer is necessary for this architecture.                                                   |
+| Terrain noise      | simplex-noise + a seeded random source                  | Deterministic sampling; never use unseeded randomness for world generation.                                                              |
+| Renderer baseline  | WebGL2                                                  | Broad desktop/mobile baseline; show a clear unsupported-browser message if unavailable.                                                  |
+| Optional renderer  | WebGPU, after baseline validation                       | Experimental quality path, not a Phase 1 dependency; custom effects need compatible shader variants.                                     |
+| Tests              | Vitest; browser automation added with relevant phases   | Pure logic and headless physics tests first; browser input and rendering checks later.                                                   |
+| Package management | npm with exact direct versions and a committed lockfile | `npm ci` reproduces installs; upgrade packages deliberately, not implicitly between sessions.                                            |
 
 ### Architectural decisions
 
-1. **Rapier is the only physics authority.** Do not enable Babylon/Havok/Cannon physics or Babylon movement collision resolution for the same vehicle. Babylon renders meshes; Rapier resolves contacts and motion.
-2. **Use a direct integration adapter.** Physics modules expose engine-independent transforms and telemetry. Rendering adapters apply interpolated transforms to Babylon meshes.
+1. **Rapier is the only physics authority.** Do not add a second solver (Havok, Cannon, ammo) or a competing movement resolver for the same vehicle. Three.js renders; Rapier resolves contacts and motion.
+2. **Use a direct integration adapter.** Physics modules expose engine-independent transforms and telemetry. Rendering adapters apply interpolated transforms to Three.js objects.
 3. **Start with the compatibility WASM package.** It simplifies bundling, but its embedded WASM increases JavaScript payload. Profile startup and consider a separately served WASM build later, without changing physics ownership.
 4. **Use a fixed physics tick and independent rendering.** Physics must not depend on display refresh rate.
 5. **Use quality presets from the beginning.** High-DPI and expensive effects cannot be enabled without pixel and GPU budgets.
@@ -97,15 +97,14 @@ endless-driver/
 │   ├── SESSION_HANDOFF.md
 │   ├── GIT_WORKFLOW.md
 │   ├── ASSET_POLICY.md
-│   └── decisions/0001-engine-and-physics.md
+│   └── decisions/0001-engine-and-physics.md, 0002-renderer-three-js.md
 ├── public/assets/
 │   ├── models/ textures/ audio/ environments/
 │   └── manifest.json             # Empty; no third-party assets acquired
 ├── src/
-│   ├── main.ts                   # Stylesheet import only
+│   ├── main.ts                   # DOM lookup, application start, debug handle
 │   ├── style.css
-│   ├── app/                      # Future composition root/lifecycle
-│   ├── engine/                   # Renderer, lifecycle, timing, diagnostics
+│   ├── core/                     # Application, Engine, SceneManager, PerformanceMonitor
 │   ├── physics/                  # Rapier world, colliders, queries, snapshots
 │   ├── world/                    # Seeded terrain, roads, chunks, origin rebasing
 │   ├── vehicles/                 # Vehicle config, controllers, visual adapter
@@ -120,18 +119,18 @@ endless-driver/
 │   └── workers/                  # Future CPU world-generation workers
 └── tests/
     ├── scaffold.test.ts          # Infrastructure checks, not game tests
-    ├── unit/ physics/ integration/ browser/ performance/
+    ├── unit/                     # Implemented: math, config, statistics, module APIs
+    ├── physics/ integration/ browser/ performance/
     └── README.md
 ```
 
-Directories contain responsibility notes. Planned classes and behavior below are not implemented merely because their directories exist.
+Module directories own their stated responsibilities. Phase 1 code exists in `core/`, `config/`, `shared/`, and `ui/`; everything described below for later phases is planned, not implemented.
 
 ### Ownership and dependency rules
 
-- `app` composes systems and owns startup, pause, reset, and final shutdown.
-- `engine` owns the Babylon engine, scene, render scheduling, resize behavior, diagnostics, and GPU-resource lifecycle.
-- `physics` owns the Rapier world and all bodies/colliders. It must not depend on DOM or Babylon runtime classes.
-- `vehicles` owns drivetrain/control logic and vehicle definitions; isolate Babylon model binding in its visual adapter.
+- `core` owns composition/startup/pause/shutdown (`Application`), the renderer and loop (`Engine`), the Phase 1 scene (`SceneManager`), frame statistics (`PerformanceMonitor`), and diagnostics.
+- `physics` owns the Rapier world and all bodies/colliders. It must not depend on DOM or Three.js runtime classes.
+- `vehicles` owns drivetrain/control logic and vehicle definitions; isolate Three.js model binding in its visual adapter.
 - `world` owns chunk identity, deterministic data, streaming queues, terrain/road topology, and global-to-local positions.
 - `input` publishes normalized actions; it never changes vehicle transforms directly.
 - `cameras` consumes interpolated vehicle poses and obstacle queries; it never advances physics.
@@ -150,7 +149,7 @@ Every system that allocates meshes, WASM objects, workers, event listeners, obse
 
 - Units: meters, kilograms, seconds; speed stored in m/s and displayed in km/h.
 - Axes: +Y up, +X right, vehicle local -Z forward. Normalize imported models into this convention rather than changing it per asset.
-- Configure Babylon for a right-handed scene to align coordinate handling with Rapier. Add explicit tests for axis, quaternion, wheel, and heightfield conversion.
+- Three.js is right-handed by default, which matches Rapier. Keep conversions explicit and tested for axis, quaternion, wheel, and heightfield data.
 - Gravity baseline: `(0, -9.81, 0)`.
 - Physics tick: 1/60 second initially; render interpolation uses the previous and current completed physics snapshots.
 - Clamp unusually large frame deltas; allow at most five physics catch-up steps per rendered frame. If exhausted, discard excess backlog and record the event rather than spiraling indefinitely. Lower visual quality under sustained overload; do not silently alter vehicle tuning or tick rate.
@@ -324,17 +323,21 @@ These are **initial budgets to validate**, not measured results. Freeze referenc
 
 **Depends on:** Initial scaffold and user authorization.
 
-1. Create the application composition root and startup/loading/error states.
-2. Check WebGL2 capability and initialize one Babylon engine and right-handed scene.
-3. Add the responsive viewport canvas, resize observer, orientation handling, and quality-based DPR/resolution cap.
-4. Establish the render loop, pause/resume lifecycle, time service, and performance diagnostics. Define the fixed-step scheduling contract without adding gameplay physics yet.
-5. Add a simple camera, ground/reference meshes, sun/fill lighting, and basic material settings.
-6. Display FPS/debug metrics and a basic quality selector.
-7. Implement deterministic cleanup and context-loss/error behavior.
-8. Test startup, resizing, high-DPI limits, tab suspension, disposal, and an unsupported-renderer fallback; record baseline device measurements.
-9. Update handoff and phase status, validate, commit, and push.
+**Status (2026-10-13): implemented, validated, and pushed.** Delivered as:
 
-**Acceptance:** A correctly sized, lit reference scene with usable camera and diagnostics; one loop; no leaked listeners/resources after reset; production build works; no driving implementation.
+1. `src/core/Application.ts` composition root with startup, loading, and error states (`Preparing the scene…`, startup-failure, context-lost, and context-restored messages).
+2. `src/core/Engine.ts` initializes one `WebGLRenderer` with antialiasing, filtered shadow maps, and ACES filmic tone mapping. Three.js r186 removed `PCFSoftShadowMap` at runtime (it warns and downgrades), so the configurable shadow mode defaults to `PCFShadowMap` with `VSMShadowMap` available as an opt-in soft alternative; pinning an older three release would restore the literal constant. A failed context initialization surfaces an error state instead of a blank page.
+3. Responsive canvas: window resize/orientation listeners plus a `ResizeObserver`, coalesced into a single sizing pass per frame; devicePixelRatio is capped at 2 and the camera aspect ratio follows the viewport.
+4. `requestAnimationFrame` loop using `Clock.getDelta()`, per-frame delta clamped to 100 ms, pause/resume on tab visibility, and context-loss recovery. The fixed-step physics scheduler is contracted but intentionally not implemented (no gameplay physics in Phase 1).
+5. Phase 1 scene: three-stop gradient sky dome, `AmbientLight`, shadow-casting `DirectionalLight` sun with a 2048² shadow map, 800 m ground plane, debug grid, and three temporary shadow props.
+6. `src/ui/DiagnosticsOverlay.ts` reports FPS average/worst, frame time and p95, viewport/DPR, draw calls, triangles, scene object count, camera position, and frame count. A full quality selector is deferred to Phase 6.
+7. Deterministic disposal covers renderer, orbit controls, geometries/materials, listeners, and the resize observer. Context loss stops the loop; restoration resumes it.
+8. Verification: unit tests for math/config/statistics/module API, production build, and a headless-Chromium smoke test confirming a rendered frame, correct sizing, and DPR capping at `deviceScaleFactor: 3`. The headless check uses a software rasterizer, so it is **not** a hardware FPS measurement.
+9. Handoff, README, plan, and ADRs updated; committed and pushed to the canonical repository with CI verification.
+
+**Acceptance:** met — a correctly sized, lit reference scene with a debug orbit camera and diagnostics; one render loop; no leaked listeners/resources on dispose; working production build; no driving implementation.
+
+**Deviations:** renderer is Three.js, not Babylon.js, per explicit owner instruction (ADR 0002); the quality selector is deferred rather than shipped as a stub.
 
 **Stop:** Request authorization before Phase 2.
 
@@ -460,7 +463,7 @@ CI verifies the checks actually present. A green scaffold CI does not certify ve
 | ------------------------- | --------------------------------------------------------------------- |
 | Initial planning/scaffold | Complete and saved to the canonical public repository                 |
 | Initial GitHub push       | Verified on `main`; all 53 tracked files present; first CI run passed |
-| Phase 1                   | Not started; awaiting user authorization                              |
+| Phase 1                   | Implemented, validated, and pushed; awaiting Phase 2 authorization    |
 | Phase 2                   | Not started                                                           |
 | Phase 3                   | Not started                                                           |
 | Phase 4                   | Not started                                                           |
@@ -481,7 +484,7 @@ Do not download or commit “realistic” car/building/texture assets without a 
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | Unsupported GitHub connector or unavailable credentials | Keep truthful push status; package a Git bundle; obtain an actual repository URL and authorized Git route before remote writes. |
 | Rapier controller is less realistic than expected       | Phase 4 feasibility gate; custom tire-force layer only if required; benchmark handling rather than naming features.             |
-| Babylon/Rapier axis or timing mismatch                  | One handedness/units convention, adapters, headless tests, fixed-step contract.                                                 |
+| Renderer/physics axis or timing mismatch                | One handedness/units convention, adapters, headless tests, fixed-step contract.                                                 |
 | Mobile GPU/thermal limits                               | DPR caps, dynamic quality, instancing, inexpensive default effects, sustained real-device testing.                              |
 | Streaming stalls or missing collision ground            | Bounded generation/upload work, velocity-aware prefetch, retained fallback coverage/safe slowdown.                              |
 | Terrain and road seams                                  | Shared global samples, shared edge road decisions, explicit LOD edge tests.                                                     |
@@ -548,7 +551,8 @@ See `docs/GIT_WORKFLOW.md` for safe initial-push, existing-repository, recovery,
 
 References guide implementation; pinned package APIs must still be checked at the phase that uses them.
 
-- [Babylon ES modules and tree shaking](https://doc.babylonjs.com/setup/frameworkPackages/es6Support/)
+- [Three.js installation and module imports](https://threejs.org/docs/#manual/en/introduction/Installation)
+- [Three.js OrbitControls](https://threejs.org/docs/#examples/en/controls/OrbitControls)
 - [Rapier JavaScript initialization and compatibility package](https://rapier.rs/docs/user_guides/javascript/getting_started_js/)
 - [Rapier dynamic raycast vehicle API](https://rapier.rs/javascript3d/classes/DynamicRayCastVehicleController.html)
 - [Tailwind CSS with Vite](https://tailwindcss.com/docs/installation/using-vite)

@@ -9,6 +9,10 @@ First do the whole step-by-step planning, create a Markdown file with structured
 
 This brief preserves requested scope. Engineering selections, feasibility qualifications, acceptance gates, and actual status are in `PROJECT_PLAN.md` and `docs/SESSION_HANDOFF.md`.
 
+> **Renderer note (2026-10-13):** the brief offered Babylon.js or Three.js as options. Phase 1 was
+> implemented with **Three.js** on explicit instruction; see
+> `docs/decisions/0002-renderer-three-js.md`. Rapier remains the physics authority.
+
 ## Role and project overview
 
 Expert Lead Game Developer and Graphics Engineer specializing in high-performance web-based 3D games using WebGL/WebGPU, modern JavaScript/TypeScript, and game engines like Three.js or Babylon.js.

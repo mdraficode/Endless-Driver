@@ -1,7 +1,7 @@
 # Architecture — Endless Driver
 
-**State:** Design contract; runtime systems have not been implemented.  
-**Related:** [Project plan](../PROJECT_PLAN.md), [engine/physics decision](decisions/0001-engine-and-physics.md).
+**State:** Phase 1 implemented (core runtime, scene foundation, diagnostics); Phases 2–6 remain design contracts.  
+**Related:** [Project plan](../PROJECT_PLAN.md), [engine/physics decision](decisions/0001-engine-and-physics.md), [renderer decision](decisions/0002-renderer-three-js.md).
 
 ## 1. Composition and data flow
 
@@ -17,7 +17,7 @@ Application composition root
         │                Environment systems            ▼
         ├── render ───────────────────────────► Transform interpolation
         │                                               │
-        │                                      Babylon visual adapters
+        │                                      Three.js visual adapters
         │                                               │
         ├── cameras / HUD ◄──── telemetry / poses ───────┘
         │
@@ -25,32 +25,31 @@ Application composition root
                                            main-thread mesh/collider installation
 ```
 
-Dependencies should be directed and explicit. `app` composes feature systems; individual features do not import a global application singleton. `shared` contains lightweight contracts, not mutable application state.
+Dependencies should be directed and explicit. `core` composes feature systems; individual features do not import a global application singleton. `shared` contains lightweight contracts, not mutable application state.
 
 ## 2. Module responsibility matrix
 
-| Module        | Owns                                                          | Must not own                                        |
-| ------------- | ------------------------------------------------------------- | --------------------------------------------------- |
-| `app`         | Startup, composition, pause/reset/shutdown, system ordering   | Feature-specific physics/rendering algorithms       |
-| `engine`      | Babylon engine/scene, render schedule, resize, diagnostics    | A second rigid-body solver                          |
-| `physics`     | Rapier world, bodies/colliders, queries, snapshots            | DOM, Babylon scene, direct UI state                 |
-| `vehicles`    | Vehicle config, drivetrain, wheel/controller state, telemetry | Chunk lifetime or input event listeners             |
-| `world`       | Seed/version, terrain/road data, chunks, LOD, origin          | Hidden unbounded world allocations                  |
-| `input`       | Browser event listeners, pointer identities, action state     | Vehicle transforms or physics stepping              |
-| `cameras`     | View modes, damping, visual collision avoidance               | Simulation advancement                              |
-| `ui`          | HUD/menu/control DOM, accessibility, user commands            | Vehicle-force calculations                          |
-| `environment` | Time/season/weather/surface parameters                        | Arbitrary direct edits to car velocity              |
-| `assets`      | Loading, normalization, shared resource ownership             | Rights assumptions or undocumented CDN dependencies |
-| `shaders`     | Explicit visual effect code/variants                          | Physics surface-state authority                     |
-| `workers`     | Pure generation jobs and typed request/result buffers         | GPU resources or the main Rapier world              |
+| Module        | Owns                                                                                                | Must not own                                                     |
+| ------------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `core`        | Startup/composition/pause/shutdown, renderer and loop, Phase 1 scene, frame statistics, diagnostics | Feature-specific physics/rendering algorithms or a second solver |
+| `physics`     | Rapier world, bodies/colliders, queries, snapshots                                                  | DOM, Three.js scene, direct UI state                             |
+| `vehicles`    | Vehicle config, drivetrain, wheel/controller state, telemetry                                       | Chunk lifetime or input event listeners                          |
+| `world`       | Seed/version, terrain/road data, chunks, LOD, origin                                                | Hidden unbounded world allocations                               |
+| `input`       | Browser event listeners, pointer identities, action state                                           | Vehicle transforms or physics stepping                           |
+| `cameras`     | View modes, damping, visual collision avoidance                                                     | Simulation advancement                                           |
+| `ui`          | HUD/menu/control DOM, accessibility, user commands                                                  | Vehicle-force calculations                                       |
+| `environment` | Time/season/weather/surface parameters                                                              | Arbitrary direct edits to car velocity                           |
+| `assets`      | Loading, normalization, shared resource ownership                                                   | Rights assumptions or undocumented CDN dependencies              |
+| `shaders`     | Explicit visual effect code/variants                                                                | Physics surface-state authority                                  |
+| `workers`     | Pure generation jobs and typed request/result buffers                                               | GPU resources or the main Rapier world                           |
 
-Rendering-specific vehicle/world bindings may use Babylon, but pure generation and simulation components must remain separately testable. Use explicit interfaces for transform application and collider creation rather than spreading engine imports into every module.
+Rendering-specific vehicle/world bindings may use Three.js, but pure generation and simulation components must remain separately testable. Use explicit interfaces for transform application and collider creation rather than spreading engine imports into every module.
 
 ## 3. Coordinate and unit contract
 
 - Length: meters; mass: kilograms; time: seconds; angle: radians.
 - World up: +Y; right: +X; normalized vehicle forward: -Z.
-- Babylon scene: right-handed; Rapier position/quaternion conversions explicitly tested.
+- Three.js scene: right-handed by default; Rapier position/quaternion conversions explicitly tested.
 - Imported GLB/GLTF models: normalized once at the asset adapter; scale/axis correction must not leak into physics constants.
 - HUD speed: km/h from internal m/s; physics retains SI units.
 - Global world identity: seed, generator version, integer chunk coordinates, local offset.
@@ -92,7 +91,7 @@ Add these contracts as the relevant phase begins, not as speculative code now.
 
 ## 6. Physics and rendering boundary
 
-Rapier bodies are authoritative. Babylon meshes are visual representations. Do not teleport a dynamic body by moving its mesh or apply Babylon collisions and Rapier collision resolution to the same motion.
+Rapier bodies are authoritative. Three.js objects are visual representations. Do not teleport a dynamic body by moving its object, and never apply renderer-side collision handling and Rapier collision resolution to the same motion.
 
 The initial driving controller is a temporary Phase 2 implementation. Phase 4 replaces it through a shared vehicle-controller contract. The tire-model decision selects either the built-in wheel-force path or a custom path; never apply duplicate contact forces.
 
@@ -138,8 +137,14 @@ Avoid disposing shared materials when unloading a single chunk. Instrument resou
 
 WebGL2 is the baseline; support failure must be an understandable UI state. Pixel ratio is capped per quality tier and constrained by an absolute resolution budget. Optional WebGPU support does not justify disabling the baseline.
 
+Phase 1 renders with `WebGLRenderer` (`antialias: true`, `PCFSoftShadowMap`, `ACESFilmicToneMapping`) and leaves Three.js color management at its defaults (linear working space, sRGB output). The sky dome includes the tone-mapping and color-space shader chunks so it matches the tone-mapped scene instead of bypassing the exposure curve.
+
 PBR, color-space conversions, sky/IBL, tone mapping, and post-processing order must be configured as one coherent pipeline. Custom GLSL and optional WGSL variants are maintained separately where necessary. Low-tier presets may turn off CSM, SSAO, motion blur, and expensive atmosphere while retaining the core driving game.
 
 ## 10. Status and deferred work
 
-All modules are currently documentation placeholders. There are no runtime interface implementations, engine adapters, worker protocols, physics worlds, or shader implementations yet. The first permitted implementation is Phase 1 only after explicit user authorization.
+**Implemented (Phase 1):** `core/Engine.ts`, `core/SceneManager.ts`, `core/PerformanceMonitor.ts`, `core/Application.ts`, `config/render.ts`, `shared/math.ts`, `ui/DiagnosticsOverlay.ts`, and the page shell (`index.html`, `src/style.css`, `src/main.ts`).
+
+**Still placeholders:** `physics/`, `world/`, `vehicles/`, `input/`, `cameras/`, `environment/`, `shaders/`, `assets/`, `workers/`, and the gameplay parts of `ui/`.
+
+Each later phase requires its own explicit authorization; completing Phase 1 does not authorize Phase 2.

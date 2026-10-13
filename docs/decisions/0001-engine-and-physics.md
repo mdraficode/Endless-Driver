@@ -1,5 +1,10 @@
 # ADR 0001 — Babylon.js Rendering with Independent Rapier Physics
 
+> **Superseded in part (2026-10-13):** the renderer choice in this record was replaced by
+> **Three.js** at the owner's explicit instruction during Phase 1 authorization. Physics, tooling,
+> UI, and noise decisions below still stand. See [`0002-renderer-three-js.md`](0002-renderer-three-js.md).
+> The original text is retained unedited as the historical record.
+
 - **Date:** 2026-10-13
 - **State:** Selected planning baseline; validated tooling, runtime integration deferred to authorized phases
 - **Decision owner:** Project planning; the user may revise the stack before development

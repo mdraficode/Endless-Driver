@@ -1,13 +1,21 @@
-# Data-driven tuning
+# Configuration and tuning data
 
-**Status:** Placeholder; development has not started.
+**Status:** Partially implemented; `render.ts` is live, later-phase configs are placeholders.
 
 ## Responsibility
 
-Immutable defaults and validated vehicle, world, control, and rendering-quality settings. No hidden magic numbers in feature controllers.
+Data-driven tuning data kept out of system code: quality tiers, render settings, and (in later
+phases) vehicle, world, and weather parameters.
+
+## Implemented
+
+- `render.ts` — Phase 1 render configuration: pixel-ratio cap (2), frame-delta clamp, camera/debug
+  camera setup, shadow map and sun parameters, sky gradient colors, fog range, ground/grid, reference
+  props, and diagnostics cadence.
 
 ## Planned work
 
-Quality profiles in Phase 1, vehicle setup in Phase 4, season/weather presets in Phase 6.
+Quality presets and device tiers (Phase 6), vehicle/drivetrain tuning (Phases 2/4), and world
+generation/streaming parameters (Phase 3).
 
-See [the project plan](../../PROJECT_PLAN.md) and [architecture](../../docs/ARCHITECTURE.md). Do not implement this module before the relevant phase is authorized.
+See [the project plan](../../PROJECT_PLAN.md) and [architecture](../../docs/ARCHITECTURE.md).
