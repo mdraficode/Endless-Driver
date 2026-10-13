@@ -1,0 +1,13 @@
+* text=auto eol=lf
+*.glb -text
+*.png -text
+*.jpg -text
+*.jpeg -text
+*.webp -text
+*.ktx2 -text
+*.mp3 -text
+*.ogg -text
+*.wav -text
+
+# Markdown uses intentional trailing spaces for hard line breaks.
+*.md whitespace=-blank-at-eol

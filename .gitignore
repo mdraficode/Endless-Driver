@@ -1,0 +1,29 @@
+# Generated dependencies and output
+node_modules/
+dist/
+build/
+coverage/
+test-results/
+playwright-report/
+.vite/
+.cache/
+*.tsbuildinfo
+.eslintcache
+
+# Secrets: no environment files are needed for the initial scaffold
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local tooling and logs
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+
+# Portable exports live outside the repository
+*.bundle
+*.zip
