@@ -41,8 +41,13 @@ mesh is acceptable; wheels must visibly steer and roll from physics state.
 - **Verified checkpoint (2026-10-14):** the Phase 2 feature commit `b85c8ba` (42 files) was pushed to
   `main`; `git ls-remote origin refs/heads/main` returned the same SHA, and the `Validate project`
   GitHub Actions run for that commit (`npm ci` + `npm run check` on Node 22) completed successfully.
+- **Verified checkpoint (2026-10-14, re-plan):** the AAA-fidelity re-plan commit `2375b74`
+  (21 files, +1129/−277) was pushed to `main`; `git ls-remote origin refs/heads/main` returned the
+  same SHA and the `Validate project` GitHub Actions run for that commit (run #5,
+  `38485484364`) completed successfully.
 - Authentication for pushing uses the owner's official GitHub CLI device flow. Device codes expire
-  after ~15 minutes, so a fresh code must be issued and approved promptly in the same session.
+  after ~15 minutes, so a fresh code must be issued and approved promptly in the same session; the
+  resulting token is stored outside the repository and does not survive a sandbox reset.
 
 ## 3. What Phase 2 delivered
 
@@ -188,7 +193,7 @@ is authorized:
 required realistic car models and environmental aesthetics "as close as possible" to Forza Horizon,
 authorizing a research step-back and a full re-plan. No visual implementation has been written.
 
-**Deliverables written in this step (all committed together with the docs sweep):**
+**Deliverables written in this step (committed and pushed as `2375b74`, CI green):**
 
 | Artifact                                                        | Content                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
