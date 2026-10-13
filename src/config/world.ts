@@ -4,7 +4,7 @@
  * Ground and obstacle definitions live here for both the renderer and the physics world so
  * visuals and colliders can never drift apart. Obstacles are deliberately placed clear of the
  * spawn lane so the car has a straight run to accelerate in; they exist to give the physics layer
- * something solid to hit and to cast shadows while the world is still a placeholder. Phase 3
+ * something solid to hit and to cast shadows while the world is still a placeholder. Phase 4
  * replaces this arena with streamed procedural terrain, at which point this file is superseded
  * rather than extended.
  */

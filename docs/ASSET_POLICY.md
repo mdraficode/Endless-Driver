@@ -6,6 +6,22 @@
 
 The project's initial `UNLICENSED` status does not replace or remove dependency licenses. Choosing an open-source project license later does not automatically permit redistribution of purchased or restricted assets.
 
+## Preferred sources (visual-fidelity re-plan, 2026-10-14)
+
+The owner requires Forza-Horizon-class visuals, which makes sourcing a first-class planning input
+(see `docs/RESEARCH_AAA_FIDELITY.md` §5 and `docs/VISUAL_TARGET.md`):
+
+- **CC0 first** for environment content: Poly Haven (HDRIs, PBR textures, models) and ambientCG.
+  CC0 still gets recorded in the manifest — "no attribution required" is not "no provenance".
+- **Paid / non-CC0 sources** (Fab/Megascans free starter collection, purchased models, subscriptions):
+  allowed only with a per-asset licence record, the terms that apply, and the download date. The
+  era of the whole Megascans library being free for everyone ended 2024-12-31, and free-of-charge is
+  not the same as licensed for redistribution.
+- **Cars:** never ripped game assets; never manufacturer names, logos, or trade dress without a
+  licence. The route (purchase, commission, or in-house generic coupe) is an open decision for the
+  owner recorded in `docs/VISUAL_TARGET.md` §7.
+- Audio, if it is ever added, follows the same rules and needs its own scope decision.
+
 ## Before adding an asset
 
 1. Identify the creator, original source, and exact license or purchase terms.
@@ -31,10 +47,12 @@ The current manifest is intentionally minimal. Add a loader/schema as assets app
 - Modifications, authoring scale/axes, and relevant node bindings.
 - Approximate file size, texture dimensions, and intended quality/LOD tier.
 - Decoder/transcoder requirements and where the self-hosted decoder lives.
+- The optimization chain and non-default settings used to produce the runtime file (so the pipeline
+  is reproducible rather than a hand-edited asset of unknown provenance).
 
 Any examples in documentation are examples, not authorization for a specific download.
 
-## Car model contract — Phase 4
+## Car model contract — Phase 6
 
 - GLB preferred for packaging; external GLTF resources allowed only when paths are tracked and deployment-safe.
 - Normalize to meters, +Y up, +X right, and local -Z forward.
@@ -46,9 +64,16 @@ Any examples in documentation are examples, not authorization for a specific dow
 ## Optimization and hosting
 
 - Use relative same-origin paths; avoid undeclared CDN runtime dependencies.
+- Every asset goes through the project pipeline (`gltf-transform`-based): prune/dedupe → LODs →
+  quantization → **meshopt** geometry compression → **KTX2/Basis** textures → budget check. Custom
+  one-off exports are not accepted; the chain and its settings are recorded per manifest entry.
+- Budgets per asset class are enforced in review: hero car 100k–200k triangles with halving LODs;
+  props ≤ 5k; textures capped at 1024/2048 (a single uncompressed 4096² RGBA8 texture costs ~89 MB
+  of GPU memory); vegetation through atlases and impostors.
 - Prefer small GLBs, appropriate material counts, mesh LOD, and instanced environment assets.
 - Keep color-space metadata correct for base color/emissive versus linear material maps.
-- Consider KTX2/Basis and mesh compression only with measured benefit and compatible self-hosted decoder setup.
+- KTX2/Basis is the default for GPU textures, with `KTX2Loader.detectSupport(renderer)` deciding the
+  fallback path; meshopt is preferred over Draco on the web because decoding is much faster.
 - Do not commit generated dependency/build directories as a way to preserve assets.
 - Record texture/mesh memory estimates and mobile fallbacks.
 
@@ -57,6 +82,15 @@ Any examples in documentation are examples, not authorization for a specific dow
 Git LFS is **not enabled in the initial scaffold**. Before enabling it, verify client installation, the actual dedicated repository's support, budget/quotas, and collaborators' clone workflow.
 
 Do not add LFS filters blindly and leave only unresolved pointers. Do not commit large asset packs when only a few optimized runtime files are needed. Existing assets should never be moved or history-rewritten without user approval. GitHub's file/repository limits must be checked when large assets are proposed.
+
+## Licence register
+
+Alongside the manifest, every acquisition is recorded in a licence register: asset id, source URL,
+creator, licence name and version/date, redistribution and modification rights, required
+attribution text, and where the proof (licence page or receipt reference, never payment details) is
+stored. An asset without a register entry does not enter the repository, and the register is
+reviewed at the same gate as the manifest. Anything whose terms cannot be confirmed is replaced,
+not "kept for now".
 
 ## Credits and release gate
 

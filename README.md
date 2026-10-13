@@ -2,7 +2,14 @@
 
 A cross-platform, procedural 3D web driving game built with **Three.js, Rapier, TypeScript, Vite, and Tailwind CSS**.
 
-> **Current state: Phase 2 implemented (Rapier vehicle physics, keyboard smoothing, damped chase camera). Phase 3 is not authorized.** The scene holds a drivable rear-drive car on a flat reference arena: four raycast-suspended wheels, a six-speed drivetrain, a slip-based tire model that drifts under power or handbrake, smoothed WASD/arrow input, and a chase camera that lags behind turns and widens its FOV with speed. Terrain, roads, streaming, weather, touch controls, and post-processing are still future work.
+> **Current state: Phases 1–2 implemented and pushed. A visual-fidelity re-plan is complete and awaiting owner sign-off; Phases 3–8 are not authorized.**
+>
+> The Phase 2 car drives on a flat reference arena with raycast suspension, a six-speed drivetrain, a slip-based tire model, smoothed keyboard input, and a damped chase camera — but the presentation is still placeholder. The owner's target is Forza-Horizon-class visuals, so the roadmap was rearranged (ADR 0004):
+>
+> - [`docs/RESEARCH_AAA_FIDELITY.md`](docs/RESEARCH_AAA_FIDELITY.md) — what Forza actually does, the verified Three.js r186 capability audit, a 20-row gap analysis, legal asset sourcing, and five explicit non-promises.
+> - [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) — the visual contract: five pillars, per-system quality bars, tier matrix (C/B/A), look-dev workflow, region brief, and five open questions for the owner.
+>
+> Terrain, roads, streaming, vegetation, the hero car, weather/seasons, touch controls, and the post-processing stack are all still future work.
 
 ## Canonical repository
 
@@ -17,9 +24,10 @@ The public repository is the durable source of truth. Repository creation and ea
 2. [`AGENTS.md`](AGENTS.md) — mandatory working rules for future sessions.
 3. [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md) — actual progress, verification evidence, blockers, and the next authorized action.
 4. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — ownership, coordinates, timing, lifecycle, and module dependencies.
-5. [`docs/decisions/`](docs/decisions/) — ADR 0001 (physics/tooling), ADR 0002 (Three.js renderer decision), ADR 0003 (vehicle physics, tire model, input smoothing, chase camera).
-6. [`docs/GIT_WORKFLOW.md`](docs/GIT_WORKFLOW.md) — safe remote synchronization and recovery.
-7. [`docs/ASSET_POLICY.md`](docs/ASSET_POLICY.md) — model/texture/audio licensing and large-file policy.
+5. [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) — the visual quality contract every later phase is reviewed against.
+6. [`docs/decisions/`](docs/decisions/) — ADR 0001 (physics/tooling), ADR 0002 (Three.js renderer decision), ADR 0003 (vehicle physics, tire model, input smoothing, chase camera), ADR 0004 (visual fidelity, rendering pipeline, asset strategy — **proposed, awaiting sign-off**).
+7. [`docs/GIT_WORKFLOW.md`](docs/GIT_WORKFLOW.md) — safe remote synchronization and recovery.
+8. [`docs/ASSET_POLICY.md`](docs/ASSET_POLICY.md) — model/texture/audio licensing and large-file policy.
 
 ## Setup
 
@@ -53,7 +61,7 @@ Vite binds to `0.0.0.0` and accepts the Arena `.e2b.app` preview domain. Browser
 
 ## Phase 2 controls
 
-**Driving** (keyboard only for now; touch arrives in Phase 5)
+**Driving** (keyboard only for now; touch arrives in Phase 8)
 
 | Input                | Action                                                                           |
 | -------------------- | -------------------------------------------------------------------------------- |
@@ -80,14 +88,14 @@ src/
   shared/         math.ts, vector.ts — engine-independent numeric helpers
   ui/             DiagnosticsOverlay (HUD); gameplay HUD and touch overlay are future work
   physics/        Rapier world, fixed-step loop, arena colliders, statistics   (Phase 2)
-  world/          seeded terrain, roads, chunks, origin rebasing (Phase 3, not implemented)
+  world/          seeded terrain, roads, chunks, origin rebasing    (Phase 4, not implemented)
   vehicles/       raycast car, tire model, drivetrain, telemetry, CarVisual     (Phase 2)
-  input/          keyboard → smoothed actions, command queue (touch in Phase 5) (Phase 2/5)
-  cameras/        damped chase camera; orbit debug camera (cockpit in Phase 4)  (Phase 2/4)
-  environment/    day/night, seasons, weather, surface state      (Phase 6, not implemented)
-  shaders/        custom WebGL2 effects                          (Phase 6, not implemented)
-  assets/         loaders, manifest handling, ownership          (later phases)
-  workers/        bounded CPU generation jobs                    (Phase 3, not implemented)
+  input/          keyboard → smoothed actions, command queue (touch in Phase 8) (Phase 2/8)
+  cameras/        damped chase camera; orbit debug camera (cockpit in Phase 6)  (Phase 2/6)
+  environment/    day/night, seasons, weather, surface state       (Phase 7, not implemented)
+  shaders/        TSL node materials                               (Phase 3, not implemented)
+  assets/         pipeline, loaders, manifest, licence register    (Phase 3, not implemented)
+  workers/        bounded CPU generation jobs                      (Phase 4, not implemented)
 public/assets/    empty licensed-asset inventory and future folders
 tests/            scaffold checks, unit tests, future test layers
 docs/             architecture, decisions, handoff, asset/Git policies
@@ -95,13 +103,18 @@ docs/             architecture, decisions, handoff, asset/Git policies
 
 ## Execution status
 
-| Stage                                   | Status                                                                     |
-| --------------------------------------- | -------------------------------------------------------------------------- |
-| Planning and project structure          | Complete and pushed to the public repository                               |
-| Tooling and scaffold validation         | Complete; lint, types, formatting, tests, and build pass locally and in CI |
-| Phase 1: engine, loop, camera, lighting | Implemented, verified, and pushed                                          |
-| Phase 2: vehicle physics, input, camera | Implemented and verified (unit, physics, integration, and browser gates)   |
-| Phases 3–6                              | Not started                                                                |
+| Stage                                                          | Status                                                                                                      |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Planning and project structure                                 | Complete and pushed to the public repository                                                                |
+| Tooling and scaffold validation                                | Complete; lint, types, formatting, tests, and build pass locally and in CI                                  |
+| Phase 1: engine, loop, camera, lighting                        | Implemented, verified, and pushed                                                                           |
+| Phase 2: vehicle physics, input, camera                        | Implemented and verified (unit, physics, integration, and browser gates)                                    |
+| Visual-fidelity research and re-plan                           | Complete 2026-10-14 (`docs/RESEARCH_AAA_FIDELITY.md`, `docs/VISUAL_TARGET.md`, ADR 0004); awaiting sign-off |
+| Phase 3: renderer, lighting, post, asset and material pipeline | Gated — not started                                                                                         |
+| Phase 4: terrain, roads, streaming                             | Gated                                                                                                       |
+| Phase 5: vegetation, props, atmosphere                         | Gated                                                                                                       |
+| Phase 6: hero car, materials, vehicle fidelity                 | Gated; needs the car-asset decision                                                                         |
+| Phase 7: weather, seasons, surface behaviour                   | Gated                                                                                                       |
 
 Verification detail — including how browser checks were performed, the device/tooling used, and what remains unverified — is recorded in [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md). Green checks do **not** prove realistic vehicle physics, device support, or a 60 FPS guarantee on a given machine.
 
@@ -119,6 +132,6 @@ No open-source distribution license has been selected, so project metadata remai
 
 ## Next step
 
-**Phase 2 is complete; wait for the user to explicitly authorize Phase 3** (procedural terrain, road networks, and chunk streaming). Completing Phase 2 does not authorize it.
+**Review the re-plan and answer five questions**, then authorize Phase 3 if the direction is right. The questions (car asset route, brand policy, region, audio scope, photo mode) are in [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) §7; the feasibility boundary and roadmap change are in [`docs/RESEARCH_AAA_FIDELITY.md`](docs/RESEARCH_AAA_FIDELITY.md) §6–§7 and [ADR 0004](docs/decisions/0004-visual-fidelity-and-rendering-pipeline.md). Phase 3 is now renderer, lighting, post-processing, and the asset/material pipeline — terrain moved to Phase 4. Completing Phase 2 does not authorize it.
 
 Phase 2 verification evidence, measured handling numbers, and the exact browser checks that were run are recorded in [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md).

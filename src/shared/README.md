@@ -15,6 +15,6 @@ they can be reused by workers, tests, and simulation code.
 ## Planned work
 
 Interpolation helpers, deterministic RNG seeding utilities, and streaming/geometry contracts used by
-the world modules in Phase 3.
+the world modules in Phase 4.
 
 See [the project plan](../../PROJECT_PLAN.md) and [architecture](../../docs/ARCHITECTURE.md).

@@ -1,7 +1,7 @@
 # Architecture — Endless Driver
 
-**State:** Phases 1–2 implemented (core runtime and scene foundation; Rapier vehicle physics, keyboard input smoothing, chase camera); Phases 3–6 remain design contracts.  
-**Related:** [Project plan](../PROJECT_PLAN.md), [engine/physics decision](decisions/0001-engine-and-physics.md), [renderer decision](decisions/0002-renderer-three-js.md), [vehicle physics decision](decisions/0003-vehicle-physics-and-camera.md).
+**State:** Phases 1–2 implemented (core runtime and scene foundation; Rapier vehicle physics, keyboard input smoothing, chase camera); the visual-fidelity re-plan is written but awaiting owner sign-off; Phases 3–8 (rearranged) remain design contracts.  
+**Related:** [Project plan](../PROJECT_PLAN.md) §9 (phases) and §6 (rendering architecture), [visual target](VISUAL_TARGET.md), [AAA fidelity research](RESEARCH_AAA_FIDELITY.md), [engine/physics decision](decisions/0001-engine-and-physics.md), [renderer decision](decisions/0002-renderer-three-js.md), [vehicle physics decision](decisions/0003-vehicle-physics-and-camera.md), [visual fidelity and rendering pipeline decision](decisions/0004-visual-fidelity-and-rendering-pipeline.md).
 
 ## 1. Composition and data flow
 
@@ -71,7 +71,7 @@ Planned per-frame sequence:
 7. Schedule generation and perform budgeted resource installation.
 8. Update HUD at its own capped cadence and render once.
 
-The actual sequence must be integration-tested against the pinned Rapier API in Phases 2 and 4. Fixed timestep alone is not a promise of bitwise cross-platform determinism. Pausing clears controls and resets time accumulation; restoring a tab cannot advance minutes of queued simulation.
+The actual sequence was integration-tested against the pinned Rapier 0.21 API in Phase 2 and will be re-verified when terrain colliders arrive in Phase 4. Fixed timestep alone is not a promise of bitwise cross-platform determinism. Pausing clears controls and resets time accumulation; restoring a tab cannot advance minutes of queued simulation.
 
 ## 5. Planned interface contracts
 
@@ -93,7 +93,7 @@ Add these contracts as the relevant phase begins, not as speculative code now.
 
 Rapier bodies are authoritative. Three.js objects are visual representations. Do not teleport a dynamic body by moving its object, and never apply renderer-side collision handling and Rapier collision resolution to the same motion.
 
-The initial driving controller is a temporary Phase 2 implementation. Phase 4 replaces it through a shared vehicle-controller contract. The tire-model decision selects either the built-in wheel-force path or a custom path; never apply duplicate contact forces.
+The driving controller is the Phase 2 implementation (custom raycast force layer over Rapier, per ADR 0003); Phase 6 refines it (more contact samples per wheel) rather than replacing it. Never apply duplicate contact forces: one force model per body.
 
 Use simplified chassis and nearby prop collision shapes. Keep detailed GLB triangle meshes for rendering, not as dynamic vehicle colliders. Road and terrain visuals/colliders derive from the same generation data.
 
@@ -135,11 +135,11 @@ Avoid disposing shared materials when unloading a single chunk. Instrument resou
 
 ## 9. Rendering compatibility
 
-WebGL2 is the baseline; support failure must be an understandable UI state. Pixel ratio is capped per quality tier and constrained by an absolute resolution budget. Optional WebGPU support does not justify disabling the baseline.
+**Current implementation (Phases 1–2):** `WebGLRenderer` (`antialias: true`, `PCFShadowMap` — `PCFSoftShadowMap` is removed at runtime in three r186, so it is not a usable constant), `ACESFilmicToneMapping`, default color management (linear working space, sRGB output). The sky dome includes the tone-mapping and color-space shader chunks so it matches the tone-mapped scene instead of bypassing the exposure curve. Custom shading today is GLSL inside `ShaderMaterial`.
 
-Phase 1 renders with `WebGLRenderer` (`antialias: true`, `PCFSoftShadowMap`, `ACESFilmicToneMapping`) and leaves Three.js color management at its defaults (linear working space, sRGB output). The sky dome includes the tone-mapping and color-space shader chunks so it matches the tone-mapped scene instead of bypassing the exposure curve.
+**Target architecture (ADR 0004, Phase 3):** `WebGPURenderer` from `three/webgpu` with the automatic **WebGL2 backend as the supported fallback** — one rendering layer, two backends. All custom shading moves to **TSL node materials**; `ShaderMaterial`, `RawShaderMaterial`, and `onBeforeCompile` are not used, because they do not run on the WebGPU backend. Post-processing is a single ordered TSL `RenderPipeline` (scene → optional SSGI/SSR/GTAO → atmosphere → bloom → DOF → motion blur → tone mapping → grading LUT → grain/aberration/vignette → TAAU/TRAA or FXAA/SMAA). Tone mapping and colour-space conversion happen exactly once, at the end of the chain.
 
-PBR, color-space conversions, sky/IBL, tone mapping, and post-processing order must be configured as one coherent pipeline. Custom GLSL and optional WGSL variants are maintained separately where necessary. Low-tier presets may turn off CSM, SSAO, motion blur, and expensive atmosphere while retaining the core driving game.
+Support failure must remain an understandable UI state for both backends. Pixel ratio is capped per quality tier and constrained by an absolute resolution budget. Every effect is declared on/off per tier in [`docs/VISUAL_TARGET.md`](VISUAL_TARGET.md) §3 and must pass the look-dev workflow in that document's §4 before it counts as delivered.
 
 ## 10. Status and deferred work
 
@@ -147,6 +147,8 @@ PBR, color-space conversions, sky/IBL, tone mapping, and post-processing order m
 
 **Implemented (Phase 2):** `physics/RapierModule.ts`, `physics/PhysicsWorld.ts`, `vehicles/Car.ts`, `vehicles/TireModel.ts`, `vehicles/Drivetrain.ts`, `vehicles/CarVisual.ts`, `input/InputManager.ts`, `cameras/ChaseCamera.ts`, `config/{world,physics,vehicle,input,camera}.ts`, `shared/vector.ts`, the rewritten composition root `core/Application.ts`, `core/SceneManager.ts` (world-driven ground/obstacles), and the extended `ui/DiagnosticsOverlay.ts`.
 
-**Still placeholders:** `world/`, `environment/`, `shaders/`, `assets/`, `workers/`, and the gameplay parts of `ui/`. `cameras/` gains cockpit and remote modes in Phase 4; `input/` gains touch in Phase 5.
+**Still placeholders:** `world/`, `environment/`, `shaders/`, `assets/`, `workers/`, and the gameplay parts of `ui/`.
 
-Each later phase requires its own explicit authorization; completing Phase 2 does not authorize Phase 3.
+**Rearranged phase mapping (ADR 0004):** `shaders/` and `assets/` (pipeline, manifest, licence register) arrive in **Phase 3** together with the renderer migration, lighting, post stack, and the look-dev scenes; `world/` and `workers/` in **Phase 4** (terrain, roads, streaming); vegetation, props, and atmosphere in **Phase 5**; the hero car, cockpit camera, and refined vehicle systems in **Phase 6**; `environment/` (day/night, seasons, weather, surface state) in **Phase 7**; touch input, the full camera suite, HUD, settings, and the final quality pass in **Phase 8**.
+
+Each phase requires its own explicit authorization; completing Phase 2 does not authorize Phase 3, and the re-plan itself is awaiting owner sign-off.

@@ -1,19 +1,29 @@
 # Session Handoff — Endless Driver
 
 **Updated:** 2026-10-14  
-**Current stage:** Phase 2 implemented and verified (Rapier vehicle physics, keyboard smoothing, dynamic chase camera)  
+**Current stage:** Phases 1–2 implemented, verified, and pushed; the visual-fidelity re-plan is written and awaiting owner sign-off  
 **Authorized development phase:** Phases 1–2 only  
-**Next development instruction:** Wait for the user to explicitly authorize Phase 3
+**Next development instruction:** The owner reviews the re-plan (see section 9) and answers the five open questions in `docs/VISUAL_TARGET.md` §7; Phase 3 is then authorized separately. No development is authorized until then.
+
+> **Re-plan (2026-10-14, awaiting sign-off):** the owner rejected the Phase 2 presentation and set a
+> Forza-Horizon-class visual target. Research and specification are complete and committed alongside
+> this handoff: `docs/RESEARCH_AAA_FIDELITY.md` (Forza pipeline evidence, Three.js r186 capability
+> audit, 20-row gap analysis, legal asset sourcing, five explicit non-promises),
+> `docs/VISUAL_TARGET.md` (five pillars, per-system quality bars, C/B/A tier contracts, look-dev
+> workflow, region brief, owner questions), ADR 0004 (proposed), and rearranged
+> `PROJECT_PLAN.md` §6 and §9–§11. The headline change: **Phase 3 is now the renderer, lighting,
+> post-processing, and asset/material pipeline; terrain and roads moved to Phase 4.**
 
 ## 1. User instructions so far
 
-| Instruction                                                                                         | State                                                                                     |
-| --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Plan the whole project in structured Markdown                                                       | Done — `PROJECT_PLAN.md`, `docs/PROJECT_BRIEF.md`                                         |
-| Create the initial project structure and keep progress in the dedicated GitHub repository           | Done — public [`mdraficode/Endless-Driver`](https://github.com/mdraficode/Endless-Driver) |
-| Implement Phase 1 (core engine setup and scene foundation) using Vite, TypeScript, and **Three.js** | Done — pushed, verified                                                                   |
-| Implement Phase 2 (vehicle physics, keyboard smoothing, dynamic chase camera)                       | Done — see sections 3–5                                                                   |
-| Do **not** start Phase 3 without explicit instruction                                               | Honored — no terrain, roads, streaming, or weather code exists                            |
+| Instruction                                                                                          | State                                                                                     |
+| ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Plan the whole project in structured Markdown                                                        | Done — `PROJECT_PLAN.md`, `docs/PROJECT_BRIEF.md`                                         |
+| Create the initial project structure and keep progress in the dedicated GitHub repository            | Done — public [`mdraficode/Endless-Driver`](https://github.com/mdraficode/Endless-Driver) |
+| Implement Phase 1 (core engine setup and scene foundation) using Vite, TypeScript, and **Three.js**  | Done — pushed, verified                                                                   |
+| Implement Phase 2 (vehicle physics, keyboard smoothing, dynamic chase camera)                        | Done — see sections 3–5                                                                   |
+| Reach “Forza Horizon level” visuals (realistic car, environment aesthetics, seasons, roads, terrain) | Re-plan complete 2026-10-14; implementation gated — see section 9                         |
+| Do **not** start Phase 3 without explicit instruction                                                | Honored — no terrain, roads, streaming, or weather code exists                            |
 
 Phase 2 was authorized with these constraints, all honored: Rapier **or** Cannon-es allowed (Rapier
 chosen — sole physics authority, never two solvers); the slip-friction/drift behaviour is an explicit
@@ -138,23 +148,27 @@ break the build. The tuning knobs live in `src/config/vehicle.ts` and `src/confi
   placeholder in this phase, and the asset inventory in `public/assets` is still empty.
 - **Temporary arena.** Ground and obstacle geometry come from `WORLD_CONFIG`; the Phase 1 reference
   grid is retained purely as a motion cue for driving, not as a designed environment.
-- **No touch controls yet** — mandatory multi-touch is Phase 5 scope, and no touch code exists.
-- **Bundle size:** the Rapier chunk is ~4.3 MB (1.67 MB gzip); code splitting, load-time work, and
-  quality selection remain Phase 6 concerns.
+- **No touch controls yet** — mandatory multi-touch is Phase 8 scope under the rearranged plan, and no touch code exists.
+- **Bundle size:** the Rapier chunk is ~4.3 MB (1.67 MB gzip); code splitting and load-time work are
+  folded into the Phase 3 asset/engine work in the rearranged plan.
 - **No gameplay HUD** beyond diagnostics: speed, gear, and RPM are shown for verification, not as a
   designed dashboard.
 
 ## 7. Next authorized step
 
-Phase 3 (procedural terrain, road networks, chunk streaming, float-origin handling) is **not**
-authorized. When it is:
+Nothing is authorized. The owner first reviews the re-plan (section 9) and answers the five open
+questions; Phase 3 is then authorized separately.
 
-1. Read this handoff, `AGENTS.md`, the plan's Phase 3 section, and `docs/ARCHITECTURE.md`.
+When Phase 3 — **renderer, lighting, post-processing, and the asset/material pipeline** (ADR 0004) —
+is authorized:
+
+1. Read this handoff, `AGENTS.md`, the plan's Phase 3 section, ADR 0004, and `docs/VISUAL_TARGET.md`.
 2. Record the authorization in `AGENTS.md` and this file.
-3. Keep Rapier as the sole physics authority; terrain colliders must come from the same generator as
-   the visual mesh, and streaming must not allocate without bounds.
-4. Add deterministic tests, run `npm run check`, perform browser verification, and record real
-   evidence (no unverified performance claims).
+3. Do the renderer migration as one self-contained change (WebGPU renderer + WebGL2 backend, TSL
+   node materials, GLSL-era code ported or deleted, guard against new `ShaderMaterial`/
+   `onBeforeCompile` usage) before any look development.
+4. Build the asset pipeline and look-dev scenes, add tests, run `npm run check`, perform browser
+   verification on both backends, and record real evidence (no unverified performance claims).
 5. Commit, push to `main`, verify the remote SHA and CI result, and stop before Phase 4.
 
 ## 8. Session continuity reminders
@@ -167,3 +181,29 @@ authorized. When it is:
 - Authentication may need renewing in a fresh session; never request a token in chat and never commit
   credential material.
 - If a push is blocked, record it plainly and export a bundle instead of claiming remote success.
+
+## 9. Visual-fidelity re-plan (2026-10-14) — complete, awaiting sign-off
+
+**Why:** after reviewing the Phase 2 screenshots the owner rejected the boxy, cartoonish look and
+required realistic car models and environmental aesthetics "as close as possible" to Forza Horizon,
+authorizing a research step-back and a full re-plan. No visual implementation has been written.
+
+**Deliverables written in this step (all committed together with the docs sweep):**
+
+| Artifact                                                        | Content                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs/RESEARCH_AAA_FIDELITY.md`                                 | What Forza actually does (surfel GI, reactive procedural sky, POM terrain + virtual texturing, seasonal "Winteriser" material variants, wetness/temperature-driven traction) with sources; a capability audit of the installed `three@0.186.1` (TSL display nodes, CSM, Sky/Water, KTX2/Draco, `MeshPhysicalMaterial` clearcoat); a 20-row gap table with phase mapping; CC0/paid asset legality; five explicit non-promises |
+| `docs/VISUAL_TARGET.md`                                         | The normative look contract: five pillars, per-system quality bars with measurable checks, the C/B/A tier matrix, the look-dev workflow (studio scene + 2 km route with 12 fixed bookmarks + SSIM diffing + performance gates), the alpine/coastal art-direction brief, and §7 owner questions                                                                                                                               |
+| `PROJECT_PLAN.md` (revised)                                     | §6 rewritten as the rendering/seasons architecture; §8 tiers extended; §9 rearranged to Phases 3–8 with an old→new mapping; §10 execution status; §11 asset policy, new risks, and deferred decisions; §13 traceability remapped                                                                                                                                                                                             |
+| `docs/decisions/0004-visual-fidelity-and-rendering-pipeline.md` | Proposed ADR: stay on Three.js but move to `WebGPURenderer` + TSL with the WebGL2 backend as the supported fallback; one TSL `RenderPipeline` post stack; foundations before content; tiers as explicit contracts; asset sourcing as engineering; the feasibility boundary and the five open questions                                                                                                                       |
+
+**Feasibility boundary recorded (must not be overstated to the owner):** the browser target is
+quality-tiered PBR + HDRI IBL + GTAO/SSR/TRAA + procedural biomes + CC0 scans with a WebGL2
+fallback. Forza's photogrammetry crews, 12K source textures, baked surfel GI, and console hardware
+are out of reach; `docs/VISUAL_TARGET.md` §6 lists what "done" does not mean, and no frame-rate or
+parity claim is made without measurements on named hardware.
+
+**Open questions for the owner (blocking only at the phase noted):** car asset route and brand
+policy (Phase 6), region (Phase 4), audio scope (Phase 7), photo mode (Phase 8).
+
+**Next action:** owner sign-off on the re-plan and those answers; only then is Phase 3 authorized.

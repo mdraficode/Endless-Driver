@@ -6,12 +6,13 @@ This file is the first checkpoint for any assistant or contributor resuming the 
 
 - On 2026-10-13 the user authorized **Phase 1 only**: engine, render loop, camera, and lighting. Phase 1 is implemented, validated, and pushed.
 - On 2026-10-14 the user authorized **Phase 2**: Rapier vehicle physics (raycast suspension, tire slip model, drivetrain), smooth keyboard input, and a dynamic chase camera. Phase 2 is implemented and verified; see `docs/SESSION_HANDOFF.md` for the measured evidence and `docs/decisions/0003-vehicle-physics-and-camera.md` for the decisions.
-- **Phase 3 is not authorized.** Do not add procedural terrain, roads, chunk streaming, or float-origin handling until the user explicitly starts Phase 3.
-- Still unimplemented by design: terrain/streaming, seasons/weather, touch controls, post-processing effects, and the gameplay HUD.
+- On 2026-10-14 the user rejected the Phase 2 look and set a Forza-Horizon-class visual target, authorizing a research step-back and a full re-plan. That work is complete and **not yet approved**: `docs/RESEARCH_AAA_FIDELITY.md`, `docs/VISUAL_TARGET.md`, ADR 0004 (proposed), and the rearranged `PROJECT_PLAN.md` §9–§11.
+- **Phase 3 is not authorized.** The next phase is now _renderer, lighting, post-processing, and the asset/material pipeline_; terrain and roads moved to Phase 4. Do not write rendering, terrain, road, streaming, or float-origin code until the user explicitly authorizes it.
+- Still unimplemented by design: terrain/streaming, vegetation/props, realistic car asset, seasons/weather, touch controls, post-processing, and the gameplay HUD.
 - `src/main.ts` is the browser entrypoint and `src/core/Application.ts` is the composition root. Runtime tests live in `tests/unit/`, `tests/physics/`, and `tests/integration/`; the old scaffold-entrypoint guard has been removed.
 - Do not begin the next phase automatically after completing an authorized phase.
 
-Update this authorization section and the handoff when a later user instruction changes the permitted phase. Preserve the six-phase order in `PROJECT_PLAN.md` unless the user approves a change.
+Update this authorization section and the handoff when a later user instruction changes the permitted phase. Preserve the phase order in `PROJECT_PLAN.md` §9 (rearranged 2026-10-14 by ADR 0004) unless the user approves another change.
 
 ## Read before editing
 
@@ -36,7 +37,11 @@ Check the repository root, current branch, local changes, remote URL, and latest
 - Keep active chunks, collider coverage, job queues, particles, and asset memory bounded.
 - Floating-origin rebasing must move simulation, rendering, cameras, interpolation snapshots, and temporal state consistently.
 - Every owned resource/listener/worker/WASM allocation needs explicit cleanup.
-- Use WebGL2 as the baseline. WebGPU and high-cost effects are optional quality paths, not universal assumptions.
+- Rendering path per ADR 0004: `WebGPURenderer` (`three/webgpu`) with the automatic WebGL2 backend. One rendering layer, two backends — both must be validated for any rendering change, and the WebGL2 path is the low tier rather than a second-class port.
+- Shading is TSL only. Never add `ShaderMaterial`, `RawShaderMaterial`, or `onBeforeCompile` usage; port existing GLSL-era code instead. Post-processing goes through the TSL `RenderPipeline` (`EffectComposer`/pmndrs are not used).
+- Everything expensive is tier-gated and measured. Every visual system declares its C/B/A state in `docs/VISUAL_TARGET.md` §3 and its measured cost; the dev sandbox (SwiftShader) may only assert correctness, never frame rate.
+- Visual work follows the look-dev workflow: reference board → implementation → studio scene → 2 km route bookmarks → tier tuning → recorded performance → docs. Never present a stylized or placeholder result as the intended quality.
+- Assets enter the repository only through the pipeline (optimize → LODs → quantize/meshopt → KTX2 → budget check) with a licence record and manifest entry; no ripped game assets and no unlicensed brand marks.
 - Phase 1 rules: renderer configuration, sizing, pixel-ratio capping, and the loop live only in `src/core/Engine.ts`; scene composition lives in `src/core/SceneManager.ts`; tuning values live in `src/config/render.ts`, not inline in systems.
 - Phase 2 rules: **Rapier (via `src/physics/PhysicsWorld.ts`) is the only solver**; never stack a second solver or Rapier's built-in vehicle controller on the same body. Simulation state is read through `Car.getInterpolatedPose(alpha)` for rendering and `Car.telemetry` for HUD/diagnostics. All vehicle, world, physics, input, and camera tuning lives in `src/config/*`, never inline. Input smoothing and steering rate limiting belong to `src/input/InputManager.ts`; the car consumes shaped actions only. Every frame delta is clamped and the fixed-step accumulator may never run unbounded catch-up (currently five steps max).
 - Clamp every frame delta before it reaches simulation state, and never bind future physics to the display refresh rate.

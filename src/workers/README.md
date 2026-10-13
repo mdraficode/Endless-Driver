@@ -8,6 +8,6 @@ Serializable generation requests/results with cancellation/version tags and tran
 
 ## Planned work
 
-Terrain/placement worker in Phase 3; always reject stale results.
+Terrain/placement worker in Phase 4; always reject stale results.
 
 See [the project plan](../../PROJECT_PLAN.md) and [architecture](../../docs/ARCHITECTURE.md). Do not implement this module before the relevant phase is authorized.

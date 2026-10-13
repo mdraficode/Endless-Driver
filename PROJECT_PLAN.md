@@ -1,14 +1,15 @@
 # Endless Driver — Project Plan and Implementation Instructions
 
-**Planning baseline:** 2026-10-13  
-**Project stage:** Phase 1 (core engine, loop, camera, lighting) implemented; Phases 2–6 not started  
-**Development authorization:** Phase 1 only, per explicit user instruction; Phase 2 requires a new instruction  
+**Planning baseline:** 2026-10-13 · **Visual-fidelity revision:** 2026-10-14  
+**Project stage:** Phases 1–2 implemented and pushed; Phases 3–8 (rearranged for the AAA-fidelity target) not started  
+**Development authorization:** Phases 1–2 only, per explicit user instruction; Phase 3 requires a new instruction  
+**Visual target:** [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) — the owner requires Forza-Horizon-class presentation; the evidence, feasibility boundaries, and rearranged roadmap are in [`docs/RESEARCH_AAA_FIDELITY.md`](docs/RESEARCH_AAA_FIDELITY.md)  
 **GitHub destination:** Public [`mdraficode/Endless-Driver`](https://github.com/mdraficode/Endless-Driver), branch `main`  
-**Remote synchronization:** Initial scaffold, repository documentation, and Phase 1 pushed and verified; CI runs on each push
+**Remote synchronization:** Scaffold, documentation, Phase 1, and Phase 2 pushed and verified on `main`; CI runs on each push
 
 The original requested technical scope is retained in [`docs/PROJECT_BRIEF.md`](docs/PROJECT_BRIEF.md).
 
-> This is the implementation specification, not a claim that the game is complete. Phase 1 ships the runtime foundation only: renderer, loop, scene, reference lighting, diagnostics, and disposal. There is still no physics, terrain, vehicle, input, weather, or gameplay implementation. The planned stack is Three.js + Rapier (see `docs/decisions/0002-renderer-three-js.md`), not Babylon.js.
+> This is the implementation specification, not a claim that the game is complete. Phases 1–2 shipped the runtime foundation and the vehicle: renderer, loop, lighting, diagnostics, Rapier world, raycast car, keyboard input smoothing, and chase camera. There is still no terrain, roads, vegetation, realistic car asset, seasons, weather, touch input, or AAA-grade rendering pipeline. The planned stack is Three.js + Rapier (see `docs/decisions/0002-renderer-three-js.md` and `0004-visual-fidelity-and-rendering-pipeline.md`), not Babylon.js.
 
 ## Contents
 
@@ -45,7 +46,7 @@ Build a browser-based, single-player 3D driving experience with convincing vehic
 ### Scope boundaries
 
 - “Infinite” means procedurally addressable world space with finite active memory, not infinitely allocated terrain.
-- “AAA look” is an art-direction goal; it is not a guarantee of AAA production quality or desktop effects on every phone.
+- “AAA look” is an engineering target, not a marketing claim: [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) defines per-system quality bars, tier contracts, and measurable checks. It never promises parity with a AAA production's asset depth, licensed vehicles, or console-hardware effects.
 - Target 60 FPS on agreed reference hardware. Slower devices may use lower quality or a stable 30 FPS fallback. No universal 60+ FPS guarantee is possible before profiling.
 - Multiplayer, accounts, traffic AI, races, monetization, multiplayer determinism, and server persistence are not part of these six phases.
 - Do not implement the complete game in one file. Keep feature modules small, typed, independently testable, and explicitly disposable.
@@ -53,17 +54,19 @@ Build a browser-based, single-player 3D driving experience with convincing vehic
 
 ## 2. Selected technology and decisions
 
-| Area               | Selection                                               | Reason and constraint                                                                                                                    |
-| ------------------ | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Rendering          | Three.js (`three`) with ES-module addons                | Selected by explicit owner instruction (ADR 0002); renderer, scene, sky, and lighting are project-owned code instead of engine defaults. |
-| Language/build     | TypeScript + Vite                                       | Strict typing, fast development, static production distribution.                                                                         |
-| Physics            | Rapier 3D compatibility package                         | WASM rigid-body physics and a dynamic raycast vehicle controller; initialization is asynchronous.                                        |
-| UI                 | Semantic DOM + Tailwind CSS Vite plugin                 | Lightweight HUD and touch overlays; no React layer is necessary for this architecture.                                                   |
-| Terrain noise      | simplex-noise + a seeded random source                  | Deterministic sampling; never use unseeded randomness for world generation.                                                              |
-| Renderer baseline  | WebGL2                                                  | Broad desktop/mobile baseline; show a clear unsupported-browser message if unavailable.                                                  |
-| Optional renderer  | WebGPU, after baseline validation                       | Experimental quality path, not a Phase 1 dependency; custom effects need compatible shader variants.                                     |
-| Tests              | Vitest; browser automation added with relevant phases   | Pure logic and headless physics tests first; browser input and rendering checks later.                                                   |
-| Package management | npm with exact direct versions and a committed lockfile | `npm ci` reproduces installs; upgrade packages deliberately, not implicitly between sessions.                                            |
+| Area               | Selection                                                           | Reason and constraint                                                                                                                                                                                  |
+| ------------------ | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Rendering          | Three.js (`three`) with ES-module addons                            | Selected by explicit owner instruction (ADR 0002); renderer, scene, sky, and lighting are project-owned code instead of engine defaults.                                                               |
+| Language/build     | TypeScript + Vite                                                   | Strict typing, fast development, static production distribution.                                                                                                                                       |
+| Physics            | Rapier 3D compatibility package                                     | WASM rigid-body physics and a dynamic raycast vehicle controller; initialization is asynchronous.                                                                                                      |
+| UI                 | Semantic DOM + Tailwind CSS Vite plugin                             | Lightweight HUD and touch overlays; no React layer is necessary for this architecture.                                                                                                                 |
+| Terrain noise      | simplex-noise + a seeded random source                              | Deterministic sampling; never use unseeded randomness for world generation.                                                                                                                            |
+| Renderer path      | `WebGPURenderer` (`three/webgpu`) with the automatic WebGL2 backend | One rendering layer, two backends. WebGPU gives compute, storage textures and the TSL post-processing stack; the WebGL2 backend keeps the ~18% of browsers without WebGPU running the same code paths. |
+| Shading language   | TSL (Three.js Shading Language) node materials                      | `ShaderMaterial`/`onBeforeCompile` do not run on the WebGPU backend, so custom shading is written once in TSL and compiled to WGSL or GLSL.                                                            |
+| Post-processing    | `RenderPipeline` + TSL display nodes                                | Built-in GTAO, SSR, SSGI, TAAU/TRAA, bloom, DOF, motion blur, god rays, grain, LUT grading; `EffectComposer`/pmndrs are WebGL-only and are not used.                                                   |
+| Asset pipeline     | `gltf-transform` + meshopt/Draco + KTX2/Basis                       | Textures stay GPU-compressed (4–8× less VRAM), geometry stays small, every asset carries a licence record.                                                                                             |
+| Tests              | Vitest; browser automation added with relevant phases               | Pure logic and headless physics tests first; browser input and rendering checks later.                                                                                                                 |
+| Package management | npm with exact direct versions and a committed lockfile             | `npm ci` reproduces installs; upgrade packages deliberately, not implicitly between sessions.                                                                                                          |
 
 ### Architectural decisions
 
@@ -72,8 +75,10 @@ Build a browser-based, single-player 3D driving experience with convincing vehic
 3. **Start with the compatibility WASM package.** It simplifies bundling, but its embedded WASM increases JavaScript payload. Profile startup and consider a separately served WASM build later, without changing physics ownership.
 4. **Use a fixed physics tick and independent rendering.** Physics must not depend on display refresh rate.
 5. **Use quality presets from the beginning.** High-DPI and expensive effects cannot be enabled without pixel and GPU budgets.
-6. **Do not force WebGPU.** GLSL effects are not assumed to work unchanged on a WGSL/WebGPU path.
-7. **Respect repository visibility and distribution licensing separately.** The owner explicitly authorized a public GitHub repository. Keep npm publication disabled (`private: true`) and `UNLICENSED` metadata until the owner selects a distribution license; public visibility does not itself assign an open-source license.
+6. **One rendering layer, TSL everywhere.** Renderer, post-processing, and custom shading are written once against TSL/`RenderPipeline`; the WebGL2 backend is a supported fallback that must be validated in the same test runs, not a second code path. No `ShaderMaterial`, `RawShaderMaterial`, or `onBeforeCompile` may be added.
+7. **Everything expensive is tier-gated and measured.** Effects are declared in the tier matrix with an on/off state per tier and a measured cost; a system that cannot hold its tier budget is cut or downgraded, never left on "because it looks better".
+8. **Every asset has a licence record before it enters the repository.** The asset pipeline (optimize → LOD → budget check → manifest) is part of the build, and the register records source, creator, licence, modifications, and required credits. See `docs/ASSET_POLICY.md`.
+9. **Respect repository visibility and distribution licensing separately.** The owner explicitly authorized a public GitHub repository. Keep npm publication disabled (`private: true`) and `UNLICENSED` metadata until the owner selects a distribution license; public visibility does not itself assign an open-source license.
 
 Dependency versions are recorded in `package.json` and `package-lock.json`, not duplicated throughout this plan. TypeScript and test-tool versions may intentionally lag the latest major release for verified compatibility.
 
@@ -156,7 +161,7 @@ Every system that allocates meshes, WASM objects, workers, event listeners, obse
 - Pause or reset the accumulator when the page is hidden. Clear held controls on blur, pause, and input cancellation.
 - Fixed-step order: sample actions, apply controller/drivetrain updates, update the raycast vehicle when present, step Rapier, then capture authoritative state.
 
-### Raycast vehicle design — Phase 4
+### Raycast vehicle design — Phase 6
 
 1. Use one dynamic chassis with a simple convex/compound collision shape and configurable center of mass.
 2. Add four wheel contact rays with radius, rest length, travel, spring stiffness, compression/rebound damping, axle, and steering configuration.
@@ -168,9 +173,11 @@ Every system that allocates meshes, WASM objects, workers, event listeners, obse
 8. Animate visual wheels from contact/suspension state, steering, and rotation; avoid deriving simulation motion from the GLB hierarchy.
 9. Drive steering-wheel angle, brake-light emission, skid marks, and bounded particles from telemetry.
 
-### Tire-model feasibility gate
+### Tire-model feasibility gate (resolved in Phase 2)
 
-Rapier's built-in controller exposes suspension and friction controls; it is not a complete Pacejka tire, engine, or transmission simulation. In Phase 4, validate available force/contact data against the required tire-friction curves and handling behavior before selecting either:
+Resolved 2026-10-14: the custom raycast force layer was chosen over Rapier's `DynamicRayCastVehicleController`, because slip-dependent lateral grip, a handbrake that scales rear traction only, and a project-owned torque curve are all required for the sim-cade drift feel. Only one force model exists per body. Phase 6 extends the model toward multiple contact sample points per wheel (Forza Motorsport uses eight) now that the authoring pipeline is in place.
+
+Rapier's built-in controller exposes suspension and friction controls; it is not a complete Pacejka tire, engine, or transmission simulation. Phase 2 chose the custom force layer; Phase 6 refines it (more contact samples per wheel, temperature/wear as presentation-only state) rather than re-opening the choice:
 
 - **Baseline:** built-in raycast suspension/contact handling plus drivetrain, explicitly defined traction-response curves mapped to supported controller parameters, steering, and telemetry; or
 - **Advanced:** a custom raycast tire-force layer with slip-ratio/slip-angle curves and a friction-circle budget.
@@ -206,43 +213,91 @@ The baseline is acceptable only if the required curve-driven traction and handli
 - Use terrain stitch skirts or tested edge stitching between different LODs; matching equal-LOD edges alone is insufficient.
 - Use instancing/thin instances for repeated vegetation, distance-based building/prop LOD, shadow-caster limits, and fog for far boundaries.
 - Store persistent positions as chunk coordinates plus local offsets. Render and simulate near the current origin.
-- Rebase around a provisional 1,024 m displacement threshold at a safe physics boundary. Shift physics, meshes, cameras, previous/current interpolation snapshots, particles, and other local state together. In Phase 6, reset or shift temporal-effect histories too.
+- Rebase around a provisional 1,024 m displacement threshold at a safe physics boundary. Shift physics, meshes, cameras, previous/current interpolation snapshots, particles, and other local state together. Phase 4 adds streaming/origin tests, and any temporal-effect history introduced in Phase 3 (TAAU, SSR, motion blur) is reset or shifted at the same boundary.
 - Repeated long-distance travel must plateau in active chunks, colliders, CPU buffers, and GPU resources.
 
 ## 6. Rendering, seasons, and weather specifications
 
-### Visual foundation
+**Fidelity target:** [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) is the authoritative specification for what each
+system must look like and how it is verified; [`docs/RESEARCH_AAA_FIDELITY.md`](docs/RESEARCH_AAA_FIDELITY.md) records
+the evidence and the feasibility boundaries. This section defines the architecture.
 
-- Use PBR car, road, and terrain materials; preserve glTF color-space conventions. Base color/emissive are color data; normal/roughness/metalness are linear data.
-- Pair the sky with consistent image-based lighting, exposure, sun direction, and tone mapping.
-- Begin with one sun directional light and limited fill/ambient lighting. Use distance-capped local lights only where needed.
-- Add standard shadows first; use cascaded shadows on supported quality tiers after profiling.
-- Implement a controllable day/night clock, sunset/sunrise transitions, darker night exposure, and bounded vehicle lighting.
-- Provide an ACES-style tone-mapping path and carefully calibrated exposure; stronger bloom is not a substitute for lighting or good assets.
+### The five pillars
 
-### Post-processing stack
+1. **Light is the product.** HDR environment lighting, a dynamic sun/sky, correct exposure, and indirect bounce
+   dominate perceived realism.
+2. **Material truth.** Physically-based values, packed ORM maps, detail layers that survive close inspection, and
+   automotive paint with base coat, flake, and clearcoat.
+3. **Depth and atmosphere.** Aerial perspective, fog tied to the sky, light shafts at low sun, dust and mist.
+4. **Density where you look.** High-frequency detail near the camera (parallax occlusion mapping, splat layers,
+   vegetation), impostors and simplified LODs far away — never uniform detail.
+5. **The world changes.** Time of day, weather, and season transform the same road visually _and_ physically.
 
-Introduce and measure one effect at a time: tone mapping/color grading, bloom, SSAO, vignette, then optional motion blur and atmospheric/volumetric effects. Establish color-space and effect ordering against the engine's pipeline; avoid duplicate tone mapping or gamma conversion.
+### Rendering path
 
-- Bloom: restrained highlights; low-resolution buffers where appropriate.
-- SSAO: desktop quality tier; disabled by default on low/mobile tiers.
-- Motion blur: opt-in high-tier effect; maintain correct previous transforms, reset on cuts/rebases, and respect reduced-motion preferences.
-- Vignette/color grading: subtle, optional, with no loss of HUD readability.
-- Volumetric lighting: high-tier experiment; use cheaper fog/atmosphere approximations on lower tiers and label the distinction honestly.
-- All custom effects require WebGL2-compatible shader paths; WebGPU equivalents remain optional and separately tested.
+- **`WebGPURenderer` with the automatic WebGL2 backend.** One render layer; capability detection decides the
+  backend, and both backends run the same scene graph, materials, and post chain. A forced-WebGL2 mode exists for
+  testing and for browsers without WebGPU.
+- **TSL for all custom shading.** Node materials replace custom GLSL. The Phase 1 procedural ground grid and sky
+  are ported when the renderer migration happens; a source guard prevents new `ShaderMaterial`/`onBeforeCompile`
+  usage.
+- **Post-processing is one ordered `RenderPipeline`**: scene render → optional SSGI/SSR/AO (screen-space, tiered) →
+  volumetric/atmospheric passes → bloom → DOF → motion blur → tone mapping → grading LUT → grain/chromatic
+  aberration/vignette → anti-aliasing/upscale (TAAU/TRAA, FXAA/SMAA on the low tier). Tone mapping and colour-space
+  conversion happen exactly once, at the pipeline end.
+- **Colour pipeline:** linear-sRGB working space, PMREM environment lighting, ACES/AgX tone mapping, LUT-based
+  grading per time-of-day preset, and no double conversion anywhere in the chain.
+- **Image quality:** temporal anti-aliasing with dynamic resolution scaling and hysteresis; minimum scale 0.6–0.7
+  depending on tier; sharpening on the upscale path.
 
-### Seasons, weather, and surface behavior
+### Sky, light, and shadows
 
-Keep separate but coordinated state for season, weather, time of day, and gameplay surface conditions.
+- HDRI image-based lighting (CC0 HDRIs) via PMREM, blended with an atmospheric sky shader; the sun drives
+  direction, colour, and intensity from a **time-of-day clock**, and the sky responds to weather state.
+- Exposure control that survives full 24 h transitions without clipping or crushed shadows.
+- **Cascaded shadow maps** (`CSM.js`/`CSMShadowNode`) with per-tier cascade counts, stable near-field resolution,
+  and no visible seams; **contact/screen-space shadows** ground small props and foliage.
+- Optional god rays / volumetric light shafts on the high tier; cheaper depth-fog approximations below that.
 
-| Season | Presentation                                                       | Driving influence                                  |
-| ------ | ------------------------------------------------------------------ | -------------------------------------------------- |
-| Spring | Green vegetation, occasional rain, damp surfaces                   | Wet traction and puddle/wetness response           |
-| Summer | Warm sunlight, dry foliage/roads                                   | Baseline grip and dry surfaces                     |
-| Autumn | Warm foliage, pooled falling-leaf particles, mud                   | Mud rolling resistance and lower off-road traction |
-| Winter | Snow masks/accumulation appearance, colder light, bounded snowfall | Snow/ice traction reduction and controlled sliding |
+### Materials
 
-Season changes blend palettes, material parameters, vegetation variants, and surface state. Weather can vary independently within a season. Initial snow accumulation is a visual surface mask, not a full physical snow-volume simulation. Traction remains controlled by explicit surface data, not by texture color. Expose debug season/weather/time toggles in Phase 6.
+A project-owned material library, validated in the studio look-dev scene before use:
+
+- Terrain: aggregate, gravel, soil, rock, grass, sand, snow, ice — each with albedo/ORM/normal/detail layers and
+  seasonal and wetness variants.
+- Road: asphalt (with wet film and puddle masks), markings, kerbs, shoulders, tunnels, bridges.
+- Vegetation: opaque foliage, translucent foliage (leaf backlight), grass blades, bark, impostor atlases.
+- Water: surface shader with depth-based colour, reflection source per tier, and shoreline blending.
+- Vehicle: paint (base + flake + clearcoat, pearl and matte variants), glass, chrome, rubber, plastics, lights,
+  and dirt/water/snow masks.
+
+### Terrain and detail rendering
+
+- Multi-layer splat materials with height/AO blending and triplanar projection on cliffs; parallax occlusion
+  mapping on the near tier; detail maps that fade with distance to control tiling.
+- Chunked LOD with skirts/stitching; GPU instancing for vegetation and props with impostor fallbacks.
+- Screen-space contact shadows and decals for roadside detail.
+
+### Seasons, weather, and surface behaviour
+
+Keep separate but coordinated state for **season, weather, time of day, and surface condition**, and make each one
+visible and physical:
+
+| Season | Presentation                                                        | Driving influence                                  |
+| ------ | ------------------------------------------------------------------- | -------------------------------------------------- |
+| Spring | Green vegetation, occasional rain, damp surfaces, wildflowers       | Wet traction, puddle drag                          |
+| Summer | Warm sunlight, dry foliage and roads, dust and heat haze            | Baseline grip, dust plumes                         |
+| Autumn | Warm foliage, leaf litter, falling leaves, mud                      | Reduced off-road traction, mud rolling resistance  |
+| Winter | Snow accumulation masks, colder light, bounded snowfall, bare trees | Snow/ice grip reduction, controlled sliding, churn |
+
+- Seasonal variants are generated from one master material set (an in-house equivalent of the "winteriser"
+  workflow: frost/snow masks driven by slope, height, and curvature), not authored twice.
+- Weather is independent of season and includes rain, storms, dust, fog, and snow, with the sky, clouds, light
+  colour, wind, and exposure driven from one weather state.
+- Traction is driven by explicit surface state (dry/wet/snow/ice/mud/gravel), never by texture colour. Phase 7
+  verifies that the same corner taken at the same speed produces measurably different telemetry per season.
+- Snow accumulation is a visual + grip surface layer, not a physical snow-volume simulation.
+- Debug controls for season/weather/time are part of the developer HUD, not of the player UI.
 
 ## 7. Controls, cameras, and HUD
 
@@ -275,29 +330,31 @@ Automatic transmission is the default. The brief allows Shift for nitro or shift
 
 ### Cameras and HUD
 
-- Phase 1: simple inspection camera only.
-- Phase 2: provisional chase camera.
-- Phase 4: collision-aware chase behavior and normalized cockpit anchor with model-dependent interior visibility.
-- Phase 5: consistent chase/cockpit/orbit mode switching on desktop and touch.
+- Phase 2 (delivered): damped chase camera with speed-driven FOV, plus the Phase 1 orbit camera retained as a debug view.
+- Phase 6: collision-aware chase behaviour, cockpit camera with a normalized anchor and model-dependent interior visibility, and mirror/wiper hooks for weather.
+- Phase 8: consistent chase/cockpit/orbit switching on desktop and touch, finalized HUD, and settings.
 - Follow smoothing must be frame-rate independent; use physics queries to avoid camera clipping.
 - HUD: speed, gear, pause/settings, loading/errors, optional FPS/debug data, and touch controls. Update numeric HUD values at a controlled frequency rather than unnecessarily rebuilding DOM every render frame.
 
 ## 8. Quality tiers and performance budgets
 
-These are **initial budgets to validate**, not measured results. Freeze reference device models, browser versions, display resolution, and measurement procedure in Phase 1.
+These are **initial budgets to validate**, not measured results. The tier definitions and per-system gates are normative in [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) §3; this table adds the geometric and memory budgets. Reference device models, browser versions, display resolution, and the measurement procedure are frozen in Phase 3, when the renderer and effect stack actually exist.
 
-| Budget                                    | Low/mobile                      | Balanced         | High/desktop                           |
-| ----------------------------------------- | ------------------------------- | ---------------- | -------------------------------------- |
-| Frame target                              | 60 FPS goal; 30 fallback        | 60 FPS           | 60+ where hardware permits             |
-| Device-pixel-ratio cap                    | 1.0 initially                   | 1.5 initially    | 2.0 maximum, subject to resolution cap |
-| Render radius                             | 2 chunks                        | 3 chunks         | 3–4 after profiling                    |
-| Draw calls, indicative ceiling            | 200                             | 350              | 500                                    |
-| Visible triangles, indicative ceiling     | 250k                            | 600k             | 1M                                     |
-| Texture GPU allocation, estimated ceiling | 128 MB                          | 192 MB           | 256 MB                                 |
-| Shadows                                   | Small map/single cascade or off | Limited cascades | Profiled CSM                           |
-| Bloom                                     | Off or lightweight              | Lightweight      | On, bounded buffers                    |
-| SSAO / motion blur                        | Off / off                       | Optional / off   | Optional / opt-in                      |
-| Weather/foliage particles                 | Strongly capped                 | Moderate         | Higher but bounded                     |
+| Budget                                    | Low/mobile                      | Balanced                        | High/desktop                           |
+| ----------------------------------------- | ------------------------------- | ------------------------------- | -------------------------------------- |
+| Frame target                              | 60 FPS goal; 30 fallback        | 60 FPS                          | 60+ where hardware permits             |
+| Device-pixel-ratio cap                    | 1.0 initially                   | 1.5 initially                   | 2.0 maximum, subject to resolution cap |
+| Render radius                             | 2 chunks                        | 3 chunks                        | 3–4 after profiling                    |
+| Draw calls, indicative ceiling            | 200                             | 350                             | 500                                    |
+| Visible triangles, indicative ceiling     | 250k                            | 600k                            | 1M                                     |
+| Texture GPU allocation, estimated ceiling | 128 MB                          | 192 MB                          | 256 MB                                 |
+| Shadows                                   | Small map/single cascade or off | Limited cascades                | Profiled CSM                           |
+| Bloom                                     | Off or lightweight              | Lightweight                     | On, bounded buffers                    |
+| SSAO / motion blur                        | Off / off                       | Optional / off                  | Optional / opt-in                      |
+| Weather/foliage particles                 | Strongly capped                 | Moderate                        | Higher but bounded                     |
+| Anti-aliasing                             | FXAA/SMAA                       | TAAU                            | TAAU/TRAA                              |
+| Reflections                               | Cubemap probes                  | SSR half-res + probes           | SSR + wet-road layer                   |
+| Volumetrics                               | Fog only                        | Height/depth fog + light shafts | Volumetric fog/dust, god rays          |
 
 - A 60 FPS frame is approximately 16.7 ms total. CPU and GPU overlap; do not add overlapping timings as if they were independent serial costs.
 - Begin with a 2 ms per-frame streaming/upload work budget and measure its impact. The budget may need subdivision or idle scheduling.
@@ -308,130 +365,205 @@ These are **initial budgets to validate**, not measured results. Freeze referenc
 
 ## 9. Step-by-step phased execution
 
-### Before development — initial setup requested now
+### Why the phases changed (2026-10-14)
 
-1. Record this specification, architecture choices, phase gates, and session-continuity instructions.
-2. Create the modular project tree and Vite/TypeScript/Tailwind tooling.
-3. Pin dependencies and generate the npm lockfile.
-4. Configure formatting, linting, type checking, scaffold-only tests, and CI.
-5. Add asset-license policy, an empty asset manifest, and future test directories.
-6. Validate the scaffold; create an initial Git commit and portable repository bundle.
-7. Push to the user's dedicated repository when its actual URL and an authorized Git route are available. Do not invent a destination or claim an unverified push.
-8. Wait for explicit Phase 1 authorization.
+The owner rejected the Phase 2 look and set a Forza-Horizon-class presentation target. The research in
+[`docs/RESEARCH_AAA_FIDELITY.md`](docs/RESEARCH_AAA_FIDELITY.md) showed that the original order would have built the
+world with placeholder technology and rebuilt it later. The roadmap below therefore front-loads the **rendering,
+asset, and material foundations**, so terrain, roads, vegetation, weather, and the car are all authored once against
+the final pipeline.
 
-### Phase 1 — Core engine, loop, camera, and lighting
+| Original phase | Original content                                    | Where it went now                                                                                 |
+| -------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| 3              | Procedural terrain, roads, chunk streaming          | **Phase 4** (unchanged content, now built on the Phase 3 renderer and material library)           |
+| 4              | Advanced vehicle + realistic model                  | **Phase 6** (split: vehicle systems refined, hero car authored)                                   |
+| 5              | Mobile touch, camera interactions, HUD              | **Phase 8** (plus final settings and polish)                                                      |
+| 6              | Seasons, weather, "final graphics", post-processing | **Split**: graphics foundation → **Phase 3**, seasons/weather → **Phase 7**, polish → **Phase 8** |
+| —              | (new)                                               | **Phase 3** renderer + asset pipeline + material library; **Phase 5** environment detail          |
 
-**Depends on:** Initial scaffold and user authorization.
+Delivered work is not re-opened: Phase 2's physics contract, input smoothing, chase camera, and ADR 0003 remain
+valid and are extended, not replaced.
 
-**Status (2026-10-13): implemented, validated, and pushed.** Delivered as:
+### Delivered
 
-1. `src/core/Application.ts` composition root with startup, loading, and error states (`Preparing the scene…`, startup-failure, context-lost, and context-restored messages).
-2. `src/core/Engine.ts` initializes one `WebGLRenderer` with antialiasing, filtered shadow maps, and ACES filmic tone mapping. Three.js r186 removed `PCFSoftShadowMap` at runtime (it warns and downgrades), so the configurable shadow mode defaults to `PCFShadowMap` with `VSMShadowMap` available as an opt-in soft alternative; pinning an older three release would restore the literal constant. A failed context initialization surfaces an error state instead of a blank page.
-3. Responsive canvas: window resize/orientation listeners plus a `ResizeObserver`, coalesced into a single sizing pass per frame; devicePixelRatio is capped at 2 and the camera aspect ratio follows the viewport.
-4. `requestAnimationFrame` loop using `Clock.getDelta()`, per-frame delta clamped to 100 ms, pause/resume on tab visibility, and context-loss recovery. The fixed-step physics scheduler is contracted but intentionally not implemented (no gameplay physics in Phase 1).
-5. Phase 1 scene: three-stop gradient sky dome, `AmbientLight`, shadow-casting `DirectionalLight` sun with a 2048² shadow map, 800 m ground plane, debug grid, and three temporary shadow props.
-6. `src/ui/DiagnosticsOverlay.ts` reports FPS average/worst, frame time and p95, viewport/DPR, draw calls, triangles, scene object count, camera position, and frame count. A full quality selector is deferred to Phase 6.
-7. Deterministic disposal covers renderer, orbit controls, geometries/materials, listeners, and the resize observer. Context loss stops the loop; restoration resumes it.
-8. Verification: unit tests for math/config/statistics/module API, production build, and a headless-Chromium smoke test confirming a rendered frame, correct sizing, and DPR capping at `deviceScaleFactor: 3`. The headless check uses a software rasterizer, so it is **not** a hardware FPS measurement.
-9. Handoff, README, plan, and ADRs updated; committed and pushed to the canonical repository with CI verification.
+| Phase | Content                                                                                                                                                          | Evidence                                                       |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Setup | Specification, modular Vite/TypeScript/Tailwind scaffold, pinned dependencies, CI, asset policy                                                                  | `c831a44`, `a80dc03`                                           |
+| 1     | Engine, loop, resize/DPR handling, orbit debug camera, reference lighting, diagnostics, disposal (ADR 0002)                                                      | `fbb48a4`, CI green                                            |
+| 2     | Rapier world + custom raycast force layer, slip-friction drift, smoothed keyboard input, damped chase camera, placeholder car meshes bound to physics (ADR 0003) | `b85c8ba`, `307efaa`, CI green; evidence in `/phase2-evidence` |
 
-**Acceptance:** met — a correctly sized, lit reference scene with a debug orbit camera and diagnostics; one render loop; no leaked listeners/resources on dispose; working production build; no driving implementation.
+**Phase 1 and Phase 2 are complete and pushed. Nothing below is authorized yet.**
 
-**Deviations:** renderer is Three.js, not Babylon.js, per explicit owner instruction (ADR 0002); the quality selector is deferred rather than shipped as a stub.
+### Phase 3 — Renderer migration, lighting, post-processing, asset and material pipeline
 
-**Stop:** Request authorization before Phase 2.
+**Depends on:** Accepted Phase 2 and explicit user authorization. This is the highest-leverage phase in the project:
+everything visual afterwards is authored on top of it.
 
-### Phase 2 — Physics and keyboard-driven placeholder vehicle
+**Deliverables**
 
-**Depends on:** Accepted Phase 1 and user authorization.
+1. `WebGPURenderer` (`three/webgpu`) with automatic WebGL2-backend fallback, a forced-backend debug switch, and a
+   capability probe reported in diagnostics; the Phase 1/2 GLSL-era material code is either ported to TSL or removed.
+2. Colour pipeline: linear-sRGB working space, PMREM environment IBL from CC0 HDRIs, ACES/AgX tone mapping applied
+   exactly once, LUT grading per time-of-day preset, exposure driven by the sun.
+3. Dynamic sky and sun: atmospheric scattering sky blended with HDRI environment lighting, a time-of-day clock, and
+   light colour/intensity/direction curves that hold up from pre-dawn to night (headlights and streetlight pools are
+   part of the phase, not a later surprise).
+4. Cascaded shadow maps (`CSM.js`/`CSMShadowNode`) with per-tier cascade counts, plus screen-space contact shadows.
+5. `RenderPipeline` post stack: GTAO, SSR (tier-gated), bloom, DOF, motion blur, grain, chromatic aberration,
+   vignette, sharpening — each individually toggleable and measurable.
+6. Anti-aliasing/upscaling: TAAU/TRAA with dynamic resolution scaling and hysteresis, FXAA/SMAA on the low tier.
+7. Asset pipeline: `gltf-transform`-based optimize/LOD/quantize/meshopt/KTX2 chain wired into the build, with an
+   asset manifest, per-asset budgets, and a licence register (`docs/ASSET_POLICY.md`).
+8. Material library with the studio look-dev scene (`?scene=studio`) and the 2 km validation route with fixed
+   camera bookmarks, per [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) §4.
+9. Tier system (C/B/A) as explicit, HUD-visible contracts with the effect matrix in the same doc.
 
-1. Initialize Rapier asynchronously and implement world creation/disposal plus optional debug geometry.
-2. Add fixed 60 Hz physics stepping, bounded accumulator, transform snapshots, and render interpolation.
-3. Create flat-ground and obstacle colliders plus a dynamic placeholder chassis with simple collision geometry.
-4. Implement the action interface and keyboard bindings, focus/blur/pause cleanup, and input smoothing.
-5. Add deliberately simple force/torque-based driving and braking. Do not present this temporary controller as the advanced raycast vehicle.
-6. Add provisional chase camera and speed HUD; implement a safe reset/spawn path.
-7. Test stable rest, collisions, basic steering/braking, input release, and comparable simulation at different rendering frame rates.
-8. Update handoff, run validation, commit, and push.
+**Acceptance**
 
-**Acceptance:** A collision-aware placeholder car/cube is drivable by keyboard without falling through the floor or changing handling with display refresh rate. No realistic GLB or advanced suspension is required yet.
-
-**Stop:** Request authorization before Phase 3.
-
-### Phase 3 — Procedural terrain, roads, and chunk streaming
-
-**Depends on:** Accepted Phase 2 and user authorization.
-
-1. Define seeded random streams, chunk keys, global coordinates, generator version, and fixture seeds.
-2. Implement terrain heights with shared edge sampling and reference chunk seams.
-3. Create a connected road graph, safe starting segment, road grading, and matching drivable collision data.
-4. Add a bounded, prioritized streaming manager and CPU-generation worker protocol.
-5. Create nearby terrain/road meshes and colliders within work budgets; preload forward collision coverage.
-6. Add initial terrain LOD with edge stitching/skirts and hysteretic eviction.
-7. Add floating-origin rebasing and preserve authoritative/interpolated poses and camera continuity.
-8. Add simple deterministic placement markers for later trees/rocks/buildings, excluding roads.
-9. Test seeds, loading-order independence, seams, slopes, negative chunk coordinates, eviction, stale jobs, and repeated rebases; perform a long-distance memory/resource soak.
-10. Update handoff, validate, commit, and push.
-
-**Acceptance:** The placeholder vehicle can drive across many generated chunks on connected roads without seam collisions, missing ground, rebasing jumps, or unbounded resource growth.
+- The studio scene renders the full material sphere grid under multiple HDRIs and times of day with no double
+  tone mapping or colour-space errors.
+- The 12 fixed route screenshots are captured per tier and archived as the baseline for all later phases.
+- Shadows, AO, reflections, volumetrics, post effects, and AA each have a recorded on/off state per tier and are
+  validated on named hardware; the sandbox may only assert correctness, never frame rate.
+- No `ShaderMaterial`, `RawShaderMaterial`, or `onBeforeCompile` remains in `src/`.
+- At least one real optimized asset (HDRI + one scanned PBR surface) flows through the pipeline end-to-end and its
+  licence record is committed.
+- CI green; docs, handoff, README, and ADR 0004 updated.
 
 **Stop:** Request authorization before Phase 4.
 
-### Phase 4 — Advanced raycast vehicle and realistic model
+### Phase 4 — Procedural terrain, roads, and chunk streaming on the final renderer
 
-**Depends on:** Accepted Phase 3 and user authorization; licensed asset or approved model source.
+**Depends on:** Accepted Phase 3 and user authorization.
 
-1. Run a focused Rapier raycast-controller feasibility test; document baseline versus custom tire-force selection.
-2. Create data-driven chassis, mass/center-of-mass, wheel, suspension, steering, brake, and drivetrain configuration.
-3. Replace the temporary controller with four-wheel raycast behavior; keep only one wheel-force authority.
-4. Implement torque/RPM, automatic/manual transmission, reverse/brake transition, speed-sensitive steering, and surface-aware traction.
-5. Calibrate acceleration, stopping distance, suspension sag, skid onset, recovery, drift, and rollover response using recorded scenarios.
-6. Import a licensed GLB, normalize axes/scale, resolve named nodes, and create camera/lighting anchors. Provide a fallback if model loading or required nodes fail.
-7. Animate suspension/wheel rotation/front steering/interior steering wheel; drive brake lights and shadows from state.
-8. Refine collision-aware chase camera and cockpit camera. Keep chassis collision geometry simple and independent of render mesh detail.
-9. Add bounded skid/particle hooks and telemetry needed by later weather effects.
-10. Verify multiple render frame rates, surface changes, curb/slope contacts, upside-down reset, collision stability, and model animation.
-11. Update asset manifest and credits, handoff, validation evidence, commit, and push.
+**Deliverables**
 
-**Acceptance:** A convincingly drivable, licensed car with stable raycast suspension, configurable transmission and traction, correctly animated wheels/lights, and documented handling-test results.
+1. Seeded, deterministic terrain generation with chunked LOD, skirts/stitching, and worker-side generation.
+2. Multi-layer splat terrain material with height/AO blending, triplanar projection on cliffs, detail maps that
+   fade with distance, and POM on the near tier.
+3. Connected spline-based road network: road mesh generation, junctions, shoulders, kerbs, markings, bridges and
+   tunnels where the generator allows, with edge/connectivity tests.
+4. Chunk streaming with a bounded per-frame upload budget, velocity-aware prefetch, collider ownership, and
+   floating-origin rebasing that resets temporal-effect histories.
+5. Surface-state plumbing (dry/wet/snow/ice/gravel/mud) flowing from the road/terrain generator into the physics
+   surface-query interface defined in Phase 2, without visual-texture-driven traction.
+6. Scanned CC0 surface textures (asphalt, gravel, soil, rock, grass) through the Phase 3 pipeline.
+
+**Acceptance**
+
+- Deterministic regeneration from a seed; chunk edge and road connectivity tests pass.
+- Driving the validation route produces no seams, popping, or collision holes; streaming stays inside the recorded
+  upload budget; origin rebasing is invisible.
+- Tier C/B/A terrains hold their draw-call and triangle budgets with the terrain in view.
 
 **Stop:** Request authorization before Phase 5.
 
-### Phase 5 — Mobile touch controls and complete camera interactions
+### Phase 5 — Environment detail: vegetation, props, atmosphere
 
 **Depends on:** Accepted Phase 4 and user authorization.
 
-1. Implement responsive joystick or steering-button component with configurable placement.
-2. Add throttle/brake pedals, handbrake, camera, pause, and relevant transmission controls.
-3. Track and capture independent pointer IDs; merge device actions deterministically and release them on all cancellation paths.
-4. Add safe-area and orientation handling, touch-target sizing, handedness settings, and active-surface gesture suppression.
-5. Finalize chase/cockpit/orbit switching, touch orbit gestures, camera obstacle handling, and cockpit HUD readability.
-6. Make settings/loading/error states keyboard accessible; avoid input conflicts while menus are open.
-7. Test simultaneous steering + throttle + handbrake, cancelling one pointer without cancelling others, browser interruptions, rotation, and rapid camera changes on real iOS/Android devices.
-8. Re-profile mobile rendering and select sustainable presets rather than assuming desktop settings will work.
-9. Update handoff, validation evidence, commit, and push.
+**Deliverables**
 
-**Acceptance:** The car is fully controllable without a keyboard, simultaneous touch actions work, interruptions never leave pedals stuck, and the HUD/cameras remain usable across supported screen sizes.
+1. GPU-instanced vegetation with LOD levels and impostor atlases; wind animation in the vertex stage; translucent
+   foliage with baked shadow masks and backlighting.
+2. Grass and ground-cover layers with density falloff, scatter rules (slope/height/road proximity), and biome
+   selection driven by the same parameters as the terrain.
+3. Props and roadside detail: rocks, barriers, signs, buildings, poles — instanced, LOD'd, with parallax-correct
+   facades where the budget allows.
+4. Atmosphere: height/depth fog tied to the sky, light shafts at low sun, dust and mist volumes, lit particles, and
+   screen-space contact shadows grounding props and foliage.
+5. Placement/debug tooling: seed preview, density scalers, and a diagnostics readout of instance counts per system.
+
+**Acceptance**
+
+- Vegetation and prop instance counts, triangle counts, and draw calls stay inside the per-tier budgets in
+  `docs/VISUAL_TARGET.md` §3.
+- No visible instancing artifacts (identical clusters, popping, shadow acne) at the fixed camera bookmarks.
+- Foliage lighting reads correctly at dawn/dusk, not only at noon.
 
 **Stop:** Request authorization before Phase 6.
 
-### Phase 6 — Environmental detail, seasons, weather, and final graphics
+### Phase 6 — The car: hero model, materials, and vehicle fidelity
 
-**Depends on:** Accepted Phase 5 and user authorization; asset licenses and performance headroom.
+**Depends on:** Accepted Phase 5 and user authorization; this phase needs the owner's car-asset decision (§7 of
+`docs/VISUAL_TARGET.md`, and §5 of `docs/RESEARCH_AAA_FIDELITY.md`).
 
-1. Replace placement markers with licensed/owned trees, rocks, and buildings; use instancing, LOD, pooling, and collider simplification.
-2. Add PBR terrain/road/car refinement, environment lighting, sun positioning, and the day/night clock.
-3. Add standard or cascaded shadows by capability/quality tier; limit casters and shadow distance.
-4. Introduce the post-processing stack incrementally with measurable per-effect costs and accessible toggles.
-5. Add season blending, vegetation/material changes, rain/snow/leaf particles, wetness, snow masks, and debug season/weather/time controls.
-6. Integrate damp/muddy/snowy/icy surface states with vehicle traction and rolling resistance; verify transitions do not destabilize physics.
-7. Add appropriate effect fallbacks, reduced-motion behavior, streaming/loading feedback, and optional versioned local settings/checkpoint persistence.
-8. Complete browser/device regression, long-distance resource soak, effect comparison, and sustained mobile thermal testing.
-9. Optimize measured bottlenecks; defer high-tier volumetrics/motion blur when they exceed budget rather than sacrificing baseline driving.
-10. Produce final quality-preset tables, known limitations, license/credit records, and a reproducible release-build checklist.
-11. Update handoff, validate, commit, and push. Deployment requires separate user authorization.
+**Deliverables**
 
-**Acceptance:** The required environment and season/weather systems work, their driving effects are tested, quality tiers retain usable performance, and all required effects either operate on supported tiers or have clearly documented lower-tier fallbacks.
+1. Hero car asset through a legal route (royalty-free purchase with a recorded licence, commissioned/in-house build,
+   or the in-house generic coupe as the interim), optimized to 100k–200k triangles with LOD halving.
+2. Model binding contract: named nodes/anchors for wheels, steering wheel, brake/reverse lights, doors where
+   present, a cockpit anchor, and an `asset.json` descriptor validated by tests.
+3. Automotive paint: base coat + flake + clearcoat `MeshPhysicalMaterial` (with per-paint variants: metallic,
+   pearl, matte, satin), glass, chrome, rubber, plastics, light lenses, and dirt/water/snow masks.
+4. Vehicle systems refined: more contact samples per wheel, torque/gearing/braking curves tuned against handling
+   scenarios, wet/snow traction, and a telemetry channel that the HUD and tests read.
+5. Cockpit camera with a normalized anchor, interior visibility driven by the model, and mirror/wiper hooks that
+   Phase 7 can drive with weather.
+6. Brake lights, indicators, headlights, and shadows; screenshots at the fixed bookmarks for review.
+
+**Acceptance**
+
+- The car is never shown as untextured geometry in any tier; close-up inspection of paint, glass, and rubber at the
+  studio scene passes review against the reference board.
+- Handling scenarios (acceleration runs, braking distance, steady-state cornering, drift entry/exit, handbrake)
+  remain within the Phase 2 tolerances or better, with recorded telemetry.
+- Model/scale/axis/anchor tests pass; wheel steer and roll are visually verified against physics.
+
+**Stop:** Request authorization before Phase 7.
+
+### Phase 7 — Weather, seasons, and surface behaviour
+
+**Depends on:** Accepted Phase 6 and user authorization.
+
+**Deliverables**
+
+1. Weather system: rain, storms, snow, fog, and dust as coordinated states driving sky, clouds, light colour,
+   wind, exposure, particles, and spray.
+2. Seasonal world variants generated from one master material set (slope/height/curvature-driven snow and frost
+   masks, leaf litter, foliage variants), with the dev HUD switching season/weather/time of day.
+3. Surface-condition coupling: wetness, standing water, snow depth, ice, mud, and gravel drive traction through
+   the Phase 2 surface-state interface and produce measurable telemetry differences at the same corner and speed.
+4. Wet-road rendering: roughness/puddle masks, SSR behaviour, and spray from tires; night driving through rain
+   with correct light pooling.
+5. Audio hooks for weather (wind, rain-on-body, tire spray) if the owner approved audio scope in the open
+   questions; otherwise the hooks exist without final sources.
+
+**Acceptance**
+
+- All four seasons and the weather matrix are visually distinct at the fixed bookmarks and physically distinct in
+  the telemetry comparison.
+- Transition and persistence tests: weather changes do not pop, reset the car, or leak resources; returning to a
+  previous state reproduces it.
+- Tier budgets still hold with weather at its heaviest on each tier.
+
+**Stop:** Request authorization before Phase 8.
+
+### Phase 8 — Mobile, HUD, cameras, settings, final quality pass
+
+**Depends on:** Accepted Phase 7 and user authorization.
+
+**Deliverables**
+
+1. Mandatory multi-touch: analog steering, throttle/brake pedals, handbrake, camera cycle, and simultaneous-pointer
+   handling verified on real devices; keyboard remains the desktop path.
+2. Camera suite: chase, cockpit, orbital/bonnet modes with consistent switching on both input paths, plus
+   collision-aware chase behaviour.
+3. HUD and settings: speed/gear/RPM, minimap or route aid, quality tier selection and effect toggles, reduced
+   motion/accessibility options, and a photo mode if approved.
+4. Final quality pass across tiers: lighting, materials, post, and LOD tuning; performance and thermals measured on
+   named reference devices; a described 30 FPS fallback path for weak hardware.
+5. Release-readiness: startup/loading experience, error states, cross-browser validation, and a final measured
+   performance report.
+
+**Acceptance**
+
+- All acceptance criteria from `docs/VISUAL_TARGET.md` are met at the chosen tiers, with the 12 bookmarks re-shot
+  and diffed against the Phase 3 baseline.
+- Multi-touch verified on real Android and iOS hardware; no stuck controls when pointers are cancelled.
+- Recorded frame-time percentiles on named devices meet or miss the stated target explicitly — never silently.
+
+**Stop:** Project complete; further work needs new authorization.
 
 ## 10. Testing and phase acceptance
 
@@ -459,16 +591,19 @@ CI verifies the checks actually present. A green scaffold CI does not certify ve
 
 ### Execution status
 
-| Milestone                 | State                                                                 |
-| ------------------------- | --------------------------------------------------------------------- |
-| Initial planning/scaffold | Complete and saved to the canonical public repository                 |
-| Initial GitHub push       | Verified on `main`; all 53 tracked files present; first CI run passed |
-| Phase 1                   | Implemented, validated, and pushed; awaiting Phase 2 authorization    |
-| Phase 2                   | Not started                                                           |
-| Phase 3                   | Not started                                                           |
-| Phase 4                   | Not started                                                           |
-| Phase 5                   | Not started                                                           |
-| Phase 6                   | Not started                                                           |
+| Milestone                                                   | State                                                                                                                                                        |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Initial planning/scaffold                                   | Complete and saved to the canonical public repository                                                                                                        |
+| Initial GitHub push                                         | Verified on `main`; first CI run passed                                                                                                                      |
+| Phase 1                                                     | Complete (ADR 0002), pushed as `fbb48a4`, CI green                                                                                                           |
+| Phase 2                                                     | Complete (ADR 0003), pushed as `b85c8ba` + `307efaa`, CI green, evidence bundle archived                                                                     |
+| Visual-fidelity research and re-plan                        | Complete 2026-10-14: `docs/RESEARCH_AAA_FIDELITY.md`, `docs/VISUAL_TARGET.md`, ADR 0004, this plan revision; **awaiting owner sign-off on 5 open questions** |
+| Phase 3 — renderer, lighting, post, asset/material pipeline | **Gated** — not started; requires explicit authorization                                                                                                     |
+| Phase 4 — terrain, roads, streaming                         | Gated                                                                                                                                                        |
+| Phase 5 — vegetation, props, atmosphere                     | Gated                                                                                                                                                        |
+| Phase 6 — hero car, materials, vehicle fidelity             | Gated; needs the car-asset decision                                                                                                                          |
+| Phase 7 — weather, seasons, surface behaviour               | Gated                                                                                                                                                        |
+| Phase 8 — mobile, HUD, cameras, settings, polish            | Gated                                                                                                                                                        |
 
 See `docs/SESSION_HANDOFF.md` for the verified original commit, remote CI evidence, authentication limitations, and the next-session procedure.
 
@@ -478,28 +613,49 @@ See `docs/SESSION_HANDOFF.md` for the verified original commit, remote CI eviden
 
 Do not download or commit “realistic” car/building/texture assets without a verified license. Record source, creator, license, redistribution permission, modifications, scale/axes, and required credits. Real-world brands and audio have separate rights concerns. Prefer self-hosted, optimized assets; record decoder dependencies for Draco/KTX2/Basis where used. Plan Git LFS for large authorized assets only after checking repository support, quotas, and installation. See `docs/ASSET_POLICY.md`.
 
+The AAA-fidelity target makes asset sourcing a first-class engineering concern (see `docs/RESEARCH_AAA_FIDELITY.md` §5):
+
+- **Preferred sources:** CC0 (Poly Haven — HDRIs, PBR textures, models; ambientCG — PBR materials, HDRIs) for
+  environment content. Nothing CC0-only is ever assumed; every entry states its licence.
+- **Non-CC0 sources (Fab/Megascans free starter, purchased models):** allowed only with a per-asset licence record,
+  the royalty/attribution conditions, and the download date; the era of free-for-everyone Megascans ended
+  2024-12-31, so "it was free" is not a licence.
+- **Cars:** no ripped game assets, no manufacturer logos or trademarks without a licence. Options and the
+  recommendation are in `docs/RESEARCH_AAA_FIDELITY.md` §5; the owner's decision is an open question in
+  `docs/VISUAL_TARGET.md` §7.
+- **Every asset passes the pipeline** (optimize → LOD → quantize/meshopt → KTX2 → budget check) before it is
+  committed, and the pipeline is reproducible from the manifest, not done by hand.
+- **Budgets per asset class** (hero car 100k–200k tris; props ≤ 5k; foliage atlas atlas-based; textures ≤ 2048)
+  are enforced in review and recorded in the manifest.
+
 ### Main risks and mitigations
 
-| Risk                                                    | Mitigation / decision point                                                                                                     |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Unsupported GitHub connector or unavailable credentials | Keep truthful push status; package a Git bundle; obtain an actual repository URL and authorized Git route before remote writes. |
-| Rapier controller is less realistic than expected       | Phase 4 feasibility gate; custom tire-force layer only if required; benchmark handling rather than naming features.             |
-| Renderer/physics axis or timing mismatch                | One handedness/units convention, adapters, headless tests, fixed-step contract.                                                 |
-| Mobile GPU/thermal limits                               | DPR caps, dynamic quality, instancing, inexpensive default effects, sustained real-device testing.                              |
-| Streaming stalls or missing collision ground            | Bounded generation/upload work, velocity-aware prefetch, retained fallback coverage/safe slowdown.                              |
-| Terrain and road seams                                  | Shared global samples, shared edge road decisions, explicit LOD edge tests.                                                     |
-| Large-distance precision errors                         | Chunk-relative global coordinates and synchronized floating-origin rebasing.                                                    |
-| Asset payload and licensing                             | Small optimized GLBs/textures, lazy loading, verified redistribution rights, manifest/credits.                                  |
-| Memory leaks across long drives                         | Ownership tracking, disposal tests, repeated unload/reload and travel soaks.                                                    |
-| WebGPU/custom shader incompatibility                    | WebGL2 baseline; optional, separately tested WGSL/WebGPU variants.                                                              |
-| Heavy weather/post effects obscure driving              | Quality budgets, reduced-motion settings, optional effects, readable HUD.                                                       |
+| Risk                                                    | Mitigation / decision point                                                                                                                                                   |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unsupported GitHub connector or unavailable credentials | Keep truthful push status; package a Git bundle; obtain an actual repository URL and authorized Git route before remote writes.                                               |
+| Rapier controller is less realistic than expected       | Phase 4 feasibility gate; custom tire-force layer only if required; benchmark handling rather than naming features.                                                           |
+| Renderer/physics axis or timing mismatch                | One handedness/units convention, adapters, headless tests, fixed-step contract.                                                                                               |
+| Mobile GPU/thermal limits                               | DPR caps, dynamic quality, instancing, inexpensive default effects, sustained real-device testing.                                                                            |
+| Streaming stalls or missing collision ground            | Bounded generation/upload work, velocity-aware prefetch, retained fallback coverage/safe slowdown.                                                                            |
+| Terrain and road seams                                  | Shared global samples, shared edge road decisions, explicit LOD edge tests.                                                                                                   |
+| Large-distance precision errors                         | Chunk-relative global coordinates and synchronized floating-origin rebasing.                                                                                                  |
+| Asset payload and licensing                             | Small optimized GLBs/textures, lazy loading, verified redistribution rights, manifest/credits.                                                                                |
+| Memory leaks across long drives                         | Ownership tracking, disposal tests, repeated unload/reload and travel soaks.                                                                                                  |
+| WebGPU/custom shader incompatibility                    | WebGL2 baseline; optional, separately tested WGSL/WebGPU variants.                                                                                                            |
+| Heavy weather/post effects obscure driving              | Quality budgets, reduced-motion settings, optional effects, readable HUD.                                                                                                     |
+| TSL/WebGPU migration invalidates Phase 1–2 shaders      | The Phase 3 migration ports or deletes the remaining GLSL-era code in one commit and adds a guard that fails on new `onBeforeCompile`/`ShaderMaterial` usage.                 |
+| WebGPU absent on a meaningful share of browsers         | One render layer with the WebGL2 backend; both backends are exercised in the same test runs; the tier matrix states what each backend loses.                                  |
+| AAA-fidelity scope creep without a horizon              | `docs/VISUAL_TARGET.md` quality bars are the definition of done; anything not in the bars is explicitly out of scope; each phase still stops for authorization.               |
+| Hero car asset unavailable or unlicensed                | The in-house generic coupe is the contractual fallback; the model-binding contract is asset-agnostic, so a purchased or commissioned car drops in later without code changes. |
+| Asset budget explosion (VRAM/streaming)                 | Per-asset budgets, KTX2 for GPU textures, meshopt geometry, a manifest-driven pipeline, and a texture-memory readout in diagnostics.                                          |
 
 ### Decisions intentionally deferred
 
-- Named reference devices and minimum browser versions; provisional baseline is recent Chromium/Firefox/Safari with WebGL2, including real iOS and Android testing.
-- Vehicle asset source/budget, interior detail, final art style, and sound sources.
-- Final tire-force implementation, manual/automatic UI, and whether optional boost is desired.
-- Whether high-tier volumetrics and motion blur meet the measured budget.
+- **Named reference devices** and the exact browser-version floor; provisional baseline is recent Chromium/Firefox/Safari with WebGL2, including real iOS and Android testing. The WebGPU/WebGL2 split is tracked but not a blocker (Phase 3 ships both backends).
+- **Car asset route, brand policy, region, audio scope, and photo mode** — the five open questions in
+  `docs/VISUAL_TARGET.md` §7. These are cheap to answer now and expensive to change later; the phases are ordered so
+  the answers are needed before Phase 6, except region (needed before Phase 4).
+- Whether high-tier volumetrics and motion blur meet the measured budget — decided by measurement in Phase 3.
 - Deployment provider, public release licensing, Git LFS limits, and any release policy.
 
 ## 12. GitHub continuity and session handoff
@@ -528,24 +684,30 @@ See `docs/GIT_WORKFLOW.md` for safe initial-push, existing-repository, recovery,
 
 ## 13. Requirements traceability
 
-| Requirement from the brief                                   | Primary phase                   | Verification                                         |
-| ------------------------------------------------------------ | ------------------------------- | ---------------------------------------------------- |
-| Modular Vite/TypeScript architecture                         | Initial scaffold, 1             | Build/type/lint checks; ownership review             |
-| Responsive viewport, Retina, FPS                             | 1                               | Resize/DPR/device tests and metrics                  |
-| Basic keyboard driving and rigid-body collision              | 2                               | Fixed-step and collision scenarios                   |
-| Infinite terrain, roads, and streaming                       | 3                               | Seed/edge/road tests and travel soak                 |
-| Trees, rocks, buildings and final LOD                        | 3 foundations, 6 assets         | Deterministic placement and resource budgets         |
-| Suspension, tire traction, steering, torque, brakes, gearing | 4                               | Handling scenarios and controller feasibility report |
-| Weight transfer, drifting, skidding, environment impacts     | 4                               | Calibrated maneuver/contact tests                    |
-| GLB car, wheels, steering wheel, brake lights, shadows       | 4                               | Asset/node/scale tests and visual checks             |
-| Desktop bindings and camera cycle                            | 2 foundations, 5 completion     | Keyboard/focus and camera tests                      |
-| Mobile joystick/pedals and multi-touch                       | 5                               | Simultaneous-pointer real-device checks              |
-| Chase, cockpit, orbital cameras                              | 1/2 foundations, 4/5 completion | Camera clipping/mode interaction checks              |
-| PBR, day/night, sun, sky, cascaded shadows                   | 1 baseline, 6 final             | Lighting/quality-tier comparisons                    |
-| Bloom, SSAO, motion blur, vignette, ACES-style mapping       | 6                               | Per-effect GPU costs and fallback tests              |
-| Spring/summer/autumn/winter and weather                      | 6                               | Transition, visual, and surface-behavior tests       |
-| Cross-platform performance                                   | All phases                      | Recorded device/route/preset measurements            |
-| GitHub progress retention between sessions                   | Every milestone                 | Verified remote SHA and handoff                      |
+| Requirement from the brief                                      | Primary phase                         | Verification                                     |
+| --------------------------------------------------------------- | ------------------------------------- | ------------------------------------------------ |
+| Modular Vite/TypeScript architecture                            | Initial scaffold, 1                   | Build/type/lint checks; ownership review         |
+| Responsive viewport, Retina, FPS                                | 1                                     | Resize/DPR/device tests and metrics              |
+| Basic keyboard driving and rigid-body collision                 | 2                                     | Fixed-step and collision scenarios               |
+| WebGPU + WebGL2 renderer path, TSL shading                      | 3                                     | Backend matrix runs; guard against custom GLSL   |
+| PBR, HDRI IBL, dynamic sun/sky, day/night, cascaded shadows     | 3 (framework), 7 (weather-driven)     | Studio-scene validation, 12-bookmark screenshots |
+| Post-processing stack (AO, SSR, bloom, DOF, motion blur, grade) | 3, tuned per tier every phase         | Per-effect cost table; tier on/off matrix        |
+| Temporal AA, dynamic resolution scaling                         | 3                                     | Measured scale/quality on named hardware         |
+| Optimized asset pipeline, KTX2/meshopt, licence register        | 3 (pipeline), every later phase       | Manifest checks; per-asset budget review         |
+| Infinite terrain, roads, and streaming                          | 4                                     | Seed/edge/road tests and travel soak             |
+| Surface conditions driving traction                             | 4 (plumbing), 7 (weather coupling)    | Telemetry comparisons at matched corner/speed    |
+| Trees, rocks, buildings, final LOD, vegetation density          | 5                                     | Deterministic placement and resource budgets     |
+| Suspension, tire traction, steering, torque, brakes, gearing    | 2 (v1), 6 (refined)                   | Handling scenarios and telemetry tolerances      |
+| Weight transfer, drifting, skidding, environment impacts        | 2 (v1), 6 (refined)                   | Calibrated maneuver/contact tests                |
+| GLB hero car, wheels, steering wheel, brake lights, shadows     | 6                                     | Asset/node/scale tests and visual review         |
+| Chase, cockpit, orbital cameras                                 | 2 (chase), 6 (cockpit), 8 (all modes) | Camera clipping/mode interaction checks          |
+| Desktop bindings and camera cycle                               | 2 foundations, 8 completion           | Keyboard/focus and camera tests                  |
+| Mobile joystick/pedals and multi-touch                          | 8                                     | Simultaneous-pointer real-device checks          |
+| Spring/summer/autumn/winter and weather                         | 7                                     | Transition, visual, and surface-behaviour tests  |
+| Cross-platform performance and 30 FPS fallback                  | All phases                            | Recorded device/route/preset measurements        |
+| GitHub progress retention between sessions                      | Every milestone                       | Verified remote SHA and handoff                  |
+
+---
 
 ## 14. Technical references
 
@@ -560,4 +722,4 @@ References guide implementation; pinned package APIs must still be checked at th
 
 ---
 
-**Next permitted development action:** None until the user explicitly says to start Phase 1. Resolving repository access and transferring the initial scaffold are setup actions, not authorization to begin engine development.
+**Next permitted development action:** None. Phase 3 requires explicit user authorization, and the five open questions in `docs/VISUAL_TARGET.md` §7 should be answered before Phase 4 at the latest (region) and Phase 6 (car asset, brand policy, audio scope, photo mode).

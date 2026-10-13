@@ -26,7 +26,7 @@ const LIGHT_EMISSIVE = new Color(0x2a2413);
  * steering angle, all four wheels spin from the rolling velocity, and wheel height follows the
  * simulated suspension length, so suspension travel is visible on screen.
  *
- * Phase 4 swaps the primitive bodies for a licensed GLB model; the wheel-node contract
+ * Phase 6 swaps the primitive bodies for a licensed GLB model; the wheel-node contract
  * (steer, spin, suspension offset) stays the same, which is why it lives behind this class.
  */
 export class CarVisual {

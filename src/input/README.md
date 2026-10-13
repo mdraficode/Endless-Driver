@@ -1,6 +1,6 @@
 # Platform input
 
-**Status:** Phase 2 implemented for keyboard. Touch (multi-contact) arrives in Phase 5.
+**Status:** Phase 2 implemented for keyboard. Touch (multi-contact) arrives in Phase 8.
 
 ## Responsibility
 

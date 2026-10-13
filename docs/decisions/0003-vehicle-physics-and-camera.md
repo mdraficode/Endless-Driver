@@ -99,9 +99,13 @@ chase camera snaps it rather than easing from a stale pose.
 - Rapier is only loaded as an async module and is a large chunk (~4.3 MB unminified in the build);
   code splitting and load-time work are Phase 6 concerns.
 
+> **Phase numbering note (2026-10-14):** this ADR was written under the original six-phase plan. The visual
+> re-plan (ADR 0004) moved touch input to Phase 8 and code-splitting/load-time work into Phase 3. The
+> technical decisions above are unchanged.
+
 ## Related
 
-- `PROJECT_PLAN.md` Phase 2 section.
+- `PROJECT_PLAN.md` Phase 2 section (`§9`, delivered work).
 - `docs/decisions/0001-engine-and-physics.md` (Rapier as the solver), `0002-renderer-three-js.md`
   (Three.js as the renderer).
 - `src/vehicles/README.md`, `src/physics/README.md`, `src/input/README.md`, `src/cameras/README.md`.

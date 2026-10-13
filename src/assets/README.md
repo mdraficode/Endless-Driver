@@ -8,6 +8,6 @@ Manifest-driven loading, GLB node normalization, shared-resource reference owner
 
 ## Planned work
 
-Car loader in Phase 4; environmental asset pools in Phase 6. Follow docs/ASSET_POLICY.md.
+Asset pipeline, loaders, manifest, and licence register in Phase 3 (ADR 0004); hero car asset in Phase 6; environmental asset pools in Phases 4–5. Follow docs/ASSET_POLICY.md.
 
 See [the project plan](../../PROJECT_PLAN.md) and [architecture](../../docs/ARCHITECTURE.md). Do not implement this module before the relevant phase is authorized.

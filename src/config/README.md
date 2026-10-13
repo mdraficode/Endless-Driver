@@ -15,7 +15,7 @@ phases) vehicle, world, and weather parameters.
 
 ## Planned work
 
-Quality presets and device tiers (Phase 6), vehicle/drivetrain tuning (Phases 2/4), and world
-generation/streaming parameters (Phase 3).
+Quality presets and device tiers (Phase 3), vehicle/drivetrain tuning (Phases 2/6), and world
+generation/streaming parameters (Phase 4).
 
 See [the project plan](../../PROJECT_PLAN.md) and [architecture](../../docs/ARCHITECTURE.md).

@@ -1,0 +1,181 @@
+# Visual target: the look we are building toward, and how we will know we got there
+
+**Status:** specification, 2026-10-14  
+**Companion documents:** [`docs/RESEARCH_AAA_FIDELITY.md`](RESEARCH_AAA_FIDELITY.md) (evidence and feasibility),
+[`PROJECT_PLAN.md`](../PROJECT_PLAN.md) §6–§11 (the phased plan),
+[`docs/decisions/0004-visual-fidelity-and-rendering-pipeline.md`](decisions/0004-visual-fidelity-and-rendering-pipeline.md)
+(decisions).
+
+The owner's requirement: graphics "as close as that Forza Horizon's level" — realistic car models, environmental
+aesthetics, seasons, roads, terrains. This document turns that into something buildable and reviewable.
+
+---
+
+## 1. The five pillars
+
+Everything visual in this project must serve at least one of these. If a feature serves none, it is out of scope.
+
+1. **Light is the product.** HDR environment lighting, a dynamic sun/sky, correct exposure, and indirect bounce
+   do more for perceived realism than any polygon. A cheap mesh in great light reads as real; a great mesh in flat
+   light reads as a toy.
+2. **Material truth.** Every surface is physically-based: measured albedo ranges, correct roughness/metalness,
+   packed ORM maps, detail layers that survive close inspection, and automotive paint with clearcoat and flake.
+3. **Depth and atmosphere.** Aerial perspective, distance fog tied to the sky, god rays at low sun, dust/mist,
+   and horizon-scale composition. Distance should feel _deep_, not clipped.
+4. **Density where you look.** Detail is budgeted by distance: high-frequency near-field detail (POM, splat
+   layers, grass, gravel, cracks, kerbs), impostors and simplified LODs far away. Never uniform detail.
+5. **The world changes.** Time of day, weather, and season visibly transform the same road — sky, light colour,
+   wetness, foliage, snow, and grip. This is the Horizon signature and it must be a system, not a toggle.
+
+---
+
+## 2. Per-system quality bars
+
+Each row states the **target**, the **measurable check** (how we prove it in Phase review), and the phase that
+owns it. "Tier" refers to §3.
+
+### 2.1 Sky, light, and atmosphere
+
+| Target                                                                                               | Measurable check                                                                                                               | Phase |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ----- |
+| Physically plausible sky driven by sun position; sunset/sunrise colour, night with stars and a moon  | At 06:00/12:00/18:00/00:00 the same camera position yields visibly distinct, plausible lighting; no hand-authored colour steps | 3     |
+| HDRI image-based lighting on all materials, PMREM-processed, switched per time-of-day/weather preset | Materials show coloured specular from the environment; turning IBL off visibly flattens the scene (A/B screenshot)             | 3     |
+| Exposure control that survives dawn/dusk/night transitions                                           | No clipping of the sky or crushed shadows across a 24 h sweep at fixed camera; histogram spread stays inside bounds            | 3     |
+| Cascaded shadows: sharp and stable near camera, extended range at distance                           | Shadow map resolution ≥ 1024 per near cascade, ≤ 1 px shimmer when the camera moves 1 m laterally, no visible cascade seams    | 3     |
+| Aerial perspective + distance fog consistent with sky colour                                         | Distant hills desaturate toward sky colour; toggling aerial perspective off is immediately obvious                             | 3, 5  |
+| God rays / light shafts at low sun on the high tier                                                  | Visible under tree canopies and through gaps at sun elevation < 15°, no banding, disabled below the high tier                  | 5     |
+
+### 2.2 Terrain and roads
+
+| Target                                                                                                          | Measurable check                                                                                                                         | Phase |
+| --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| Multi-layer splat terrain (≥ 4 materials) with height/AO-based blending, no visible tiling                      | At 2 m and 20 m viewing distance, no repeating pattern within a 50 m span; layer boundaries follow terrain features rather than UV seams | 4     |
+| Parallax occlusion mapping for near-field ground relief (high tier)                                             | Road-edge gravel and kerb relief reads as depth, not a flat texture, when the camera is within ~8 m                                      | 4     |
+| Procedural road network with believable surfacing: asphalt layers, markings, kerbs, shoulders, cambered corners | A 500 m drive shows continuous asphalt with correct markings, no UV stretching on curves, shoulder material transitions                  | 4     |
+| Water: rivers/lakes with reflections and depth-based colour                                                     | Water reflects the sky and nearby geometry; shallow areas show bottom colour                                                             | 4     |
+| Terrain LOD and chunk streaming with no visible pop at speed                                                    | Driving at 150 km/h, chunk boundaries show no seams, cracks, or texture pops; LOD transitions within a 2-frame blur budget               | 4     |
+| Scanned-derived surface detail (CC0 PBR sets) for aggregate, rock, soil, grass                                  | Material close-ups match their reference boards                                                                                          | 4     |
+
+### 2.3 Vegetation and environment detail (Phase 5)
+
+| Target                                                                                | Measurable check                                                                                                            | Phase |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ----- |
+| Dense instanced ground cover (≥ 100k instances on high tier) with wind animation      | Grass covers the verge continuously with no visible instance grid pattern; wind is visible but not uniform across the field | 5     |
+| Trees: 3+ LODs with impostor billboards, shadow casting fitted to distance            | Tree count at 300 m distance shows no LOD popping in a slow fly-by; impostors match silhouette and colour                   | 5     |
+| Translucent foliage material (leaf backlight, subsurface tint)                        | Leaves at low sun glow without blowing out; backlit and frontlit foliage differ clearly                                     | 5     |
+| Contact/screen-space shadows beneath small props and foliage                          | Rocks and grass clumps are visually anchored (no floating), shadow contact density scales with tier                         | 5     |
+| Props: rocks, barriers, signs, poles, fences with correct scale and material response | Scale check against the car (1.8 m tall reference); no intersected/oversized props in the drive route                       | 5     |
+
+### 2.4 The car (Phase 6)
+
+| Target                                                                                           | Measurable check                                                                                                       | Phase |
+| ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- | ----- |
+| Hero car model at 80k–200k triangles with correct proportions, panel gaps, glass, wheels, lights | Silhouette compared against a reference board at matched framing reads as a car, not a box; panel gaps visible at 2 m  | 6     |
+| Automotive paint: base coat + metallic flake + clearcoat, optional pearlescent                   | On a studio turntable: sharp clearcoat highlight, subtle flake shimmer that changes with view angle, no "plastic" look | 6     |
+| Glass, chrome, rubber, plastic, brake discs: distinct material responses                         | Each material behaves differently under a moving light; rubber is matte, chrome mirrors, glass refracts/tints          | 6     |
+| Interior (partial or full) with a cockpit camera path                                            | Cockpit view shows a plausible dashboard, wheel, mirrors, and A-pillars without obvious holes                          | 6     |
+| Dirt, dust, rain, and snow accumulation masks that respond to the world                          | After driving through rain/mud/snow, the car visibly changes; wipers/lights interact with the water layer              | 6, 7  |
+| Reflection quality on the bodywork (SSR high tier, probes lower tiers)                           | Reflections land on the correct surface regions without swimming artefacts                                             | 6, 7  |
+
+### 2.5 Weather and seasons (Phase 7)
+
+| Target                                                                                                  | Measurable check                                                                                                   | Phase |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ----- |
+| Rain: falling particles, wet road roughness + puddles, spray, wipers, reduced grip                      | Road reflections appear in puddles, spray trails the car, grip reduces measurably in the physics telemetry         | 7     |
+| Snow: accumulation masks on surfaces, tracks/churn, reduced grip, snow-dust particles                   | Snow accumulates on terrain props and the car; the wear layer follows the driven path                              | 7     |
+| Autumn/spring: foliage swaps, leaf drift, mud; summer: dry dust and heat haze                           | Each season at a fixed camera produces a distinct, recognisable palette and asset set                              | 7     |
+| Season changes are physical, not only cosmetic                                                          | The same corner taken at the same speed shows different slip angles between summer and winter (recorded telemetry) | 7     |
+| Day/night lighting: headlights, taillights, brake lights, street/implicit lights, darker night exposure | Night drive reads as night while the road stays navigable; lights bloom without washing out the frame              | 3, 7  |
+
+### 2.6 Post-processing and image quality (Phase 3, tuned per tier)
+
+| Target                                                                                                                     | Measurable check                                                                         | Phase |
+| -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ----- |
+| Tone mapping + colour grading pipeline (ACES/AgX + LUT) applied exactly once                                               | No double tone mapping (grey/washed look); grading LUT visible in the look-dev scene     | 3     |
+| Bloom, GTAO/SSAO, SSR, DOF (photography), motion blur (camera), grain, chromatic aberration, vignette as one ordered chain | Each effect individually toggleable with a visible-on/off reference; ordering documented | 3     |
+| Temporal AA / upscaling with dynamic resolution                                                                            | Edges resolve cleanly at 0.7× scale; no persistent ghosting on fast camera pans          | 3     |
+| No artefact regressions on the WebGL2 fallback path                                                                        | Identical scene validated on `?webgl` with the documented per-backend differences        | 3     |
+
+---
+
+## 3. Quality tiers
+
+Tiers are **explicit contracts**, not "auto magic". The tier system must be visible in the HUD/debug overlay and
+recorded in every performance claim.
+
+| System            | Tier C: mobile/low               | Tier B: desktop balanced          | Tier A: desktop high                                 |
+| ----------------- | -------------------------------- | --------------------------------- | ---------------------------------------------------- |
+| Renderer path     | WebGL2 backend                   | WebGPU (WebGL2 fallback)          | WebGPU                                               |
+| Resolution        | DPR ≤ 1.0, dynamic scale 0.6–1.0 | DPR ≤ 1.5, dynamic scale 0.7–1.0  | DPR ≤ 2.0 with resolution cap, dynamic scale 0.7–1.0 |
+| Anti-aliasing     | FXAA/SMAA                        | TAAU                              | TAAU/TRAA                                            |
+| Shadows           | 1–2 cascades, 1024               | 3 cascades, 2048                  | 4 cascades, 2048–4096                                |
+| Ambient occlusion | Off or baked                     | GTAO (half res)                   | GTAO full res                                        |
+| Reflections       | Cubemap probes                   | SSR (half res) + probes           | SSR + probes + wet-road layer                        |
+| Terrain layers    | 2                                | 3                                 | 4 + POM                                              |
+| Vegetation        | Impostors, ≤ 20k instances       | LOD1–2, ≤ 80k                     | Full LOD0 near, ≤ 200k                               |
+| Clouds/atmosphere | HDRI sky + fog                   | Sky + layered clouds + fog        | Sky + volumetric cloud/light shafts where enabled    |
+| Particles         | Capped, short-lived              | Moderate                          | Full, lit                                            |
+| Post stack        | Tone map + grade + light bloom   | + GTAO + DOF off, motion blur off | + SSR + motion blur + grain + anamorphic             |
+| Target frame      | 30–60 FPS                        | 60 FPS                            | 60+ FPS where hardware permits                       |
+
+Budgets from `PROJECT_PLAN.md` §8 remain the reference; every tier gate is validated on **named hardware** with
+recorded resolution and settings. The dev sandbox (SwiftShader) may only validate correctness, never frame rate.
+
+---
+
+## 4. Look development workflow
+
+1. **Studio scene** (`?scene=studio`): HDRI switcher, time-of-day and weather sliders, material sphere grid
+   (asphalt, gravel, soil, grass, snow, water, glass, chrome, rubber, 3 paint variants), a car turntable, and a
+   reference board panel for side-by-side comparison. This is where materials are approved.
+2. **Route scene** (the real world): a fixed 2 km validation route with camera bookmarks at dawn, noon, dusk,
+   night, rain, snow, and each season — the same 12 screenshots every phase, diffed against the previous phase
+   with a perceptual metric (SSIM) and reviewed by eye.
+3. **Screenshot regression in CI-adjacent tooling**: the existing Playwright harness gains a visual-diff mode
+   with generous thresholds (structure changes are expected between phases; unexpected large deltas or missing
+   features fail the run).
+4. **Performance gates**: rolling FPS, frame-time percentiles, draw calls, triangles, GPU memory estimate, and
+   physics cost, recorded per tier on real devices and stored in the handoff.
+5. **Definition of done for a visual system**: reference board exists → implementation → studio scene validated →
+   route scene validated → tier matrix tuned → performance recorded → docs updated.
+
+---
+
+## 5. Reference direction (art direction brief)
+
+To keep the world coherent and achievable, the target region is a **temperate alpine/coastal touring region**:
+mountain roads with hairpins, forested lower slopes, meadows and farmland, a lake or coastal stretch, a small
+village, tunnels and bridges, and a highway section. This gives the widest visual variety for the least authoring
+cost (water, forest, rock, snow, and road types all in one small map) and maps onto the season system naturally:
+spring wildflowers and rain, summer dry heat and dust, autumn colour and leaf litter, winter snow and ice.
+
+**Reference palette rules:** sky-driven lighting (never a hand-tuned "sunny" look baked into materials), saturated
+but not cartoonish foliage, asphalt that is grey-brown rather than blue-black, and colour grading that is
+restrained at midday and warm at golden hour. Any look that requires standing still to look good is rejected.
+
+---
+
+## 6. What "done" does not mean
+
+Restating the constraints from the research document, because they define acceptance in the negative:
+
+- We will not claim parity with Forza Horizon. We claim: **the same categories of technique, executed to a
+  documented quality bar, at browser budgets, with a much smaller world.**
+- We will never ship ripped or unlicensed assets, brand marks, or manufacturer CAD.
+- We will not promise 60 FPS without measured evidence on named hardware.
+- We will not build a country-sized world; the target is a compact, dense, authored region.
+
+---
+
+## 7. Open questions for the owner
+
+These decide scope and should be answered before or during Phase 4–6:
+
+1. **Car asset path** — (a) commission/build one hero car with a real artist in Blender; (b) buy a royalty-free
+   game-ready model and record the licence; (c) ship a high-quality generic coupe built in-house first, then
+   upgrade. Recommendation: **b, then a**, with **c** as the interim so the car stops looking like a box early.
+2. **Brand policy** — unbadged fictional brand (recommended, zero legal risk) or licensed real marques.
+3. **Region** — approve the alpine/coastal direction in §5, or name a different region you want to drive in.
+4. **Audio scope** — procedural engine/tyre/ambient synthesis (own it, cheap) or licensed audio libraries.
+5. **Photo mode / replay** — in scope as a late polish phase, or out of scope? (Forza-style photomode is a
+   signature feature, and it is cheap once the rendering stack is good.)

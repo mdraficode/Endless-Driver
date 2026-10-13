@@ -60,5 +60,9 @@ migrated.
 - Renderer/framework choice in `0001-engine-and-physics.md`.
 - Any plan text that named Babylon modules (`EngineHost`, `Scene`, `ArcRotateCamera`, etc.).
 
+> **Phase numbering note (2026-10-14):** custom shader work moved from the original Phase 6 into
+> Phase 3, and the renderer path moved from `WebGLRenderer` to `WebGPURenderer` (TSL) with a WebGL2
+> backend — see ADR 0004. Three.js remains the renderer.
+
 All later phases continue to treat **Rapier** as the simulation source of truth, and any
 renderer-side interpolation remains presentation-only.
