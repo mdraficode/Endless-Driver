@@ -13,12 +13,20 @@ A planned cross-platform, procedural 3D web driving game using **Babylon.js, Rap
 5. [`docs/GIT_WORKFLOW.md`](docs/GIT_WORKFLOW.md) — safe remote synchronization and recovery.
 6. [`docs/ASSET_POLICY.md`](docs/ASSET_POLICY.md) — model/texture/audio licensing and large-file policy.
 
+## Canonical repository
+
+**Public GitHub repository:** [`mdraficode/Endless-Driver`](https://github.com/mdraficode/Endless-Driver)  
+**Default branch:** `main`
+
+The public repository is the durable source of truth. Creation and the initial push were explicitly authorized by the owner. No Phase 1 development or deployment was authorized.
+
 ## Setup
 
 Use supported Node.js **22.13+ in the 22.x line** (the `.nvmrc` selects 22), or a compatible newer supported release. The toolchain also accepts Node 20.19+, but use a maintained Node release for ongoing development.
 
 ```bash
-# In a clean checkout of the dedicated repository:
+git clone https://github.com/mdraficode/Endless-Driver.git
+cd Endless-Driver
 npm ci
 npm run check
 
@@ -72,28 +80,31 @@ Directories are placeholders with responsibility notes, not implemented systems.
 
 ## Execution status
 
-| Stage                                   | Status                                                                     |
-| --------------------------------------- | -------------------------------------------------------------------------- |
-| Planning and project structure          | Prepared locally                                                           |
-| Scaffold validation                     | See the recorded results in `docs/SESSION_HANDOFF.md`                      |
-| GitHub push                             | **Not performed:** connector unsupported; repository URL/access unresolved |
-| Phase 1: engine, loop, camera, lighting | Not started; awaiting explicit user authorization                          |
-| Phases 2–6                              | Not started                                                                |
+| Stage                                   | Status                                                                        |
+| --------------------------------------- | ----------------------------------------------------------------------------- |
+| Planning and project structure          | Saved to the public GitHub repository                                         |
+| Scaffold validation                     | Passed locally; five infrastructure tests, lint, types, formatting, and build |
+| GitHub push                             | Verified on `main`; initial remote inventory matched all 53 tracked files     |
+| GitHub Actions                          | First validation run passed; anchored evidence in the handoff                 |
+| Phase 1: engine, loop, camera, lighting | Not started; awaiting explicit user authorization                             |
+| Phases 2–6                              | Not started                                                                   |
 
-The initial Vitest suite checks infrastructure only. Green checks do **not** prove real-time rendering, vehicle physics, mobile support, or 60 FPS. CI is configured but has not run on GitHub until the repository receives these files.
+The initial Vitest suite checks infrastructure only. Green checks do **not** prove real-time rendering, vehicle physics, mobile support, or 60 FPS. Inspect [GitHub Actions](https://github.com/mdraficode/Endless-Driver/actions) for the latest committed checkpoint's result.
 
 ## Durable progress across sessions
 
-The user's dedicated GitHub repository is the intended source of truth. Verify its real URL before writing to it. The display name is **Endless Driver**; GitHub uses a URL-safe slug, usually `Endless-Driver` or `endless-driver`. No owner, remote, or repository has been guessed or created.
+Use [`mdraficode/Endless-Driver`](https://github.com/mdraficode/Endless-Driver) as the canonical source of truth. For each session: read the handoff, verify the branch/remote, install from the lockfile, work only on the authorized phase, validate, update the handoff, commit, push, and verify remote SHA alignment. Never call work remotely saved when its push failed or is unavailable.
 
-For each session: read the handoff, verify the branch/remote, install from the lockfile, work only on the authorized phase, validate, update the handoff, commit, push, and verify remote SHA alignment. Never call work remotely saved when the push failed or was unavailable.
+The unsupported Arena GitHub connector was bypassed through the owner's official GitHub CLI device authorization. This is runtime Git/API authentication, not an enabled Arena connector. Credentials stay outside source/archives in private temporary runtime storage; reauthorization may be needed after a reset. Source/history already pushed to GitHub does not depend on that runtime surviving.
 
-After GitHub connector access proved unavailable, the user selected **ready-to-push portable delivery** for this setup. `Endless-Driver-initial.zip` includes the tracked working files and a copy of `Endless-Driver-initial.bundle`; the bundle is also supplied separately and preserves committed history. Bundle import/push instructions are in [`docs/GIT_WORKFLOW.md`](docs/GIT_WORKFLOW.md). This is a fallback, not an already completed GitHub push.
+Portable ZIP/Git bundles remain optional recovery exports. A downloaded archive may be older than the latest GitHub commit. Import/recovery instructions are in [`docs/GIT_WORKFLOW.md`](docs/GIT_WORKFLOW.md); prefer a clean GitHub clone for new sessions.
 
-## Licensing
+## Licensing and publication
 
-This project is private and `UNLICENSED` until the owner selects a distribution license. Dependencies retain their own licenses. No third-party car models, textures, environments, or sounds are included yet. Do not add large or externally sourced assets without following the asset policy.
+The GitHub repository is **public** by owner instruction. `package.json` remains `private: true` to prevent accidental **npm publication**; this does not control GitHub visibility.
+
+No open-source distribution license has been selected, so project metadata remains `UNLICENSED`. Public visibility does not itself assign an open-source license. Dependencies retain their own licenses. No third-party car models, textures, environments, or sounds are included yet; follow the asset policy before adding them.
 
 ## Next step
 
-Resolve the initial repository transfer, then **wait for the user to explicitly authorize Phase 1**. Repository setup or successful transfer does not itself authorize engine development.
+**Wait for the user to explicitly authorize Phase 1.** Successful repository creation/push does not itself authorize engine development, deployment, or Phase 2.

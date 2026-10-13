@@ -5,6 +5,7 @@ This file is the first checkpoint for any assistant or contributor resuming the 
 ## Current authorization
 
 - Only planning, documentation, initial scaffolding, validation, and initial repository transfer are authorized.
+- On 2026-10-13, the user explicitly authorized creating the **public** `mdraficode/Endless-Driver` repository and pushing the initial setup. That setup is saved on `main`; it does not authorize Phase 1.
 - **Phase 1 has not been authorized and must not be implemented yet.**
 - Do not initialize a Babylon engine/scene/canvas, render loop, camera, lights, physics, or gameplay until the user explicitly starts Phase 1.
 - The current `src/main.ts` imports styles only. Its scaffold guard is intentionally temporary; replace it with runtime lifecycle tests after Phase 1 authorization.
@@ -62,11 +63,15 @@ At each coherent milestone and session end:
 5. Confirm the remote branch SHA matches the local committed SHA; report the result honestly.
 6. Stop at the phase gate and wait for the next instruction.
 
-If remote access fails or is unsupported, **do not claim a push happened**. Record the blocker and export a Git bundle plus working-file archive as fallback. Do not assume local workspace persistence is equivalent to GitHub synchronization. Never force-push, destructively reset, overwrite unrelated history, or create a public repository to work around access problems.
+If remote access fails or is unsupported, **do not claim a push happened**. Record the blocker and export a Git bundle plus working-file archive as fallback. Do not assume local workspace persistence is equivalent to GitHub synchronization. Never force-push, destructively reset, overwrite unrelated history, or create/change a repository or its visibility without explicit user authorization.
 
-## Current repository-access blocker
+## Verified repository and authentication route
 
-At initial preparation on 2026-10-13, the GitHub connector returned `unsupported`; no exact user repository URL or authorized alternative Git route was supplied. No remote push or remote CI execution is verified. Resolve this before marking the initial setup GitHub-saved.
+The canonical repository is [`mdraficode/Endless-Driver`](https://github.com/mdraficode/Endless-Driver), **public**, with default branch `main`. The original 53-file scaffold was pushed and its local/Git/API SHA verified on 2026-10-13. The first GitHub Actions validation run passed; see `docs/SESSION_HANDOFF.md` for anchored evidence.
+
+The Arena GitHub connector remains unsupported. The owner authorized the official GitHub CLI device flow; direct CLI/API/Git access works in the current runtime. Credentials are private temporary runtime data outside source and persisted snapshots, not an enabled Arena connector. Do not print/store tokens or assume authentication survives a new session.
+
+On resume, verify the actual branch and remote. If `.git/config` did not persist and `origin` is absent, restore only the confirmed `https://github.com/mdraficode/Endless-Driver.git` URL after checking the project root. If write authentication is unavailable, reauthorize safely without asking for a token in chat. Public source can still be cloned/read without write credentials.
 
 ## Final status report for a phase
 

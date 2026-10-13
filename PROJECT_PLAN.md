@@ -3,8 +3,8 @@
 **Planning baseline:** 2026-10-13  
 **Project stage:** Initial documentation and repository scaffold only  
 **Development authorization:** None; wait for the user's explicit instruction to start Phase 1  
-**GitHub destination:** User's dedicated Endless Driver repository; exact URL not yet supplied  
-**Remote synchronization:** Not performed; connector unsupported; user selected a ready-to-push portable package as fallback
+**GitHub destination:** Public [`mdraficode/Endless-Driver`](https://github.com/mdraficode/Endless-Driver), branch `main`  
+**Remote synchronization:** Initial 53-file scaffold pushed and Git/API-verified; first GitHub Actions validation passed. Phase 1 remains unstarted.
 
 The original requested technical scope is retained in [`docs/PROJECT_BRIEF.md`](docs/PROJECT_BRIEF.md).
 
@@ -73,7 +73,7 @@ Build a browser-based, single-player 3D driving experience with convincing vehic
 4. **Use a fixed physics tick and independent rendering.** Physics must not depend on display refresh rate.
 5. **Use quality presets from the beginning.** High-DPI and expensive effects cannot be enabled without pixel and GPU budgets.
 6. **Do not force WebGPU.** GLSL effects are not assumed to work unchanged on a WGSL/WebGPU path.
-7. **Keep the project private/unlicensed by default.** No open-source license or redistribution rights are granted without the owner's decision.
+7. **Respect repository visibility and distribution licensing separately.** The owner explicitly authorized a public GitHub repository. Keep npm publication disabled (`private: true`) and `UNLICENSED` metadata until the owner selects a distribution license; public visibility does not itself assign an open-source license.
 
 Dependency versions are recorded in `package.json` and `package-lock.json`, not duplicated throughout this plan. TypeScript and test-tool versions may intentionally lag the latest major release for verified compatibility.
 
@@ -456,16 +456,18 @@ CI verifies the checks actually present. A green scaffold CI does not certify ve
 
 ### Execution status
 
-| Milestone                 | State                                                    |
-| ------------------------- | -------------------------------------------------------- |
-| Initial planning/scaffold | Prepared locally; validation results recorded in handoff |
-| Initial GitHub push       | Blocked; remote URL and authorized access unresolved     |
-| Phase 1                   | Not started; awaiting user authorization                 |
-| Phase 2                   | Not started                                              |
-| Phase 3                   | Not started                                              |
-| Phase 4                   | Not started                                              |
-| Phase 5                   | Not started                                              |
-| Phase 6                   | Not started                                              |
+| Milestone                 | State                                                                 |
+| ------------------------- | --------------------------------------------------------------------- |
+| Initial planning/scaffold | Complete and saved to the canonical public repository                 |
+| Initial GitHub push       | Verified on `main`; all 53 tracked files present; first CI run passed |
+| Phase 1                   | Not started; awaiting user authorization                              |
+| Phase 2                   | Not started                                                           |
+| Phase 3                   | Not started                                                           |
+| Phase 4                   | Not started                                                           |
+| Phase 5                   | Not started                                                           |
+| Phase 6                   | Not started                                                           |
+
+See `docs/SESSION_HANDOFF.md` for the verified original commit, remote CI evidence, authentication limitations, and the next-session procedure.
 
 ## 11. Assets, risks, and decisions to revisit
 
@@ -491,7 +493,6 @@ Do not download or commit “realistic” car/building/texture assets without a 
 
 ### Decisions intentionally deferred
 
-- Exact GitHub owner/repository URL and whether the existing repository already contains files.
 - Named reference devices and minimum browser versions; provisional baseline is recent Chromium/Firefox/Safari with WebGL2, including real iOS and Android testing.
 - Vehicle asset source/budget, interior detail, final art style, and sound sources.
 - Final tire-force implementation, manual/automatic UI, and whether optional boost is desired.
@@ -500,7 +501,7 @@ Do not download or commit “realistic” car/building/texture assets without a 
 
 ## 12. GitHub continuity and session handoff
 
-Use the user's dedicated repository as the long-term source of truth once access is available. “Endless Driver” is the display name; a GitHub slug normally uses `Endless-Driver` or `endless-driver`, but the actual owner and URL must come from the user. Never push to a guessed account or silently create a different repository.
+Use the verified public repository [`mdraficode/Endless-Driver`](https://github.com/mdraficode/Endless-Driver) as the long-term source of truth; the default branch is `main`. The owner explicitly authorized public creation and the initial push. Never push to another guessed account or silently create a different repository. The Arena GitHub connector is unsupported, but owner-approved GitHub CLI/API/Git authentication supplied a working route; temporary credentials may need renewal after a session reset.
 
 ### Start of every session
 

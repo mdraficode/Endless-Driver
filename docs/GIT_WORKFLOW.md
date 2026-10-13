@@ -2,19 +2,34 @@
 
 ## Current access state
 
-The initial GitHub connector lookup returned `unsupported`. The exact owner/repository URL was not provided. No GitHub repository was inspected, created, modified, or pushed to. There is no guessed `origin` remote.
+The canonical repository is [`mdraficode/Endless-Driver`](https://github.com/mdraficode/Endless-Driver), created **public** on 2026-10-13 at the owner's explicit request. The original scaffold was pushed to `main`, its SHA/file inventory verified, and its first GitHub Actions validation passed. See `SESSION_HANDOFF.md` for anchored evidence.
 
-The local initial commit can be transferred using `Endless-Driver-initial.bundle`; `Endless-Driver-initial.zip` contains the working files without dependencies or build output. These exports are delivery files, not files to commit into the project itself.
+The Arena GitHub connector remains unsupported. The successful alternative is the owner's official GitHub CLI device authorization and direct CLI/API/Git access. Its temporary runtime configuration is outside the project and saved workspace, protected by owner-only permissions; in this headless environment it may be plaintext rather than an encrypted vault. Reauthorization may be necessary after a runtime reset.
 
-**Never paste a GitHub token, password, or private SSH key into chat or into a Git remote URL.** Use a supported authorized connection, local credential manager, or SSH authentication on the machine performing the push.
+**Never paste a GitHub token, password, or private SSH key into chat, source, archives, or a remote URL.** Do not assume runtime credentials or local `.git/config` survived a session change.
 
-## 1. Obtain the real destination
+Portable ZIP/Git bundles are optional recovery exports, not the primary source of truth. The previously downloaded initial package may predate current GitHub documentation; inspect its history when recovering.
 
-Ask the owner for the actual repository URL. “Endless Driver” is the display name; a URL-safe repository slug generally uses hyphens. Do not invent the owner, change a different repository, create a public repository, or assume the existing repository is empty.
+## 1. Resume from the confirmed destination
 
-If a repository does not yet exist, the owner must create/authorize the dedicated repository with the desired visibility. Creation is not performed by this scaffold.
+For a new checkout:
 
-Record the confirmed, non-secret URL and branch in the session handoff after access is available. The workspace may not preserve local Git authentication/configuration between sessions; history and handoff must be sufficient to reconnect without storing credentials in source.
+```bash
+git clone https://github.com/mdraficode/Endless-Driver.git
+cd Endless-Driver
+git branch --show-current
+git status --short
+git log -1 --oneline
+npm ci
+```
+
+The public repository can be cloned/read without write credentials. Before implementation, read `AGENTS.md`, the plan, and handoff and confirm the authorized phase. **Phase 1 is not yet authorized.**
+
+In an existing workspace, inspect root/branch/status/remote first. If `origin` is absent after a reset, restore only the confirmed `https://github.com/mdraficode/Endless-Driver.git` URL after verifying this is the project repository. If an existing remote differs, stop rather than replace it silently. Fetch and reconcile without discarding work.
+
+Writes require authenticated owner-approved access. Use a supported secure credential route or the official GitHub CLI device flow; request the repository/workflow scopes needed for the operation, disclose their breadth, and keep all credential material outside persisted source. Never request a token in chat or assume an earlier device code is reusable.
+
+Do not invent the owner, alter an unrelated repository, change visibility, or reinitialize existing history. The current public creation was explicitly authorized; future visibility changes, new repositories, deployment, and release publication require separate authorization. Sections 3–4 below are conditional recovery/integration procedures, not instructions to recreate or overwrite the already populated canonical repository.
 
 ## 2. Import the portable initial commit
 
@@ -40,7 +55,7 @@ npm ci
 npm run check
 ```
 
-The user selected portable delivery for the initial setup. The ZIP contains both the tracked working-file folder and a copy of `Endless-Driver-initial.bundle`. The working-file folder alone has no `.git` history; clone the included or separately downloaded bundle to restore the committed repository.
+Portable delivery was the initial fallback before GitHub authentication became available. The ZIP contains working files and a Git bundle; the working-file folder alone has no `.git` history. Clone the bundle to restore its committed checkpoint, compare it with the canonical remote, and do not mistake an older export for the latest state.
 
 ## 3. First push to a genuinely empty dedicated repository
 
@@ -157,4 +172,4 @@ git bundle verify ../Endless-Driver-checkpoint.bundle
 
 Examples: `docs: refine world-streaming plan`, `chore: validate initial scaffold`, `feat(engine): initialize responsive scene`, `fix(input): release cancelled touch pointer`.
 
-Always update the handoff with the authorized phase and next step. Pushing the initial setup does not authorize Phase 1. Finishing Phase 1 does not authorize Phase 2. No deployment, release publication, or repository visibility change is authorized by initial planning.
+Always update the handoff with the authorized phase and next step. Pushing the initial setup does not authorize Phase 1. Finishing Phase 1 does not authorize Phase 2. The owner explicitly authorized the current public repository creation. No further visibility change, deployment, release publication, or development phase is authorized by that setup instruction.
