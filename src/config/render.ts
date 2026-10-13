@@ -1,10 +1,10 @@
 /**
- * Phase 1 rendering configuration.
+ * Rendering configuration: everything the renderer, camera rig, lighting, atmosphere, and HUD
+ * need. World content (ground, grid, obstacles) lives in `config/world.ts` because the physics
+ * world builds colliders from the same definitions.
  *
- * All Phase 1 tuning values live here so systems stay data-driven and later quality
- * tiers can override them without touching engine/scene code. Values are deliberately
- * conservative placeholders for the scene foundation and are expected to be tuned as
- * real world content, weather, and vehicle systems arrive in later phases.
+ * All values are data, never inline constants, so later quality tiers can override them without
+ * touching engine or scene code.
  */
 export type ShadowMapTypeName = 'pcf' | 'vsm';
 
@@ -67,34 +67,6 @@ export interface LightingConfig {
   readonly sunPosition: readonly [number, number, number];
 }
 
-export interface GridConfig {
-  readonly enabled: boolean;
-  /** Distance between grid lines in meters. Must divide the ground size evenly. */
-  readonly spacing: number;
-  /** Line thickness as a multiple of one screen-space pixel of coverage. */
-  readonly lineWidth: number;
-  readonly lineColor: number;
-  readonly centerLineColor: number;
-  /** Distance in meters at which the grid fades out, preventing distant moire. */
-  readonly fadeDistance: number;
-  /** Peak blend strength of the grid lines over the ground albedo. */
-  readonly strength: number;
-}
-
-export interface GroundConfig {
-  readonly size: number;
-  readonly color: number;
-  readonly roughness: number;
-  readonly metalness: number;
-  readonly grid: GridConfig;
-}
-
-export interface ReferencePropsConfig {
-  /** Temporary shadow-casting props used to verify the lighting setup. */
-  readonly enabled: boolean;
-  readonly castShadow: boolean;
-}
-
 export interface DiagnosticsConfig {
   readonly overlayEnabled: boolean;
   /** Seconds between HUD refreshes; keeps DOM work off the per-frame path. */
@@ -114,8 +86,6 @@ export interface RenderConfig {
   readonly shadows: ShadowConfig;
   readonly sky: SkyConfig;
   readonly lighting: LightingConfig;
-  readonly ground: GroundConfig;
-  readonly referenceProps: ReferencePropsConfig;
   readonly diagnostics: DiagnosticsConfig;
 }
 
@@ -159,25 +129,6 @@ export const RENDER_CONFIG: RenderConfig = {
     sunColor: 0xfff2dd,
     sunIntensity: 2.4,
     sunPosition: [70, 95, 55],
-  },
-  ground: {
-    size: 800,
-    color: 0x8d97a3,
-    roughness: 0.95,
-    metalness: 0,
-    grid: {
-      enabled: true,
-      spacing: 5,
-      lineWidth: 1.25,
-      lineColor: 0x5b6672,
-      centerLineColor: 0x77828f,
-      fadeDistance: 240,
-      strength: 0.6,
-    },
-  },
-  referenceProps: {
-    enabled: true,
-    castShadow: true,
   },
   diagnostics: {
     overlayEnabled: true,

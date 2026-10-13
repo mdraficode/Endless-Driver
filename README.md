@@ -2,7 +2,7 @@
 
 A cross-platform, procedural 3D web driving game built with **Three.js, Rapier, TypeScript, Vite, and Tailwind CSS**.
 
-> **Current state: Phase 1 implemented (renderer, loop, scene foundation, diagnostics). Phase 2 is not authorized.** There is still no physics world, terrain, vehicle, input handling, weather, or gameplay. The scene shows a lit reference environment with a debug orbit camera.
+> **Current state: Phase 2 implemented (Rapier vehicle physics, keyboard smoothing, damped chase camera). Phase 3 is not authorized.** The scene holds a drivable rear-drive car on a flat reference arena: four raycast-suspended wheels, a six-speed drivetrain, a slip-based tire model that drifts under power or handbrake, smoothed WASD/arrow input, and a chase camera that lags behind turns and widens its FOV with speed. Terrain, roads, streaming, weather, touch controls, and post-processing are still future work.
 
 ## Canonical repository
 
@@ -17,7 +17,7 @@ The public repository is the durable source of truth. Repository creation and ea
 2. [`AGENTS.md`](AGENTS.md) — mandatory working rules for future sessions.
 3. [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md) — actual progress, verification evidence, blockers, and the next authorized action.
 4. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — ownership, coordinates, timing, lifecycle, and module dependencies.
-5. [`docs/decisions/`](docs/decisions/) — ADR 0001 (physics/tooling) and ADR 0002 (Three.js renderer decision).
+5. [`docs/decisions/`](docs/decisions/) — ADR 0001 (physics/tooling), ADR 0002 (Three.js renderer decision), ADR 0003 (vehicle physics, tire model, input smoothing, chase camera).
 6. [`docs/GIT_WORKFLOW.md`](docs/GIT_WORKFLOW.md) — safe remote synchronization and recovery.
 7. [`docs/ASSET_POLICY.md`](docs/ASSET_POLICY.md) — model/texture/audio licensing and large-file policy.
 
@@ -38,7 +38,7 @@ No environment variables, API keys, or third-party assets are required. Installe
 
 | Command                | Purpose                                              |
 | ---------------------- | ---------------------------------------------------- |
-| `npm run dev`          | Vite dev server on port 5173 with the Phase 1 scene  |
+| `npm run dev`          | Vite dev server on port 5173 with the drivable car   |
 | `npm run build`        | Static production output in `dist/`                  |
 | `npm run preview`      | Serve the production build on port 4173              |
 | `npm run typecheck`    | Type-check application and tooling/test TypeScript   |
@@ -51,13 +51,23 @@ No environment variables, API keys, or third-party assets are required. Installe
 
 Vite binds to `0.0.0.0` and accepts the Arena `.e2b.app` preview domain. Browser-facing code must use relative URLs so a dev-server proxy can reach services; never call the sandbox's `localhost` from the user's browser.
 
-## Phase 1 controls
+## Phase 2 controls
 
-- **Drag** — orbit the debug camera
+**Driving** (keyboard only for now; touch arrives in Phase 5)
+
+| Input                | Action                                                                           |
+| -------------------- | -------------------------------------------------------------------------------- |
+| `W` / `↑`, `S` / `↓` | Progressive throttle and brake; holding the brake once stopped engages reverse   |
+| `A` / `←`, `D` / `→` | Rate-limited steering (no snapping); grip falls away as the car is pushed harder |
+| `Space`              | Handbrake — cuts rear lateral grip for handbrake turns and slides                |
+| `R`                  | Reset the car to the spawn pose                                                  |
+| `C`                  | Toggle between the chase camera and the Phase 1 debug orbit camera               |
+
+**Debug camera** (when the orbit camera is active)
+
+- **Drag** — orbit
 - **Wheel / pinch** — zoom
 - **Right-drag or two-finger drag** — pan
-
-These are debug camera controls only; there is no driving input yet.
 
 ## Repository layout
 
@@ -66,14 +76,14 @@ index.html        page shell: canvas, diagnostics host, status region
 src/
   main.ts         DOM lookup, application start, dev-only debug handle
   core/           Application, Engine (renderer/loop/resize), SceneManager, PerformanceMonitor
-  config/         render.ts — Phase 1 tuning data (pixel-ratio cap, shadows, sky, lighting)
-  shared/         math.ts — engine-independent numeric helpers
+  config/         render.ts, world.ts, physics.ts, vehicle.ts, input.ts, camera.ts — tuning data
+  shared/         math.ts, vector.ts — engine-independent numeric helpers
   ui/             DiagnosticsOverlay (HUD); gameplay HUD and touch overlay are future work
-  physics/        Rapier world, colliders, snapshots            (Phase 2, not implemented)
+  physics/        Rapier world, fixed-step loop, arena colliders, statistics   (Phase 2)
   world/          seeded terrain, roads, chunks, origin rebasing (Phase 3, not implemented)
-  vehicles/       controllers, drivetrain, telemetry, visuals    (Phases 2/4, not implemented)
-  input/          keyboard/touch → normalized actions            (Phases 2/5, not implemented)
-  cameras/        chase, cockpit, orbit                          (Phase 4, not implemented)
+  vehicles/       raycast car, tire model, drivetrain, telemetry, CarVisual     (Phase 2)
+  input/          keyboard → smoothed actions, command queue (touch in Phase 5) (Phase 2/5)
+  cameras/        damped chase camera; orbit debug camera (cockpit in Phase 4)  (Phase 2/4)
   environment/    day/night, seasons, weather, surface state      (Phase 6, not implemented)
   shaders/        custom WebGL2 effects                          (Phase 6, not implemented)
   assets/         loaders, manifest handling, ownership          (later phases)
@@ -89,8 +99,9 @@ docs/             architecture, decisions, handoff, asset/Git policies
 | --------------------------------------- | -------------------------------------------------------------------------- |
 | Planning and project structure          | Complete and pushed to the public repository                               |
 | Tooling and scaffold validation         | Complete; lint, types, formatting, tests, and build pass locally and in CI |
-| Phase 1: engine, loop, camera, lighting | Implemented, verified, and pushed; awaiting Phase 2 authorization          |
-| Phases 2–6                              | Not started                                                                |
+| Phase 1: engine, loop, camera, lighting | Implemented, verified, and pushed                                          |
+| Phase 2: vehicle physics, input, camera | Implemented and verified (unit, physics, integration, and browser gates)   |
+| Phases 3–6                              | Not started                                                                |
 
 Verification detail — including how browser checks were performed, the device/tooling used, and what remains unverified — is recorded in [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md). Green checks do **not** prove realistic vehicle physics, device support, or a 60 FPS guarantee on a given machine.
 
@@ -108,4 +119,6 @@ No open-source distribution license has been selected, so project metadata remai
 
 ## Next step
 
-**Wait for the user to explicitly authorize Phase 2** (Rapier initialization, fixed-step physics, and a keyboard-driven placeholder vehicle). Completing Phase 1 does not authorize it.
+**Phase 2 is complete; wait for the user to explicitly authorize Phase 3** (procedural terrain, road networks, and chunk streaming). Completing Phase 2 does not authorize it.
+
+Phase 2 verification evidence, measured handling numbers, and the exact browser checks that were run are recorded in [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md).

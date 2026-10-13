@@ -4,10 +4,11 @@ This file is the first checkpoint for any assistant or contributor resuming the 
 
 ## Current authorization
 
-- On 2026-10-13 the user authorized **Phase 1 only**: engine, render loop, camera, and lighting. Phase 1 is implemented, validated, and pushed; see `docs/SESSION_HANDOFF.md` for measured evidence.
-- **Phase 2 is not authorized.** Do not initialize Rapier, add colliders, or implement any driving/vehicle behavior until the user explicitly starts Phase 2.
-- Still unimplemented by design: physics, terrain/streaming, vehicles, gameplay input, gameplay cameras, seasons/weather, post-processing effects, and gameplay HUD.
-- `src/main.ts` is the browser entrypoint and `src/core/Application.ts` is the composition root. Phase 1 runtime tests live in `tests/unit/`; the old scaffold-entrypoint guard has been removed.
+- On 2026-10-13 the user authorized **Phase 1 only**: engine, render loop, camera, and lighting. Phase 1 is implemented, validated, and pushed.
+- On 2026-10-14 the user authorized **Phase 2**: Rapier vehicle physics (raycast suspension, tire slip model, drivetrain), smooth keyboard input, and a dynamic chase camera. Phase 2 is implemented and verified; see `docs/SESSION_HANDOFF.md` for the measured evidence and `docs/decisions/0003-vehicle-physics-and-camera.md` for the decisions.
+- **Phase 3 is not authorized.** Do not add procedural terrain, roads, chunk streaming, or float-origin handling until the user explicitly starts Phase 3.
+- Still unimplemented by design: terrain/streaming, seasons/weather, touch controls, post-processing effects, and the gameplay HUD.
+- `src/main.ts` is the browser entrypoint and `src/core/Application.ts` is the composition root. Runtime tests live in `tests/unit/`, `tests/physics/`, and `tests/integration/`; the old scaffold-entrypoint guard has been removed.
 - Do not begin the next phase automatically after completing an authorized phase.
 
 Update this authorization section and the handoff when a later user instruction changes the permitted phase. Preserve the six-phase order in `PROJECT_PLAN.md` unless the user approves a change.
@@ -37,6 +38,7 @@ Check the repository root, current branch, local changes, remote URL, and latest
 - Every owned resource/listener/worker/WASM allocation needs explicit cleanup.
 - Use WebGL2 as the baseline. WebGPU and high-cost effects are optional quality paths, not universal assumptions.
 - Phase 1 rules: renderer configuration, sizing, pixel-ratio capping, and the loop live only in `src/core/Engine.ts`; scene composition lives in `src/core/SceneManager.ts`; tuning values live in `src/config/render.ts`, not inline in systems.
+- Phase 2 rules: **Rapier (via `src/physics/PhysicsWorld.ts`) is the only solver**; never stack a second solver or Rapier's built-in vehicle controller on the same body. Simulation state is read through `Car.getInterpolatedPose(alpha)` for rendering and `Car.telemetry` for HUD/diagnostics. All vehicle, world, physics, input, and camera tuning lives in `src/config/*`, never inline. Input smoothing and steering rate limiting belong to `src/input/InputManager.ts`; the car consumes shaped actions only. Every frame delta is clamped and the fixed-step accumulator may never run unbounded catch-up (currently five steps max).
 - Clamp every frame delta before it reaches simulation state, and never bind future physics to the display refresh rate.
 - The HUD updates on an interval, never per frame; per-frame paths must not allocate DOM or retain listeners.
 - Any new listener, observer, timer, worker, or WebGL object needs a disposal path in the owning class `dispose()`.

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { RENDER_CONFIG } from '../../src/config/render';
+import { WORLD_CONFIG } from '../../src/config/world';
 
-describe('Phase 1 render configuration', () => {
+describe('render configuration', () => {
   it('caps device pixel ratio at 2 for mobile GPU budgets', () => {
     expect(RENDER_CONFIG.maxPixelRatio).toBe(2);
   });
@@ -30,31 +31,25 @@ describe('Phase 1 render configuration', () => {
     expect(RENDER_CONFIG.camera.maxDistance).toBeGreaterThan(RENDER_CONFIG.camera.minDistance);
   });
 
-  it('uses integer colors in range and a square, evenly divided grid', () => {
+  it('uses integer colors in range', () => {
     const colors = [
       RENDER_CONFIG.sky.zenithColor,
       RENDER_CONFIG.sky.horizonColor,
       RENDER_CONFIG.sky.groundColor,
       RENDER_CONFIG.lighting.ambientColor,
       RENDER_CONFIG.lighting.sunColor,
-      RENDER_CONFIG.ground.color,
-      RENDER_CONFIG.ground.grid.lineColor,
-      RENDER_CONFIG.ground.grid.centerLineColor,
     ];
     for (const color of colors) {
       expect(Number.isInteger(color)).toBe(true);
       expect(color).toBeGreaterThanOrEqual(0);
       expect(color).toBeLessThanOrEqual(0xffffff);
     }
+  });
 
-    // The procedural grid is drawn in the ground shader, so its spacing must tile the plane
-    // exactly and its fade distance must stay inside the camera far plane.
-    const { ground } = RENDER_CONFIG;
-    expect(ground.size % ground.grid.spacing).toBe(0);
-    expect(ground.grid.lineWidth).toBeGreaterThan(0);
-    expect(ground.grid.strength).toBeGreaterThan(0);
-    expect(ground.grid.strength).toBeLessThanOrEqual(1);
-    expect(ground.grid.fadeDistance).toBeLessThan(RENDER_CONFIG.camera.far);
+  it('keeps the ground grid fade inside the camera far plane', () => {
+    // Grid tuning itself is asserted in world-config.test.ts; the render camera must still be able
+    // to see the whole fade range.
+    expect(WORLD_CONFIG.ground.grid.fadeDistance).toBeLessThan(RENDER_CONFIG.camera.far);
   });
 
   it('keeps the fog range inside the camera far plane', () => {

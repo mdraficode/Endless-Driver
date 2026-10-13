@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { Application } from '../../src/core/Application';
 import { Engine } from '../../src/core/Engine';
+import { InputManager } from '../../src/input/InputManager';
+import { ChaseCamera } from '../../src/cameras/ChaseCamera';
+import { PhysicsWorld } from '../../src/physics/PhysicsWorld';
+import { Car } from '../../src/vehicles/Car';
+import { CarVisual } from '../../src/vehicles/CarVisual';
+import { Drivetrain } from '../../src/vehicles/Drivetrain';
 import { PerformanceMonitor } from '../../src/core/PerformanceMonitor';
 import { SceneManager } from '../../src/core/SceneManager';
 import { DiagnosticsOverlay } from '../../src/ui/DiagnosticsOverlay';
@@ -51,6 +57,35 @@ describe('core module API surface', () => {
     const methods = prototypeMethods(DiagnosticsOverlay);
     for (const method of ['update', 'dispose']) {
       expect(methods).toContain(method);
+    }
+  });
+
+  it('exposes the Phase 2 module API surface', () => {
+    const surfaces: [unknown, string[]][] = [
+      [
+        PhysicsWorld,
+        [
+          'update',
+          'addPreStepHandler',
+          'addPostStepHandler',
+          'createDynamicBody',
+          'attachCollider',
+          'removeBody',
+          'resetAccumulator',
+          'dispose',
+        ],
+      ],
+      [Car, ['setActions', 'getInterpolatedPose', 'reset', 'dispose']],
+      [CarVisual, ['sync', 'dispose']],
+      [InputManager, ['attach', 'detach', 'reset', 'update', 'consumeCommands']],
+      [ChaseCamera, ['snapTo', 'update', 'resize', 'dispose']],
+      [Drivetrain, ['update', 'reset']],
+    ];
+    for (const [type, methods] of surfaces) {
+      const names = prototypeMethods(type);
+      for (const method of methods) {
+        expect(names).toContain(method);
+      }
     }
   });
 

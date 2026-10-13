@@ -1,7 +1,7 @@
 # Architecture — Endless Driver
 
-**State:** Phase 1 implemented (core runtime, scene foundation, diagnostics); Phases 2–6 remain design contracts.  
-**Related:** [Project plan](../PROJECT_PLAN.md), [engine/physics decision](decisions/0001-engine-and-physics.md), [renderer decision](decisions/0002-renderer-three-js.md).
+**State:** Phases 1–2 implemented (core runtime and scene foundation; Rapier vehicle physics, keyboard input smoothing, chase camera); Phases 3–6 remain design contracts.  
+**Related:** [Project plan](../PROJECT_PLAN.md), [engine/physics decision](decisions/0001-engine-and-physics.md), [renderer decision](decisions/0002-renderer-three-js.md), [vehicle physics decision](decisions/0003-vehicle-physics-and-camera.md).
 
 ## 1. Composition and data flow
 
@@ -143,8 +143,10 @@ PBR, color-space conversions, sky/IBL, tone mapping, and post-processing order m
 
 ## 10. Status and deferred work
 
-**Implemented (Phase 1):** `core/Engine.ts`, `core/SceneManager.ts`, `core/PerformanceMonitor.ts`, `core/Application.ts`, `config/render.ts`, `shared/math.ts`, `ui/DiagnosticsOverlay.ts`, and the page shell (`index.html`, `src/style.css`, `src/main.ts`).
+**Implemented (Phase 1):** `core/Engine.ts`, `core/SceneManager.ts`, `core/PerformanceMonitor.ts`, `shared/math.ts`, and the page shell (`index.html`, `src/style.css`, `src/main.ts`).
 
-**Still placeholders:** `physics/`, `world/`, `vehicles/`, `input/`, `cameras/`, `environment/`, `shaders/`, `assets/`, `workers/`, and the gameplay parts of `ui/`.
+**Implemented (Phase 2):** `physics/RapierModule.ts`, `physics/PhysicsWorld.ts`, `vehicles/Car.ts`, `vehicles/TireModel.ts`, `vehicles/Drivetrain.ts`, `vehicles/CarVisual.ts`, `input/InputManager.ts`, `cameras/ChaseCamera.ts`, `config/{world,physics,vehicle,input,camera}.ts`, `shared/vector.ts`, the rewritten composition root `core/Application.ts`, `core/SceneManager.ts` (world-driven ground/obstacles), and the extended `ui/DiagnosticsOverlay.ts`.
 
-Each later phase requires its own explicit authorization; completing Phase 1 does not authorize Phase 2.
+**Still placeholders:** `world/`, `environment/`, `shaders/`, `assets/`, `workers/`, and the gameplay parts of `ui/`. `cameras/` gains cockpit and remote modes in Phase 4; `input/` gains touch in Phase 5.
+
+Each later phase requires its own explicit authorization; completing Phase 2 does not authorize Phase 3.

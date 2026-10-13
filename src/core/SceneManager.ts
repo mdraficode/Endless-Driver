@@ -14,21 +14,20 @@ import {
   Scene,
   ShaderMaterial,
   SphereGeometry,
+  Vector3,
+  type Object3D,
 } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { RenderConfig } from '../config/render';
+import { WORLD_CONFIG, type GridConfig, type WorldConfig } from '../config/world';
+import type { Vec3 } from '../shared/vector';
 import type { Viewport } from './Engine';
 
 export interface SceneManagerOptions {
   readonly canvas: HTMLCanvasElement;
   readonly config: RenderConfig;
+  readonly worldConfig?: WorldConfig;
   readonly aspect: number;
-}
-
-interface ReferencePropDefinition {
-  readonly position: readonly [number, number, number];
-  readonly size: readonly [number, number, number];
-  readonly color: number;
 }
 
 export interface SceneDiagnostics {
@@ -69,22 +68,38 @@ void main() {
 }
 `;
 
+/** Sun/shadow focus quantization in meters; keeps the shadow map from crawling under motion. */
+const SHADOW_FOCUS_SNAP = 2;
+
 /**
- * Owns the Phase 1 scene graph: sky, reference lighting with a shadow-casting sun,
- * temporary ground/grid, the debug camera, and its orbit controls.
+ * Owns the scene graph: sky, reference lighting with a shadow-casting sun, the static arena
+ * ground, and the debug orbit camera.
  *
- * Every resource created here is released in `dispose`, and the ground, grid, and
- * reference props are explicitly temporary placeholders for the procedural world
- * planned in Phase 3.
+ * Phase 2 responsibilities added to the Phase 1 foundation:
+ * - ground and obstacle geometry come from `WORLD_CONFIG`, the same source the physics world
+ *   builds its colliders from, so visuals and colliders cannot drift apart;
+ * - the sun and its shadow frustum follow the vehicle (`focusSun`), because a fixed shadow
+ *   camera would leave the car without shadows after a few seconds of driving;
+ * - the debug orbit camera can be enabled/disabled so gameplay owns the render camera while the
+ *   orbit controls remain available for inspection.
+ *
+ * Every resource created here is released in `dispose`. The ground and obstacles remain temporary
+ * placeholders for the procedural world planned in Phase 3.
  */
 export class SceneManager {
   readonly scene: Scene;
+  /** Debug orbit camera. Gameplay renders through the chase camera owned by the application. */
   readonly camera: PerspectiveCamera;
   readonly controls: OrbitControls;
+  readonly #sun: DirectionalLight;
+  readonly #sunOffset: Vector3;
+  readonly #sunTarget = new Vector3();
+  readonly #addedObjects = new Set<Object3D>();
   readonly #disposables: readonly (() => void)[];
 
   constructor(options: SceneManagerOptions) {
     const { config } = options;
+    const worldConfig = options.worldConfig ?? WORLD_CONFIG;
     const aspect = Number.isFinite(options.aspect) && options.aspect > 0 ? options.aspect : 1;
 
     this.scene = new Scene();
@@ -112,25 +127,67 @@ export class SceneManager {
     this.controls.update();
 
     const sky = createSkyDome(config);
-    const ground = createGround(config);
-    const props = createReferenceProps(config);
+    const ground = createGround(worldConfig);
+    const obstacles = createObstacles(worldConfig);
     const ambient = new AmbientLight(
       config.lighting.ambientColor,
       config.lighting.ambientIntensity,
     );
-    const sun = createSun(config);
+    this.#sun = createSun(config);
+    this.#sunOffset = new Vector3(...config.lighting.sunPosition);
 
-    this.scene.add(sky, ground, ambient, sun, sun.target);
-    if (props.length > 0) {
-      this.scene.add(...props);
+    this.scene.add(sky, ground, ambient, this.#sun, this.#sun.target);
+    if (obstacles.length > 0) {
+      this.scene.add(...obstacles);
     }
 
     this.#disposables = [() => this.controls.dispose(), () => disposeObjectTree(this.scene)];
   }
 
-  /** Advances camera damping. Physics and world systems will hook in from later phases. */
+  /**
+   * Advances camera damping. Only the debug camera needs per-frame updates; the chase camera is
+   * driven by its own system.
+   */
   update(delta: number): void {
-    this.controls.update(delta);
+    if (this.controls.enabled) {
+      this.controls.update(delta);
+    }
+  }
+
+  /** Enables or disables the debug orbit camera and its input handling. */
+  setDebugCameraEnabled(enabled: boolean): void {
+    this.controls.enabled = enabled;
+    if (enabled) {
+      this.controls.update();
+    }
+  }
+
+  /** Adds a render object that the scene manager must dispose with the scene. */
+  addObject(object: Object3D): void {
+    this.#addedObjects.add(object);
+    this.scene.add(object);
+  }
+
+  removeObject(object: Object3D): void {
+    this.#addedObjects.delete(object);
+    object.removeFromParent();
+  }
+
+  /**
+   * Moves the sun and its shadow frustum to follow the vehicle.
+   *
+   * The focus is quantized to a couple of meters so the shadow map does not shimmer as the car
+   * creeps forward, and the vertical focus stays at ground level so the shadow camera always
+   * points at the surface shadows land on.
+   */
+  focusSun(position: Vec3): void {
+    const x = Math.round(position.x / SHADOW_FOCUS_SNAP) * SHADOW_FOCUS_SNAP;
+    const z = Math.round(position.z / SHADOW_FOCUS_SNAP) * SHADOW_FOCUS_SNAP;
+    this.#sunTarget.set(x, 0, z);
+    this.#sun.target.position.copy(this.#sunTarget);
+    this.#sun.position.set(x + this.#sunOffset.x, this.#sunOffset.y, z + this.#sunOffset.z);
+    this.#sun.target.updateMatrixWorld();
+    this.#sun.updateMatrixWorld();
   }
 
   resize(viewport: Viewport): void {
@@ -155,6 +212,7 @@ export class SceneManager {
   }
 
   dispose(): void {
+    this.#addedObjects.clear();
     for (const dispose of this.#disposables) {
       dispose();
     }
@@ -181,30 +239,52 @@ function createSkyDome(config: RenderConfig): Mesh {
   // The camera is always inside the dome; skip culling math for a static backdrop.
   sky.frustumCulled = false;
   // The dome is a backdrop, never a solid occluder. Without this it is drawn among the opaque
-  // objects after depth-less geometry (the translucent debug grid) and paints over it — visibly
-  // erasing every grid line below the horizon. Rendering first with depth testing disabled
-  // guarantees the dome sits behind everything regardless of draw order.
+  // objects after depth-less geometry and paints over it — visibly erasing every grid line below
+  // the horizon. Rendering first with depth testing disabled guarantees the dome sits behind
+  // everything regardless of draw order.
   sky.renderOrder = -1;
   material.depthTest = false;
   return sky;
 }
 
-function createGround(config: RenderConfig): Mesh {
+function createGround(worldConfig: WorldConfig): Mesh {
+  const { ground } = worldConfig;
   const material = new MeshStandardMaterial({
-    color: new Color(config.ground.color),
-    roughness: config.ground.roughness,
-    metalness: config.ground.metalness,
+    color: new Color(ground.color),
+    roughness: ground.roughness,
+    metalness: ground.metalness,
   });
 
-  if (config.ground.grid.enabled) {
-    applyProceduralGrid(material, config);
+  if (ground.grid.enabled) {
+    applyProceduralGrid(material, ground.grid);
   }
 
-  const ground = new Mesh(new PlaneGeometry(config.ground.size, config.ground.size), material);
-  ground.name = 'ground-plane';
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  return ground;
+  const mesh = new Mesh(new PlaneGeometry(ground.size, ground.size), material);
+  mesh.name = 'ground-plane';
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+/**
+ * Static obstacle meshes. Phase 2 keeps the Phase 1 reference blocks as physics test targets; the
+ * collider for each one is built by `PhysicsWorld` from the same definitions.
+ */
+function createObstacles(worldConfig: WorldConfig): Mesh[] {
+  return worldConfig.obstacles.map((obstacle) => {
+    const geometry = new BoxGeometry(...obstacle.size);
+    const material = new MeshStandardMaterial({
+      color: new Color(obstacle.color),
+      roughness: 0.8,
+      metalness: 0,
+    });
+    const mesh = new Mesh(geometry, material);
+    mesh.name = `obstacle-${obstacle.id}`;
+    mesh.position.set(...obstacle.position);
+    mesh.castShadow = obstacle.castShadow;
+    mesh.receiveShadow = true;
+    return mesh;
+  });
 }
 
 interface GridUniforms {
@@ -217,8 +297,7 @@ interface GridUniforms {
 }
 
 /**
- * Draws the Phase 1 reference grid inside the ground material instead of as separate coplanar
- * geometry.
+ * Draws the reference grid inside the ground material instead of as separate coplanar geometry.
  *
  * A `GridHelper` 1-2 cm above an 800 m plane z-fights badly: at that scale the depth buffer cannot
  * resolve two nearly coincident surfaces, so distant lines dissolve and the surface visibly
@@ -228,14 +307,14 @@ interface GridUniforms {
  * This is what Phase 3 terrain material blending will build on; it is replaced, not extended, by
  * authored roads and terrain splatting.
  */
-function applyProceduralGrid(material: MeshStandardMaterial, config: RenderConfig): void {
+function applyProceduralGrid(material: MeshStandardMaterial, grid: GridConfig): void {
   const uniforms: GridUniforms = {
-    gridLineColor: { value: new Color(config.ground.grid.lineColor) },
-    gridCenterLineColor: { value: new Color(config.ground.grid.centerLineColor) },
-    gridSpacing: { value: config.ground.grid.spacing },
-    gridLineWidth: { value: config.ground.grid.lineWidth },
-    gridFadeDistance: { value: config.ground.grid.fadeDistance },
-    gridStrength: { value: config.ground.grid.strength },
+    gridLineColor: { value: new Color(grid.lineColor) },
+    gridCenterLineColor: { value: new Color(grid.centerLineColor) },
+    gridSpacing: { value: grid.spacing },
+    gridLineWidth: { value: grid.lineWidth },
+    gridFadeDistance: { value: grid.fadeDistance },
+    gridStrength: { value: grid.strength },
   };
 
   material.onBeforeCompile = (shader) => {
@@ -297,38 +376,6 @@ function applyProceduralGrid(material: MeshStandardMaterial, config: RenderConfi
 
   // Distinguish the patched program from the stock MeshStandardMaterial program.
   material.customProgramCacheKey = () => 'endless-driver-ground-grid';
-}
-
-/**
- * Temporary shadow-casting props. Without a caster there is nothing to prove the sun's
- * shadow configuration works, so Phase 1 ships three neutral boxes that are removed
- * once real world content exists.
- */
-function createReferenceProps(config: RenderConfig): Mesh[] {
-  if (!config.referenceProps.enabled) {
-    return [];
-  }
-
-  const definitions: readonly ReferencePropDefinition[] = [
-    { position: [-14, 1.5, -10], size: [3, 3, 3], color: 0xb6bec8 },
-    { position: [11, 1, 7], size: [2.5, 2, 2.5], color: 0xa7b1bd },
-    { position: [2, 2.5, -20], size: [4, 5, 2], color: 0x99a4b1 },
-  ];
-
-  return definitions.map((definition, index) => {
-    const geometry = new BoxGeometry(...definition.size);
-    const material = new MeshStandardMaterial({
-      color: new Color(definition.color),
-      roughness: 0.8,
-      metalness: 0,
-    });
-    const prop = new Mesh(geometry, material);
-    prop.name = `reference-prop-${index + 1}`;
-    prop.position.set(...definition.position);
-    prop.castShadow = config.referenceProps.castShadow;
-    prop.receiveShadow = true;
-    return prop;
-  });
 }
 
 function createSun(config: RenderConfig): DirectionalLight {

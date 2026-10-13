@@ -1,9 +1,12 @@
+import type { CameraMode } from '../config/camera';
+
 /**
- * Phase 1 diagnostics HUD.
+ * Diagnostics HUD.
  *
- * The overlay only touches the DOM when `update` is called on the application's HUD
- * interval, keeping per-frame work out of the render loop. All values are formatted
- * from the snapshot; nothing here reads engine internals directly.
+ * Phase 1 reported render health; Phase 2 adds vehicle and physics state so driving behaviour can
+ * be observed without a debugger. The overlay only touches the DOM when `update` is called on the
+ * application's HUD interval, keeping per-frame work out of the render loop. All values are
+ * formatted from the snapshot; nothing here reads engine internals directly.
  */
 export interface DiagnosticsSnapshot {
   readonly framesPerSecond: number;
@@ -17,6 +20,41 @@ export interface DiagnosticsSnapshot {
   readonly cameraPosition: { readonly x: number; readonly y: number; readonly z: number };
   readonly sceneObjects: number;
   readonly totalFrames: number;
+  /** Active render camera. */
+  readonly cameraMode: CameraMode;
+  readonly cameraFov: number;
+  readonly speedKph: number;
+  /** Signed speed along the chassis forward axis, m/s (negative when reversing). */
+  readonly forwardSpeed: number;
+  /** 1..n forward gears, -1 reverse. */
+  readonly gear: number;
+  readonly rpm: number;
+  readonly throttle: number;
+  readonly brake: number;
+  readonly handbrake: boolean;
+  readonly steerAngleDegrees: number;
+  /** Wheels currently touching the ground. */
+  readonly contactCount: number;
+  readonly drifting: boolean;
+  readonly slipAngleDegrees: number;
+  readonly distanceMeters: number;
+  /** Fixed physics steps executed in the last rendered frame. */
+  readonly physicsSteps: number;
+  readonly physicsBodies: number;
+  /** Frames where the catch-up budget was exhausted and backlog was discarded. */
+  readonly physicsStalledFrames: number;
+  /** Simulated time since load, in seconds. Differs from wall time when frames are slow. */
+  readonly physicsElapsedSeconds: number;
+  /** Chassis heading (yaw about +Y) in degrees; 0 faces -Z. */
+  readonly carHeadingDegrees: number;
+  readonly carPosition: { readonly x: number; readonly y: number; readonly z: number };
+  /**
+   * Per-wheel presentation state consumed by the car visual, in wheel order
+   * (front-left, front-right, rear-left, rear-right). Steering is in degrees and spin in radians;
+   * they are exposed so the rendered wheel pose can be verified without reading scene internals.
+   */
+  readonly wheelSteerDegrees: readonly number[];
+  readonly wheelSpinRadians: readonly number[];
 }
 
 export interface DiagnosticsOverlayOptions {
@@ -29,7 +67,49 @@ interface RowDefinition {
   readonly format: (snapshot: DiagnosticsSnapshot) => string;
 }
 
+const formatGear = (gear: number): string => (gear < 0 ? 'R' : String(gear));
+
 const ROW_DEFINITIONS: readonly RowDefinition[] = [
+  {
+    label: 'Speed',
+    format: (snapshot) => `${snapshot.speedKph.toFixed(1)} km/h`,
+  },
+  {
+    label: 'Gear',
+    format: (snapshot) => `${formatGear(snapshot.gear)} @ ${Math.round(snapshot.rpm)} rpm`,
+  },
+  {
+    label: 'Input',
+    format: (snapshot) =>
+      `T ${snapshot.throttle.toFixed(2)} · B ${snapshot.brake.toFixed(2)} · S ${snapshot.steerAngleDegrees.toFixed(
+        1,
+      )}°${snapshot.handbrake ? ' · HB' : ''}`,
+  },
+  {
+    label: 'Wheels',
+    format: (snapshot) => `${snapshot.contactCount}/4 on ground`,
+  },
+  {
+    label: 'Drift',
+    format: (snapshot) =>
+      `${snapshot.drifting ? 'sliding' : 'grip'} · ${snapshot.slipAngleDegrees.toFixed(1)}° slip`,
+  },
+  {
+    label: 'Distance',
+    format: (snapshot) => `${snapshot.distanceMeters.toFixed(0)} m`,
+  },
+  {
+    label: 'Physics',
+    format: (snapshot) =>
+      `${snapshot.physicsSteps} steps · ${snapshot.physicsBodies} bodies${
+        snapshot.physicsStalledFrames > 0 ? ` · ${snapshot.physicsStalledFrames} stalled` : ''
+      }`,
+  },
+  {
+    label: 'Car',
+    format: (snapshot) =>
+      `${snapshot.carPosition.x.toFixed(1)}, ${snapshot.carPosition.y.toFixed(1)}, ${snapshot.carPosition.z.toFixed(1)}`,
+  },
   {
     label: 'FPS',
     format: (snapshot) => `${snapshot.framesPerSecond.toFixed(1)} avg`,
@@ -57,7 +137,7 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
   {
     label: 'Camera',
     format: (snapshot) =>
-      `${snapshot.cameraPosition.x.toFixed(1)}, ${snapshot.cameraPosition.y.toFixed(1)}, ${snapshot.cameraPosition.z.toFixed(1)}`,
+      `${snapshot.cameraMode} · ${snapshot.cameraFov.toFixed(1)}° fov · ${snapshot.cameraPosition.x.toFixed(0)}, ${snapshot.cameraPosition.y.toFixed(0)}, ${snapshot.cameraPosition.z.toFixed(0)}`,
   },
   { label: 'Frames', format: (snapshot) => snapshot.totalFrames.toLocaleString('en-US') },
 ];
@@ -98,7 +178,7 @@ export class DiagnosticsOverlay {
 
     const heading = document.createElement('p');
     heading.className = 'mb-1 font-sans text-[10px] font-semibold tracking-[0.18em] uppercase';
-    heading.textContent = options.subtitle ?? 'Phase 1 · scene foundation';
+    heading.textContent = options.subtitle ?? 'Phase 2 · vehicle physics';
     heading.classList.add('text-teal-300');
     this.#panel.append(heading);
 
