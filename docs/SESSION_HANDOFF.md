@@ -28,6 +28,9 @@ mesh is acceptable; wheels must visibly steer and roll from physics state.
   (`.github/workflows/ci.yml`) runs `npm ci` + `npm run check` on Node 22.
 - Obtain the current checkpoint from the repository (`git log -1 --oneline`) rather than trusting a
   hash written here.
+- **Verified checkpoint (2026-10-14):** the Phase 2 feature commit `b85c8ba` (42 files) was pushed to
+  `main`; `git ls-remote origin refs/heads/main` returned the same SHA, and the `Validate project`
+  GitHub Actions run for that commit (`npm ci` + `npm run check` on Node 22) completed successfully.
 - Authentication for pushing uses the owner's official GitHub CLI device flow. Device codes expire
   after ~15 minutes, so a fresh code must be issued and approved promptly in the same session.
 
