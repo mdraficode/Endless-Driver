@@ -1,5 +1,11 @@
-import { EquirectangularReflectionMapping, LinearSRGBColorSpace, type Texture } from 'three';
+import {
+  EquirectangularReflectionMapping,
+  LinearSRGBColorSpace,
+  SRGBColorSpace,
+  type Texture,
+} from 'three';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+import { TextureLoader } from 'three';
 
 /**
  * Asset manifest reader.
@@ -55,6 +61,29 @@ export interface EnvironmentAsset {
 
 /** `public/` is served from the site root, so manifest paths are also the runtime URLs. */
 export const ASSET_MANIFEST_URL = 'assets/manifest.json';
+
+/** Every HDRI the manifest publishes, in manifest order, as `{ id, name }` pairs. */
+export function listEnvironmentAssets(manifest: AssetManifest): readonly EnvironmentAsset[] {
+  return manifest.assets
+    .filter((asset) => asset.kind === 'hdri')
+    .map((asset) => findEnvironmentAsset(manifest, asset.id))
+    .filter((asset): asset is EnvironmentAsset => asset !== null);
+}
+
+/** The texture slots a scanned surface is expected to publish. `arm` is optional. */
+export interface MaterialTextureSet {
+  readonly id: string;
+  readonly name: string;
+  readonly licence: string;
+  readonly creator: string;
+  /** sRGB albedo. */
+  readonly diffuse: Texture;
+  /** Tangent-space normal map, OpenGL convention. */
+  readonly normal: Texture;
+  /** Roughness in the green channel, ambient occlusion in red, metalness in blue. */
+  readonly arm: Texture | null;
+  dispose(): void;
+}
 
 export async function readAssetManifest(url: string = ASSET_MANIFEST_URL): Promise<AssetManifest> {
   const response = await fetch(url);
@@ -119,4 +148,68 @@ export async function loadHdrTexture(file: string): Promise<Texture> {
   texture.mapping = EquirectangularReflectionMapping;
   texture.colorSpace = LinearSRGBColorSpace;
   return texture;
+}
+
+/**
+ * Loads a scanned surface's maps, as described by the manifest.
+ *
+ * The manifest is the only source of the slot names and their colour spaces, so the loader does not
+ * guess: an sRGB albedo and a linear data map are the difference between a texture that looks right
+ * and one that looks washed out, and getting it wrong is invisible in code review. `arm` carries
+ * occlusion/roughness/metalness packed into the red/green/blue channels, which is the form the
+ * material shader reads.
+ */
+export async function loadMaterialTextureSet(
+  assetId: string,
+  url: string = ASSET_MANIFEST_URL,
+): Promise<MaterialTextureSet | null> {
+  const manifest = await readAssetManifest(url);
+  const entry = manifest.assets.find((asset) => asset.id === assetId);
+  if (!entry) {
+    console.warn(`material asset "${assetId}" is not in ${url}; keeping the flat material`);
+    return null;
+  }
+
+  const loader = new TextureLoader();
+  const loaded: Texture[] = [];
+  const load = async (slot: string, colourSpace: string): Promise<Texture | null> => {
+    const file = entry.files.find((candidate) => candidate.slot === slot);
+    if (!file) {
+      return null;
+    }
+    const texture = await loader.loadAsync(file.path);
+    texture.name = `${assetId}:${slot}`;
+    texture.colorSpace = colourSpace === 'srgb' ? SRGBColorSpace : LinearSRGBColorSpace;
+    // The surface is seen at a shallow angle from the chase camera, so the sharper mip chain is
+    // worth the small bandwidth cost on the one material that uses it.
+    texture.anisotropy = 4;
+    loaded.push(texture);
+    return texture;
+  };
+
+  const diffuse = await load('diffuse', 'srgb');
+  const normal = await load('normal', 'linear');
+  const arm = await load('arm', 'linear');
+  if (diffuse === null || normal === null) {
+    for (const texture of loaded) {
+      texture.dispose();
+    }
+    console.warn(`material asset "${assetId}" is missing its albedo or normal map; ignoring it`);
+    return null;
+  }
+
+  return {
+    id: entry.id,
+    name: entry.name,
+    licence: entry.source.licence,
+    creator: entry.source.creator,
+    diffuse,
+    normal,
+    arm,
+    dispose(): void {
+      for (const texture of loaded) {
+        texture.dispose();
+      }
+    },
+  };
 }

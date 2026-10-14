@@ -57,3 +57,127 @@ body {
   background: rgb(69 10 10 / 85%);
   color: #fecaca;
 }
+
+/*
+ * Material studio panel.
+ *
+ * Styled with plain CSS rather than the utility classes the diagnostics HUD uses: the panel carries
+ * interactive controls, so it needs hover, focus, and disabled states that are easier to read in one
+ * place than as forty-element class strings.
+ */
+.studio-panel {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  width: min(17rem, calc(100vw - 1.5rem));
+  padding: 0.75rem 0.85rem 0.85rem;
+  /* The panel is a tool, not the subject: it must never push its own controls off the screen. */
+  max-height: calc(100dvh - 1.5rem);
+  overflow-y: auto;
+  border: 1px solid rgb(148 163 184 / 30%);
+  border-radius: 0.75rem;
+  background: rgb(9 14 24 / 88%);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+  font-size: 0.75rem;
+  color: #cbd5e1;
+  backdrop-filter: blur(8px);
+}
+
+.studio-panel[hidden] {
+  display: none;
+}
+
+.studio-panel h2 {
+  margin: 0 0 0.15rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #5eead4;
+}
+
+.studio-scale {
+  margin: 0 0 0.6rem;
+  font-size: 0.7rem;
+  color: #94a3b8;
+}
+
+.studio-environment {
+  margin: 0 0 0.6rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.4rem;
+  background: rgb(30 41 59 / 70%);
+  font-size: 0.72rem;
+}
+
+.studio-environment[data-off='true'] {
+  background: rgb(69 26 3 / 70%);
+  color: #fdba74;
+}
+
+.studio-readout {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 0.05rem 0.75rem;
+  margin: 0 0 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.studio-readout dt {
+  color: #94a3b8;
+}
+
+.studio-readout dd {
+  margin: 0;
+  text-align: right;
+  color: #99f6e4;
+}
+
+.studio-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.studio-controls button {
+  /* 44px minimum: the same target size the touch controls will use in Phase 8. */
+  min-height: 2.2rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid rgb(94 234 212 / 35%);
+  border-radius: 0.45rem;
+  background: rgb(15 23 42 / 90%);
+  font: inherit;
+  color: #ccfbf1;
+  cursor: pointer;
+}
+
+.studio-controls button:hover {
+  background: rgb(19 78 74 / 70%);
+}
+
+.studio-controls button:focus-visible {
+  outline: 2px solid #5eead4;
+  outline-offset: 1px;
+}
+
+/*
+ * Collapsed panel: everything but the toggle is hidden, so a capture can be taken of the grid alone
+ * without the panel having to be rebuilt or scrolled out of the way.
+ */
+.studio-panel[data-collapsed='true'] > :not(.studio-controls) {
+  display: none;
+}
+
+.studio-panel[data-collapsed='true'] .studio-controls {
+  grid-template-columns: 1fr;
+}
+
+.studio-panel[data-collapsed='true'] button:not([data-action='toggle-panel']) {
+  display: none;
+}
+
+.studio-panel[data-collapsed='true'] {
+  width: auto;
+  padding: 0.4rem;
+  background: rgb(9 14 24 / 70%);
+}

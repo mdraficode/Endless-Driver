@@ -169,9 +169,10 @@ reflections, motion blur, terrain layers, vegetation density). Nothing listed th
 
 ## 4. Look development workflow
 
-1. **Studio scene** (`?scene=studio`): HDRI switcher, time-of-day and weather sliders, material sphere grid
-   (asphalt, gravel, soil, grass, snow, water, glass, chrome, rubber, 3 paint variants), a car turntable, and a
-   reference board panel for side-by-side comparison. This is where materials are approved.
+1. **Studio scene** (`?scene=studio`): HDRI switcher, time-of-day controls, material sphere grid
+   (asphalt, gravel, soil, grass, snow, water, glass, chrome, rubber, 3 paint variants), and a control panel.
+   **Implemented (Phase 3).** The grid shares the world's lighting, shadows, and post chain. The car turntable and
+   the reference board wait for the Phase 6 vehicle; weather controls wait for Phase 7.
 2. **Route scene** (the real world): a fixed 2 km validation route with camera bookmarks at dawn, noon, dusk,
    night, rain, snow, and each season — the same 12 screenshots every phase, diffed against the previous phase
    with a perceptual metric (SSIM) and reviewed by eye.

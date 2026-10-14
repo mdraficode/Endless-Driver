@@ -93,13 +93,14 @@ src/
   shared/         math.ts, vector.ts — engine-independent numeric helpers
   ui/             DiagnosticsOverlay (HUD); gameplay HUD and touch overlay are future work
   physics/        Rapier world, fixed-step loop, arena colliders, statistics   (Phase 2)
-  world/          seeded terrain, roads, chunks, origin rebasing    (Phase 4, not implemented)
+  world/          scene content seam + driving world; terrain in Phase 4
   vehicles/       raycast car, tire model, drivetrain, telemetry, CarVisual     (Phase 2)
   input/          keyboard → smoothed actions, command queue (touch in Phase 8) (Phase 2/8)
   cameras/        damped chase camera; orbit debug camera (cockpit in Phase 6)  (Phase 2/6)
-  environment/    day/night, seasons, weather, surface state       (Phase 7, not implemented)
-  shaders/        TSL node materials                               (Phase 3, not implemented)
-  assets/         pipeline, loaders, manifest, licence register    (Phase 3, not implemented)
+  environment/    solar model, time-of-day clock, daylight curves; seasons/weather in Phase 7
+  shaders/        TSL node materials: atmosphere sky, post chain, vignette
+  assets/         pinned fetch pipeline, loaders, manifest, licence register
+  lab/            look-development studio (?scene=studio)          (Phase 3)
   workers/        bounded CPU generation jobs                      (Phase 4, not implemented)
 public/assets/    empty licensed-asset inventory and future folders
 tests/            scaffold checks, unit tests, future test layers
@@ -138,6 +139,8 @@ No open-source distribution license has been selected, so project metadata remai
 
 ## Next step
 
-**Phase 3 is authorized and in progress.** The renderer migration has landed: `WebGPURenderer` with the WebGL2 fallback, a TSL-lit scene (Preetham sky, HDRI environment lighting, cascaded shadows), a `RenderPipeline` post chain, and the pinned/verified asset pipeline. Still to come in the phase: the C/B/A tier system, the remaining post effects and anti-aliasing, the time-of-day clock, and the studio/route look-dev scenes. Phase 4 (terrain, roads, streaming) is **not** authorized — see [`PROJECT_PLAN.md`](PROJECT_PLAN.md) §9 for the deliverable list and the stop condition.
+**Phase 3 is authorized and in progress.** Landed so far: `WebGPURenderer` with the WebGL2 fallback, a TSL-lit scene (Preetham sky, HDRI environment lighting, cascaded shadows), the full `RenderPipeline` post chain, the C/B/A tier system, the time-of-day clock with sun-driven exposure and colour grade, the pinned and verified asset pipeline, and the material studio at `?scene=studio`. Still to come in the phase: LUT grading, depth of field, motion blur, god rays, TAAU with dynamic resolution, the glTF/KTX2 model pipeline, and the 2 km validation route with its screenshot pass. Phase 4 (terrain, roads, streaming) is **not** authorized — see [`PROJECT_PLAN.md`](PROJECT_PLAN.md) §9 for the deliverable list and the stop condition.
+
+**Try it:** <https://mdraficode.github.io/Endless-Driver/> drives with the keyboard. Add `?scene=studio` for the look-dev grid, `?time=6.5` / `?time=18.5` for dawn and night, `?tier=a|b|c` to force a quality tier, and `?backend=webgl` to force the fallback path.
 
 Phase 2 verification evidence, measured handling numbers, and the exact browser checks that were run are recorded in [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md).

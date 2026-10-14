@@ -11,6 +11,7 @@ import type { VehiclePose, VehicleTelemetry } from '../vehicles/types';
 import { ChaseCamera } from '../cameras/ChaseCamera';
 import { InputManager } from '../input/InputManager';
 import type { PerspectiveCamera } from 'three';
+import { DaylightController } from '../environment/DaylightController';
 import {
   EnvironmentClock,
   type DaylightState,
@@ -73,6 +74,7 @@ export class Application {
   readonly #statusElement: HTMLElement | null;
   readonly #tier: TierResolution;
   readonly #clock: EnvironmentClock;
+  readonly #daylightController: DaylightController;
   #daylight: DaylightState | null = null;
   readonly #unsubscribers: readonly (() => void)[] = [];
   readonly #lastCameraTarget: Vec3 = { x: 0, y: 0, z: 0 };
@@ -117,6 +119,7 @@ export class Application {
     this.#statusElement = options.statusElement ?? null;
     this.#tier = options.tier ?? { id: 'B', reason: 'unresolved' };
     this.#clock = new EnvironmentClock(options.clock);
+    this.#daylightController = new DaylightController(this.#clock);
 
     // Lighting is resolved before the first frame so the scene never renders with the baseline sun
     // while the clock says something else.
@@ -344,8 +347,7 @@ export class Application {
     this.#physics.update(delta);
 
     // 2b. Time advances, and time becomes light for the next frame.
-    this.#clock.update(delta);
-    this.#applyDaylight();
+    this.#daylight = this.#daylightController.update(delta, this.#scene, this.#engine);
 
     // 3. Presentation interpolates between the last two authoritative poses.
     const pose = this.#car.getInterpolatedPose(this.#physics.interpolationAlpha);
@@ -384,34 +386,10 @@ export class Application {
    * there is no way for the scene to be lit by a different sun than the one the clock reports.
    */
   #applyDaylight(): void {
-    const state = this.#clock.daylight();
-    this.#daylight = state;
-    this.#scene.applyDaylight(state);
-    this.#engine.setExposure(state.exposure);
-    this.#engine.setGrade(this.#resolveGradeTint(state));
-  }
-
-  /**
-   * Scales the daylight grade by how much the sky can colour itself.
-   *
-   * A captured HDRI backdrop only dims, so it takes the full tint; the procedural sky reddens on its
-   * own from the same clock values, so it takes a fraction of it. The scene reports which backdrop is
-   * in use, so this needs no second source of truth.
-   */
-  #resolveGradeTint(state: DaylightState): { r: number; g: number; b: number } {
-    const daylightConfig = this.#clock.config;
-    const strength =
-      this.#scene.skyMode === 'hdri'
-        ? daylightConfig.gradeStrengthBackdrop
-        : daylightConfig.gradeStrengthProcedural;
-    const { r, g, b } = state.gradeTint;
-
-    // Blended towards neutral white rather than scaled to zero: an untouched frame means 1, not 0.
-    return {
-      r: 1 + (r - 1) * strength,
-      g: 1 + (g - 1) * strength,
-      b: 1 + (b - 1) * strength,
-    };
+    // `update(0, …)` advances nothing (the clock is either frozen or has already been advanced this
+    // frame) and still resolves and applies the light, so the pre-first-frame call and the per-frame
+    // call are the same code path.
+    this.#daylight = this.#daylightController.update(0, this.#scene, this.#engine);
   }
 
   /**

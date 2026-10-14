@@ -481,3 +481,65 @@ sun is up, which is the point. The numbers are smaller than the tint values beca
 tone mapping and sRGB encoding: a ×1.36 linear red/blue ratio reaches a display-referred image as roughly ×1.14.
 The post chain, tier, and backend are otherwise unchanged (`grade → bloom → chromaticAberration → sharpen →
 vignette → fxaa`), with no page errors and no TSL errors.
+
+## 16. The material studio (2026-10-14)
+
+Phase 3's last unbuilt deliverable was the look-dev scene, and it is now in: `?scene=studio` renders a grid of
+fourteen spheres — three automotive paints, chrome, brushed aluminium, tire rubber, glass, water, and the six
+ground materials of the Hinode Prefecture world — each one a real `MeshPhysicalNodeMaterial` standing on a neutral
+floor against a flat backdrop.
+
+**It is a second composition root, not a mode.** `StudioApplication` mounts the same `Engine`, the same
+`SceneManager`, the same `DaylightController`, and the same post chain as the driving scene, and supplies only what
+makes it a studio: the grid as content, an orbital camera, an environment switcher, and a panel. A studio with its
+own bespoke rig would approve materials that do not survive contact with the game, which is the only failure that
+matters here.
+
+**A new seam made that possible.** `SceneManager` used to build the ground plane and obstacle blocks itself. It now
+takes a `SceneContent` (`src/world/WorldContent.ts`) and the driving world moved behind it (`src/world/DrivingWorld.ts`)
+— Phase 4's terrain implements the same interface. The lighting stayed in `SceneManager`: the studio wanted identical
+sun, sky, fog, shadows, and HDRI, so it was the _content_ that had to become pluggable, not the environment.
+
+**Four real bugs, all caught by looking at the output rather than by the type checker:**
+
+1. **Nothing rendered.** The studio's frame handler updated the clock, the sky and the shadows, and never called
+   `engine.render()`. The panel reported 0 draw calls while the canvas stayed black — the engine owns the loop but
+   not the scene, so rendering is the caller's job and the driving root had been doing it all along.
+2. **The grid was framed for a square viewport.** The pose was computed in the constructor, before `Engine.init()`
+   had measured the canvas, so `viewport.aspect` was a placeholder. The grid ended up two thirds too far away.
+   Framing now happens after initialisation, and again on every resize.
+3. **The camera was not using the studio's lens.** `SceneManager` builds its camera from the _render_ config's 60°
+   field of view, which is authored for a driving view; the studio's framing maths assumed its own configured 32°.
+   The studio now sets the camera's `fov` and the pose functions _read the value back off the camera_, so the lens
+   and the framing cannot disagree.
+4. **The spheres floated.** Grid centre at 1.1 m with 0.5 m radii put every sphere 0.6 m above the floor, which
+   throws the contact shadow far from the contact point — the one thing the floor exists to show.
+
+**And one design change after seeing it.** The camera used to sit 0.55 m above the grid on a 5×3 layout. At that
+angle each row hid behind the one in front of it, so a third of the materials were invisible. The grid is now 7×2
+and the camera looks down from a 20° elevation with a long lens, which is what makes all fourteen spheres
+readable at once.
+
+**The framing and the material values are asserted in Node.** `tests/unit/studio-config.test.ts` checks that the
+grid fits the frame in both width _and_ depth, that the spheres stand on the floor, that the camera backs off and
+slides across to clear the control panel (measured from the DOM, not guessed, because the panel is styled in `rem`),
+that the close-up fills a third of the frame, and that the materials are physically plausible — metals fully
+metallic, dielectrics not, roughness spanning mirror to matte, glass's refractive index above water's. These are the
+failures a screenshot review misses.
+
+**Verified in-browser** (headless Chromium, WebGL2, tier C): 48 draw calls, 113,109 triangles, no page errors, no
+TSL errors, across three times of day and two HDRIs, plus a `?focus=chrome` close-up. Evidence in
+`/home/user/phase3-evidence/` (`studio-panel8.png`, `studio-focus-chrome3.png`, `studio-sunset.png`,
+`studio-dawn.png`, `studio-grid*.png`). The driving scene was re-verified after the content refactor: time, tier,
+post chain, draw calls, and triangles unchanged, no page errors.
+
+**Switches:** `?scene=studio`, `?hdri=<manifest id>`, `?rot=<degrees>`, `?time=<hours>`, `?focus=<material id>`,
+`?panel=0`. Keyboard: `P` hides the panel, `H` cycles the HDRI, `E` toggles image-based lighting, `,`/`.` rotate it,
+`←`/`→` move the hour, `R` reframes.
+
+**What the studio already earns its keep on.** Comparing `?hdri=hdri-ninomaru-teien-1k&time=12.5` with
+`?hdri=hdri-cedar-bridge-sunset-1k&time=6.5` shows the same materials under two completely different lights while
+the materials themselves stay recognisable — which is the property that has to hold before anything is authored
+against them. It also makes the clock's remaining gaps obvious: the backdrop is still a captured photograph, so at
+18:30 the world darkens while the sky's own colour does not change, and the exposure lift that keeps night readable
+flattens dawn and dusk under a captured sky.

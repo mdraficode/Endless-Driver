@@ -1,20 +1,17 @@
 import {
   AmbientLight,
-  BoxGeometry,
   Color,
   DirectionalLight,
   Fog,
   Mesh,
   PerspectiveCamera,
-  PlaneGeometry,
   Scene,
   Vector3,
   type BufferGeometry,
   type Material,
   type Object3D,
+  type Texture,
 } from 'three';
-import { MeshStandardNodeMaterial } from 'three/webgpu';
-import { uniform } from 'three/tsl';
 import { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
@@ -28,22 +25,31 @@ import { WORLD_CONFIG, type WorldConfig } from '../config/world';
 import type { DaylightState } from '../environment/EnvironmentClock';
 import type { Vec3 } from '../shared/vector';
 import { createAtmosphereSky } from '../shaders/atmosphere-sky';
-import { createGroundGridColorNode, linearColor } from '../shaders/ground-grid';
 import type { Viewport } from './Engine';
+import { createDrivingWorld } from '../world/DrivingWorld';
+import type { SceneContent, SceneContentFactory } from '../world/WorldContent';
 
 export interface SceneManagerOptions {
   readonly canvas: HTMLCanvasElement;
   readonly config: RenderConfig;
   readonly worldConfig?: WorldConfig;
   readonly aspect: number;
+  /**
+   * What occupies the scene. Defaults to the driving world; the studio look-dev scene passes its
+   * own material grid. Given the same environment either way — the lighting, shadows, and fog are
+   * not the content's business.
+   */
+  readonly content?: SceneContentFactory;
 }
 
 export interface SceneDiagnostics {
   readonly objectCount: number;
   /** Backdrop currently drawn: the procedural Preetham sky or an HDRI background. */
   readonly skyMode: 'procedural' | 'hdri';
+  /** Label of the mounted content: `driving`, `studio`, and so on. */
   /** Manifest id of the HDRI lighting the scene, or `null` while only the sun lights it. */
   readonly environmentId: string | null;
+  readonly contentKind: string;
   /** Sun elevation in degrees, or `null` before the first daylight update. */
   readonly sunElevationDegrees: number | null;
   readonly isNight: boolean;
@@ -89,13 +95,14 @@ export class SceneManager {
   readonly #sunOffset: Vector3;
   readonly #sunTarget = new Vector3();
   readonly #csm: CSMShadowNode | null;
+  readonly #content: SceneContent;
   readonly #fog: Fog | null;
   readonly #addedObjects = new Set<Object3D>();
   readonly #disposables: readonly (() => void)[];
   #environment: EnvironmentAsset | null = null;
   #daylight: DaylightState | null = null;
   readonly #sunDistance: number;
-  #environmentTexture: { dispose(): void } | null = null;
+  #environmentTexture: Texture | null = null;
   #disposed = false;
 
   constructor(options: SceneManagerOptions) {
@@ -130,8 +137,6 @@ export class SceneManager {
     this.controls.update();
 
     this.#sky = createAtmosphereSky(config);
-    const ground = createGround(worldConfig);
-    const obstacles = createObstacles(worldConfig);
     const ambient = new AmbientLight(
       config.lighting.ambientColor,
       config.lighting.ambientIntensity,
@@ -143,10 +148,9 @@ export class SceneManager {
     this.#sunOffset = new Vector3(...config.lighting.sunPosition).normalize();
     this.#csm = attachCascades(this.#sun, config);
 
-    this.scene.add(this.#sky, ground, ambient, this.#sun, this.#sun.target);
-    if (obstacles.length > 0) {
-      this.scene.add(...obstacles);
-    }
+    this.#content = (options.content ?? createDrivingWorld)({ config, worldConfig });
+
+    this.scene.add(this.#sky, ambient, this.#sun, this.#sun.target, this.#content.root);
 
     this.#disposables = [() => this.controls.dispose(), () => disposeObjectTree(this.scene)];
   }
@@ -158,13 +162,14 @@ export class SceneManager {
    * resolves, the scene is lit by the procedural sky and the directional sun alone, which is a valid
    * — if flatter — look, never a black scene.
    */
-  async loadEnvironment(): Promise<EnvironmentAsset | null> {
+  async loadEnvironment(assetId?: string): Promise<EnvironmentAsset | null> {
     if (this.#disposed || !this.#config.environment.enabled) {
       return null;
     }
+    const requestedId = assetId ?? this.#config.environment.assetId;
 
     try {
-      const asset = await loadEnvironmentAsset(this.#config.environment.assetId);
+      const asset = await loadEnvironmentAsset(requestedId);
       if (asset === null) {
         return null;
       }
@@ -183,16 +188,51 @@ export class SceneManager {
         // plane with depth writes off, so leaving it visible would paint straight over the HDRI.
         this.#sky.visible = false;
       }
+      // Swapping environments at runtime (the studio's HDRI switcher does) must not leak the
+      // previous radiance map: it is the largest texture the app holds.
+      this.#environmentTexture?.dispose();
       this.#environmentTexture = texture;
       this.#environment = asset;
     } catch (error) {
       console.warn(
-        `could not load the environment HDRI (${this.#config.environment.assetId}); ` +
+        `could not load the environment HDRI (${requestedId}); ` +
           'falling back to the procedural sky',
         error,
       );
     }
     return this.#environment;
+  }
+
+  /**
+   * Rotates the environment map around the world's vertical axis, in degrees.
+   *
+   * Rotating the *image* rather than the light is the standard look-dev control: it moves where the
+   * bright part of the sky sits relative to a surface without changing the sun.
+   */
+  setEnvironmentRotation(degrees: number): void {
+    this.scene.environmentRotation.y = degrees * DEG_TO_RAD;
+  }
+
+  /** Current environment rotation in degrees, for diagnostics. */
+  get environmentRotationDegrees(): number {
+    return this.scene.environmentRotation.y / DEG_TO_RAD;
+  }
+
+  /**
+   * Switches image-based lighting off, leaving only the sun, sky, and ambient fill.
+   *
+   * Worth having as a switch rather than a config value: the fastest way to find out whether a
+   * surface looks wrong because of its own parameters or because of the environment it is standing
+   * in is to take the environment away.
+   */
+  setEnvironmentEnabled(enabled: boolean): void {
+    if (enabled) {
+      if (this.#environmentTexture !== null) {
+        this.scene.environment = this.#environmentTexture;
+      }
+      return;
+    }
+    this.scene.environment = null;
   }
 
   /**
@@ -356,6 +396,7 @@ export class SceneManager {
     return {
       objectCount: this.getObjectCount(),
       skyMode: this.skyMode,
+      contentKind: this.#content.kind,
       environmentId: this.#environment?.id ?? null,
       sunElevationDegrees: this.#daylight?.sunElevationDegrees ?? null,
       isNight: this.#daylight?.isNight ?? false,
@@ -373,6 +414,8 @@ export class SceneManager {
     this.scene.background = null;
     this.#environmentTexture?.dispose();
     this.#environmentTexture = null;
+    // The content's own release hook, called before the generic tree sweep below.
+    this.#content.dispose();
     for (const dispose of this.#disposables) {
       dispose();
     }
@@ -394,45 +437,6 @@ function resolveFogColor(config: RenderConfig): Color {
   // 0 at the horizon, 1 once the sun is well up.
   const blend = Math.min(1, Math.max(0, (elevation - 0.08) / 0.35));
   return new Color(config.sky.fogColorHorizon).lerp(new Color(config.sky.fogColorDay), blend);
-}
-
-/**
- * Static obstacle meshes. These are still the Phase 1 reference blocks used as physics test targets;
- * the collider for each one is built by `PhysicsWorld` from the same definitions, so visuals and
- * colliders cannot drift apart. Phases 4-5 replace them with authored props.
- */
-function createObstacles(worldConfig: WorldConfig): Mesh[] {
-  return worldConfig.obstacles.map((obstacle) => {
-    const material = new MeshStandardNodeMaterial({
-      color: new Color(obstacle.color),
-      roughness: 0.8,
-      metalness: 0,
-    });
-    const mesh = new Mesh(new BoxGeometry(...obstacle.size), material);
-    mesh.name = `obstacle-${obstacle.id}`;
-    mesh.position.set(...obstacle.position);
-    mesh.castShadow = obstacle.castShadow;
-    mesh.receiveShadow = true;
-    return mesh;
-  });
-}
-
-function createGround(worldConfig: WorldConfig): Mesh {
-  const { ground } = worldConfig;
-  const material = new MeshStandardNodeMaterial({
-    name: 'ground',
-    roughness: ground.roughness,
-    metalness: ground.metalness,
-  });
-  material.colorNode = ground.grid.enabled
-    ? createGroundGridColorNode(ground)
-    : uniform(linearColor(ground.color));
-
-  const mesh = new Mesh(new PlaneGeometry(ground.size, ground.size), material);
-  mesh.name = 'ground-plane';
-  mesh.rotation.x = -Math.PI / 2;
-  mesh.receiveShadow = true;
-  return mesh;
 }
 
 /**

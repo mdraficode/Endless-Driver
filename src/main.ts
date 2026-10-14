@@ -1,6 +1,6 @@
 import './style.css';
 import { Application, type ApplicationOptions } from './core/Application';
-import { RENDER_CONFIG } from './config/render';
+import { RENDER_CONFIG, type RenderConfig } from './config/render';
 import { WORLD_CONFIG } from './config/world';
 import { loadRapier } from './physics/RapierModule';
 import {
@@ -12,10 +12,11 @@ import {
   resolveTier,
   type TierEnvironment,
 } from './core/QualityTier';
+import { StudioApplication, type StudioDiagnostics } from './lab/StudioApplication';
 import type { DiagnosticsSnapshot } from './ui/DiagnosticsOverlay';
 
 export interface EndlessDriverDebugHandle {
-  getDiagnostics(): DiagnosticsSnapshot;
+  getDiagnostics(): DiagnosticsSnapshot | StudioDiagnostics;
   pause(): void;
   resume(): void;
 }
@@ -33,6 +34,57 @@ function readTimeRequest(search: string): number | null {
   }
   const hour = Number.parseFloat(raw);
   return Number.isFinite(hour) && hour >= 0 && hour < 24 ? hour : null;
+}
+
+/**
+ * Reads the `?scene=` switch.
+ *
+ * The studio is a separate composition root rather than a mode on the driving application: it has no
+ * vehicle, no physics, and no track, and pretending otherwise would mean threading `if (studio)`
+ * through the whole driving path. Both share the engine, the scene manager, the lighting, and the
+ * post chain, which is what makes it an honest place to judge what the game will look like.
+ */
+function readSceneRequest(search: string): 'drive' | 'studio' {
+  return new URLSearchParams(search).get('scene') === 'studio' ? 'studio' : 'drive';
+}
+
+export interface StudioRequest {
+  readonly environmentId?: string;
+  readonly rotationDegrees?: number;
+  /** Material id to open the camera on, framed close up (`?focus=chrome`). */
+  readonly focus?: string;
+  /** `?panel=0` hides the control panel, for a clean capture. */
+  readonly showPanel: boolean;
+}
+
+/** Reads `?hdri=<manifest id>` and `?rot=<degrees>`, the studio's capture-friendly switches. */
+export function readStudioRequest(search: string): StudioRequest {
+  const params = new URLSearchParams(search);
+  const environmentId = params.get('hdri');
+  const rotation = Number.parseFloat(params.get('rot') ?? '');
+  const panel = params.get('panel');
+  const focus = params.get('focus');
+  return {
+    ...(environmentId === null || environmentId === '' ? {} : { environmentId }),
+    ...(Number.isFinite(rotation) ? { rotationDegrees: rotation } : {}),
+    ...(focus === null || focus === '' ? {} : { focus }),
+    showPanel: panel !== '0' && panel !== 'false',
+  };
+}
+
+/**
+ * Resolves the render configuration for this device: tier first (it decides the backend preference,
+ * pixel-ratio cap, and shadow budget), then any forced-backend switch on top.
+ */
+function resolveRenderConfig(): { config: RenderConfig; tier: ReturnType<typeof resolveTier> } {
+  const tier = resolveTier(probeEnvironment());
+  const backendPreference = readBackendRequest(window.location.search);
+  const config = applyBackendOverride(applyTier(RENDER_CONFIG, tier.id), backendPreference);
+  console.info(
+    `Endless Driver: ${describeTierDetail(tier)}` +
+      (backendPreference === null ? '' : `, backend forced to ${backendPreference}`),
+  );
+  return { config, tier };
 }
 
 /**
@@ -67,6 +119,7 @@ declare global {
 
 const canvas = document.querySelector<HTMLCanvasElement>('#viewport-canvas');
 const overlayRoot = document.querySelector<HTMLElement>('#diagnostics-overlay');
+const studioPanelRoot = document.querySelector<HTMLElement>('#studio-panel');
 const statusElement = document.querySelector<HTMLElement>('#scene-status');
 
 function setStatus(message: string | null, tone: 'info' | 'error' = 'info'): void {
@@ -90,7 +143,7 @@ function isDebugEnabled(): boolean {
   return import.meta.env.DEV || new URLSearchParams(window.location.search).has('debug');
 }
 
-async function start(): Promise<void> {
+async function startDrivingScene(): Promise<void> {
   if (!canvas) {
     reportStartupFailure(new Error('missing #viewport-canvas element'));
     return;
@@ -104,16 +157,7 @@ async function start(): Promise<void> {
     // initialise before the vehicle can be wired, and `WebGPURenderer` builds its device and
     // backend asynchronously. `start()` awaits the renderer and the environment HDRI.
     const rapier = await loadRapier();
-
-    // Tier selection happens before the renderer exists: it decides the backend preference, pixel
-    // ratio cap, shadow budget, and which backdrop is used.
-    const tier = resolveTier(probeEnvironment());
-    const backendPreference = readBackendRequest(window.location.search);
-    const config = applyBackendOverride(applyTier(RENDER_CONFIG, tier.id), backendPreference);
-    console.info(
-      `Endless Driver: ${describeTierDetail(tier)}` +
-        (backendPreference === null ? '' : `, backend forced to ${backendPreference}`),
-    );
+    const { config, tier } = resolveRenderConfig();
 
     const startHour = readTimeRequest(window.location.search);
     const options: ApplicationOptions = {
@@ -145,6 +189,76 @@ async function start(): Promise<void> {
       },
     };
   }
+}
+
+/**
+ * Boots the material studio.
+ *
+ * No Rapier and no vehicle, so the only async precondition is the renderer's device. The driving
+ * scene's HUD is hidden rather than reused: half of its rows report vehicle state that does not
+ * exist here, and a readout that lies is worse than no readout.
+ */
+async function startStudio(): Promise<void> {
+  if (!canvas) {
+    reportStartupFailure(new Error('missing #viewport-canvas element'));
+    return;
+  }
+
+  if (studioPanelRoot && readStudioRequest(window.location.search).showPanel) {
+    studioPanelRoot.hidden = false;
+  }
+  if (overlayRoot) {
+    overlayRoot.hidden = true;
+  }
+  setStatus('Loading the material studio…', 'info');
+
+  let studio: StudioApplication;
+  try {
+    const { config, tier } = resolveRenderConfig();
+    const startHour = readTimeRequest(window.location.search);
+    const request = readStudioRequest(window.location.search);
+
+    studio = await StudioApplication.create({
+      canvas,
+      config,
+      tier,
+      panelRoot: studioPanelRoot,
+      statusElement,
+      clock: startHour === null ? undefined : { startHour },
+      ...(request.environmentId === undefined ? {} : { environmentId: request.environmentId }),
+      ...(request.rotationDegrees === undefined
+        ? {}
+        : { rotationDegrees: request.rotationDegrees }),
+      ...(request.focus === undefined ? {} : { focus: request.focus }),
+      panel: request.showPanel,
+    });
+  } catch (error) {
+    reportStartupFailure(error);
+    return;
+  }
+
+  setStatus(null);
+  window.addEventListener('resize', () => {
+    studio.resize();
+  });
+
+  if (isDebugEnabled()) {
+    window.__ENDLESS_DRIVER__ = {
+      getDiagnostics: () => studio.getDiagnostics(),
+      pause: () => {
+        studio.dispose();
+      },
+      resume: () => undefined,
+    };
+  }
+}
+
+async function start(): Promise<void> {
+  if (readSceneRequest(window.location.search) === 'studio') {
+    await startStudio();
+    return;
+  }
+  await startDrivingScene();
 }
 
 void start();
