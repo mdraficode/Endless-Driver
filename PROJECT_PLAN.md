@@ -2,7 +2,7 @@
 
 **Planning baseline:** 2026-10-13 · **Visual-fidelity revision:** 2026-10-14  
 **Project stage:** Phases 1–2 implemented and pushed; Phases 3–8 (rearranged for the AAA-fidelity target) not started  
-**Development authorization:** Phases 1–2 only, per explicit user instruction; Phase 3 requires a new instruction  
+**Development authorization:** Phases 1–3 authorized; Phase 3 (renderer, lighting, post, asset/material pipeline) authorized 2026-10-14 and in progress  
 **Visual target:** [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) — the owner requires Forza-Horizon-class presentation; the evidence, feasibility boundaries, and rearranged roadmap are in [`docs/RESEARCH_AAA_FIDELITY.md`](docs/RESEARCH_AAA_FIDELITY.md)  
 **GitHub destination:** Public [`mdraficode/Endless-Driver`](https://github.com/mdraficode/Endless-Driver), branch `main`  
 **Remote synchronization:** Scaffold, documentation, Phase 1, and Phase 2 pushed and verified on `main`; CI runs on each push

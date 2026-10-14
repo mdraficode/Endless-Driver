@@ -13,8 +13,11 @@ This file is the first checkpoint for any assistant or contributor resuming the 
   - **Brand policy:** unbadged and fictional ("Kaminari" marque). No manufacturer names, badges, or trade dress anywhere, signage included.
   - **Audio:** free sample libraries (Sonniss GDC, Freesound CC0, Kenney CC0) plus a project-owned Web Audio engine synth; music from CC0 pools with CC-BY as an attributed fallback. **Photo mode** is in scope for Phase 8.
   - **Credited-asset rule (settled 2026-10-14):** the CC-BY-with-automatic-credit exception is kept, but CC0 is preferred whenever a comparable asset exists. Credits are written automatically into `CREDITS.md` and the in-game credits screen. Do not raise this as an open question again; it is a small, reversible implementation detail.
-- **Phase 3 is not authorized.** The next phase is now _renderer, lighting, post-processing, and the asset/material pipeline_; terrain and roads moved to Phase 4. Do not write rendering, terrain, road, streaming, or float-origin code until the user explicitly authorizes it.
-- Still unimplemented by design: terrain/streaming, vegetation/props, realistic car asset, seasons/weather, touch controls, post-processing, and the gameplay HUD.
+- On 2026-10-14 the user authorized **Phase 3**: renderer migration (WebGPU with the WebGL2 backend), colour pipeline and lighting, the post-processing stack, the asset pipeline, the tier system, and the look-dev scenes. Deliverables and acceptance criteria are in `PROJECT_PLAN.md` §9 (Phase 3).
+- **Phase 3 working rules:** TSL node materials only — never add `ShaderMaterial`, `RawShaderMaterial`, or `onBeforeCompile` (a check enforces this); post-processing goes through the TSL `RenderPipeline`; every effect is tier-gated in `src/config/quality.ts` and reported in diagnostics; rendering changes are validated on both backends where the sandbox permits, and the sandbox may only assert correctness, never frame rate.
+- **Phase 4 is not authorized.** Terrain, roads, streaming, and float-origin handling stay out of the codebase.
+- Still unimplemented by design: terrain/streaming, vegetation/props, the hero car asset, seasons/weather, touch controls, and the gameplay HUD.
+- Asset acquisition is scripted: `npm run assets:fetch` (pinned, hashed) and `npm run assets:verify` (CI; never touches the network). Never add an asset by hand or commit a file the manifest does not describe.
 - `src/main.ts` is the browser entrypoint and `src/core/Application.ts` is the composition root. Runtime tests live in `tests/unit/`, `tests/physics/`, and `tests/integration/`; the old scaffold-entrypoint guard has been removed.
 - Do not begin the next phase automatically after completing an authorized phase.
 
