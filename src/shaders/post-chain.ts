@@ -1,6 +1,17 @@
-import { float, mrt, normalView, output, pass, renderOutput, screenUV, vec2 } from 'three/tsl';
+import {
+  float,
+  mrt,
+  normalView,
+  output,
+  pass,
+  renderOutput,
+  screenUV,
+  uniform,
+  vec2,
+  vec4,
+} from 'three/tsl';
 import { RenderPipeline } from 'three/webgpu';
-import type { Camera, Scene } from 'three';
+import { Vector3, type Camera, type Scene } from 'three';
 import type { Node, WebGPURenderer } from 'three/webgpu';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
@@ -30,13 +41,23 @@ const asColor = (node: unknown): ColorNode => node as ColorNode;
  * frame went through.
  */
 export type PostEffectName =
-  'ao' | 'bloom' | 'smaa' | 'chromaticAberration' | 'sharpen' | 'filmGrain' | 'vignette' | 'fxaa';
+  | 'ao'
+  | 'grade'
+  | 'bloom'
+  | 'smaa'
+  | 'chromaticAberration'
+  | 'sharpen'
+  | 'filmGrain'
+  | 'vignette'
+  | 'fxaa';
 
 /**
  * Canonical order. The constraints that fix it:
  *
  * - ambient occlusion modulates *lighting*, so it is applied to the scene pass while the image is
  *   still linear HDR — not as a link in the display chain;
+ * - the grade is a linear-light multiplier, so it sits in the HDR stage too, ahead of bloom so the
+ *   highlights it warms are the ones that bloom;
  * - bloom is additive light, so it belongs in linear HDR before tone mapping;
  * - SMAA is documented as requiring **pre**-sRGB input, while FXAA requires **post**-sRGB input —
  *   they are the same stage conceptually but sit on opposite sides of the colour-space conversion;
@@ -46,6 +67,7 @@ export type PostEffectName =
  */
 const EFFECT_ORDER: readonly PostEffectName[] = [
   'ao',
+  'grade',
   'bloom',
   'smaa',
   'chromaticAberration',
@@ -64,6 +86,7 @@ export function resolvePostEffects(config: RenderConfig): PostEffectName[] {
 
   const enabled = new Set<PostEffectName>();
   if (postProcessing.ambientOcclusion.enabled) enabled.add('ao');
+  if (postProcessing.grade.enabled) enabled.add('grade');
   if (postProcessing.bloom.enabled) enabled.add('bloom');
   if (postProcessing.antiAliasing === 'smaa') enabled.add('smaa');
   if (postProcessing.chromaticAberration.enabled) enabled.add('chromaticAberration');
@@ -104,6 +127,15 @@ export interface PostChain {
   readonly pipeline: RenderPipeline;
   readonly scenePass: ReturnType<typeof pass>;
   readonly effects: readonly PostEffectName[];
+  /**
+   * Live linear-RGB multiplier for the grade, mutated in place by `Engine.setGrade()`.
+   *
+   * It is a plain vector rather than a setter because TSL uniform nodes read `.value` at draw time:
+   * writing `set()` on the same instance updates the next frame with no graph rebuild, exactly like
+   * `renderer.toneMappingExposure`. The vector is neutral when the grade effect is not in the chain,
+   * so a caller that writes to it unconditionally still cannot tint a frame it did not ask for.
+   */
+  readonly gradeTint: Vector3;
 }
 
 export interface PostChainOptions {
@@ -148,8 +180,13 @@ export function buildPostChain(options: PostChainOptions): PostChain {
   }
 
   let color: ColorNode = asColor(scenePass.getTextureNode('output'));
+  const gradeTint = new Vector3(1, 1, 1);
 
   // --- linear HDR stage ----------------------------------------------------------------------
+  if (effects.includes('grade')) {
+    // One `vec4` multiply: the tint is a colour, so the alpha channel is left alone.
+    color = asColor(color.mul(vec4(uniform(gradeTint), 1)));
+  }
   if (effects.includes('bloom')) {
     const bloomConfig = config.postProcessing.bloom;
     color = asColor(
@@ -198,5 +235,5 @@ export function buildPostChain(options: PostChainOptions): PostChain {
   const pipeline = new RenderPipeline(renderer, color);
   pipeline.outputColorTransform = !ownsOutput;
 
-  return { pipeline, scenePass, effects };
+  return { pipeline, scenePass, effects, gradeTint };
 }

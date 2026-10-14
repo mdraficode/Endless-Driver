@@ -384,9 +384,34 @@ export class Application {
    * there is no way for the scene to be lit by a different sun than the one the clock reports.
    */
   #applyDaylight(): void {
-    this.#daylight = this.#clock.daylight();
-    this.#scene.applyDaylight(this.#daylight);
-    this.#engine.setExposure(this.#daylight.exposure);
+    const state = this.#clock.daylight();
+    this.#daylight = state;
+    this.#scene.applyDaylight(state);
+    this.#engine.setExposure(state.exposure);
+    this.#engine.setGrade(this.#resolveGradeTint(state));
+  }
+
+  /**
+   * Scales the daylight grade by how much the sky can colour itself.
+   *
+   * A captured HDRI backdrop only dims, so it takes the full tint; the procedural sky reddens on its
+   * own from the same clock values, so it takes a fraction of it. The scene reports which backdrop is
+   * in use, so this needs no second source of truth.
+   */
+  #resolveGradeTint(state: DaylightState): { r: number; g: number; b: number } {
+    const daylightConfig = this.#clock.config;
+    const strength =
+      this.#scene.skyMode === 'hdri'
+        ? daylightConfig.gradeStrengthBackdrop
+        : daylightConfig.gradeStrengthProcedural;
+    const { r, g, b } = state.gradeTint;
+
+    // Blended towards neutral white rather than scaled to zero: an untouched frame means 1, not 0.
+    return {
+      r: 1 + (r - 1) * strength,
+      g: 1 + (g - 1) * strength,
+      b: 1 + (b - 1) * strength,
+    };
   }
 
   /**

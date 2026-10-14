@@ -145,12 +145,18 @@ order, and every effect is individually toggleable through configuration:
 | Stage                   | Effects                                                       | State   |
 | ----------------------- | ------------------------------------------------------------- | ------- |
 | Scene (linear HDR)      | ambient occlusion (GTAO), applied via the scene pass          | Shipped |
-| Linear HDR              | bloom                                                         | Shipped |
+| Linear HDR              | time-of-day grade, then bloom                                 | Shipped |
 | Pre-sRGB                | SMAA                                                          | Shipped |
 | Colour-space conversion | tone mapping + sRGB (once)                                    | Shipped |
 | Display-referred        | chromatic aberration, sharpening (RCAS), film grain, vignette | Shipped |
 | Post-sRGB               | FXAA                                                          | Shipped |
 | Pending                 | depth of field, motion blur, TAAU/TRAA, LUT grading, god rays | Not yet |
+
+The time-of-day grade is in the linear stage on purpose. It is a per-frame RGB multiplier resolved from the clock
+(`src/environment/EnvironmentClock.ts`) and needed because a _captured_ HDRI backdrop can only be dimmed — it cannot
+redden as the sun drops, so dawn and dusk would otherwise read as a dimmed noon under a bright sky. Grading before
+the tone curve warms the sky, the fog, and the shadowed sides of the world together, and cannot clip highlights
+because the tone curve runs afterwards. A LUT, when it lands, belongs in the same place.
 
 Two ordering constraints are not preferences and must survive future edits: **SMAA requires pre-sRGB input while
 FXAA requires post-sRGB input**, and **sharpening must precede grain** or it amplifies the noise the grain adds.

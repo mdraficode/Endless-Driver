@@ -439,3 +439,45 @@ with the clock but cannot redden the way the procedural sky does, so dawn reads 
 sunrise, and the exposure lift that keeps night readable flattens the dawn/noon contrast (dawn is 89% of noon's
 luminance). A time-of-day grade — or a tinted background node — is the fix, and it belongs with the Phase 3
 grading work rather than with the clock.
+
+## 15. Time-of-day grade (2026-10-14)
+
+The clock landed first and immediately showed its own worst limitation in a screenshot: at 06:30 the frame was
+89% as bright as noon and no warmer, because tier C's backdrop is a **captured** daylight HDRI. A capture can be
+dimmed; unlike the procedural sky it cannot redden as the sun drops, so dawn read as a dimmed noon under a bright
+sky.
+
+The fix is a grade stage in the post chain — a per-frame linear-RGB multiplier, applied in the HDR stage before
+bloom. It is the mechanism a LUT will later plug into, and it sits before the tone curve on purpose: it warms the
+captured sky, the fog, and the shadowed sides of the world together, and it cannot clip highlights, because the
+tone curve runs afterwards. `Engine.setGrade()` writes one `Vector3` that the TSL uniform reads at draw time, so
+this costs a vector write per frame and never rebuilds the pipeline — the same trick as `toneMappingExposure`.
+
+**The first version of the tint was wrong, and measuring caught it.** It reused the lighting's `dayFactor`/
+`horizonFactor` blend, which sounded tidy — one curve family for everything — but a golden hour is a band of sun
+_heights_, not a fraction of full daylight. Hung off `dayFactor`, the warmth was gone within half an hour of
+sunrise: at 06:30 the resolved tint was (1.001, 0.980, 0.966), effectively neutral. The tint now keys on elevation
+directly, with three weights that always sum to one: night below −8°, golden from −2° to +8°, neutral above 30°.
+That gives a real golden hour — full warmth from sunrise until roughly 08:40, and again from about 16:50 — and the
+tint is nearly luminance-preserving (0.95 of neutral) so the phase changes cannot be mistaken for exposure drift.
+Both facts are now asserted in `tests/unit/environment-clock.test.ts`, including that morning and evening grade
+identically at the same sun height.
+
+**Strength depends on the sky.** `SceneManager.skyMode` reports whether the backdrop is captured or procedural; a
+capture takes the full tint, the procedural sky — which already colours itself from the same clock values — takes
+0.35 of it. There is no second source of truth and no new switch to keep in sync.
+
+**Verified in-browser** (headless Chromium, WebGL2, tier C, local dev server; mean over the right two thirds of the
+frame, HUD excluded; `/home/user/phase3-evidence/`):
+
+| Time         | HUD row                   | Mean luminance       | Warmth (R/B)  |
+| ------------ | ------------------------- | -------------------- | ------------- |
+| `?time=6.5`  | `06:30 · sun 6°`          | 137 → 128 (grade on) | 0.938 → 1.032 |
+| `?time=12.5` | `12:30 · sun 53°`         | 154 → 146            | 0.976 → 0.978 |
+| `?time=18.5` | `18:30 · sun -6° · night` | 50 → 46              | 0.742 → 0.637 |
+
+Dawn warms by ~10% on screen and night cools by ~14%, while noon is untouched — the grade does nothing when the
+sun is up, which is the point. The numbers are smaller than the tint values because the measurement is taken after
+tone mapping and sRGB encoding: a ×1.36 linear red/blue ratio reaches a display-referred image as roughly ×1.14.
+The post chain, tier, and backend are otherwise unchanged (`grade → bloom → chromaticAberration → sharpen →
+vignette → fxaa`), with no page errors and no TSL errors.

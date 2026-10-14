@@ -14,6 +14,7 @@ const BARE: RenderConfig = {
   postProcessing: {
     ...RENDER_CONFIG.postProcessing,
     antiAliasing: 'none',
+    grade: { ...RENDER_CONFIG.postProcessing.grade, enabled: false },
     bloom: { ...RENDER_CONFIG.postProcessing.bloom, enabled: false },
     ambientOcclusion: { ...RENDER_CONFIG.postProcessing.ambientOcclusion, enabled: false },
     chromaticAberration: {
@@ -51,6 +52,7 @@ describe('post-effect selection and order', () => {
   it('returns only the enabled effects, always in canonical order', () => {
     const all = withEffects({
       antiAliasing: 'smaa',
+      grade: { ...BARE.postProcessing.grade, enabled: true },
       bloom: { ...BARE.postProcessing.bloom, enabled: true },
       ambientOcclusion: { ...BARE.postProcessing.ambientOcclusion, enabled: true },
       chromaticAberration: { ...BARE.postProcessing.chromaticAberration, enabled: true },
@@ -61,6 +63,7 @@ describe('post-effect selection and order', () => {
 
     expect(resolvePostEffects(all)).toEqual([
       'ao',
+      'grade',
       'bloom',
       'smaa',
       'chromaticAberration',
@@ -104,6 +107,27 @@ describe('post-effect selection and order', () => {
     expect(effects.indexOf('vignette')).toBeGreaterThan(effects.indexOf('filmGrain'));
   });
 
+  it('grades the frame in linear light, before bloom and before tone mapping', () => {
+    const graded = withEffects({
+      antiAliasing: 'smaa',
+      grade: { ...BARE.postProcessing.grade, enabled: true },
+      bloom: { ...BARE.postProcessing.bloom, enabled: true },
+      ambientOcclusion: { ...BARE.postProcessing.ambientOcclusion, enabled: true },
+    });
+    const effects = resolvePostEffects(graded);
+
+    expect(effects).toContain('grade');
+    // The tint is a light multiplier, so it must land while the image is still linear HDR: ahead of
+    // bloom (so it warms the highlights that bloom) and ahead of the colour-space conversion, which
+    // is the signal that SMAA sees it pre-sRGB like every other linear effect.
+    expect(effects.indexOf('grade')).toBeGreaterThan(effects.indexOf('ao'));
+    expect(effects.indexOf('grade')).toBeLessThan(effects.indexOf('bloom'));
+    expect(effects.indexOf('grade')).toBeLessThan(effects.indexOf('smaa'));
+    // It needs neither the normals attachment nor ownership of the output transform.
+    expect(requiresSceneNormals(['grade'])).toBe(false);
+    expect(chainsOwnsOutputTransform(['grade'])).toBe(false);
+  });
+
   it('knows which effects need scene normals and which own the output transform', () => {
     expect(requiresSceneNormals(['ao'])).toBe(true);
     expect(requiresSceneNormals(['bloom', 'vignette'])).toBe(false);
@@ -143,6 +167,13 @@ describe('post stack per tier', () => {
     expect(tierB.postProcessing.ambientOcclusion.enabled).toBe(true);
     expect(tierB.postProcessing.ambientOcclusion.resolutionScale).toBe(0.5);
     expect(resolvePostEffects(tierB)).toContain('ao');
+
+    // The time-of-day grade is on at every tier: it is a vector multiply, and it is what keeps a
+    // captured backdrop in step with the clock.
+    for (const tier of [tierC, tierB, tierA]) {
+      expect(tier.postProcessing.grade.enabled).toBe(true);
+      expect(resolvePostEffects(tier)).toContain('grade');
+    }
 
     // Tier A: ambient occlusion at full resolution, with more samples, plus grain.
     expect(tierA.postProcessing.ambientOcclusion.resolutionScale).toBe(1);

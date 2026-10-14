@@ -18,6 +18,13 @@ import {
 } from '../config/render';
 import { clampFrameDelta, resolvePixelRatio } from '../shared/math';
 
+/**
+ * Bounds for the grade multiplier. A grade is a *look*, not a light: anything outside this band is a
+ * sign that the daylight curves have gone wrong, so the value is clamped rather than trusted.
+ */
+const MIN_GRADE = 0.25;
+const MAX_GRADE = 4;
+
 export interface Viewport {
   /** CSS pixels. */
   readonly width: number;
@@ -199,6 +206,23 @@ export class Engine {
     if (Number.isFinite(exposure) && exposure > 0) {
       this.#renderer.toneMappingExposure = exposure;
     }
+  }
+
+  /**
+   * Sets the time-of-day grade: a linear-RGB multiplier applied to the frame before tone mapping.
+   *
+   * Like exposure, this is a live uniform inside the node graph, so it costs nothing but a vector
+   * write per frame and never rebuilds the pipeline. Values are clamped to a sane band and rejected
+   * outright if they are not finite, so a bad solar solve cannot bleach the image.
+   */
+  setGrade(tint: { readonly r: number; readonly g: number; readonly b: number }): void {
+    const { gradeTint } = this.#chain ?? {};
+    if (gradeTint === undefined) {
+      return;
+    }
+    const clamp = (value: number) =>
+      Number.isFinite(value) ? Math.min(MAX_GRADE, Math.max(MIN_GRADE, value)) : 1;
+    gradeTint.set(clamp(tint.r), clamp(tint.g), clamp(tint.b));
   }
 
   /**

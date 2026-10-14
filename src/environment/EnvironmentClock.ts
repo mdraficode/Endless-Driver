@@ -42,6 +42,13 @@ export interface DaylightState {
   readonly turbidity: number;
   readonly rayleigh: number;
   readonly showSunDisc: boolean;
+
+  /**
+   * Linear-RGB multiplier for the time-of-day grade, resolved from the same three phases as the
+   * lighting. The *strength* is not here: how much of the tint survives depends on whether the sky
+   * is a captured backdrop or a procedural one, which is a property of the scene, not of the sun.
+   */
+  readonly gradeTint: { readonly r: number; readonly g: number; readonly b: number };
 }
 
 const HOURS_PER_DAY = 24;
@@ -109,6 +116,37 @@ function phasedColor(
   horizonFactor: number,
 ): number {
   return mixColor(mixColor(night, horizon, horizonFactor), day, dayFactor);
+}
+
+/**
+ * The time-of-day grade, as a linear-RGB multiplier.
+ *
+ * Colours and tints are represented differently on purpose: a colour fits in 24 bits, but a grade
+ * multiplier is not a colour — it can be above 1, it is never displayed, and it is consumed as three
+ * floats. So tints live as triples in the config and are blended per component.
+ *
+ * The phases are weighted by sun elevation rather than by `dayFactor`: a golden hour is a band of
+ * sun heights, so the tint stays on until the sun is well up and cannot vanish the moment it rises.
+ * The three weights always sum to one, and the phase boundaries are chosen so night and day never
+ * overlap — a frame is never asked to be moonlit and golden at the same time.
+ */
+function resolveGradeTint(
+  config: DaylightConfig,
+  elevationDegrees: number,
+): { r: number; g: number; b: number } {
+  const night = 1 - smoothstep(config.gradeNightElevation, 0, elevationDegrees);
+  const day = smoothstep(config.gradeGoldenElevation, config.gradeDayElevation, elevationDegrees);
+  const golden = Math.max(0, 1 - night - day);
+
+  const [nightR, nightG, nightB] = config.gradeNightTint;
+  const [goldenR, goldenG, goldenB] = config.gradeGoldenTint;
+  const [dayR, dayG, dayB] = config.gradeDayTint;
+
+  return {
+    r: day * dayR + golden * goldenR + night * nightR,
+    g: day * dayG + golden * goldenG + night * nightG,
+    b: day * dayB + golden * goldenB + night * nightB,
+  };
 }
 
 /** Time-of-day state: wraps hours, advances them, and reports the sun's position. */
@@ -237,5 +275,7 @@ export function resolveDaylight(sun: SunPosition, config: DaylightConfig): Dayli
       horizonFactor,
     ),
     showSunDisc: elevationDegrees > config.sunDiscElevation,
+
+    gradeTint: resolveGradeTint(config, elevationDegrees),
   };
 }

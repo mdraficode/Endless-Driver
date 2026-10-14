@@ -238,9 +238,24 @@ export interface VignetteConfig {
   readonly smoothness: number;
 }
 
+/**
+ * Time-of-day grade.
+ *
+ * A linear-space RGB multiplier resolved from the clock (`config/daylight.ts` owns the tint values).
+ * It exists because the tier-C backdrop is a *captured* daylight HDRI: it can be dimmed, but unlike
+ * the procedural sky it cannot colour itself as the sun drops, so dawn and dusk would otherwise read
+ * as a dimmed noon. The grade multiplies the whole frame — backdrop included — in the linear stage
+ * before tone mapping, which is where a creative grade belongs: it warms the sky and the shadows
+ * together, and it cannot crush highlights, because the tone curve runs afterwards.
+ */
+export interface GradeConfig {
+  readonly enabled: boolean;
+}
+
 export interface PostProcessingConfig {
   readonly enabled: boolean;
   readonly antiAliasing: AntiAliasingMode;
+  readonly grade: GradeConfig;
   readonly bloom: BloomConfig;
   readonly ambientOcclusion: AmbientOcclusionConfig;
   readonly chromaticAberration: ChromaticAberrationConfig;
@@ -370,6 +385,9 @@ export const RENDER_CONFIG: RenderConfig = {
       intensity: 0.85,
       samples: 16,
       scale: 1.2,
+    },
+    grade: {
+      enabled: true,
     },
     chromaticAberration: {
       enabled: true,

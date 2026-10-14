@@ -335,6 +335,14 @@ export class SceneManager {
     this.camera.updateProjectionMatrix();
   }
 
+  /**
+   * Which backdrop is drawn: the procedural Preetham sky, or the captured HDRI. The difference
+   * matters to the time-of-day grade — a capture can only be dimmed, so it takes the full tint.
+   */
+  get skyMode(): 'procedural' | 'hdri' {
+    return this.scene.background === null ? 'procedural' : 'hdri';
+  }
+
   getObjectCount(): number {
     let count = 0;
     this.scene.traverse(() => {
@@ -347,7 +355,7 @@ export class SceneManager {
     const { x, y, z } = this.camera.position;
     return {
       objectCount: this.getObjectCount(),
-      skyMode: this.scene.background === null ? 'procedural' : 'hdri',
+      skyMode: this.skyMode,
       environmentId: this.#environment?.id ?? null,
       sunElevationDegrees: this.#daylight?.sunElevationDegrees ?? null,
       isNight: this.#daylight?.isNight ?? false,

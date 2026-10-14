@@ -54,6 +54,43 @@ export interface DaylightConfig {
   readonly exposureNight: number;
   readonly exposureDay: number;
 
+  /**
+   * Time-of-day grade: a linear-RGB multiplier for the whole frame, per phase.
+   *
+   * These are not lighting values — they are a creative grade, and they exist to cover a specific
+   * hole. The tier-C backdrop is a captured daylight HDRI, and unlike the procedural sky it cannot
+   * redden as the sun drops; it can only be dimmed. Left alone, dawn reads as a slightly dim noon
+   * with a bright sky. Multiplying the frame warms the captured sky and the shadowed sides of the
+   * world together, which is what a real sunrise does to a photograph of one.
+   *
+   * Values below 1 darken their channel, above 1 brighten it. Day is neutral: nothing is graded when
+   * the sun is up, so the grade never fights the physical lighting.
+   */
+  readonly gradeDayTint: readonly [number, number, number];
+  readonly gradeGoldenTint: readonly [number, number, number];
+  readonly gradeNightTint: readonly [number, number, number];
+
+  /**
+   * Where the grade changes hands, in degrees of sun elevation.
+   *
+   * The grade keys on elevation directly instead of reusing the lighting's `dayFactor`, because a
+   * golden hour is a band of sun *heights*, not a fraction of full daylight: hanging it off
+   * `dayFactor` faded the warmth out within half an hour of sunrise, which is not how a morning
+   * looks. Golden is at full strength from `gradeNightElevation` up to `gradeGoldenElevation`, then
+   * fades to nothing by `gradeDayElevation`.
+   */
+  readonly gradeGoldenElevation: number;
+  readonly gradeDayElevation: number;
+  readonly gradeNightElevation: number;
+
+  /**
+   * How much of the tint survives, per sky mode. Full strength under a captured backdrop, which is
+   * the case the grade exists for; a third under the procedural sky, which already colours itself
+   * with the same clock values, so the grade is only asked for a little extra cohesion.
+   */
+  readonly gradeStrengthBackdrop: number;
+  readonly gradeStrengthProcedural: number;
+
   /** Atmospheric scattering over the day. */
   readonly turbidityNight: number;
   readonly turbidityHorizon: number;
@@ -91,6 +128,20 @@ export const DAYLIGHT_CONFIG: DaylightConfig = {
 
   exposureNight: 1.45,
   exposureDay: 1,
+
+  gradeDayTint: [1, 1, 1],
+  // Golden and a touch darker: warm the light, and let the frame lose a little brightness so dawn
+  // still reads as an edge of the day rather than as an alternative noon.
+  gradeGoldenTint: [1.06, 0.93, 0.78],
+  // Moonlight is blue and dim. Kept mild: the scene must stay legible, not stylised.
+  gradeNightTint: [0.88, 0.95, 1.14],
+  // Full warmth up to ~08:40 in the morning and from ~16:50 in the evening at this latitude and
+  // date, gone by a sun height of 30°, moonlight from civil twilight onwards.
+  gradeGoldenElevation: 8,
+  gradeDayElevation: 30,
+  gradeNightElevation: -8,
+  gradeStrengthBackdrop: 1,
+  gradeStrengthProcedural: 0.35,
 
   turbidityNight: 1.6,
   turbidityHorizon: 4.2,

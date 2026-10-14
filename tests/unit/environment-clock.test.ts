@@ -221,6 +221,63 @@ describe('daylight curves', () => {
     }
   });
 
+  it('holds the golden tint through the golden hour and drops it by mid-morning', () => {
+    // The tint keys on sun height, not on how much daylight there is, so it must still be at full
+    // strength half an hour after sunrise — the failure mode this guards against is a warm dawn
+    // that turns neutral the moment the sun clears the horizon.
+    const early = at(6.5); // sun just up
+    const lateMorning = at(9.5); // sun high
+    const [goldenR, goldenG, goldenB] = config.gradeGoldenTint;
+
+    expect(early.gradeTint.r).toBeCloseTo(goldenR, 5);
+    expect(early.gradeTint.g).toBeCloseTo(goldenG, 5);
+    expect(early.gradeTint.b).toBeCloseTo(goldenB, 5);
+
+    // The same sun height in the afternoon grades identically: morning and evening are one curve.
+    expect(at(17.5).gradeTint).toEqual(early.gradeTint);
+    const [dayR, dayG, dayB] = config.gradeDayTint;
+    expect(lateMorning.gradeTint).toEqual({ r: dayR, g: dayG, b: dayB });
+  });
+
+  it('grades the frame neutral at noon, warm at the horizon, and cool at night', () => {
+    const noon = at(12.5).gradeTint;
+    const dusk = at(17.5).gradeTint;
+    const midnight = at(0).gradeTint;
+
+    // Nothing is graded while the sun is up: the physical lighting is the look.
+    expect(noon.r).toBeCloseTo(1, 2);
+    expect(noon.g).toBeCloseTo(1, 2);
+    expect(noon.b).toBeCloseTo(1, 2);
+
+    // Sunset pushes red and pulls blue, which is what reddens a captured backdrop that cannot
+    // colour itself, and it darkens slightly so dawn and dusk do not read as an alternative noon.
+    expect(dusk.r).toBeGreaterThan(dusk.b);
+    expect(dusk.b).toBeLessThan(1);
+    expect(dusk.g).toBeLessThan(dusk.r);
+    const duskLuminance = 0.2126 * dusk.r + 0.7152 * dusk.g + 0.0722 * dusk.b;
+    expect(duskLuminance).toBeLessThan(1);
+
+    // Night is moonlight: blue, and never so dark or so saturated that the scene stops reading.
+    expect(midnight.b).toBeGreaterThan(midnight.r);
+    for (const state of [noon, dusk, midnight]) {
+      for (const channel of [state.r, state.g, state.b]) {
+        expect(Number.isFinite(channel)).toBe(true);
+        expect(channel).toBeGreaterThan(0.5);
+        expect(channel).toBeLessThan(1.5);
+      }
+    }
+  });
+
+  it('keeps both grade strengths in range, backdrop at least as strong as the sky', () => {
+    // A captured backdrop can only be dimmed, so it needs the tint at least as much as the
+    // procedural sky, which already reddens on its own.
+    expect(config.gradeStrengthBackdrop).toBeGreaterThanOrEqual(config.gradeStrengthProcedural);
+    for (const strength of [config.gradeStrengthBackdrop, config.gradeStrengthProcedural]) {
+      expect(strength).toBeGreaterThan(0);
+      expect(strength).toBeLessThanOrEqual(1);
+    }
+  });
+
   it('reports the resolved state through the clock', () => {
     const clock = new EnvironmentClock({ startHour: 12 });
     const state = clock.daylight();
