@@ -25,6 +25,7 @@ import {
 } from '../assets/AssetManifest';
 import type { RenderConfig } from '../config/render';
 import { WORLD_CONFIG, type WorldConfig } from '../config/world';
+import type { DaylightState } from '../environment/EnvironmentClock';
 import type { Vec3 } from '../shared/vector';
 import { createAtmosphereSky } from '../shaders/atmosphere-sky';
 import { createGroundGridColorNode, linearColor } from '../shaders/ground-grid';
@@ -43,6 +44,9 @@ export interface SceneDiagnostics {
   readonly skyMode: 'procedural' | 'hdri';
   /** Manifest id of the HDRI lighting the scene, or `null` while only the sun lights it. */
   readonly environmentId: string | null;
+  /** Sun elevation in degrees, or `null` before the first daylight update. */
+  readonly sunElevationDegrees: number | null;
+  readonly isNight: boolean;
   readonly cameraPosition: { readonly x: number; readonly y: number; readonly z: number };
 }
 
@@ -79,6 +83,9 @@ export class SceneManager {
   readonly #config: RenderConfig;
   readonly #sky: SkyMesh;
   readonly #sun: DirectionalLight;
+  readonly #ambient: AmbientLight;
+  /** Unit vector toward the sun, replaced by each daylight update. */
+  readonly #sunDirection = new Vector3(0, 1, 0);
   readonly #sunOffset: Vector3;
   readonly #sunTarget = new Vector3();
   readonly #csm: CSMShadowNode | null;
@@ -86,6 +93,8 @@ export class SceneManager {
   readonly #addedObjects = new Set<Object3D>();
   readonly #disposables: readonly (() => void)[];
   #environment: EnvironmentAsset | null = null;
+  #daylight: DaylightState | null = null;
+  readonly #sunDistance: number;
   #environmentTexture: { dispose(): void } | null = null;
   #disposed = false;
 
@@ -95,6 +104,7 @@ export class SceneManager {
     const aspect = Number.isFinite(options.aspect) && options.aspect > 0 ? options.aspect : 1;
 
     this.#config = config;
+    this.#sunDistance = config.lighting.sunDistance;
     this.scene = new Scene();
     this.#fog = config.sky.fogEnabled
       ? new Fog(resolveFogColor(config), config.sky.fogNear, config.sky.fogFar)
@@ -126,8 +136,11 @@ export class SceneManager {
       config.lighting.ambientColor,
       config.lighting.ambientIntensity,
     );
+    this.#ambient = ambient;
     this.#sun = createSun(config);
-    this.#sunOffset = new Vector3(...config.lighting.sunPosition);
+    // The configured sun position is the initial direction; `applyDaylight` replaces it once the
+    // application has resolved the time of day, and `focusSun` places the light from it each frame.
+    this.#sunOffset = new Vector3(...config.lighting.sunPosition).normalize();
     this.#csm = attachCascades(this.#sun, config);
 
     this.scene.add(this.#sky, ground, ambient, this.#sun, this.#sun.target);
@@ -259,9 +272,57 @@ export class SceneManager {
     const z = Math.round(position.z / SHADOW_FOCUS_SNAP) * SHADOW_FOCUS_SNAP;
     this.#sunTarget.set(x, 0, z);
     this.#sun.target.position.copy(this.#sunTarget);
-    this.#sun.position.set(x + this.#sunOffset.x, this.#sunOffset.y, z + this.#sunOffset.z);
+    this.#sun.position.set(
+      x + this.#sunOffset.x * this.#sunDistance,
+      this.#sunOffset.y * this.#sunDistance,
+      z + this.#sunOffset.z * this.#sunDistance,
+    );
     this.#sun.target.updateMatrixWorld();
     this.#sun.updateMatrixWorld();
+  }
+
+  /**
+   * Applies a resolved time of day to everything the scene owns.
+   *
+   * One call, one source of truth: the sun's direction, colour, and strength, the ambient fill, the
+   * atmosphere's scattering and sun disc, the fog tint, and the intensity of the image-based
+   * lighting all come from the same `DaylightState`. Nothing recomputes the sun separately, so the
+   * sky, the shadows, and the light on the car can never disagree about where the sun is.
+   *
+   * The procedural sky always follows the clock. When the configuration makes the HDRI the backdrop
+   * (tier C) that texture is a fixed daylight capture, so only its intensity is modulated — the sky
+   * does not redden. That limitation is recorded in the handoff rather than hidden.
+   */
+  applyDaylight(state: DaylightState): void {
+    const direction = this.#sunDirection.set(
+      state.sunDirection.x,
+      state.sunDirection.y,
+      state.sunDirection.z,
+    );
+    this.#sunOffset.copy(direction);
+
+    this.#sun.color.setHex(state.sunColorHex);
+    this.#sun.intensity = state.sunIntensity;
+    this.#ambient.color.setHex(state.ambientColorHex);
+    this.#ambient.intensity = state.ambientIntensity;
+
+    // The sky model reads the vertical component as a distance, so the unit direction is scaled.
+    const sunDistance = this.#config.atmosphere.sunDistance;
+    this.#sky.sunPosition.value.set(
+      direction.x * sunDistance,
+      direction.y * sunDistance,
+      direction.z * sunDistance,
+    );
+    this.#sky.turbidity.value = state.turbidity;
+    this.#sky.rayleigh.value = state.rayleigh;
+    this.#sky.showSunDisc.value = state.showSunDisc ? 1 : 0;
+
+    this.#fog?.color.setHex(state.fogColorHex);
+    this.scene.environmentIntensity = state.environmentIntensity;
+    if (this.scene.background !== null) {
+      this.scene.backgroundIntensity = state.environmentIntensity;
+    }
+    this.#daylight = state;
   }
 
   /**
@@ -288,6 +349,8 @@ export class SceneManager {
       objectCount: this.getObjectCount(),
       skyMode: this.scene.background === null ? 'procedural' : 'hdri',
       environmentId: this.#environment?.id ?? null,
+      sunElevationDegrees: this.#daylight?.sunElevationDegrees ?? null,
+      isNight: this.#daylight?.isNight ?? false,
       cameraPosition: { x, y, z },
     };
   }

@@ -21,6 +21,21 @@ export interface EndlessDriverDebugHandle {
 }
 
 /**
+ * Reads the `?time=` debug switch, in hours (`?time=18.5` for half past six in the evening).
+ *
+ * Useful for looking at the world at a specific hour without waiting for the clock to reach it, and
+ * for the screenshot set that documents the time-of-day curves.
+ */
+function readTimeRequest(search: string): number | null {
+  const raw = new URLSearchParams(search).get('time');
+  if (raw === null) {
+    return null;
+  }
+  const hour = Number.parseFloat(raw);
+  return Number.isFinite(hour) && hour >= 0 && hour < 24 ? hour : null;
+}
+
+/**
  * Describes the device for tier selection.
  *
  * Every signal is optional at runtime — `deviceMemory` is non-standard and absent in several
@@ -100,6 +115,7 @@ async function start(): Promise<void> {
         (backendPreference === null ? '' : `, backend forced to ${backendPreference}`),
     );
 
+    const startHour = readTimeRequest(window.location.search);
     const options: ApplicationOptions = {
       canvas,
       rapier,
@@ -108,6 +124,7 @@ async function start(): Promise<void> {
       config,
       worldConfig: WORLD_CONFIG,
       tier,
+      clock: startHour === null ? undefined : { startHour },
     };
 
     application = new Application(options);

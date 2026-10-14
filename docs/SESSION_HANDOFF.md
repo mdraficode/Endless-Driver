@@ -390,3 +390,52 @@ or throwing — so the pipeline kept rendering a black image while everything lo
 
 Screenshot: `/home/user/phase3-evidence/renders-after-fix.png` (HDRI backdrop resolving, grid ground, the
 placeholder car, obstacles, post chain active on the WebGL2 backend).
+
+## 14. Time of day (2026-10-14)
+
+The environment now has a clock, and it drives the lighting rather than sitting beside it.
+
+**What was added.** `src/environment/solar.ts` (sun position from hour, latitude, day of year — pure, testable, no
+renderer), `src/environment/EnvironmentClock.ts` (wraps and advances time, then resolves a `DaylightState`),
+`src/config/daylight.ts` (the look-development curves), and `tests/unit/environment-clock.test.ts`. Everything the
+frame needs — sun direction, colour, intensity, ambient fill, environment intensity, exposure, fog tint, turbidity,
+rayleigh, sun-disc visibility — is one pure function of the sun's elevation, so the look at 06:20 is assertable in
+Node without a browser.
+
+**Shape of the curves.** Each value is a three-phase blend: a night value, a horizon value, and a day value,
+crossfaded by `dayFactor` (0 at night, 1 above 12° elevation) and `horizonFactor` (1 at the horizon, falling away in
+both directions). Splitting at the horizon rather than at night is what keeps dawn and dusk a real phase instead of
+a dimmed noon. The scene never reads the clock: `Application` resolves one `DaylightState` per frame and hands it
+to `SceneManager.applyDaylight()` and `Engine.setExposure()`, so there is one place where time becomes light.
+`Engine.setExposure()` is cheap — `toneMappingExposure` is a live `rendererReference` in the TSL graph, so it
+takes effect on the next frame with no pipeline rebuild.
+
+**Default is 09:30 and frozen** (`autoAdvance: false`), because a reproducible run is worth more than a moving sun;
+`secondsPerHour: 120` is the rate when it is switched on. `?time=18.5` overrides the start hour for debugging, which
+is how the three screenshots below were taken.
+
+**A bug the tests caught.** `ambientColorHex` came back as a fractional number — not a colour at all. The
+three-phase blend helper interpolated the packed 24-bit integer as a single number, so red's fraction carried into
+green and blue, darkening the result and shifting the hue. Packed colours must go through the per-channel
+interpolator; `phasedColor()` now does that, and the test that asserts every colour is an integer in range is what
+found it. Two test thresholds were also recalibrated rather than the code: the twilight fade was measured by sample
+count instead of by duration (it lasts ~70 minutes at this latitude and date), and the smoothness check sampled at
+five-minute steps against caps that a genuine smoothstep ramp cannot meet — it now samples a minute at a time with
+caps proportional to each quantity's range.
+
+**Verified in-browser** (headless Chromium, WebGL2 fallback, tier C), local dev server, `/home/user/phase3-evidence/`:
+
+| URL          | HUD `Time` row            | Mean scene luminance |
+| ------------ | ------------------------- | -------------------- |
+| `?time=6.5`  | `06:30 · sun 6°`          | 137 / 255            |
+| `?time=12.5` | `12:30 · sun 53°`         | 154 / 255            |
+| `?time=18.5` | `18:30 · sun -6° · night` | 50 / 255             |
+
+No page errors, no TSL errors, non-black frame in all three, post chain and tier unchanged. Luminance is measured
+over the right-hand two thirds of the frame, so the HUD is excluded.
+
+**Known limitation, and it shows in the 06:30 shot:** tier C's backdrop is a fixed daylight HDRI capture. It dims
+with the clock but cannot redden the way the procedural sky does, so dawn reads as a hazy morning rather than a
+sunrise, and the exposure lift that keeps night readable flattens the dawn/noon contrast (dawn is 89% of noon's
+luminance). A time-of-day grade — or a tinted background node — is the fix, and it belongs with the Phase 3
+grading work rather than with the clock.

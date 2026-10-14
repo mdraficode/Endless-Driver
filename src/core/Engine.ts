@@ -189,6 +189,19 @@ export class Engine {
   }
 
   /**
+   * Sets tone-mapping exposure.
+   *
+   * `toneMappingExposure` is a live renderer reference inside the node graph, so this takes effect
+   * on the next frame without rebuilding the pipeline — which is what lets exposure follow the sun
+   * every frame instead of being fixed at start-up.
+   */
+  setExposure(exposure: number): void {
+    if (Number.isFinite(exposure) && exposure > 0) {
+      this.#renderer.toneMappingExposure = exposure;
+    }
+  }
+
+  /**
    * Starts the renderer. `WebGPURenderer` builds its device, backend, and node systems
    * asynchronously, so nothing may be rendered before this resolves.
    */

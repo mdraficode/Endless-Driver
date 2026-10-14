@@ -165,7 +165,14 @@ export interface LightingConfig {
   readonly ambientIntensity: number;
   readonly sunColor: number;
   readonly sunIntensity: number;
+  /**
+   * Initial sun direction; the time-of-day clock replaces it on the first frame
+   * (`src/config/daylight.ts`). Kept so the scene has a sane light before the clock runs, and so
+   * the baseline is readable on its own.
+   */
   readonly sunPosition: readonly [number, number, number];
+  /** Distance the directional light sits from its target. Direction is what matters; this sets range. */
+  readonly sunDistance: number;
 }
 
 export interface BloomConfig {
@@ -343,6 +350,7 @@ export const RENDER_CONFIG: RenderConfig = {
     sunColor: 0xfff2dd,
     sunIntensity: 2.4,
     sunPosition: [70, 95, 55],
+    sunDistance: 130,
   },
   postProcessing: {
     enabled: true,

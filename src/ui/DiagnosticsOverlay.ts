@@ -24,6 +24,11 @@ export interface DiagnosticsSnapshot {
   readonly qualityTier: TierId;
   /** Why that tier was chosen, so a quality report can explain itself. */
   readonly tierReason: TierReason;
+  /** World clock, `HH:MM`. */
+  readonly timeOfDay: string;
+  /** Sun elevation in degrees; negative means below the horizon. */
+  readonly sunElevationDegrees: number;
+  readonly isNight: boolean;
   /**
    * Backend that ended up rendering: `webgpu` when the browser exposes a working WebGPU device,
    * `webgl2` when the renderer fell back, `pending` before initialisation resolves.
@@ -156,6 +161,11 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
     label: 'Viewport',
     format: (snapshot) =>
       `${snapshot.viewport.width}×${snapshot.viewport.height} @ ${snapshot.pixelRatio.toFixed(2)}x`,
+  },
+  {
+    label: 'Time',
+    format: (snapshot) =>
+      `${snapshot.timeOfDay} · sun ${snapshot.sunElevationDegrees.toFixed(0)}°${snapshot.isNight ? ' · night' : ''}`,
   },
   {
     label: 'Tier',

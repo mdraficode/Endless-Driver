@@ -11,6 +11,11 @@ import type { VehiclePose, VehicleTelemetry } from '../vehicles/types';
 import { ChaseCamera } from '../cameras/ChaseCamera';
 import { InputManager } from '../input/InputManager';
 import type { PerspectiveCamera } from 'three';
+import {
+  EnvironmentClock,
+  type DaylightState,
+  type EnvironmentClockOptions,
+} from '../environment/EnvironmentClock';
 import { Engine, type FrameState } from './Engine';
 import type { TierResolution } from './QualityTier';
 import { PerformanceMonitor } from './PerformanceMonitor';
@@ -31,6 +36,8 @@ export interface ApplicationOptions {
    * every diagnostics snapshot and performance statement can name the tier it was taken under.
    */
   readonly tier?: TierResolution;
+  /** Time-of-day options; the entrypoint forwards the `?time=` debug switch through this. */
+  readonly clock?: EnvironmentClockOptions | undefined;
 }
 
 type StatusTone = 'info' | 'error';
@@ -65,6 +72,8 @@ export class Application {
   readonly #overlay: DiagnosticsOverlay | null;
   readonly #statusElement: HTMLElement | null;
   readonly #tier: TierResolution;
+  readonly #clock: EnvironmentClock;
+  #daylight: DaylightState | null = null;
   readonly #unsubscribers: readonly (() => void)[] = [];
   readonly #lastCameraTarget: Vec3 = { x: 0, y: 0, z: 0 };
   #cameraMode: CameraMode = 'chase';
@@ -107,6 +116,11 @@ export class Application {
         : null;
     this.#statusElement = options.statusElement ?? null;
     this.#tier = options.tier ?? { id: 'B', reason: 'unresolved' };
+    this.#clock = new EnvironmentClock(options.clock);
+
+    // Lighting is resolved before the first frame so the scene never renders with the baseline sun
+    // while the clock says something else.
+    this.#applyDaylight();
 
     const initialPose = this.#car.getInterpolatedPose(0);
     this.#carVisual.sync(initialPose);
@@ -162,6 +176,11 @@ export class Application {
 
   get cameraMode(): CameraMode {
     return this.#cameraMode;
+  }
+
+  /** Current time of day in hours, and the resolved lighting state. */
+  get clock(): EnvironmentClock {
+    return this.#clock;
   }
 
   get isRunning(): boolean {
@@ -233,6 +252,9 @@ export class Application {
     return {
       qualityTier: this.#tier.id,
       tierReason: this.#tier.reason,
+      timeOfDay: this.#clock.label,
+      sunElevationDegrees: this.#daylight?.sunElevationDegrees ?? 0,
+      isNight: this.#daylight?.isNight ?? false,
       rendererBackend: this.#engine.backend ?? 'pending',
       postProcessing: this.#engine.isPostProcessingEnabled,
       antialiasing: this.#config.postProcessing.antiAliasing,
@@ -321,6 +343,10 @@ export class Application {
     // 2. Physics advances in whole fixed steps; the car applies its impulses inside each step.
     this.#physics.update(delta);
 
+    // 2b. Time advances, and time becomes light for the next frame.
+    this.#clock.update(delta);
+    this.#applyDaylight();
+
     // 3. Presentation interpolates between the last two authoritative poses.
     const pose = this.#car.getInterpolatedPose(this.#physics.interpolationAlpha);
     this.#carVisual.sync(pose);
@@ -349,6 +375,18 @@ export class Application {
       this.#hudTimer = 0;
       this.#overlay?.update(this.getDiagnostics());
     }
+  }
+
+  /**
+   * Resolves the current time into lighting values and applies them.
+   *
+   * Called once before the first frame and then once per frame; both paths go through here, so
+   * there is no way for the scene to be lit by a different sun than the one the clock reports.
+   */
+  #applyDaylight(): void {
+    this.#daylight = this.#clock.daylight();
+    this.#scene.applyDaylight(this.#daylight);
+    this.#engine.setExposure(this.#daylight.exposure);
   }
 
   /**
