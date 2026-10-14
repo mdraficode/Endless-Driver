@@ -220,17 +220,27 @@ export class SceneManager {
   /**
    * Points the cascade shadow maps at the camera that is actually rendering.
    *
-   * `CSMShadowNode` derives its cascade splits from a camera frustum and caches them, so the
-   * application must call this whenever the active camera or its projection changes (mode switch,
-   * field-of-view change, resize). It is cheap but not free, which is why it is event-driven rather
-   * than per-frame.
+   * `CSMShadowNode` derives its cascade splits from a camera frustum and caches them, so this is
+   * called whenever the active camera or its projection changes (mode switch, field-of-view change,
+   * resize). It is cheap but not free, which is why it is event-driven rather than per-frame.
+   *
+   * Calls before the node's first render are deliberately ignored. `CSMShadowNode` initialises
+   * itself lazily inside `setup()`, which only runs `_init()` while its `camera` is still null:
+   *
+   * - calling `updateFrustums()` first dereferences a null `mainFrustum` and throws;
+   * - assigning `camera` first is worse — `setup()` then skips `_init()` permanently, so the
+   *   cascades are never built at all and the scene silently loses its shadows.
+   *
+   * Both are real failures that only appear at runtime with a GPU, so the guard keys on
+   * `mainFrustum`, which `_init()` creates and nothing else does.
    */
   setShadowCamera(camera: PerspectiveCamera): void {
-    if (this.#csm === null || this.#csm.camera === camera) {
+    const csm = this.#csm;
+    if (csm === null || csm.mainFrustum === null) {
       return;
     }
-    this.#csm.camera = camera;
-    this.#csm.updateFrustums();
+    csm.camera = camera;
+    csm.updateFrustums();
   }
 
   /**
@@ -251,12 +261,14 @@ export class SceneManager {
     this.#sun.updateMatrixWorld();
   }
 
+  /**
+   * The debug camera's aspect follows the canvas. Cascades are not rebuilt here: the application
+   * invalidates its shadow-camera cache on resize and re-syncs on the next frame, so there is
+   * exactly one place that touches the cascade splits and one place to get the guard right.
+   */
   resize(viewport: Viewport): void {
     this.camera.aspect = viewport.aspect;
     this.camera.updateProjectionMatrix();
-    if (this.#csm !== null && this.#csm.camera === this.camera) {
-      this.#csm.updateFrustums();
-    }
   }
 
   getObjectCount(): number {

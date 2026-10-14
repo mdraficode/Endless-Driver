@@ -301,3 +301,35 @@ screenshots per tier.
 is verified by types, unit tests, source guards, and a production build — **not** by rendering a
 frame. The visual result, the WebGL2 fallback path, and every frame-rate number are unverified until
 a browser session exists. Do not describe the renderer as "done" without that.
+
+## 12. First browser verification via GitHub Pages (2026-10-14)
+
+The sandbox dev preview turned out to be unusable as a hand-off link: it is token-gated
+(`403 Missing traffic access token` on a bare URL) and the sandbox sleeps between sessions, so the
+owner could not open it. The project now deploys to **https://mdraficode.github.io/Endless-Driver/**
+on every push to `main` (`.github/workflows/deploy-pages.yml`, Pages enabled with GitHub Actions as
+the build source, deploys serialised per ref).
+
+**That deployment immediately paid for itself: it is the first place this project has ever run with
+a real rendering backend, and it found a start-up crash that no sandbox check could reach.**
+
+`SceneManager.setShadowCamera()` assigned `CSMShadowNode.camera` and called `updateFrustums()` from
+`Application.start()`, before any frame had rendered. Two distinct bugs, both fatal to the cascades:
+
+1. `updateFrustums()` derives the splits from `mainFrustum`, which is `null` until `_init()` runs —
+   so the call threw `Cannot read properties of null (reading 'setFromProjectionMatrix')` and the
+   whole scene failed to start ("Unable to start the 3D scene: …" in the page status line).
+2. `_init()` is only called from `setup()` **while `camera` is still null**. Pre-assigning a camera
+   therefore suppresses initialisation permanently: had the first bug been patched alone, the scene
+   would have rendered with no cascades at all, silently.
+
+**Fix:** `setShadowCamera()` is a no-op until `mainFrustum !== null`, at which point the node has
+initialised itself from the camera of its first render and switching cameras plus rebuilding splits
+is meaningful. `SceneManager.resize()` no longer rebuilds cascades at all; the application already
+invalidates its shadow-camera cache on resize and re-syncs on the next frame, so exactly one place
+touches the splits. `tests/unit/cascaded-shadows.test.ts` pins the library contract that the guard
+depends on.
+
+**Lesson for the remaining phases:** the guard tests, type checks, and builds cannot catch this class
+of bug — it only appears when a backend exists. Verified rendering on the deployed site now counts as
+real evidence, and it is cheap: push, wait for the deploy, then read the page.
