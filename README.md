@@ -138,6 +138,6 @@ No open-source distribution license has been selected, so project metadata remai
 
 ## Next step
 
-**Authorize Phase 3** when ready. The direction, region, sourcing, brand, and audio decisions are resolved and written down ([ADR 0004](docs/decisions/0004-visual-fidelity-and-rendering-pipeline.md), [ADR 0005](docs/decisions/0005-free-and-open-asset-strategy.md), [`docs/ASSET_SOURCES.md`](docs/ASSET_SOURCES.md)); the credited-asset rule is settled as well. Phase 3 is renderer, lighting, post-processing, and the asset/material pipeline — terrain moved to Phase 4. Completing Phase 2 does not authorize it.
+**Phase 3 is authorized and in progress.** The renderer migration has landed: `WebGPURenderer` with the WebGL2 fallback, a TSL-lit scene (Preetham sky, HDRI environment lighting, cascaded shadows), a `RenderPipeline` post chain, and the pinned/verified asset pipeline. Still to come in the phase: the C/B/A tier system, the remaining post effects and anti-aliasing, the time-of-day clock, and the studio/route look-dev scenes. Phase 4 (terrain, roads, streaming) is **not** authorized — see [`PROJECT_PLAN.md`](PROJECT_PLAN.md) §9 for the deliverable list and the stop condition.
 
 Phase 2 verification evidence, measured handling numbers, and the exact browser checks that were run are recorded in [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md).

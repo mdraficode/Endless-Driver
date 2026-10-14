@@ -434,6 +434,20 @@ everything visual afterwards is authored on top of it.
   licence record is committed.
 - CI green; docs, handoff, README, and ADR 0004 updated.
 
+**Progress (2026-10-14, first increment — CI run #9 green):**
+
+| #   | Deliverable                                | State                                                                                                                                                                                                                                         |
+| --- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `WebGPURenderer` + fallback + debug switch | **Done** — backend resolved after `init()` and reported in the HUD; all Phase 1/2 GLSL-era material code ported to TSL and source-guarded                                                                                                     |
+| 2   | Colour pipeline (IBL, tone map once, LUT)  | **Partial** — linear-sRGB working space, HDRI environment IBL, tone mapping applied once in the `RenderPipeline`; LUT grading and exposure-by-sun pending                                                                                     |
+| 3   | Dynamic sky and sun                        | **Partial** — Preetham sky with clouds, sun disc, and fog tint from sun elevation; time-of-day clock, light curves, headlights/streetlights pending                                                                                           |
+| 4   | Cascaded shadow maps                       | **Partial** — `CSMShadowNode` with configurable cascades/maxFar/fade following the render camera; per-tier counts and contact shadows pending                                                                                                 |
+| 5   | `RenderPipeline` post stack                | **Partial** — bloom wired and toggleable; GTAO, SSR, DOF, motion blur, grain, chromatic aberration, vignette, sharpening pending                                                                                                              |
+| 6   | Anti-aliasing and upscaling                | **Partial** — MSAA via the renderer; FXAA/SMAA/TAAU/TRAA and dynamic resolution pending                                                                                                                                                       |
+| 7   | Asset pipeline                             | **Partial** — pinned fetch, manifest, licence register, hash verification, and `CREDITS.md` generation are in and enforced by `npm run check`; the model side (optimize → LOD → quantize → meshopt → KTX2) starts with the first model assets |
+| 8   | Material library + look-dev scenes         | **Pending**                                                                                                                                                                                                                                   |
+| 9   | Tier system C/B/A                          | **Pending**                                                                                                                                                                                                                                   |
+
 **Stop:** Request authorization before Phase 4.
 
 ### Phase 4 — Procedural terrain, roads, and chunk streaming on the final renderer

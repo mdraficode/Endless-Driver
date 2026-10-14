@@ -53,6 +53,12 @@ mesh is acceptable; wheels must visibly steer and roll from physics state.
   (21 files, +1129/−277) was pushed to `main`; `git ls-remote origin refs/heads/main` returned the
   same SHA and the `Validate project` GitHub Actions run for that commit (run #5,
   `38485484364`) completed successfully.
+- **Verified checkpoint (2026-10-14, Phase 3 renderer migration):** the WebGPU/TSL renderer migration
+  (`f3ec413` → `3e16a09` → `66a2d1d` → `0e7388e`) was pushed to `main`;
+  `git ls-remote origin refs/heads/main` returned `0e7388e37d1b6c5f88bbe417dc1950ddc9aa4999`, and
+  `Validate project` run #9 (`38495977359`) completed successfully. Local gate before pushing:
+  `npm run check` green — 139 tests across 15 files, asset verification (4 assets, 8 337 746 bytes),
+  production build 985.58 kB (gzip 274.11 kB) + Rapier 4 335.10 kB.
 - **Verified checkpoint (2026-10-14, sourcing decisions):** the free-and-open asset strategy,
   region/brand/audio decisions, the settled credited-asset rule, and the one-time authorization
   change were pushed as `fc3f049` → `5d54df8` → `46bb0b3`; `git ls-remote origin refs/heads/main`
@@ -264,3 +270,34 @@ purchase.
 
 **Next action:** owner authorizes Phase 3 (renderer migration, lighting, post stack, asset/material pipeline);
 only then does implementation start.
+
+## 11. Phase 3 in progress (2026-10-14)
+
+**Owner instruction:** "Start Phase 3" — renderer migration, lighting, post-processing, and the
+asset/material pipeline (terrain moved to Phase 4).
+
+**Landed in this first increment (commits `f3ec413`–`0e7388e`, CI run #9 green):**
+
+| Area                 | What shipped                                                                                                                                                                                  |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Renderer             | `WebGPURenderer` from `three/webgpu` with the automatic WebGL2 backend fallback and a `backendPreference` switch; async `init()` awaited by the composition root; WebGPU device-loss handling |
+| Post-processing      | TSL `RenderPipeline` output chain: scene pass → bloom → tone mapping → colour space, with the pass re-pointed when the render camera changes                                                  |
+| Sky and atmosphere   | Preetham `SkyMesh` (sun disc, clouds, scattering) replacing the gradient dome; sky follows the render camera; fog tint derived from sun elevation                                             |
+| Environment lighting | CC0 HDRIs fetched by `scripts/fetch-assets.mjs`, resolved through `public/assets/manifest.json`, loaded as half-float reflection IBL with a graceful fallback                                 |
+| Shadows              | `CSMShadowNode` cascades (count/maxFar/fade in config) following the render camera, rebuilt on camera/FOV/resize changes                                                                      |
+| Ground               | TSL node-material grid (analytically anti-aliased, distance-faded) replacing the `onBeforeCompile` GLSL patch                                                                                 |
+| Asset pipeline       | Pinned fetch + offline verification (`npm run assets:fetch` / `assets:verify`), licence allowlist, hash checks, `CREDITS.md` regeneration, wired into `npm run check`                         |
+| Guards and tests     | `npm run guard:glsl` (comment-aware) forbids `ShaderMaterial`/`RawShaderMaterial`/`onBeforeCompile`; HUD reports backend, post state, cascades, environment asset; 139 tests green (10 new)   |
+
+**Remaining Phase 3 work, in planned order:** (1) quality tier system C/B/A with the effect matrix and
+a HUD/debug selector; (2) the rest of the post stack per tier — GTAO, DOF, motion blur, grain,
+chromatic aberration, vignette, sharpening — plus TAAU/TRAA and FXAA/SMAA; (3) time-of-day clock with
+light colour/intensity curves, LUT grading and exposure-by-sun; (4) `gltf-transform` optimize/KTX2
+pipeline for models and the first materials library entries; (5) the studio look-dev scene
+(`?scene=studio`) and the 2 km validation route with fixed camera bookmarks, then the 12 baseline
+screenshots per tier.
+
+**Environment limitation, recorded honestly:** this sandbox has no browser or GPU, so the migration
+is verified by types, unit tests, source guards, and a production build — **not** by rendering a
+frame. The visual result, the WebGL2 fallback path, and every frame-rate number are unverified until
+a browser session exists. Do not describe the renderer as "done" without that.
