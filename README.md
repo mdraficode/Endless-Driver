@@ -138,6 +138,6 @@ No open-source distribution license has been selected, so project metadata remai
 
 ## Next step
 
-**Authorize Phase 3** when ready. The direction, region, sourcing, brand, and audio decisions are resolved and written down ([ADR 0004](docs/decisions/0004-visual-fidelity-and-rendering-pipeline.md), [ADR 0005](docs/decisions/0005-free-and-open-asset-strategy.md), [`docs/ASSET_SOURCES.md`](docs/ASSET_SOURCES.md)); the only open item is whether to keep the CC-BY-with-credit exception or restrict sourcing to zero-attribution assets. Phase 3 is renderer, lighting, post-processing, and the asset/material pipeline — terrain moved to Phase 4. Completing Phase 2 does not authorize it.
+**Authorize Phase 3** when ready. The direction, region, sourcing, brand, and audio decisions are resolved and written down ([ADR 0004](docs/decisions/0004-visual-fidelity-and-rendering-pipeline.md), [ADR 0005](docs/decisions/0005-free-and-open-asset-strategy.md), [`docs/ASSET_SOURCES.md`](docs/ASSET_SOURCES.md)); the credited-asset rule is settled as well. Phase 3 is renderer, lighting, post-processing, and the asset/material pipeline — terrain moved to Phase 4. Completing Phase 2 does not authorize it.
 
 Phase 2 verification evidence, measured handling numbers, and the exact browser checks that were run are recorded in [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md).

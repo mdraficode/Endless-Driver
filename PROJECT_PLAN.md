@@ -669,8 +669,10 @@ The AAA-fidelity target makes asset sourcing a first-class engineering concern (
 - ~~Car asset route, brand policy, region, audio scope, and photo mode~~ — **resolved 2026-10-14** (ADR 0005,
   `docs/VISUAL_TARGET.md` §7): free-and-open sourcing only with no purchases; unbadged fictional brand; rural-Japan
   “Hinode Prefecture”; free sample libraries plus a project-owned engine synth and a CC0/CC-BY music pool; photo
-  mode in scope for Phase 8. **One low-cost question remains open:** whether to keep the CC-BY-with-credit exception
-  or restrict sourcing to zero-attribution assets only.
+  mode in scope for Phase 8. **The CC-BY-with-credit exception is kept** (2026-10-14): it is a credit line naming the
+  artist, not a payment or restriction, and it applies only to a few Japanese landmark props and some music. CC0 is
+  still preferred whenever a comparable asset exists, and the exception can be closed later by authoring those props
+  in-house.
 - Whether high-tier volumetrics and motion blur meet the measured budget — decided by measurement in Phase 3.
 - Deployment provider, public release licensing, Git LFS limits, and any release policy.
 
@@ -738,4 +740,4 @@ References guide implementation; pinned package APIs must still be checked at th
 
 ---
 
-**Next permitted development action:** None. The region, brand, sourcing, audio, and photo-mode decisions are resolved (ADR 0005); Phase 3 requires explicit user authorization, and the only open question is whether to keep or close the CC-BY-with-credit exception in `docs/ASSET_SOURCES.md` §1.
+**Next permitted development action:** None. All sourcing, region, brand, audio, and photo-mode decisions are resolved (ADR 0005), including the kept CC-BY-with-credit exception; Phase 3 requires explicit user authorization.

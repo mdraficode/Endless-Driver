@@ -221,9 +221,11 @@ Restating the constraints from the research document, because they define accept
 | 4   | Audio scope         | **Free and open sources only** (Sonniss GDC bundles, Freesound CC0, Kenney CC0), with music built from CC0/CC-BY pools. Engine audio is a Web Audio synth driven by vehicle state, not a sample library. See §3.6 of the asset register.                                         |
 | 5   | Photo mode / replay | **In scope** as late polish (Phase 8): a free-camera pause mode with tier-aware quality bumps, which is cheap once the post stack exists.                                                                                                                                        |
 
-**One sub-decision still open (low cost either way):** the asset register allows **CC-BY with an automatic credit
-line** as an exception for a handful of Japanese landmark props (torii, shrine buildings) that have no CC0
-equivalent. Say **"zero attribution"** and we drop the exception and author those props in-house instead.
+**Sub-decision closed 2026-10-14:** the **CC-BY-with-automatic-credit exception stays** (it is only a line of text
+naming the artist in the credits — no payment, no restriction on use). It applies to a few Japanese landmark props
+(torii, shrine buildings) and some music, and only when no CC0 asset of comparable quality exists. Everything
+structural — sky, terrain, roads, vegetation, the car, and all sound effects — is plain CC0. The exception can be
+dropped later by authoring those props in-house instead.
 
 **Not questions, but standing constraints the plan keeps:** no purchase requests, no dead ends waiting on a
 purchased asset, and every claim about visual quality stays tied to `docs/VISUAL_TARGET.md` and measured evidence.

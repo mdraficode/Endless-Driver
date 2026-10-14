@@ -22,11 +22,16 @@ caveat, not a recommendation.
 | **Exception** | **CC-BY** (some Sketchfab Japanese landmark props, some music)                                                                                                                                                                                                                                                       | Allowed **only** when no CC0 asset of comparable quality exists, and only with the credit line implemented automatically in `CREDITS.md` and the in-game credits screen. Never for hero content. |
 | **Banned**    | Anything requiring payment, an account-gated "free tier" that forbids redistribution, Non-Commercial or No-Derivatives terms, "freebie" marketplace licences (TurboSquid/CGTrader/RenderHub/Free3D-style), AI-generated asset galleries, ripped or converted game assets, manufacturer badges, logos, or trade dress | Never. If an asset cannot be audited, it does not enter the repository.                                                                                                                          |
 
-**Why CC-BY is an exception rather than a ban:** attribution is a credit line, not a payment or a restriction on
-use, distribution, or modification. It buys real quality only in a few places (Japanese shrine/landmark props,
-some music). Everything structural — sky, terrain, roads, vegetation, water, car, SFX — is CC0.
-**If you want zero obligations of any kind, say so and we drop the exception**; the cost is a handful of Japanese
-landmark props that we would then build in-house instead.
+**Why CC-BY is an exception rather than a ban:** a CC-BY credit is just a line of text naming the artist in the
+credits screen. It is not a payment, not a restriction on use, distribution, or modification, and not a fee. It buys
+real quality in only a few places — a handful of Japanese shrine/torii models and some music. Everything structural
+(sky, terrain, roads, vegetation, water, the car, and all sound effects) is plain CC0 with no conditions at all.
+
+**Decided 2026-10-14:** the credited exception **stays**, because the only alternative is spending our own build
+time recreating those few landmark props from scratch for no benefit. Rule of thumb for whoever implements this:
+prefer CC0 whenever a comparable asset exists; reach for a CC-BY asset only when it is clearly better, and then the
+credit line is written automatically into `CREDITS.md` and the in-game credits. The exception can be closed later at
+any time by swapping those few props for in-house versions — a small change, not a redesign.
 
 ---
 

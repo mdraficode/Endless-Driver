@@ -25,7 +25,10 @@ sources surveyed and licence-checked).
   redistribution and modification permitted.
 - **Exception: CC-BY with an automatic credit line** in `CREDITS.md` and the in-game credits screen — allowed only
   where no CC0 asset of comparable quality exists (a handful of Japanese landmark props, some music), never for hero
-  content. **This exception is itself open for the owner to close** by asking for zero-attribution-only sourcing.
+  content. **Kept by decision of 2026-10-14** (recorded after the owner asked the agent to settle the remaining
+  question): a credit line is text naming the artist, not a payment or a restriction, and the alternative is
+  recreating those few props ourselves for no gain. The exception can be closed at any time by swapping those props
+  for in-house versions.
 - **Excluded permanently:** anything paid or account-gated with redistribution limits; NC/ND terms; marketplace
   "freebie" licences; AI-generated asset galleries (unauditable provenance); ripped or converted game assets;
   manufacturer names, badges, or trade dress.
