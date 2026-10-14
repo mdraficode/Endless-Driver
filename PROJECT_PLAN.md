@@ -506,6 +506,10 @@ everything visual afterwards is authored on top of it.
 
 ### Phase 6 — The car: hero model, materials, and vehicle fidelity
 
+Combined with [`docs/REALISM_PLAN.md`](docs/REALISM_PLAN.md) §3 Ranks 7 and 8: reflection probes for car-body and
+wet-surface reflections, and deliberate imperfection — wear, dirt accumulation, brake dust, rubber laid on kerbs —
+which is the difference between a clean render and a photographed one.
+
 **Depends on:** Accepted Phase 5 and user authorization; this phase needs the owner's car-asset decision (§7 of
 `docs/VISUAL_TARGET.md`, and §5 of `docs/RESEARCH_AAA_FIDELITY.md`).
 
@@ -534,6 +538,12 @@ everything visual afterwards is authored on top of it.
 **Stop:** Request authorization before Phase 7.
 
 ### Phase 7 — Weather, seasons, and surface behaviour
+
+This phase carries the project's highest-ambition realism item: the **go/no-go outcome of the radiance-cascades GI
+prototype** (see [`docs/REALISM_PLAN.md`](docs/REALISM_PLAN.md) §3 Rank 7) — noise-free multi-bounce global
+illumination that almost no shipped game uses, and nothing in a browser does. It is gated on a measured prototype
+on real hardware, and "no" is an acceptable outcome that leaves SSGI and probes in place. The wet-surface response
+(Rank 9) belongs here too: the most photogenic state in the genre, and the one that flatters everything else.
 
 **Depends on:** Accepted Phase 6 and user authorization.
 

@@ -143,4 +143,6 @@ No open-source distribution license has been selected, so project metadata remai
 
 **Try it:** <https://mdraficode.github.io/Endless-Driver/> drives with the keyboard. Add `?scene=studio` for the look-dev grid, `?scene=props` for the derived-model inspector, `?time=6.5` / `?time=18.5` for dawn and night, `?tier=a|b|c` to force a quality tier, and `?backend=webgl` to force the fallback path. `?lut=none` removes the colour look, `?lutmix=0.5` trims it, and `?dof=1&bokeh=17` forces depth of field at a chosen aperture.
 
-Phase 2 verification evidence, measured handling numbers, and the exact browser checks that were run are recorded in [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md).
+Phase 2 verification evidence, measured handling numbers, and the exact browser checks that were run are recorded in [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md). How the project intends to reach a look
+that holds up next to a console racing game — levers ranked by what actually changes how real the image feels, and
+the honest limits of a browser — is in [`docs/REALISM_PLAN.md`](docs/REALISM_PLAN.md).
