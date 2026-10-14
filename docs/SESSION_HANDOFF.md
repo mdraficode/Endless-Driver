@@ -333,3 +333,12 @@ depends on.
 **Lesson for the remaining phases:** the guard tests, type checks, and builds cannot catch this class
 of bug — it only appears when a backend exists. Verified rendering on the deployed site now counts as
 real evidence, and it is cheap: push, wait for the deploy, then read the page.
+
+**Verification result (same day, after the fix deployed).** The page now boots and renders. The live
+DOM reports `Renderer: webgl2 · post · 3x shadow`, `Sky: procedural · hdri-ninomaru-teien-1k`,
+72 draw calls, 1,671 triangles across 40 scene objects, and a rendered frame. Read plainly: the app
+initialises, the WebGPU fallback engages cleanly where WebGPU is unavailable, the HDRI resolves
+through the manifest on a static host, and the `RenderPipeline` output chain renders. The snapshot
+came from a headless renderer, so it proves start-up and the fallback path — **not** frame rate,
+sustained behaviour, or final image quality, and not the WebGPU path itself (that environment fell
+back to WebGL2). Those still need a GPU-backed browser.
