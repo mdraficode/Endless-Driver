@@ -122,6 +122,25 @@ recorded in every performance claim.
 Budgets from `PROJECT_PLAN.md` §8 remain the reference; every tier gate is validated on **named hardware** with
 recorded resolution and settings. The dev sandbox (SwiftShader) may only validate correctness, never frame rate.
 
+**Implementation status (Phase 3).** The C/B/A contracts are code, not prose: `src/config/tiers.ts` holds the
+matrix as data and `src/core/QualityTier.ts` resolves and applies it. Selection is deterministic — an explicit
+`?tier=C|B|A` wins, otherwise mobile devices and constrained machines (≤ 4 cores or ≤ 4 GB) get C and everything
+else gets B. **Tier A is never selected automatically**: the project has not measured that its settings hold a
+frame budget on named hardware, and selecting it silently would be a claim it cannot support. The active tier and
+the reason for it are shown in the HUD, so every quality report can name the conditions it was taken under.
+
+Two documented deviations from the table above:
+
+- **Tier C's renderer path.** The table says "WebGL2 backend"; the implementation leaves the backend on `auto`,
+  because pinning the older API on a device that supports WebGPU would surrender performance for no quality gain.
+  The WebGL2 fallback still engages wherever WebGPU is unavailable, and `?backend=webgl` forces it for comparison.
+- **Anti-aliasing.** The table specifies FXAA/SMAA, TAAU, and TAAU/TRAA per tier. Those are not implemented yet;
+  today the tiers differ by MSAA sample count (`?`-free, per tier) and the planned modes are declared as pending
+  work in each tier definition.
+
+`pending` in each tier definition lists the effects that tier is contracted to control once they exist (AO,
+reflections, motion blur, terrain layers, vegetation density). Nothing listed there affects rendering today.
+
 ---
 
 ## 4. Look development workflow

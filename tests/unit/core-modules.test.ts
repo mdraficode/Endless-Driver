@@ -19,6 +19,15 @@ import {
 } from '../../src/assets/AssetManifest';
 import { applySunPosition, createAtmosphereSky } from '../../src/shaders/atmosphere-sky';
 import { createGroundGridColorNode, linearColor } from '../../src/shaders/ground-grid';
+import { TIER_ORDER } from '../../src/config/tiers';
+import {
+  applyBackendOverride,
+  applyTier,
+  describeTier,
+  readBackendRequest,
+  readTierRequest,
+  resolveTier,
+} from '../../src/core/QualityTier';
 
 /**
  * Module-level API checks. These run in a Node environment and deliberately do not
@@ -79,6 +88,20 @@ describe('core module API surface', () => {
       expect(typeof fn).toBe('function');
     }
     expect(ASSET_MANIFEST_URL).toBe('assets/manifest.json');
+  });
+
+  it('exposes the Phase 3 quality-tier API', () => {
+    for (const fn of [
+      resolveTier,
+      applyTier,
+      describeTier,
+      readTierRequest,
+      readBackendRequest,
+      applyBackendOverride,
+    ]) {
+      expect(typeof fn).toBe('function');
+    }
+    expect(TIER_ORDER).toEqual(['C', 'B', 'A']);
   });
 
   it('exposes the Phase 3 shader node factories', () => {

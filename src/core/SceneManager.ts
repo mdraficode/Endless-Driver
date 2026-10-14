@@ -166,6 +166,9 @@ export class SceneManager {
       if (this.#config.environment.useAsBackground) {
         this.scene.background = texture;
         this.scene.backgroundIntensity = 1;
+        // The HDRI *is* the backdrop on this tier (tier C). The procedural sky draws at the far
+        // plane with depth writes off, so leaving it visible would paint straight over the HDRI.
+        this.#sky.visible = false;
       }
       this.#environmentTexture = texture;
       this.#environment = asset;

@@ -1,5 +1,7 @@
 import type { CameraMode } from '../config/camera';
 import type { RendererBackendName } from '../config/render';
+import type { TierId } from '../config/tiers';
+import type { TierReason } from '../core/QualityTier';
 
 /**
  * Diagnostics HUD.
@@ -18,6 +20,10 @@ export interface DiagnosticsSnapshot {
   readonly p95FrameTimeMilliseconds: number;
   readonly drawCalls: number;
   readonly triangles: number;
+  /** Quality tier this frame was rendered under; see `docs/VISUAL_TARGET.md` §3. */
+  readonly qualityTier: TierId;
+  /** Why that tier was chosen, so a quality report can explain itself. */
+  readonly tierReason: TierReason;
   /**
    * Backend that ended up rendering: `webgpu` when the browser exposes a working WebGPU device,
    * `webgl2` when the renderer fell back, `pending` before initialisation resolves.
@@ -148,9 +154,13 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
       `${snapshot.viewport.width}×${snapshot.viewport.height} @ ${snapshot.pixelRatio.toFixed(2)}x`,
   },
   {
-    label: 'Renderer',
+    label: 'Tier',
     format: (snapshot) =>
-      `${snapshot.rendererBackend}${snapshot.postProcessing ? ' · post' : ''} · ${snapshot.shadowCascades}x shadow`,
+      `${snapshot.qualityTier} · ${snapshot.tierReason.replace('-', ' ')} · ${snapshot.shadowCascades}x shadow`,
+  },
+  {
+    label: 'Renderer',
+    format: (snapshot) => `${snapshot.rendererBackend}${snapshot.postProcessing ? ' · post' : ''}`,
   },
   {
     label: 'Sky',

@@ -12,6 +12,7 @@ import { ChaseCamera } from '../cameras/ChaseCamera';
 import { InputManager } from '../input/InputManager';
 import type { PerspectiveCamera } from 'three';
 import { Engine, type FrameState } from './Engine';
+import type { TierResolution } from './QualityTier';
 import { PerformanceMonitor } from './PerformanceMonitor';
 import { SceneManager } from './SceneManager';
 
@@ -25,6 +26,11 @@ export interface ApplicationOptions {
   readonly overlayRoot?: HTMLElement | null;
   /** DOM node used for status/error messages. */
   readonly statusElement?: HTMLElement | null;
+  /**
+   * Resolved quality tier. Resolved at the entrypoint (it needs device probes) and reported here so
+   * every diagnostics snapshot and performance statement can name the tier it was taken under.
+   */
+  readonly tier?: TierResolution;
 }
 
 type StatusTone = 'info' | 'error';
@@ -58,6 +64,7 @@ export class Application {
   readonly #monitor: PerformanceMonitor;
   readonly #overlay: DiagnosticsOverlay | null;
   readonly #statusElement: HTMLElement | null;
+  readonly #tier: TierResolution;
   readonly #unsubscribers: readonly (() => void)[] = [];
   readonly #lastCameraTarget: Vec3 = { x: 0, y: 0, z: 0 };
   #cameraMode: CameraMode = 'chase';
@@ -99,6 +106,7 @@ export class Application {
         ? new DiagnosticsOverlay({ root: options.overlayRoot })
         : null;
     this.#statusElement = options.statusElement ?? null;
+    this.#tier = options.tier ?? { id: 'B', reason: 'unresolved' };
 
     const initialPose = this.#car.getInterpolatedPose(0);
     this.#carVisual.sync(initialPose);
@@ -223,6 +231,8 @@ export class Application {
     const scene = this.#scene.getDiagnostics();
 
     return {
+      qualityTier: this.#tier.id,
+      tierReason: this.#tier.reason,
       rendererBackend: this.#engine.backend ?? 'pending',
       postProcessing: this.#engine.isPostProcessingEnabled,
       shadowCascades: this.#config.shadows.csm.cascades,

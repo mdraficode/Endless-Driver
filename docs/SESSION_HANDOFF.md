@@ -289,8 +289,15 @@ asset/material pipeline (terrain moved to Phase 4).
 | Asset pipeline       | Pinned fetch + offline verification (`npm run assets:fetch` / `assets:verify`), licence allowlist, hash checks, `CREDITS.md` regeneration, wired into `npm run check`                         |
 | Guards and tests     | `npm run guard:glsl` (comment-aware) forbids `ShaderMaterial`/`RawShaderMaterial`/`onBeforeCompile`; HUD reports backend, post state, cascades, environment asset; 139 tests green (10 new)   |
 
-**Remaining Phase 3 work, in planned order:** (1) quality tier system C/B/A with the effect matrix and
-a HUD/debug selector; (2) the rest of the post stack per tier — GTAO, DOF, motion blur, grain,
+**Also landed (2026-10-14):** the quality tier system. `src/config/tiers.ts` holds the C/B/A contracts as data
+and `src/core/QualityTier.ts` resolves one from device probes (or `?tier=`), overlays it on the baseline render
+config, and reports it — with its reason — in the HUD. Tier A is deliberately opt-in: it has never been measured
+on named hardware, so auto-selecting it would assert a frame budget the project cannot back up. The
+`?backend=webgl|auto` switch satisfies the forced-backend deliverable. Two deviations from the tier table are
+recorded in `docs/VISUAL_TARGET.md` §3: tier C keeps the backend on `auto` rather than pinning WebGL2, and the
+tiered AA modes are still pending (today the tiers differ by MSAA sample count).
+
+**Remaining Phase 3 work, in planned order:** (1) the rest of the post stack per tier — GTAO, DOF, motion blur, grain,
 chromatic aberration, vignette, sharpening — plus TAAU/TRAA and FXAA/SMAA; (3) time-of-day clock with
 light colour/intensity curves, LUT grading and exposure-by-sun; (4) `gltf-transform` optimize/KTX2
 pipeline for models and the first materials library entries; (5) the studio look-dev scene
