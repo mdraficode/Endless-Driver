@@ -6,6 +6,14 @@
 
 The project's initial `UNLICENSED` status does not replace or remove dependency licenses. Choosing an open-source project license later does not automatically permit redistribution of purchased or restricted assets.
 
+## Standing rule (owner instruction, 2026-10-14)
+
+**Free and open only. No purchases, ever.** CC0 is the default; CC-BY is an attributed exception only where no CC0
+asset of comparable quality exists; everything paid, account-gated, NC/ND, marketplace-"freebie", AI-generated, or
+brand-trademarked is excluded. The verified source register, per-asset-class plan, and the honest ceiling of free
+sourcing are in [`docs/ASSET_SOURCES.md`](ASSET_SOURCES.md); the decision is ADR 0005. Nothing in this policy may
+be relaxed to obtain an asset — if free content cannot reach the bar, we author it ourselves or document the gap.
+
 ## Preferred sources (visual-fidelity re-plan, 2026-10-14)
 
 The owner requires Forza-Horizon-class visuals, which makes sourcing a first-class planning input
@@ -17,9 +25,9 @@ The owner requires Forza-Horizon-class visuals, which makes sourcing a first-cla
   allowed only with a per-asset licence record, the terms that apply, and the download date. The
   era of the whole Megascans library being free for everyone ended 2024-12-31, and free-of-charge is
   not the same as licensed for redistribution.
-- **Cars:** never ripped game assets; never manufacturer names, logos, or trade dress without a
-  licence. The route (purchase, commission, or in-house generic coupe) is an open decision for the
-  owner recorded in `docs/VISUAL_TARGET.md` §7.
+- **Cars:** never ripped game assets; never manufacturer names, logos, or trade dress. The hero car is an
+  in-house design under the fictional "Kaminari" marque, with a **CC0** Sketchfab concept car (Unity Fan series)
+  as the stand-in until it lands — see `docs/ASSET_SOURCES.md` §3.5. No purchases are involved at any point.
 - Audio, if it is ever added, follows the same rules and needs its own scope decision.
 
 ## Before adding an asset
@@ -93,5 +101,10 @@ reviewed at the same gate as the manifest. Anything whose terms cannot be confir
 not "kept for now".
 
 ## Credits and release gate
+
+[`CREDITS.md`](../CREDITS.md) is the attribution file. It is written by the same script that writes the manifest, so
+a licence entry and its credit line land in the same commit and cannot drift from what ships. CC0 assets are credited
+there anyway (out of respect, not obligation); CC-BY entries carry the required credit line and appear in the
+in-game credits screen.
 
 Create/update an attribution file as soon as the first asset requires credit. Before release, verify the inventory against files actually distributed, include required notices, and document any non-redistributable source assets. No public release or deployment is authorized by this initial setup.

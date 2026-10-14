@@ -160,7 +160,10 @@ The asset question is the binding constraint on "realistic", so it is a planning
   **(b)** buy a royalty-free game-ready model and record its licence in the asset manifest; **(c)** ship a
   "generic coupe" built procedurally/by code to a high material standard as an interim hero, with correct
   proportions, panel gaps, glass, wheels, and paint.
-- Recommendation: **(b) first, then (a)**, with (c) as the Phase 6 bridge so the car never looks like a box again.
+- **Resolved 2026-10-14 (owner): free and open only — no purchases.** In-house fictional **"Kaminari"** hero car,
+  with Unity Fan's **CC0** high-poly concept cars (200k–760k tris, no trademarks) as the stand-in. The full verified
+  sourcing answer — including what free content can and cannot reach — is in [`docs/ASSET_SOURCES.md`](ASSET_SOURCES.md).
+  The earlier (b)-then-(a) recommendation is superseded.
 
 **Pipeline for whatever we source** (all of this is engine-agnostic and self-owned):
 
@@ -185,9 +188,12 @@ To keep this project honest, these claims are explicitly out of bounds:
 3. **Frame-rate promises without hardware evidence.** The dev sandbox runs SwiftShader (CPU rasterisation); the
    only honest performance statements are ones measured on named devices with recorded resolution and settings.
 4. **A big open world.** Streaming scope will be a small, dense, authored region — a few square kilometres, not a
-   country.
-5. **Traffic, crowds, and full simulation databases.** Phase scope keeps the vehicle count low and the audio
-   synthesized/procedural unless assets are licensed.
+   country. The region is now fixed: the fictional rural-Japanese **Hinode Prefecture** (`docs/VISUAL_TARGET.md` §5).
+5. **Traffic, crowds, and full simulation databases.** Phase scope keeps the vehicle count low. Audio is
+   **synthesized/procedural from free sample libraries** (Sonniss GDC, Freesound CC0), not a licensed AAA engine
+   recording, and the music is a CC0/CC-BY playlist rather than an official soundtrack.
+6. **Any specific real place.** The region is a _composite_ of Japanese scenery built from CC0 materials and
+   in-house landmarks — not photogrammetry of a real location, and never presented as one.
 
 ---
 

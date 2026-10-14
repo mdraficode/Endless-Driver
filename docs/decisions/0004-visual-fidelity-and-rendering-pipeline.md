@@ -1,6 +1,6 @@
 # Visual fidelity, rendering pipeline, and asset strategy
 
-**Status:** Proposed — awaiting owner sign-off (see "Open questions" below)
+**Status:** Accepted 2026-10-14 (owner approved the direction; the five open questions were resolved in ADR 0005)
 **Date:** 2026-10-14
 **Phase:** Cross-cutting; governs Phase 3 and every phase after it
 
@@ -155,24 +155,22 @@ presented as the intended quality.
 - **Scope creep.** The visual bar invites endless polish. Mitigation: `docs/VISUAL_TARGET.md` quality
   bars are the definition of done, and each phase still stops for authorization.
 
-## Open questions (owner input requested)
+## Open questions — resolved
 
-Recorded in full in `docs/VISUAL_TARGET.md` §7; needed before the phase noted:
-
-1. **Car asset route** (before Phase 6) — buy royalty-free, commission in-house, or extended interim
-   coupe?
-2. **Brand policy** (before Phase 6) — unbranded generic design recommended.
-3. **Region** (before Phase 4) — the alpine/coastal brief in `docs/VISUAL_TARGET.md` §5 vs an
-   alternative.
-4. **Audio scope** (before Phase 7) — synthesized/procedural only, or licensed samples?
-5. **Photo mode** (before Phase 8) — in scope or explicitly out?
+The five questions raised here were answered by the owner on 2026-10-14 and are recorded in
+[ADR 0005](0005-free-and-open-asset-strategy.md) and `docs/VISUAL_TARGET.md` §7: free-and-open sourcing only
+(no purchases), an unbadged fictional brand, the rural-Japan "Hinode Prefecture" region, free sample libraries
+plus a project-owned engine synth, and photo mode in scope for Phase 8. The verified register behind those
+answers is `docs/ASSET_SOURCES.md`.
 
 ## Related
 
 - `PROJECT_PLAN.md` §6 (rendering/seasons/weather architecture), §8 (tiers/budgets), §9 (phases 3–8),
   §10 (acceptance), §11 (assets, risks, deferred decisions).
 - `docs/RESEARCH_AAA_FIDELITY.md` — evidence, capability audit, gap analysis, sources.
-- `docs/VISUAL_TARGET.md` — normative visual specification, quality bars, look-dev workflow.
+- `docs/VISUAL_TARGET.md` — normative visual specification, quality bars, look-dev workflow, region brief (§5).
+- `docs/ASSET_SOURCES.md` — verified free-and-open asset register.
+- `docs/decisions/0005-free-and-open-asset-strategy.md` — licence policy, region, brand, car, and audio decisions.
 - `docs/ASSET_POLICY.md` — licence rules and manifest requirements.
 - `docs/decisions/0001-engine-and-physics.md`, `0002-renderer-three-js.md`,
-  `0003-vehicle-physics-and-camera.md`.
+  `0003-vehicle-physics-and-camera.md`, `0005-free-and-open-asset-strategy.md`.

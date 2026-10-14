@@ -1,10 +1,11 @@
 # Visual target: the look we are building toward, and how we will know we got there
 
-**Status:** specification, 2026-10-14  
+**Status:** specification, 2026-10-14 · **region and sourcing decisions resolved 2026-10-14**  
 **Companion documents:** [`docs/RESEARCH_AAA_FIDELITY.md`](RESEARCH_AAA_FIDELITY.md) (evidence and feasibility),
+[`docs/ASSET_SOURCES.md`](ASSET_SOURCES.md) (the verified free-and-open asset register backing every claim here),
 [`PROJECT_PLAN.md`](../PROJECT_PLAN.md) §6–§11 (the phased plan),
 [`docs/decisions/0004-visual-fidelity-and-rendering-pipeline.md`](decisions/0004-visual-fidelity-and-rendering-pipeline.md)
-(decisions).
+and [`0005`](decisions/0005-free-and-open-asset-strategy.md) (decisions).
 
 The owner's requirement: graphics "as close as that Forza Horizon's level" — realistic car models, environmental
 aesthetics, seasons, roads, terrains. This document turns that into something buildable and reviewable.
@@ -141,17 +142,58 @@ recorded resolution and settings. The dev sandbox (SwiftShader) may only validat
 
 ---
 
-## 5. Reference direction (art direction brief)
+## 5. Region brief — "Hinode Prefecture" (日出県)
 
-To keep the world coherent and achievable, the target region is a **temperate alpine/coastal touring region**:
-mountain roads with hairpins, forested lower slopes, meadows and farmland, a lake or coastal stretch, a small
-village, tunnels and bridges, and a highway section. This gives the widest visual variety for the least authoring
-cost (water, forest, rock, snow, and road types all in one small map) and maps onto the season system naturally:
-spring wildflowers and rain, summer dry heat and dust, autumn colour and leaf litter, winter snow and ice.
+**Owner decision (2026-10-14):** the world is **rural Japan** — the natural beauty and roadside character of the
+settings Forza Horizon uses for its regions. Fictional, but unmistakably Japanese.
 
-**Reference palette rules:** sky-driven lighting (never a hand-tuned "sunny" look baked into materials), saturated
-but not cartoonish foliage, asphalt that is grey-brown rather than blue-black, and colour grading that is
-restrained at midday and warm at golden hour. Any look that requires standing still to look good is rejected.
+**Why this direction is also the smart one technically:** rural Japan is where the content we can legally and freely
+obtain is strongest. Poly Haven's Japan HDRIs (`ninomaru_teien`, `bamboo_tunnel` at 20 480 × 10 240,
+`spooky_bamboo_morning`, `cedar_bridge` at 16K) plus its CC0 Japanese scanned materials (`japanese_cedar_planks`,
+`sakura_bark`, `trident_maple_bark`, `japanese_stone_wall`, `tatami_mat`, `bamboo_wall`) map directly onto the
+districts below. The load-bearing question for "does this look like Japan?" is **roadside props and vegetation**,
+not a particular landmark — and props we author in-house, so the look stays coherent.
+
+### Shape of the world
+
+A compact, dense prefecture: roughly **8 × 8 km** of drivable road network (a few minutes end-to-end at speed), no
+country-sized sprawl, everything visible from the road. One volcano silhouette (**Hinode-dake**) is visible from most
+of the map and is the visual anchor at golden hour.
+
+| District                            | Road character                                                    | What it is for                                                       | Primary seasonal payoff                          |
+| ----------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------ |
+| **Kaiun Coast** (海運海岸)          | Fast coastal expressway, sweepers, a long causeway                | Speed, sea horizon, wide skies, sunset runs                          | Summer haze, winter storm swell                  |
+| **Hinode Harbour**                  | Harbour loop, container port, fish market lanes                   | Water reflections, industrial light at night                         | Rain-slick neon, fog                             |
+| **Yūhi Town** (夕陽町)              | Tight grid of narrow lanes, crossings, alleys                     | The everyday Japan look: vending machines, wires, konbini, izakaya   | Rain, snow, matsuri lanterns                     |
+| **Take-no-Michi** (竹の道)          | Narrow lane through a bamboo grove toward a shrine                | Landmark moment: torii, stone lanterns, moss, stepping-stone shadows | Green all year; snow on bamboo in winter         |
+| **Chiyo River & Sakura Avenue**     | River road lined with sakura, two bridges                         | The postcard: blossom tunnels, petals on asphalt                     | Spring, overwhelmingly                           |
+| **Momiji Gorge** (紅葉峡)           | Winding gorge road, river, waterfalls, short tunnels              | Technical corners, tunnels, canyon light                             | Autumn maple colour, leaf litter, wet road       |
+| **Kiri Pass** (霧峠)                | Classic touge: hairpins, guardrails, convex mirrors, morning mist | The drift road; canyon walls of sugi cedar                           | Mud, falling leaves, first snow                  |
+| **Shirasagi Terraces** (白鷺の棚田) | Single-lane farm roads between paddies, raised beds               | Open sky, mirror-flat water, rice green/gold                         | Flooded-spring mirror, harvest gold, snow fields |
+| **Hokuto Highlands** (北斗高原)     | Open plateau sweepers, susuki grass, volcanic ash                 | Big sky, wind, dirt pull-offs, rally-ish routes                      | Silver grass, frost, deep snow                   |
+| **Ginzan Onsen** (銀山温泉)         | Snow-country village lanes, steep approach road                   | Winter hub: lanterns, steam, wooden buildings                        | Heavy snow, ice, night glow                      |
+
+**Events layer (presentation, not gameplay scope):** seasonal set-dressing that turns the same roads into different
+places — _Hanami_ (spring blossom), _Matsuri_ (summer festival: lantern strings, yukata props, fireworks over the
+harbour), _Momiji-gari_ (autumn foliage drives), _Yuki-matsuri_ (winter illumination). Forza's sense of place comes
+largely from this, and it is cheap once Phase 7 exists.
+
+### Roadside kit (the actual "looks like Japan" list)
+
+Authored in-house from CC0 materials: bamboo-screen and kendo-bamboo fencing, reflective guardrail with cats-eyes,
+blue circular signage and red/white curve chevrons, "止まれ" stop markings and painted kanji, overhead utility poles
+with dense wire runs, concrete paddy embankments, irrigation channels, convex traffic mirrors at every hairpin,
+steel snow-melt pipes and red-slanted snow fences, jizō statues with bibs, stone lanterns and torii (shrine lane),
+level crossings with red lamps and barriers, roadside vending machines (doubling as night-time light sources),
+komeda-style shop fronts, noren, shōji panels, tiled roofs with heavy eaves, kerbside storm drains, and temple
+bells. Each one is a budgeted prop (≤ 5k tris) that pays for itself at every corner.
+
+### Reference palette rules
+
+Sky-driven lighting (never a hand-tuned "sunny" look baked into materials); saturated but not cartoonish foliage;
+asphalt that is grey-brown rather than blue-black, with visible wet film in rain; restrained grading at midday and
+warm, low-contrast lift at golden hour; mist and haze treated as content, not as a bug. Any look that requires
+standing still to look good is rejected.
 
 ---
 
@@ -167,15 +209,21 @@ Restating the constraints from the research document, because they define accept
 
 ---
 
-## 7. Open questions for the owner
+## 7. Owner decisions (resolved 2026-10-14) and what remains open
 
-These decide scope and should be answered before or during Phase 4–6:
+**Resolved by the owner:**
 
-1. **Car asset path** — (a) commission/build one hero car with a real artist in Blender; (b) buy a royalty-free
-   game-ready model and record the licence; (c) ship a high-quality generic coupe built in-house first, then
-   upgrade. Recommendation: **b, then a**, with **c** as the interim so the car stops looking like a box early.
-2. **Brand policy** — unbadged fictional brand (recommended, zero legal risk) or licensed real marques.
-3. **Region** — approve the alpine/coastal direction in §5, or name a different region you want to drive in.
-4. **Audio scope** — procedural engine/tyre/ambient synthesis (own it, cheap) or licensed audio libraries.
-5. **Photo mode / replay** — in scope as a late polish phase, or out of scope? (Forza-style photomode is a
-   signature feature, and it is cheap once the rendering stack is good.)
+| #   | Question            | Decision                                                                                                                                                                                                                                                                         |
+| --- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Car asset path      | **Free and open only.** No purchases. Hero car is built in-house as a fictional **"Kaminari"** marque (zero trademark exposure); a CC0 high-poly concept car from Sketchfab's Unity Fan series is the stand-in until the in-house model lands. See `docs/ASSET_SOURCES.md` §3.5. |
+| 2   | Brand policy        | **Unbadged, fictional.** No real manufacturer names, badges, or trade dress.                                                                                                                                                                                                     |
+| 3   | Region              | **Rural Japan** — the fictional **Hinode Prefecture** laid out in §5.                                                                                                                                                                                                            |
+| 4   | Audio scope         | **Free and open sources only** (Sonniss GDC bundles, Freesound CC0, Kenney CC0), with music built from CC0/CC-BY pools. Engine audio is a Web Audio synth driven by vehicle state, not a sample library. See §3.6 of the asset register.                                         |
+| 5   | Photo mode / replay | **In scope** as late polish (Phase 8): a free-camera pause mode with tier-aware quality bumps, which is cheap once the post stack exists.                                                                                                                                        |
+
+**One sub-decision still open (low cost either way):** the asset register allows **CC-BY with an automatic credit
+line** as an exception for a handful of Japanese landmark props (torii, shrine buildings) that have no CC0
+equivalent. Say **"zero attribution"** and we drop the exception and author those props in-house instead.
+
+**Not questions, but standing constraints the plan keeps:** no purchase requests, no dead ends waiting on a
+purchased asset, and every claim about visual quality stays tied to `docs/VISUAL_TARGET.md` and measured evidence.

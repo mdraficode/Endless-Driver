@@ -1,6 +1,6 @@
 # Architecture — Endless Driver
 
-**State:** Phases 1–2 implemented (core runtime and scene foundation; Rapier vehicle physics, keyboard input smoothing, chase camera); the visual-fidelity re-plan is written but awaiting owner sign-off; Phases 3–8 (rearranged) remain design contracts.  
+**State:** Phases 1–2 implemented (core runtime and scene foundation; Rapier vehicle physics, keyboard input smoothing, chase camera); the visual-fidelity re-plan and free-and-open asset strategy are written (ADRs 0004–0005); Phases 3–8 (rearranged) remain design contracts.  
 **Related:** [Project plan](../PROJECT_PLAN.md) §9 (phases) and §6 (rendering architecture), [visual target](VISUAL_TARGET.md), [AAA fidelity research](RESEARCH_AAA_FIDELITY.md), [engine/physics decision](decisions/0001-engine-and-physics.md), [renderer decision](decisions/0002-renderer-three-js.md), [vehicle physics decision](decisions/0003-vehicle-physics-and-camera.md), [visual fidelity and rendering pipeline decision](decisions/0004-visual-fidelity-and-rendering-pipeline.md).
 
 ## 1. Composition and data flow
@@ -151,4 +151,4 @@ Support failure must remain an understandable UI state for both backends. Pixel 
 
 **Rearranged phase mapping (ADR 0004):** `shaders/` and `assets/` (pipeline, manifest, licence register) arrive in **Phase 3** together with the renderer migration, lighting, post stack, and the look-dev scenes; `world/` and `workers/` in **Phase 4** (terrain, roads, streaming); vegetation, props, and atmosphere in **Phase 5**; the hero car, cockpit camera, and refined vehicle systems in **Phase 6**; `environment/` (day/night, seasons, weather, surface state) in **Phase 7**; touch input, the full camera suite, HUD, settings, and the final quality pass in **Phase 8**.
 
-Each phase requires its own explicit authorization; completing Phase 2 does not authorize Phase 3, and the re-plan itself is awaiting owner sign-off.
+Each phase requires its own explicit authorization; completing Phase 2 does not authorize Phase 3. The re-plan's region, brand, and sourcing decisions are resolved (ADR 0005); Phase 3 (renderer, lighting, post, asset/material pipeline) is the next gated phase.

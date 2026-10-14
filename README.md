@@ -2,12 +2,15 @@
 
 A cross-platform, procedural 3D web driving game built with **Three.js, Rapier, TypeScript, Vite, and Tailwind CSS**.
 
-> **Current state: Phases 1–2 implemented and pushed. A visual-fidelity re-plan is complete and awaiting owner sign-off; Phases 3–8 are not authorized.**
+> **Current state: Phases 1–2 implemented and pushed. The visual-fidelity re-plan and the free-and-open asset strategy are complete (region, brand, sourcing, and audio decided); Phases 3–8 are not authorized.**
 >
 > The Phase 2 car drives on a flat reference arena with raycast suspension, a six-speed drivetrain, a slip-based tire model, smoothed keyboard input, and a damped chase camera — but the presentation is still placeholder. The owner's target is Forza-Horizon-class visuals, so the roadmap was rearranged (ADR 0004):
 >
-> - [`docs/RESEARCH_AAA_FIDELITY.md`](docs/RESEARCH_AAA_FIDELITY.md) — what Forza actually does, the verified Three.js r186 capability audit, a 20-row gap analysis, legal asset sourcing, and five explicit non-promises.
-> - [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) — the visual contract: five pillars, per-system quality bars, tier matrix (C/B/A), look-dev workflow, region brief, and five open questions for the owner.
+> - [`docs/RESEARCH_AAA_FIDELITY.md`](docs/RESEARCH_AAA_FIDELITY.md) — what Forza actually does, the verified Three.js r186 capability audit, a 20-row gap analysis, legal asset sourcing, and six explicit non-promises.
+> - [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) — the visual contract: five pillars, per-system quality bars, tier matrix (C/B/A), look-dev workflow, and the **rural-Japan region brief** ("Hinode Prefecture").
+> - [`docs/ASSET_SOURCES.md`](docs/ASSET_SOURCES.md) — the verified **free-and-open** asset register: Poly Haven and ambientCG (API-checked on 2026-10-14), Sonniss GDC game audio, Freesound CC0, CC0 cars, open-source authoring tools — and exactly where free sourcing reaches its ceiling.
+>
+> **Owner decisions (2026-10-14, [ADR 0005](docs/decisions/0005-free-and-open-asset-strategy.md)):** free and open assets only, no purchases; unbadged fictional brand; the fictional rural-Japan region; audio from free sample libraries plus a project-owned engine synth; photo mode in scope for Phase 8.
 >
 > Terrain, roads, streaming, vegetation, the hero car, weather/seasons, touch controls, and the post-processing stack are all still future work.
 
@@ -24,10 +27,12 @@ The public repository is the durable source of truth. Repository creation and ea
 2. [`AGENTS.md`](AGENTS.md) — mandatory working rules for future sessions.
 3. [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md) — actual progress, verification evidence, blockers, and the next authorized action.
 4. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — ownership, coordinates, timing, lifecycle, and module dependencies.
-5. [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) — the visual quality contract every later phase is reviewed against.
-6. [`docs/decisions/`](docs/decisions/) — ADR 0001 (physics/tooling), ADR 0002 (Three.js renderer decision), ADR 0003 (vehicle physics, tire model, input smoothing, chase camera), ADR 0004 (visual fidelity, rendering pipeline, asset strategy — **proposed, awaiting sign-off**).
-7. [`docs/GIT_WORKFLOW.md`](docs/GIT_WORKFLOW.md) — safe remote synchronization and recovery.
-8. [`docs/ASSET_POLICY.md`](docs/ASSET_POLICY.md) — model/texture/audio licensing and large-file policy.
+5. [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) — the visual quality contract every later phase is reviewed against, including the region brief.
+6. [`docs/ASSET_SOURCES.md`](docs/ASSET_SOURCES.md) — where every asset comes from, verifiably, for free. Read before sourcing anything.
+7. [`docs/decisions/`](docs/decisions/) — ADR 0001 (physics/tooling), ADR 0002 (Three.js renderer decision), ADR 0003 (vehicle physics, tire model, input smoothing, chase camera), ADR 0004 (visual fidelity, rendering pipeline), ADR 0005 (free-and-open asset strategy, region, brand, audio).
+8. [`docs/GIT_WORKFLOW.md`](docs/GIT_WORKFLOW.md) — safe remote synchronization and recovery.
+9. [`docs/ASSET_POLICY.md`](docs/ASSET_POLICY.md) — model/texture/audio licensing and large-file policy.
+10. [`CREDITS.md`](CREDITS.md) — attribution register (written by the asset pipeline as assets land).
 
 ## Setup
 
@@ -103,18 +108,19 @@ docs/             architecture, decisions, handoff, asset/Git policies
 
 ## Execution status
 
-| Stage                                                          | Status                                                                                                      |
-| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Planning and project structure                                 | Complete and pushed to the public repository                                                                |
-| Tooling and scaffold validation                                | Complete; lint, types, formatting, tests, and build pass locally and in CI                                  |
-| Phase 1: engine, loop, camera, lighting                        | Implemented, verified, and pushed                                                                           |
-| Phase 2: vehicle physics, input, camera                        | Implemented and verified (unit, physics, integration, and browser gates)                                    |
-| Visual-fidelity research and re-plan                           | Complete 2026-10-14 (`docs/RESEARCH_AAA_FIDELITY.md`, `docs/VISUAL_TARGET.md`, ADR 0004); awaiting sign-off |
-| Phase 3: renderer, lighting, post, asset and material pipeline | Gated — not started                                                                                         |
-| Phase 4: terrain, roads, streaming                             | Gated                                                                                                       |
-| Phase 5: vegetation, props, atmosphere                         | Gated                                                                                                       |
-| Phase 6: hero car, materials, vehicle fidelity                 | Gated; needs the car-asset decision                                                                         |
-| Phase 7: weather, seasons, surface behaviour                   | Gated                                                                                                       |
+| Stage                                                          | Status                                                                                                           |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Planning and project structure                                 | Complete and pushed to the public repository                                                                     |
+| Tooling and scaffold validation                                | Complete; lint, types, formatting, tests, and build pass locally and in CI                                       |
+| Phase 1: engine, loop, camera, lighting                        | Implemented, verified, and pushed                                                                                |
+| Phase 2: vehicle physics, input, camera                        | Implemented and verified (unit, physics, integration, and browser gates)                                         |
+| Visual-fidelity research and re-plan                           | Complete 2026-10-14 (`docs/RESEARCH_AAA_FIDELITY.md`, `docs/VISUAL_TARGET.md`, ADR 0004)                         |
+| Sourcing, region, brand, audio decisions                       | Complete 2026-10-14 (`docs/ASSET_SOURCES.md`, ADR 0005): free-and-open only, rural-Japan region, fictional brand |
+| Phase 3: renderer, lighting, post, asset and material pipeline | Gated — not started                                                                                              |
+| Phase 4: terrain, roads, streaming                             | Gated                                                                                                            |
+| Phase 5: vegetation, props, atmosphere                         | Gated                                                                                                            |
+| Phase 6: hero car, materials, vehicle fidelity                 | Gated; needs the car-asset decision                                                                              |
+| Phase 7: weather, seasons, surface behaviour                   | Gated                                                                                                            |
 
 Verification detail — including how browser checks were performed, the device/tooling used, and what remains unverified — is recorded in [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md). Green checks do **not** prove realistic vehicle physics, device support, or a 60 FPS guarantee on a given machine.
 
@@ -132,6 +138,6 @@ No open-source distribution license has been selected, so project metadata remai
 
 ## Next step
 
-**Review the re-plan and answer five questions**, then authorize Phase 3 if the direction is right. The questions (car asset route, brand policy, region, audio scope, photo mode) are in [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) §7; the feasibility boundary and roadmap change are in [`docs/RESEARCH_AAA_FIDELITY.md`](docs/RESEARCH_AAA_FIDELITY.md) §6–§7 and [ADR 0004](docs/decisions/0004-visual-fidelity-and-rendering-pipeline.md). Phase 3 is now renderer, lighting, post-processing, and the asset/material pipeline — terrain moved to Phase 4. Completing Phase 2 does not authorize it.
+**Authorize Phase 3** when ready. The direction, region, sourcing, brand, and audio decisions are resolved and written down ([ADR 0004](docs/decisions/0004-visual-fidelity-and-rendering-pipeline.md), [ADR 0005](docs/decisions/0005-free-and-open-asset-strategy.md), [`docs/ASSET_SOURCES.md`](docs/ASSET_SOURCES.md)); the only open item is whether to keep the CC-BY-with-credit exception or restrict sourcing to zero-attribution assets. Phase 3 is renderer, lighting, post-processing, and the asset/material pipeline — terrain moved to Phase 4. Completing Phase 2 does not authorize it.
 
 Phase 2 verification evidence, measured handling numbers, and the exact browser checks that were run are recorded in [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md).

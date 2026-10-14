@@ -1,29 +1,37 @@
 # Session Handoff — Endless Driver
 
 **Updated:** 2026-10-14  
-**Current stage:** Phases 1–2 implemented, verified, and pushed; the visual-fidelity re-plan is written and awaiting owner sign-off  
+**Current stage:** Phases 1–2 implemented, verified, and pushed; the visual-fidelity re-plan and the free-and-open asset strategy are written; region, brand, audio, and sourcing decisions are resolved  
 **Authorized development phase:** Phases 1–2 only  
-**Next development instruction:** The owner reviews the re-plan (see section 9) and answers the five open questions in `docs/VISUAL_TARGET.md` §7; Phase 3 is then authorized separately. No development is authorized until then.
+**Next development instruction:** Owner authorizes Phase 3 (renderer, lighting, post, asset/material pipeline). The five re-plan questions are answered and recorded in ADR 0005; see section 9. No development is authorized until then.
 
-> **Re-plan (2026-10-14, awaiting sign-off):** the owner rejected the Phase 2 presentation and set a
+> **Re-plan (2026-10-14, decisions resolved):** the owner rejected the Phase 2 presentation and set a
 > Forza-Horizon-class visual target. Research and specification are complete and committed alongside
 > this handoff: `docs/RESEARCH_AAA_FIDELITY.md` (Forza pipeline evidence, Three.js r186 capability
-> audit, 20-row gap analysis, legal asset sourcing, five explicit non-promises),
+> audit, 20-row gap analysis, legal asset sourcing, six explicit non-promises),
 > `docs/VISUAL_TARGET.md` (five pillars, per-system quality bars, C/B/A tier contracts, look-dev
-> workflow, region brief, owner questions), ADR 0004 (proposed), and rearranged
-> `PROJECT_PLAN.md` §6 and §9–§11. The headline change: **Phase 3 is now the renderer, lighting,
-> post-processing, and asset/material pipeline; terrain and roads moved to Phase 4.**
+> workflow, rural-Japan region brief), ADR 0004, and rearranged `PROJECT_PLAN.md` §6 and §9–§11.
+> The headline change: **Phase 3 is now the renderer, lighting, post-processing, and asset/material
+> pipeline; terrain and roads moved to Phase 4.**
+>
+> **Owner decisions that followed (2026-10-14, ADR 0005):** free-and-open assets only with **no
+> purchases**; region = the fictional rural-Japan **“Hinode Prefecture”**; fictional unbadged brand
+> (**“Kaminari”** hero car, CC0 concept car as stand-in); audio from free sample libraries plus a
+> project-owned engine synth (Sonniss GDC / Freesound CC0 / Kenney CC0, CC0/CC-BY music); photo mode
+> in scope for Phase 8. The verified sourcing register — including exactly where free content reaches
+> its ceiling — is `docs/ASSET_SOURCES.md`.
 
 ## 1. User instructions so far
 
-| Instruction                                                                                          | State                                                                                     |
-| ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Plan the whole project in structured Markdown                                                        | Done — `PROJECT_PLAN.md`, `docs/PROJECT_BRIEF.md`                                         |
-| Create the initial project structure and keep progress in the dedicated GitHub repository            | Done — public [`mdraficode/Endless-Driver`](https://github.com/mdraficode/Endless-Driver) |
-| Implement Phase 1 (core engine setup and scene foundation) using Vite, TypeScript, and **Three.js**  | Done — pushed, verified                                                                   |
-| Implement Phase 2 (vehicle physics, keyboard smoothing, dynamic chase camera)                        | Done — see sections 3–5                                                                   |
-| Reach “Forza Horizon level” visuals (realistic car, environment aesthetics, seasons, roads, terrain) | Re-plan complete 2026-10-14; implementation gated — see section 9                         |
-| Do **not** start Phase 3 without explicit instruction                                                | Honored — no terrain, roads, streaming, or weather code exists                            |
+| Instruction                                                                                          | State                                                                                                                      |
+| ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Plan the whole project in structured Markdown                                                        | Done — `PROJECT_PLAN.md`, `docs/PROJECT_BRIEF.md`                                                                          |
+| Create the initial project structure and keep progress in the dedicated GitHub repository            | Done — public [`mdraficode/Endless-Driver`](https://github.com/mdraficode/Endless-Driver)                                  |
+| Implement Phase 1 (core engine setup and scene foundation) using Vite, TypeScript, and **Three.js**  | Done — pushed, verified                                                                                                    |
+| Implement Phase 2 (vehicle physics, keyboard smoothing, dynamic chase camera)                        | Done — see sections 3–5                                                                                                    |
+| Reach “Forza Horizon level” visuals (realistic car, environment aesthetics, seasons, roads, terrain) | Re-plan complete 2026-10-14; implementation gated — see section 9                                                          |
+| Use only free/open premium assets, no payments; region = rural Japan                                 | Resolved 2026-10-14 — `docs/ASSET_SOURCES.md` (API-verified sources), ADR 0005, region brief in `docs/VISUAL_TARGET.md` §5 |
+| Do **not** start Phase 3 without explicit instruction                                                | Honored — no terrain, roads, streaming, or weather code exists                                                             |
 
 Phase 2 was authorized with these constraints, all honored: Rapier **or** Cannon-es allowed (Rapier
 chosen — sole physics authority, never two solvers); the slip-friction/drift behaviour is an explicit
@@ -187,7 +195,7 @@ is authorized:
   credential material.
 - If a push is blocked, record it plainly and export a bundle instead of claiming remote success.
 
-## 9. Visual-fidelity re-plan (2026-10-14) — complete, awaiting sign-off
+## 9. Visual-fidelity re-plan (2026-10-14) — complete; decisions resolved in section 10
 
 **Why:** after reviewing the Phase 2 screenshots the owner rejected the boxy, cartoonish look and
 required realistic car models and environmental aesthetics "as close as possible" to Forza Horizon,
@@ -198,9 +206,9 @@ authorizing a research step-back and a full re-plan. No visual implementation ha
 | Artifact                                                        | Content                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `docs/RESEARCH_AAA_FIDELITY.md`                                 | What Forza actually does (surfel GI, reactive procedural sky, POM terrain + virtual texturing, seasonal "Winteriser" material variants, wetness/temperature-driven traction) with sources; a capability audit of the installed `three@0.186.1` (TSL display nodes, CSM, Sky/Water, KTX2/Draco, `MeshPhysicalMaterial` clearcoat); a 20-row gap table with phase mapping; CC0/paid asset legality; five explicit non-promises |
-| `docs/VISUAL_TARGET.md`                                         | The normative look contract: five pillars, per-system quality bars with measurable checks, the C/B/A tier matrix, the look-dev workflow (studio scene + 2 km route with 12 fixed bookmarks + SSIM diffing + performance gates), the alpine/coastal art-direction brief, and §7 owner questions                                                                                                                               |
+| `docs/VISUAL_TARGET.md`                                         | The normative look contract: five pillars, per-system quality bars with measurable checks, the C/B/A tier matrix, the look-dev workflow (studio scene + 2 km route with 12 fixed bookmarks + SSIM diffing + performance gates), the rural-Japan region brief, and §7 resolved decisions                                                                                                                                      |
 | `PROJECT_PLAN.md` (revised)                                     | §6 rewritten as the rendering/seasons architecture; §8 tiers extended; §9 rearranged to Phases 3–8 with an old→new mapping; §10 execution status; §11 asset policy, new risks, and deferred decisions; §13 traceability remapped                                                                                                                                                                                             |
-| `docs/decisions/0004-visual-fidelity-and-rendering-pipeline.md` | Proposed ADR: stay on Three.js but move to `WebGPURenderer` + TSL with the WebGL2 backend as the supported fallback; one TSL `RenderPipeline` post stack; foundations before content; tiers as explicit contracts; asset sourcing as engineering; the feasibility boundary and the five open questions                                                                                                                       |
+| `docs/decisions/0004-visual-fidelity-and-rendering-pipeline.md` | ADR (accepted): stay on Three.js but move to `WebGPURenderer` + TSL with the WebGL2 backend as the supported fallback; one TSL `RenderPipeline` post stack; foundations before content; tiers as explicit contracts; asset sourcing as engineering; the feasibility boundary and the five open questions                                                                                                                     |
 
 **Feasibility boundary recorded (must not be overstated to the owner):** the browser target is
 quality-tiered PBR + HDRI IBL + GTAO/SSR/TRAA + procedural biomes + CC0 scans with a WebGL2
@@ -212,3 +220,35 @@ parity claim is made without measurements on named hardware.
 policy (Phase 6), region (Phase 4), audio scope (Phase 7), photo mode (Phase 8).
 
 **Next action:** owner sign-off on the re-plan and those answers; only then is Phase 3 authorized.
+
+## 10. Free-and-open asset strategy and the Japan region (2026-10-14)
+
+**Owner instruction:** use the best-quality _free and open_ resources — no purchases, no licence fees, no
+restricted licences — and do not compromise the game to get them. Region: the natural beauty of rural Japan, as
+Forza Horizon does for its settings.
+
+**What was done:**
+
+| Artifact                                                            | Content                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs/ASSET_SOURCES.md` (new)                                       | The verified register. Poly Haven (997 HDRIs / 869 textures / 521 models) and ambientCG APIs were **queried live on 2026-10-14**, so the counts, the Japan-tagged assets, and the download mechanics are checked facts, not recollection. Covers HDRIs, terrain/road materials, vegetation and rocks, Japanese props, the car question, audio, fonts, the open-source toolchain, acquisition rules, and the honest ceiling of free sourcing. |
+| `docs/VISUAL_TARGET.md` §5 (rewritten)                              | Region brief: the fictional **“Hinode Prefecture”** — ten districts (coast/harbour, sakura river avenue, rice terraces, bamboo shrine lane, maple gorge with tunnels, cedar touge pass, highland plateau, snow-country onsen village, small town) with per-district road character and seasonal payoff, a seasonal events layer, the roadside-prop kit that actually makes a road read as Japanese, and the palette rules.                   |
+| `docs/VISUAL_TARGET.md` §7 (rewritten)                              | The five former open questions, now resolved, plus the one remaining low-cost question: keep or close the CC-BY-with-credit exception.                                                                                                                                                                                                                                                                                                       |
+| `docs/decisions/0005-free-and-open-asset-strategy.md` (new)         | ADR: CC0-first licence policy with the CC-BY exception and the permanently excluded categories; the region; the fictional brand policy; the two-track car plan (CC0 stand-in, in-house “Kaminari” hero); the audio plan; photo mode in scope.                                                                                                                                                                                                |
+| `CREDITS.md` (new)                                                  | Attribution register, written by the same pipeline that writes the manifest so licence entries and credit lines cannot drift.                                                                                                                                                                                                                                                                                                                |
+| `PROJECT_PLAN.md`, `README.md`, `AGENTS.md`, `docs/ASSET_POLICY.md` | Updated to the resolved decisions: no-purchase rule, region districts in the Phase 4 deliverables, asset-policy rewrite, and standing constraints in the agent instructions.                                                                                                                                                                                                                                                                 |
+
+**Two things the plan now says out loud, because they are the honest limits of free sourcing:**
+
+1. **There is no free, licence-clean, production-grade hero car.** The CC0 Sketchfab “Unity Fan” concept-car series
+   (200k–760k tris, unbranded, public-domain dedication) is the only credible free option and becomes the stand-in;
+   the hero is authored in-house under a fictional marque. No marketplace, no brand marks, no ripped assets.
+2. **Music is the weakest free category** — good CC0/CC-BY pools exist, but they are not an AAA licensed
+   soundtrack. The plan commits to a curated, season-matched CC0/CC-BY playlist and states the limitation.
+
+**Nothing about this changes the visual bar** (`docs/VISUAL_TARGET.md` §2) — free sourcing constrains provenance,
+not quality. If free content cannot reach a bar, we author it in-house or document the gap; we never request a
+purchase.
+
+**Next action:** owner authorizes Phase 3 (renderer migration, lighting, post stack, asset/material pipeline);
+only then does implementation start.

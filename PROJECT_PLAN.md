@@ -47,6 +47,8 @@ Build a browser-based, single-player 3D driving experience with convincing vehic
 
 - “Infinite” means procedurally addressable world space with finite active memory, not infinitely allocated terrain.
 - “AAA look” is an engineering target, not a marketing claim: [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) defines per-system quality bars, tier contracts, and measurable checks. It never promises parity with a AAA production's asset depth, licensed vehicles, or console-hardware effects.
+- **Content is free and open** ([`docs/ASSET_SOURCES.md`](docs/ASSET_SOURCES.md), ADR 0005): CC0-first — Poly Haven, ambientCG, Sonniss GDC audio, Freesound CC0, Kenney, Quaternius, CC0 Sketchfab, open fonts — with CC-BY as an attributed exception. **No purchases are ever requested or required**, nothing account-gated or redistribution-restricted is used, and every asset is fetched by a pinned, reproducible script with a licence record.
+- **The region is a fictional composite of rural Japan** (the “Hinode Prefecture” brief, `docs/VISUAL_TARGET.md` §5): authored from CC0 materials and in-house props, never presented as a replica of a real location, and free of manufacturer names, badges, or trade dress.
 - Target 60 FPS on agreed reference hardware. Slower devices may use lower quality or a stable 30 FPS fallback. No universal 60+ FPS guarantee is possible before profiling.
 - Multiplayer, accounts, traffic AI, races, monetization, multiplayer determinism, and server persistence are not part of these six phases.
 - Do not implement the complete game in one file. Keep feature modules small, typed, independently testable, and explicitly disposable.
@@ -281,7 +283,9 @@ A project-owned material library, validated in the studio look-dev scene before 
 ### Seasons, weather, and surface behaviour
 
 Keep separate but coordinated state for **season, weather, time of day, and surface condition**, and make each one
-visible and physical:
+visible and physical. Seasonal presentation is anchored to the regions in `docs/VISUAL_TARGET.md` §5 (coast and
+harbour, sakura river road, rice terraces, maple gorge, cedar pass, highland plateau, snow-country onsen village,
+small town), so the same district reads as a different place in each season:
 
 | Season | Presentation                                                        | Driving influence                                  |
 | ------ | ------------------------------------------------------------------- | -------------------------------------------------- |
@@ -447,7 +451,10 @@ everything visual afterwards is authored on top of it.
    floating-origin rebasing that resets temporal-effect histories.
 5. Surface-state plumbing (dry/wet/snow/ice/gravel/mud) flowing from the road/terrain generator into the physics
    surface-query interface defined in Phase 2, without visual-texture-driven traction.
-6. Scanned CC0 surface textures (asphalt, gravel, soil, rock, grass) through the Phase 3 pipeline.
+6. Scanned CC0 surface textures (asphalt, gravel, soil, rock, grass) through the Phase 3 pipeline, and the
+   district layout from `docs/VISUAL_TARGET.md` §5 — coast and harbour, sakura river road, rice terraces, maple
+   gorge with tunnels, cedar pass, highland plateau, snow-country village, and the small town — with the biome,
+   road-class, and prop rules each district needs.
 
 **Acceptance**
 
@@ -591,19 +598,20 @@ CI verifies the checks actually present. A green scaffold CI does not certify ve
 
 ### Execution status
 
-| Milestone                                                   | State                                                                                                                                                        |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Initial planning/scaffold                                   | Complete and saved to the canonical public repository                                                                                                        |
-| Initial GitHub push                                         | Verified on `main`; first CI run passed                                                                                                                      |
-| Phase 1                                                     | Complete (ADR 0002), pushed as `fbb48a4`, CI green                                                                                                           |
-| Phase 2                                                     | Complete (ADR 0003), pushed as `b85c8ba` + `307efaa`, CI green, evidence bundle archived                                                                     |
-| Visual-fidelity research and re-plan                        | Complete 2026-10-14: `docs/RESEARCH_AAA_FIDELITY.md`, `docs/VISUAL_TARGET.md`, ADR 0004, this plan revision; **awaiting owner sign-off on 5 open questions** |
-| Phase 3 — renderer, lighting, post, asset/material pipeline | **Gated** — not started; requires explicit authorization                                                                                                     |
-| Phase 4 — terrain, roads, streaming                         | Gated                                                                                                                                                        |
-| Phase 5 — vegetation, props, atmosphere                     | Gated                                                                                                                                                        |
-| Phase 6 — hero car, materials, vehicle fidelity             | Gated; needs the car-asset decision                                                                                                                          |
-| Phase 7 — weather, seasons, surface behaviour               | Gated                                                                                                                                                        |
-| Phase 8 — mobile, HUD, cameras, settings, polish            | Gated                                                                                                                                                        |
+| Milestone                                                   | State                                                                                                       |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Initial planning/scaffold                                   | Complete and saved to the canonical public repository                                                       |
+| Initial GitHub push                                         | Verified on `main`; first CI run passed                                                                     |
+| Phase 1                                                     | Complete (ADR 0002), pushed as `fbb48a4`, CI green                                                          |
+| Phase 2                                                     | Complete (ADR 0003), pushed as `b85c8ba` + `307efaa`, CI green, evidence bundle archived                    |
+| Visual-fidelity research and re-plan                        | Complete 2026-10-14: `docs/RESEARCH_AAA_FIDELITY.md`, `docs/VISUAL_TARGET.md`, ADR 0004, this plan revision |
+| Free-and-open sourcing, region, brand, audio, photo mode    | Resolved 2026-10-14: `docs/ASSET_SOURCES.md`, `CREDITS.md`, ADR 0005, region brief (§6/§9 references)       |
+| Phase 3 — renderer, lighting, post, asset/material pipeline | **Gated** — not started; requires explicit authorization                                                    |
+| Phase 4 — terrain, roads, streaming                         | Gated                                                                                                       |
+| Phase 5 — vegetation, props, atmosphere                     | Gated                                                                                                       |
+| Phase 6 — hero car, materials, vehicle fidelity             | Gated; needs the car-asset decision                                                                         |
+| Phase 7 — weather, seasons, surface behaviour               | Gated                                                                                                       |
+| Phase 8 — mobile, HUD, cameras, settings, polish            | Gated                                                                                                       |
 
 See `docs/SESSION_HANDOFF.md` for the verified original commit, remote CI evidence, authentication limitations, and the next-session procedure.
 
@@ -615,18 +623,24 @@ Do not download or commit “realistic” car/building/texture assets without a 
 
 The AAA-fidelity target makes asset sourcing a first-class engineering concern (see `docs/RESEARCH_AAA_FIDELITY.md` §5):
 
-- **Preferred sources:** CC0 (Poly Haven — HDRIs, PBR textures, models; ambientCG — PBR materials, HDRIs) for
-  environment content. Nothing CC0-only is ever assumed; every entry states its licence.
-- **Non-CC0 sources (Fab/Megascans free starter, purchased models):** allowed only with a per-asset licence record,
-  the royalty/attribution conditions, and the download date; the era of free-for-everyone Megascans ended
-  2024-12-31, so "it was free" is not a licence.
-- **Cars:** no ripped game assets, no manufacturer logos or trademarks without a licence. Options and the
-  recommendation are in `docs/RESEARCH_AAA_FIDELITY.md` §5; the owner's decision is an open question in
-  `docs/VISUAL_TARGET.md` §7.
+- **Default: CC0 / public domain** — Poly Haven (997 HDRIs, 869 textures, 521 models as of 2026-10-14), ambientCG,
+  Sonniss GDC audio bundles, Freesound CC0, Kenney, Quaternius, KayKit, CC0 Sketchfab models, Smithsonian/NASA, and
+  SIL OFL fonts. The verified register, per-asset-class plan, and quality verdicts are in
+  [`docs/ASSET_SOURCES.md`](docs/ASSET_SOURCES.md).
+- **Exception: CC-BY with an automatic credit line** in `CREDITS.md` and the in-game credits — only where no CC0
+  asset of comparable quality exists (a few Japanese landmark props, some music), never for hero content. The owner
+  can close this exception by asking for zero-attribution-only sourcing.
+- **Never:** paid or account-gated assets, NC/ND or marketplace “freebie” licences, AI-generated asset galleries
+  (unauditable provenance), ripped or converted game assets, or manufacturer names, badges, and trade dress.
+  Fab/Megascans is _not_ used: the free-for-everyone era ended 2024-12-31 and the starter collection carries its own
+  non-CC0 terms, which free CC0 scans make unnecessary.
+- **Cars:** in-house fictional marque (“Kaminari”), with a **CC0** Unity Fan concept car as the stand-in while the
+  hero is authored (ADR 0005, `docs/ASSET_SOURCES.md` §3.5). No purchases, no brand marks, no ripped assets.
 - **Every asset passes the pipeline** (optimize → LOD → quantize/meshopt → KTX2 → budget check) before it is
-  committed, and the pipeline is reproducible from the manifest, not done by hand.
-- **Budgets per asset class** (hero car 100k–200k tris; props ≤ 5k; foliage atlas atlas-based; textures ≤ 2048)
-  are enforced in review and recorded in the manifest.
+  committed, is fetched by a pinned reproducible script, and is recorded in the manifest with source, creator,
+  licence, and hash — never downloaded by hand.
+- **Budgets per asset class** (hero car 100k–200k tris; props ≤ 5k; foliage via atlases and impostors; textures
+  ≤ 2048) are enforced in review and recorded in the manifest.
 
 ### Main risks and mitigations
 
@@ -652,9 +666,11 @@ The AAA-fidelity target makes asset sourcing a first-class engineering concern (
 ### Decisions intentionally deferred
 
 - **Named reference devices** and the exact browser-version floor; provisional baseline is recent Chromium/Firefox/Safari with WebGL2, including real iOS and Android testing. The WebGPU/WebGL2 split is tracked but not a blocker (Phase 3 ships both backends).
-- **Car asset route, brand policy, region, audio scope, and photo mode** — the five open questions in
-  `docs/VISUAL_TARGET.md` §7. These are cheap to answer now and expensive to change later; the phases are ordered so
-  the answers are needed before Phase 6, except region (needed before Phase 4).
+- ~~Car asset route, brand policy, region, audio scope, and photo mode~~ — **resolved 2026-10-14** (ADR 0005,
+  `docs/VISUAL_TARGET.md` §7): free-and-open sourcing only with no purchases; unbadged fictional brand; rural-Japan
+  “Hinode Prefecture”; free sample libraries plus a project-owned engine synth and a CC0/CC-BY music pool; photo
+  mode in scope for Phase 8. **One low-cost question remains open:** whether to keep the CC-BY-with-credit exception
+  or restrict sourcing to zero-attribution assets only.
 - Whether high-tier volumetrics and motion blur meet the measured budget — decided by measurement in Phase 3.
 - Deployment provider, public release licensing, Git LFS limits, and any release policy.
 
@@ -722,4 +738,4 @@ References guide implementation; pinned package APIs must still be checked at th
 
 ---
 
-**Next permitted development action:** None. Phase 3 requires explicit user authorization, and the five open questions in `docs/VISUAL_TARGET.md` §7 should be answered before Phase 4 at the latest (region) and Phase 6 (car asset, brand policy, audio scope, photo mode).
+**Next permitted development action:** None. The region, brand, sourcing, audio, and photo-mode decisions are resolved (ADR 0005); Phase 3 requires explicit user authorization, and the only open question is whether to keep or close the CC-BY-with-credit exception in `docs/ASSET_SOURCES.md` §1.
