@@ -7,12 +7,20 @@
  *  2. every file the manifest describes exists in the repository;
  *  3. every file's SHA-256 and byte size match the manifest;
  *  4. the licence is one the policy allows (CC0 or an explicitly credited CC-BY);
- *  5. `CREDITS.md` lists every asset, so the register cannot drift from what ships.
+ *  5. `CREDITS.md` lists every asset, so the register cannot drift from what ships;
+ *  6. derived models still carry the compression the manifest claims, and still fit their budget.
+ *
+ * Check 6 is the one that would otherwise pass silently. A model's size and hash can be perfectly
+ * consistent while the *contents* have regressed — a writer registered for the wrong extensions
+ * drops meshopt buffers and emits a file several times the intended size, and the manifest is
+ * regenerated from that file so the hashes agree with a mistake. Reading the GLB's own header
+ * catches it without decoding anything and without touching the network.
  */
 import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { formatBytes, requireBudget } from './asset-budgets.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC_DIR = join(ROOT, 'public');
@@ -90,6 +98,105 @@ for (const asset of manifest.assets) {
   require_(
     credits.includes(asset.source.url),
     `${label}: CREDITS.md does not reference ${asset.source.url}`,
+  );
+
+  if (asset.kind === 'model') {
+    await verifyModel(label, asset);
+  }
+}
+
+/**
+ * Checks a derived model against the budget it was built to.
+ *
+ * The GLB header is parsed directly — the JSON chunk of the container, no decoder and no rendering
+ * — because that is enough to answer the questions that matter: is the geometry compressed, are the
+ * textures the transcodable format the runtime requires, how many levels are there, and what does
+ * each one cost in triangles.
+ */
+async function verifyModel(label, asset) {
+  const budget = (() => {
+    try {
+      return requireBudget(asset.assetClass);
+    } catch (error) {
+      problems.push(`${label}: ${error.message}`);
+      return null;
+    }
+  })();
+  if (budget === null) return;
+
+  const file = asset.files[0];
+  const buffer = await readFile(join(PUBLIC_DIR, file.path));
+  require_(
+    buffer.subarray(0, 4).toString('ascii') === 'glTF',
+    `${label}: ${file.path} is not a GLB`,
+  );
+
+  const jsonLength = buffer.readUInt32LE(12);
+  require_(
+    buffer.subarray(16, 20).toString('ascii') === 'JSON',
+    `${label}: ${file.path} has no JSON chunk where one is expected`,
+  );
+  const json = JSON.parse(buffer.subarray(20, 20 + jsonLength).toString('utf8'));
+  const used = json.extensionsUsed ?? [];
+
+  require_(
+    used.includes('EXT_meshopt_compression'),
+    `${label}: ${file.path} does not declare EXT_meshopt_compression — its geometry is uncompressed`,
+  );
+  require_(
+    used.includes('KHR_mesh_quantization'),
+    `${label}: ${file.path} does not declare KHR_mesh_quantization`,
+  );
+  require_(
+    used.includes('KHR_texture_basisu'),
+    `${label}: ${file.path} does not declare KHR_texture_basisu`,
+  );
+  for (const image of json.images ?? []) {
+    require_(
+      image.mimeType === 'image/ktx2',
+      `${label}: ${file.path} carries a ${image.mimeType} image, expected KTX2`,
+    );
+  }
+
+  // Every level the manifest advertises must exist as a node in the file the runtime will load.
+  const declared = asset.pipeline?.lods ?? [];
+  const nodes = new Map((json.nodes ?? []).map((node) => [node.name, node]));
+  require_(
+    declared.length >= budget.minLods,
+    `${label}: ${declared.length} level(s) of detail, minimum is ${budget.minLods}`,
+  );
+  require_(
+    declared.length <= budget.maxLods,
+    `${label}: ${declared.length} level(s) of detail, maximum is ${budget.maxLods}`,
+  );
+
+  let previous = Infinity;
+  for (const level of declared) {
+    const node = nodes.get(level.node);
+    require_(
+      Boolean(node),
+      `${label}: the manifest advertises a "${level.node}" node that is not in the file`,
+    );
+    if (!node) continue;
+    const mesh = (json.meshes ?? [])[node.mesh];
+    require_(Boolean(mesh), `${label}: ${level.node} references a mesh that is not in the file`);
+    require_(
+      level.triangles < previous,
+      `${label}: ${level.node} has ${level.triangles} triangles, not fewer than the level before it (${previous})`,
+    );
+    previous = level.triangles;
+  }
+
+  const lod0 = declared[0];
+  if (lod0) {
+    require_(
+      lod0.triangles <= budget.maxTriangles,
+      `${label}: closest level has ${lod0.triangles} triangles, budget is ${budget.maxTriangles}`,
+    );
+  }
+  require_(
+    file.bytes <= budget.maxBytes,
+    `${label}: ${formatBytes(file.bytes)} exceeds the ${asset.assetClass} budget of ${formatBytes(budget.maxBytes)}`,
   );
 }
 

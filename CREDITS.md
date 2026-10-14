@@ -32,6 +32,8 @@ listed because their work deserves the credit, not because the licence asks for 
   - file: `assets/hdri/cedar_bridge_sunset_1k.hdr`
 - **Ninomaru Teien (Tokyo garden) — 1K HDR** — Greg Zaal — [source](https://polyhaven.com/a/ninomaru_teien) — CC0-1.0
   - file: `assets/hdri/ninomaru_teien_1k.hdr`
+- **Boulder 01 — 1K scanned prop** — James Ray Cock — [source](https://polyhaven.com/a/boulder_01) — CC0-1.0
+  - file: `assets/models/boulder-01.glb`
 - **Japanese Cedar Planks — 1K PBR set** — Rob Tuytel — [source](https://polyhaven.com/a/japanese_cedar_planks) — CC0-1.0
   - file: `assets/textures/japanese_cedar_planks_1k_diff_1k.jpg`, `assets/textures/japanese_cedar_planks_1k_nor_gl_1k.jpg`, `assets/textures/japanese_cedar_planks_1k_rough_1k.jpg`, `assets/textures/japanese_cedar_planks_1k_arm_1k.jpg`
 

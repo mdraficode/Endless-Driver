@@ -4,7 +4,7 @@
     {
       "id": "hdri-bamboo-tunnel-1k",
       "kind": "hdri",
-      "name": "Bamboo Tunnel — 1K HDR",
+      "name": "Bamboo Tunnel \u2014 1K HDR",
       "assetClass": "environment-ibl",
       "source": {
         "url": "https://polyhaven.com/a/bamboo_tunnel",
@@ -14,7 +14,7 @@
         "retrieved": "2026-10-14",
         "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/bamboo_tunnel_1k.hdr"
       },
-      "role": "Second IBL preset (shaded, green-bounced light) — used by the studio scene HDRI switcher.",
+      "role": "Second IBL preset (shaded, green-bounced light) \u2014 used by the studio scene HDRI switcher.",
       "pipeline": {
         "resolution": "1024",
         "notes": "Runtime variant selected at fetch time; KTX2/Basis transcoding is applied when the KTX-Software toolchain is available in the build environment (recorded per asset when it happens)."
@@ -33,7 +33,7 @@
     {
       "id": "hdri-cedar-bridge-sunset-1k",
       "kind": "hdri",
-      "name": "Cedar Bridge Sunset — 1K HDR",
+      "name": "Cedar Bridge Sunset \u2014 1K HDR",
       "assetClass": "environment-ibl",
       "source": {
         "url": "https://polyhaven.com/a/cedar_bridge_sunset_1",
@@ -43,7 +43,7 @@
         "retrieved": "2026-10-14",
         "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/cedar_bridge_sunset_1_1k.hdr"
       },
-      "role": "Third IBL preset (golden hour) — matches the warm grading preset and the Mie Pass look.",
+      "role": "Third IBL preset (golden hour) \u2014 matches the warm grading preset and the Mie Pass look.",
       "pipeline": {
         "resolution": "1024",
         "notes": "Runtime variant selected at fetch time; KTX2/Basis transcoding is applied when the KTX-Software toolchain is available in the build environment (recorded per asset when it happens)."
@@ -62,7 +62,7 @@
     {
       "id": "hdri-ninomaru-teien-1k",
       "kind": "hdri",
-      "name": "Ninomaru Teien (Tokyo garden) — 1K HDR",
+      "name": "Ninomaru Teien (Tokyo garden) \u2014 1K HDR",
       "assetClass": "environment-ibl",
       "source": {
         "url": "https://polyhaven.com/a/ninomaru_teien",
@@ -72,7 +72,7 @@
         "retrieved": "2026-10-14",
         "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/ninomaru_teien_1k.hdr"
       },
-      "role": "Image-based lighting and reflections for the sky/IBL pillar (docs/VISUAL_TARGET.md §2.1).",
+      "role": "Image-based lighting and reflections for the sky/IBL pillar (docs/VISUAL_TARGET.md \u00a72.1).",
       "pipeline": {
         "resolution": "1024",
         "notes": "Runtime variant selected at fetch time; KTX2/Basis transcoding is applied when the KTX-Software toolchain is available in the build environment (recorded per asset when it happens)."
@@ -89,9 +89,117 @@
       ]
     },
     {
+      "id": "model-boulder-01",
+      "kind": "model",
+      "name": "Boulder 01 \u2014 1K scanned prop",
+      "assetClass": "prop",
+      "source": {
+        "url": "https://polyhaven.com/a/boulder_01",
+        "creator": "James Ray Cock",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-14",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/boulder_01/boulder_01_1k.gltf"
+      },
+      "role": "First real mesh through the derivation pipeline, and a rock for the Hinode Prefecture forest floor (Phase 5).",
+      "pipeline": {
+        "resolution": "1024",
+        "sourceBytes": 5771986,
+        "outputBytes": 1540784,
+        "reductions": [
+          "dedup + prune + weld",
+          "simplify (ratios 0.8, 0.4, 0.16; levels 1+ merge position seams first)",
+          "KHR_mesh_quantization",
+          "EXT_meshopt_compression",
+          "KHR_texture_basisu (KTX2, ETC1S)"
+        ],
+        "lods": [
+          {
+            "level": 0,
+            "node": "lod0",
+            "triangles": 54138,
+            "ratio": 0.8,
+            "seamMerged": false
+          },
+          {
+            "level": 1,
+            "node": "lod1",
+            "triangles": 26448,
+            "ratio": 0.4,
+            "seamMerged": true
+          },
+          {
+            "level": 2,
+            "node": "lod2",
+            "triangles": 10578,
+            "ratio": 0.16,
+            "seamMerged": true
+          }
+        ],
+        "notes": "3 levels of detail share one texture set in one file; the runtime picks a level by distance, so the closest keeps its full detail and the farthest costs a fraction of it. Textures are KTX2 (Basis ETC1S), transcoded on the GPU to BC7/ASTC/ETC2 so the browser never holds a decoded 1K RGBA image per texture, and colour-space aware \u2014 albedo is sRGB, normal and packed maps are linear."
+      },
+      "sourceFiles": [
+        {
+          "path": "boulder_01_1k.gltf",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/boulder_01/boulder_01_1k.gltf",
+          "bytes": 2773,
+          "md5": "26e2eef4a1f68c9557c65cd375b21d6c",
+          "sha256": "51487934db898b4c24072780a451e34eca5c02e3ada24a62bbc600bbc4019e92"
+        },
+        {
+          "path": "boulder_01.bin",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/boulder_01/boulder_01.bin",
+          "bytes": 2938808,
+          "md5": "27a19fa031d8b4c3a09261f19c444dc5",
+          "sha256": "7f5b06503d62bd95bfe9c6b8a354a5cc8ff04a4d271a8cf87a3e3125db4232d7"
+        },
+        {
+          "path": "textures/boulder_01_diff_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/boulder_01/boulder_01_diff_1k.jpg",
+          "bytes": 987467,
+          "md5": "25f8a843f13369d56d37f49db05ea8c3",
+          "sha256": "c38f0e918f6dc16b8d386ba3cdd89805c78320c119a1ceec85856f82b09a65b8"
+        },
+        {
+          "path": "textures/boulder_01_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/boulder_01/boulder_01_nor_gl_1k.jpg",
+          "bytes": 1183552,
+          "md5": "0c4da644d901144b53e4fe2446f3c389",
+          "sha256": "0810cf6e89d89bb6eb065b4d2e2855288f5dcbd2c15c6e40ab90d462021b50aa"
+        },
+        {
+          "path": "textures/boulder_01_arm_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/boulder_01/boulder_01_arm_1k.jpg",
+          "bytes": 659386,
+          "md5": "d632159982cc3121ed3d69b89a122146",
+          "sha256": "c57187c5746b6be913fa53846cb44ff78743e7ca5000f131c9627b99563c2b87"
+        }
+      ],
+      "files": [
+        {
+          "slot": "model",
+          "path": "assets/models/boulder-01.glb",
+          "bytes": 1540784,
+          "sha256": "e36d9c24fd74971db5a079ef4fd17f5961507f633373371a9fad17eeb9b566da",
+          "format": "glb",
+          "triangles": 54138,
+          "textures": 3
+        }
+      ],
+      "verification": {
+        "extensionsUsed": [
+          "EXT_meshopt_compression",
+          "KHR_mesh_quantization",
+          "KHR_texture_basisu"
+        ],
+        "images": 3,
+        "nodes": ["lod1", "lod2", "lod0"]
+      }
+    },
+    {
       "id": "tex-japanese-cedar-planks-1k",
       "kind": "texture",
-      "name": "Japanese Cedar Planks — 1K PBR set",
+      "name": "Japanese Cedar Planks \u2014 1K PBR set",
       "assetClass": "material-surface",
       "source": {
         "url": "https://polyhaven.com/a/japanese_cedar_planks",

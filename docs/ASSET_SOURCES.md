@@ -179,12 +179,37 @@ None of these stop the project hitting `docs/VISUAL_TARGET.md`; they define the 
    binaries.
 2. Every entry is written to `public/assets/manifest.json` (ids, paths, source URL, creator, licence, hash,
    and the optimization chain and settings used) and, when attribution applies, to `CREDITS.md`.
-3. Assets pass the pipeline before commit: prune/dedupe → LODs → quantization → **meshopt** → **KTX2/Basis**
-   (1024/2048 cap) → budget check (hero car 100–200k tris; props ≤ 5k; textures ≤ 2048).
-4. Nothing is committed if its licence text is missing or ambiguous. `npm run check` gains a manifest/licence gate in
-   Phase 3 so this cannot rot.
+3. Assets pass the pipeline before commit. Textures and HDRIs ship as published (resized at fetch time); **models
+   are derived** by `scripts/build-models.mjs` — dedupe/prune/weld → one mesh per level of detail → position-seam
+   merging on the deeper levels → simplification → **KHR_mesh_quantization** → **EXT_meshopt_compression** →
+   **KHR_texture_basisu (KTX2, ETC1S)** → budget check.
+4. Nothing is committed if its licence text is missing or ambiguous. `scripts/verify-assets.mjs` runs in CI and gates
+   both the licence register and the model budgets, so this cannot rot.
 5. Textures and models that only exist to be _sources_ (16K HDRIs, 8K scans) stay out of the repo; the build fetches
-   the needed resolution and commits only the optimized runtime files.
+   the needed resolution and commits only the optimized runtime files. Model sources are cached in `.asset-cache/`,
+   which is not committed — they are reproducible from the pinned URLs and MD5s in the build script.
+
+### 6.1 What a derived model looks like
+
+Every level of detail lives in **one GLB with one texture set**, as sibling nodes named `lod0`, `lod1`, … The
+runtime picks a level by distance and toggles visibility, so the texture set is stored, downloaded, and uploaded to
+the GPU once — three files would have carried three copies of the same textures, which is roughly two thirds of the
+weight of a prop.
+
+Two rules in the derivation are the result of measurement, not preference, and both are recorded here because a
+future change is likely to trip over them:
+
+- **Level 1 and deeper merge position seams before simplifying.** meshoptimizer's simplifier works on topology, and
+  a mesh whose UV/normal seams have duplicated every vertex has almost no edges left to collapse. With seams intact
+  the first prop refused to simplify past **82% of its source** regardless of the error budget (ratios of 0.4, 0.2,
+  even 0.05 all returned the same triangle count). Merging duplicated positions first let the same call hit its
+  ratio target exactly, at 0.13% error.
+- **The closest level keeps its seams.** That is why its ratio target is 0.8 rather than 1: 0.8 _is_ the honest
+  ceiling for a seam-preserving simplification, and the level where merging seams would be visible.
+
+Budgets live in `scripts/asset-budgets.mjs` and are enforced twice — by the build, which refuses to write an asset
+that exceeds one, and by CI, which re-checks the committed file. The prop budget (2.5 MB, 60k triangles, 1K
+textures) is deliberately tight enough that the first prop had to be trimmed to meet it.
 
 ---
 
