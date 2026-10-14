@@ -176,9 +176,70 @@ export interface BloomConfig {
   readonly threshold: number;
 }
 
+/** Anti-aliasing strategy. MSAA happens in the renderer; the others are post effects. */
+export type AntiAliasingMode = 'msaa' | 'fxaa' | 'smaa' | 'none';
+
+/**
+ * Ground-truth ambient occlusion. Applied to the scene pass through `builtinAOContext`, which is why
+ * it is described here as part of the scene rather than as another link in the post chain.
+ */
+export interface AmbientOcclusionConfig {
+  readonly enabled: boolean;
+  /** Fraction of the render resolution the occlusion is computed at; 0.5 is the balanced tier. */
+  readonly resolutionScale: number;
+  /** Sample radius in world units. */
+  readonly radius: number;
+  /** Depth difference above which a sample is treated as a separate surface. */
+  readonly thickness: number;
+  /** How quickly sampling distance falls off with range. */
+  readonly distanceExponent: number;
+  /** Darkening strength of the resulting occlusion (1 = fully applied). */
+  readonly intensity: number;
+  /** Taps per pixel; the dominant cost of the effect. */
+  readonly samples: number;
+  readonly scale: number;
+}
+
+/** Lens colour fringing. Display-referred: applied after tone mapping. */
+export interface ChromaticAberrationConfig {
+  readonly enabled: boolean;
+  readonly strength: number;
+  /** Radial scale of the fringing falloff. */
+  readonly scale: number;
+}
+
+/** Contrast-adaptive sharpening (RCAS). */
+export interface SharpenConfig {
+  readonly enabled: boolean;
+  /** 0 = maximum sharpening, 2 = none (the node's own scale). */
+  readonly sharpness: number;
+  /** Attenuates sharpening in noisy areas; worth enabling once grain is on. */
+  readonly denoise: boolean;
+}
+
+export interface FilmGrainConfig {
+  readonly enabled: boolean;
+  readonly intensity: number;
+}
+
+/** Custom TSL vignette: darkens the frame corners to draw the eye to the centre of the road. */
+export interface VignetteConfig {
+  readonly enabled: boolean;
+  /** 0 = no darkening, 1 = black corners. */
+  readonly intensity: number;
+  /** Higher values push the darkening further towards the corners. */
+  readonly smoothness: number;
+}
+
 export interface PostProcessingConfig {
   readonly enabled: boolean;
+  readonly antiAliasing: AntiAliasingMode;
   readonly bloom: BloomConfig;
+  readonly ambientOcclusion: AmbientOcclusionConfig;
+  readonly chromaticAberration: ChromaticAberrationConfig;
+  readonly sharpen: SharpenConfig;
+  readonly filmGrain: FilmGrainConfig;
+  readonly vignette: VignetteConfig;
 }
 
 export interface DiagnosticsConfig {
@@ -285,11 +346,41 @@ export const RENDER_CONFIG: RenderConfig = {
   },
   postProcessing: {
     enabled: true,
+    antiAliasing: 'msaa',
     bloom: {
       enabled: true,
       strength: 0.22,
       radius: 0.45,
       threshold: 1,
+    },
+    ambientOcclusion: {
+      enabled: true,
+      resolutionScale: 0.5,
+      radius: 0.3,
+      thickness: 1,
+      distanceExponent: 1.2,
+      intensity: 0.85,
+      samples: 16,
+      scale: 1.2,
+    },
+    chromaticAberration: {
+      enabled: true,
+      strength: 0.4,
+      scale: 1.1,
+    },
+    sharpen: {
+      enabled: true,
+      sharpness: 0.6,
+      denoise: true,
+    },
+    filmGrain: {
+      enabled: false,
+      intensity: 0.06,
+    },
+    vignette: {
+      enabled: true,
+      intensity: 0.55,
+      smoothness: 0.85,
     },
   },
   diagnostics: {

@@ -100,10 +100,36 @@ export function applyTier(base: RenderConfig, tier: TierId): RenderConfig {
   const { clouds: cloudOverride, ...atmosphereOverride } = overrides.atmosphere ?? {};
   const { bloom: bloomOverride, ...postOverride } = overrides.postProcessing ?? {};
 
+  const renderer = { ...base.renderer, ...overrides.renderer };
+  const postProcessing = {
+    ...base.postProcessing,
+    ...postOverride,
+    bloom: { ...base.postProcessing.bloom, ...bloomOverride },
+    ambientOcclusion: {
+      ...base.postProcessing.ambientOcclusion,
+      ...postOverride?.ambientOcclusion,
+    },
+    chromaticAberration: {
+      ...base.postProcessing.chromaticAberration,
+      ...postOverride?.chromaticAberration,
+    },
+    sharpen: { ...base.postProcessing.sharpen, ...postOverride?.sharpen },
+    filmGrain: { ...base.postProcessing.filmGrain, ...postOverride?.filmGrain },
+    vignette: { ...base.postProcessing.vignette, ...postOverride?.vignette },
+  };
+
+  // MSAA and a post-process AA mode are alternatives, not additions: paying for both would cost
+  // samples for no quality gain. A tier that selects FXAA/SMAA (or no AA) turns MSAA off here, so
+  // the two settings can never contradict each other.
+  if (postProcessing.antiAliasing !== 'msaa') {
+    renderer.antialias = false;
+    renderer.samples = 0;
+  }
+
   return {
     ...base,
     maxPixelRatio: overrides.maxPixelRatio ?? base.maxPixelRatio,
-    renderer: { ...base.renderer, ...overrides.renderer },
+    renderer,
     camera: { ...base.camera },
     shadows: {
       ...base.shadows,
@@ -118,11 +144,7 @@ export function applyTier(base: RenderConfig, tier: TierId): RenderConfig {
     },
     environment: { ...base.environment, ...overrides.environment },
     lighting: { ...base.lighting, ...overrides.lighting },
-    postProcessing: {
-      ...base.postProcessing,
-      ...postOverride,
-      bloom: { ...base.postProcessing.bloom, ...bloomOverride },
-    },
+    postProcessing,
     diagnostics: { ...base.diagnostics },
   };
 }

@@ -11,16 +11,21 @@
  * `pending` affects rendering yet, and nothing here pretends it does.
  */
 import type {
+  AmbientOcclusionConfig,
   AtmosphereConfig,
   BloomConfig,
+  ChromaticAberrationConfig,
   CloudConfig,
   CsmConfig,
   EnvironmentConfig,
+  FilmGrainConfig,
   LightingConfig,
   PostProcessingConfig,
   RendererConfig,
   ShadowConfig,
+  SharpenConfig,
   SkyConfig,
+  VignetteConfig,
 } from './render';
 
 export type TierId = 'C' | 'B' | 'A';
@@ -43,8 +48,18 @@ export interface TierRenderOverrides {
   };
   readonly environment?: Partial<EnvironmentConfig>;
   readonly lighting?: Partial<LightingConfig>;
-  readonly postProcessing?: Partial<Omit<PostProcessingConfig, 'bloom'>> & {
+  readonly postProcessing?: Partial<
+    Omit<
+      PostProcessingConfig,
+      'bloom' | 'ambientOcclusion' | 'chromaticAberration' | 'sharpen' | 'filmGrain' | 'vignette'
+    >
+  > & {
     readonly bloom?: Partial<BloomConfig>;
+    readonly ambientOcclusion?: Partial<AmbientOcclusionConfig>;
+    readonly chromaticAberration?: Partial<ChromaticAberrationConfig>;
+    readonly sharpen?: Partial<SharpenConfig>;
+    readonly filmGrain?: Partial<FilmGrainConfig>;
+    readonly vignette?: Partial<VignetteConfig>;
   };
 }
 
@@ -99,12 +114,20 @@ const TIER_C: TierDefinition = {
       useAsBackground: true,
     },
     postProcessing: {
+      // No MSAA on this tier; the edges are handled by FXAA, which is the tier's contract.
+      antiAliasing: 'fxaa',
       bloom: { strength: 0.18, radius: 0.4 },
+      ambientOcclusion: { enabled: false },
+      chromaticAberration: { strength: 0.3 },
+      sharpen: { sharpness: 0.75 },
+      filmGrain: { enabled: false },
+      vignette: { intensity: 0.45 },
     },
   },
   pending: [
-    'FXAA/SMAA',
-    'GTAO off',
+    // FXAA and the absence of ambient occlusion are now implemented for this tier; what is still
+    // owed is the more expensive alternative anti-aliasing and the world systems Phase 4-5 bring.
+    'SMAA (as the higher-quality alternative to FXAA)',
     'reflection probes',
     '2 terrain layers',
     'impostor vegetation',
@@ -141,10 +164,18 @@ const TIER_B: TierDefinition = {
       useAsBackground: false,
     },
     postProcessing: {
+      antiAliasing: 'msaa',
       bloom: { strength: 0.22, radius: 0.45 },
+      ambientOcclusion: { enabled: true, resolutionScale: 0.5 },
+      filmGrain: { enabled: false },
     },
   },
-  pending: ['TAAU', 'GTAO half-res', 'SSR half-res', '3 terrain layers', 'LOD1-2 vegetation'],
+  pending: [
+    'TAAU/TRAA (alternative to MSAA)',
+    'SSR half-res',
+    '3 terrain layers',
+    'LOD1-2 vegetation',
+  ],
 };
 
 /**
@@ -177,12 +208,14 @@ const TIER_A: TierDefinition = {
       useAsBackground: false,
     },
     postProcessing: {
+      antiAliasing: 'msaa',
       bloom: { strength: 0.26, radius: 0.5 },
+      ambientOcclusion: { enabled: true, resolutionScale: 1, samples: 24 },
+      filmGrain: { enabled: true, intensity: 0.05 },
     },
   },
   pending: [
     'TAAU/TRAA',
-    'GTAO full-res',
     'SSR + probes + wet roads',
     '4 terrain layers + POM',
     'LOD0 vegetation',

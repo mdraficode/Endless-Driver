@@ -1,0 +1,176 @@
+import { describe, expect, it } from 'vitest';
+import { RENDER_CONFIG, type RenderConfig } from '../../src/config/render';
+import { applyTier } from '../../src/core/QualityTier';
+import {
+  chainsOwnsOutputTransform,
+  requiresSceneNormals,
+  resolvePostEffects,
+  type PostEffectName,
+} from '../../src/shaders/post-chain';
+
+/** A configuration with every display effect switched off, so each test enables only what it names. */
+const BARE: RenderConfig = {
+  ...RENDER_CONFIG,
+  postProcessing: {
+    ...RENDER_CONFIG.postProcessing,
+    antiAliasing: 'none',
+    bloom: { ...RENDER_CONFIG.postProcessing.bloom, enabled: false },
+    ambientOcclusion: { ...RENDER_CONFIG.postProcessing.ambientOcclusion, enabled: false },
+    chromaticAberration: {
+      ...RENDER_CONFIG.postProcessing.chromaticAberration,
+      enabled: false,
+    },
+    sharpen: { ...RENDER_CONFIG.postProcessing.sharpen, enabled: false },
+    filmGrain: { ...RENDER_CONFIG.postProcessing.filmGrain, enabled: false },
+    vignette: { ...RENDER_CONFIG.postProcessing.vignette, enabled: false },
+  },
+};
+
+const withEffects = (changes: Partial<RenderConfig['postProcessing']>): RenderConfig => ({
+  ...BARE,
+  postProcessing: { ...BARE.postProcessing, ...changes },
+});
+
+/**
+ * The chain is a TSL node graph, which cannot be built without a GPU, but *which* effects run and in
+ * what order is a pure decision. These tests pin that decision — including the ordering constraints
+ * that are easy to break silently, such as SMAA needing to run before the colour-space conversion
+ * while FXAA must run after it.
+ */
+describe('post-effect selection and order', () => {
+  it('runs nothing when post-processing is disabled', () => {
+    const config: RenderConfig = {
+      ...BARE,
+      postProcessing: { ...BARE.postProcessing, enabled: false },
+    };
+    expect(resolvePostEffects(config)).toEqual([]);
+    expect(chainsOwnsOutputTransform([])).toBe(false);
+    expect(requiresSceneNormals([])).toBe(false);
+  });
+
+  it('returns only the enabled effects, always in canonical order', () => {
+    const all = withEffects({
+      antiAliasing: 'smaa',
+      bloom: { ...BARE.postProcessing.bloom, enabled: true },
+      ambientOcclusion: { ...BARE.postProcessing.ambientOcclusion, enabled: true },
+      chromaticAberration: { ...BARE.postProcessing.chromaticAberration, enabled: true },
+      sharpen: { ...BARE.postProcessing.sharpen, enabled: true },
+      filmGrain: { ...BARE.postProcessing.filmGrain, enabled: true },
+      vignette: { ...BARE.postProcessing.vignette, enabled: true },
+    });
+
+    expect(resolvePostEffects(all)).toEqual([
+      'ao',
+      'bloom',
+      'smaa',
+      'chromaticAberration',
+      'sharpen',
+      'filmGrain',
+      'vignette',
+    ]);
+
+    // Enabling a single effect still yields just that effect.
+    expect(resolvePostEffects(withEffects({ antiAliasing: 'fxaa' }))).toEqual(['fxaa']);
+    expect(
+      resolvePostEffects(withEffects({ bloom: { ...BARE.postProcessing.bloom, enabled: true } })),
+    ).toEqual(['bloom']);
+  });
+
+  it('places SMAA before the colour-space conversion and FXAA after it', () => {
+    // SMAA is documented as requiring pre-sRGB input; FXAA as requiring post-sRGB input.
+    const smaaConfig = withEffects({ antiAliasing: 'smaa' });
+    const fxaaConfig = withEffects({ antiAliasing: 'fxaa' });
+
+    expect(resolvePostEffects(smaaConfig)).toContain('smaa');
+    expect(resolvePostEffects(fxaaConfig)).toContain('fxaa');
+
+    // Both force the chain to own tone mapping and colour conversion, but SMAA sits upstream of
+    // that step and FXAA downstream — the ordering is what the two nodes require.
+    expect(chainsOwnsOutputTransform(['smaa'])).toBe(true);
+    expect(chainsOwnsOutputTransform(['fxaa'])).toBe(true);
+  });
+
+  it('keeps the grade effects in the order that avoids amplifying noise', () => {
+    const graded = withEffects({
+      chromaticAberration: { ...BARE.postProcessing.chromaticAberration, enabled: true },
+      sharpen: { ...BARE.postProcessing.sharpen, enabled: true },
+      filmGrain: { ...BARE.postProcessing.filmGrain, enabled: true },
+      vignette: { ...BARE.postProcessing.vignette, enabled: true },
+    });
+    const effects = resolvePostEffects(graded);
+    // Sharpening must precede grain: the other order sharpens the noise the grain just added.
+    expect(effects.indexOf('sharpen')).toBeLessThan(effects.indexOf('filmGrain'));
+    expect(effects.indexOf('chromaticAberration')).toBeLessThan(effects.indexOf('sharpen'));
+    expect(effects.indexOf('vignette')).toBeGreaterThan(effects.indexOf('filmGrain'));
+  });
+
+  it('knows which effects need scene normals and which own the output transform', () => {
+    expect(requiresSceneNormals(['ao'])).toBe(true);
+    expect(requiresSceneNormals(['bloom', 'vignette'])).toBe(false);
+    // A bloom-only chain can still let the pipeline do tone mapping at the end.
+    expect(chainsOwnsOutputTransform(['ao', 'bloom'])).toBe(false);
+    for (const effect of [
+      'smaa',
+      'chromaticAberration',
+      'sharpen',
+      'filmGrain',
+      'vignette',
+      'fxaa',
+    ] satisfies PostEffectName[]) {
+      expect(chainsOwnsOutputTransform([effect])).toBe(true);
+    }
+  });
+});
+
+describe('post stack per tier', () => {
+  it('matches the tier contracts in docs/VISUAL_TARGET.md §3', () => {
+    const tierC = applyTier(RENDER_CONFIG, 'C');
+    const tierB = applyTier(RENDER_CONFIG, 'B');
+    const tierA = applyTier(RENDER_CONFIG, 'A');
+
+    // Tier C: no MSAA (FXAA instead), no ambient occlusion, no grain.
+    expect(tierC.postProcessing.antiAliasing).toBe('fxaa');
+    expect(tierC.renderer.antialias).toBe(false);
+    expect(tierC.renderer.samples).toBe(0);
+    expect(tierC.postProcessing.ambientOcclusion.enabled).toBe(false);
+    expect(tierC.postProcessing.filmGrain.enabled).toBe(false);
+    expect(resolvePostEffects(tierC)).toContain('fxaa');
+    expect(resolvePostEffects(tierC)).not.toContain('smaa');
+
+    // Tier B: MSAA, ambient occlusion at half resolution.
+    expect(tierB.postProcessing.antiAliasing).toBe('msaa');
+    expect(tierB.renderer.antialias).toBe(true);
+    expect(tierB.postProcessing.ambientOcclusion.enabled).toBe(true);
+    expect(tierB.postProcessing.ambientOcclusion.resolutionScale).toBe(0.5);
+    expect(resolvePostEffects(tierB)).toContain('ao');
+
+    // Tier A: ambient occlusion at full resolution, with more samples, plus grain.
+    expect(tierA.postProcessing.ambientOcclusion.resolutionScale).toBe(1);
+    expect(tierA.postProcessing.ambientOcclusion.samples).toBeGreaterThan(
+      tierB.postProcessing.ambientOcclusion.samples,
+    );
+    expect(tierA.postProcessing.filmGrain.enabled).toBe(true);
+  });
+
+  it('never pays for MSAA and a post-process AA mode at the same time', () => {
+    for (const tier of ['C', 'B', 'A'] as const) {
+      const config = applyTier(RENDER_CONFIG, tier);
+      const msaaOn = config.renderer.antialias && config.renderer.samples > 0;
+      expect(msaaOn).toBe(config.postProcessing.antiAliasing === 'msaa');
+    }
+  });
+
+  it('keeps the AO settings the node actually consumes in a sane range', () => {
+    for (const tier of ['C', 'B', 'A'] as const) {
+      const ao = applyTier(RENDER_CONFIG, tier).postProcessing.ambientOcclusion;
+      expect(ao.resolutionScale).toBeGreaterThan(0);
+      expect(ao.resolutionScale).toBeLessThanOrEqual(1);
+      expect(ao.radius).toBeGreaterThan(0);
+      expect(ao.thickness).toBeGreaterThan(0);
+      expect(ao.intensity).toBeGreaterThanOrEqual(0);
+      expect(ao.intensity).toBeLessThanOrEqual(1);
+      expect(Number.isInteger(ao.samples)).toBe(true);
+      expect(ao.samples).toBeGreaterThan(0);
+    }
+  });
+});

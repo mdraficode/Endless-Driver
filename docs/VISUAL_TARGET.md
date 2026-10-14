@@ -134,9 +134,27 @@ Two documented deviations from the table above:
 - **Tier C's renderer path.** The table says "WebGL2 backend"; the implementation leaves the backend on `auto`,
   because pinning the older API on a device that supports WebGPU would surrender performance for no quality gain.
   The WebGL2 fallback still engages wherever WebGPU is unavailable, and `?backend=webgl` forces it for comparison.
-- **Anti-aliasing.** The table specifies FXAA/SMAA, TAAU, and TAAU/TRAA per tier. Those are not implemented yet;
-  today the tiers differ by MSAA sample count (`?`-free, per tier) and the planned modes are declared as pending
-  work in each tier definition.
+- **Anti-aliasing.** MSAA, FXAA, and SMAA are implemented; the temporal modes (TAAU, TRAA) are not, and remain
+  declared as pending in each tier definition. Tier C now runs FXAA rather than MSAA, matching the table; tiers B
+  and A run MSAA. SMAA is available through the configuration (it must run before the colour-space conversion,
+  which the chain honours) but is not the default anywhere yet.
+
+**Post-processing status (Phase 3).** The stack is assembled by `src/shaders/post-chain.ts` in a fixed, documented
+order, and every effect is individually toggleable through configuration:
+
+| Stage                   | Effects                                                       | State   |
+| ----------------------- | ------------------------------------------------------------- | ------- |
+| Scene (linear HDR)      | ambient occlusion (GTAO), applied via the scene pass          | Shipped |
+| Linear HDR              | bloom                                                         | Shipped |
+| Pre-sRGB                | SMAA                                                          | Shipped |
+| Colour-space conversion | tone mapping + sRGB (once)                                    | Shipped |
+| Display-referred        | chromatic aberration, sharpening (RCAS), film grain, vignette | Shipped |
+| Post-sRGB               | FXAA                                                          | Shipped |
+| Pending                 | depth of field, motion blur, TAAU/TRAA, LUT grading, god rays | Not yet |
+
+Two ordering constraints are not preferences and must survive future edits: **SMAA requires pre-sRGB input while
+FXAA requires post-sRGB input**, and **sharpening must precede grain** or it amplifies the noise the grain adds.
+Both are pinned by tests in `tests/unit/post-chain.test.ts`.
 
 `pending` in each tier definition lists the effects that tier is contracted to control once they exist (AO,
 reflections, motion blur, terrain layers, vegetation density). Nothing listed there affects rendering today.

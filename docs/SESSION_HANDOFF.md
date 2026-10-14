@@ -297,8 +297,16 @@ on named hardware, so auto-selecting it would assert a frame budget the project 
 recorded in `docs/VISUAL_TARGET.md` §3: tier C keeps the backend on `auto` rather than pinning WebGL2, and the
 tiered AA modes are still pending (today the tiers differ by MSAA sample count).
 
-**Remaining Phase 3 work, in planned order:** (1) the rest of the post stack per tier — GTAO, DOF, motion blur, grain,
-chromatic aberration, vignette, sharpening — plus TAAU/TRAA and FXAA/SMAA; (3) time-of-day clock with
+**Post stack landed (2026-10-14):** `src/shaders/post-chain.ts` assembles the whole chain in one documented
+order — ambient occlusion (GTAO via the scene pass, per-tier resolution), bloom (linear), SMAA (pre-sRGB), tone
+mapping + colour space (once, inside the chain when a display-referred effect follows), then chromatic aberration,
+RCAS sharpening, film grain, custom TSL vignette, and FXAA last (post-sRGB). `resolvePostEffects()` is pure, so the
+order and the tier gating are unit-tested without a GPU, and the HUD prints the exact chain a frame went through.
+MSAA and a post-process AA mode can no longer be paid for simultaneously: `applyTier()` switches MSAA off whenever
+the tier selects FXAA/SMAA/none, and a test holds that invariant across all three tiers.
+
+**Remaining Phase 3 work, in planned order:** (1) the remaining post effects — depth of field, motion
+blur, LUT grading — plus TAAU/TRAA and dynamic resolution; (3) time-of-day clock with
 light colour/intensity curves, LUT grading and exposure-by-sun; (4) `gltf-transform` optimize/KTX2
 pipeline for models and the first materials library entries; (5) the studio look-dev scene
 (`?scene=studio`) and the 2 km validation route with fixed camera bookmarks, then the 12 baseline

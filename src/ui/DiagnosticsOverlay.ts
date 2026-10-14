@@ -1,5 +1,5 @@
 import type { CameraMode } from '../config/camera';
-import type { RendererBackendName } from '../config/render';
+import type { AntiAliasingMode, RendererBackendName } from '../config/render';
 import type { TierId } from '../config/tiers';
 import type { TierReason } from '../core/QualityTier';
 
@@ -29,8 +29,12 @@ export interface DiagnosticsSnapshot {
    * `webgl2` when the renderer fell back, `pending` before initialisation resolves.
    */
   readonly rendererBackend: RendererBackendName | 'pending';
-  /** Whether frames go through the `RenderPipeline` output chain (bloom, tone mapping). */
+  /** Whether frames go through the `RenderPipeline` output chain (grade, bloom, tone mapping). */
   readonly postProcessing: boolean;
+  /** Anti-aliasing strategy in force: `msaa` in the renderer, `fxaa`/`smaa` as a post effect. */
+  readonly antialiasing: AntiAliasingMode;
+  /** Post effects applied to this frame, in order — the chain made observable. */
+  readonly postEffects: readonly string[];
   /** Cascades in the shadow atlas; 1 means the plain single-frustum shadow path. */
   readonly shadowCascades: number;
   /** Backdrop in use; `hdri` means the environment texture is also the background. */
@@ -160,7 +164,12 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
   },
   {
     label: 'Renderer',
-    format: (snapshot) => `${snapshot.rendererBackend}${snapshot.postProcessing ? ' · post' : ''}`,
+    format: (snapshot) => `${snapshot.rendererBackend} · ${snapshot.antialiasing}`,
+  },
+  {
+    label: 'Post',
+    format: (snapshot) =>
+      snapshot.postProcessing ? snapshot.postEffects.join(' → ') || 'passthrough' : 'off',
   },
   {
     label: 'Sky',

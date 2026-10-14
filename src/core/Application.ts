@@ -235,6 +235,8 @@ export class Application {
       tierReason: this.#tier.reason,
       rendererBackend: this.#engine.backend ?? 'pending',
       postProcessing: this.#engine.isPostProcessingEnabled,
+      antialiasing: this.#config.postProcessing.antiAliasing,
+      postEffects: this.#engine.postEffects,
       shadowCascades: this.#config.shadows.csm.cascades,
       skyMode: scene.skyMode,
       environmentId: scene.environmentId,

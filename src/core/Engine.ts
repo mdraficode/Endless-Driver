@@ -3,15 +3,13 @@ import {
   AgXToneMapping,
   NeutralToneMapping,
   PCFShadowMap,
-  RenderPipeline,
   Timer,
   VSMShadowMap,
   WebGPURenderer,
   type Camera,
   type Scene,
 } from 'three/webgpu';
-import { pass } from 'three/tsl';
-import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { buildPostChain, type PostEffectName } from '../shaders/post-chain';
 import {
   RENDER_CONFIG,
   type RenderConfig,
@@ -61,9 +59,6 @@ const SHADOW_MAP_TYPES = {
   vsm: VSMShadowMap,
 } as const;
 
-/** The scene pass node produced by the TSL `pass()` helper. */
-type ScenePassNode = ReturnType<typeof pass>;
-
 const TONE_MAPPINGS = {
   aces: ACESFilmicToneMapping,
   agx: AgXToneMapping,
@@ -104,8 +99,7 @@ export class Engine {
   readonly #contextRestoredHandlers = new Set<ContextHandler>();
   readonly #resizeObserver: ResizeObserver | null;
   readonly #listensToWindow: boolean;
-  #pipeline: RenderPipeline | null = null;
-  #scenePass: ScenePassNode | null = null;
+  #chain: ReturnType<typeof buildPostChain> | null = null;
   #pipelineScene: Scene | null = null;
   #pipelineCamera: Camera | null = null;
   #viewport: Viewport = { width: 0, height: 0, pixelRatio: 1, aspect: 1 };
@@ -187,6 +181,11 @@ export class Engine {
   /** True when the post-processing output chain is in use for the current configuration. */
   get isPostProcessingEnabled(): boolean {
     return this.#config.postProcessing.enabled;
+  }
+
+  /** Effects the current frame is rendered through, in application order. Reported in the HUD. */
+  get postEffects(): readonly PostEffectName[] {
+    return this.#chain?.effects ?? [];
   }
 
   /**
@@ -288,7 +287,7 @@ export class Engine {
       return;
     }
     if (this.#updatePipeline(scene, camera)) {
-      this.#pipeline?.render();
+      this.#chain?.pipeline.render();
       return;
     }
     this.#renderer.render(scene, camera);
@@ -330,15 +329,17 @@ export class Engine {
     this.#contextLostHandlers.clear();
     this.#contextRestoredHandlers.clear();
     this.#timer.dispose();
-    this.#pipeline?.dispose();
-    this.#pipeline = null;
-    this.#scenePass = null;
+    this.#chain?.pipeline.dispose();
+    this.#chain = null;
     this.#renderer.dispose();
   }
 
   /**
    * Builds the post-processing chain on first use and re-points its scene pass when the active
-   * camera changes (gameplay chase camera ↔ debug orbit camera).
+   * camera changes (gameplay chase camera <-> debug orbit camera).
+   *
+   * The graph itself is built once: node graphs are expensive to construct, while re-targeting a
+   * pass at another camera is a field assignment.
    *
    * Returns `true` when the caller must render through the pipeline.
    */
@@ -347,30 +348,21 @@ export class Engine {
       return false;
     }
 
-    if (this.#pipeline === null || this.#scenePass === null) {
-      const scenePass = pass(scene, camera);
-      const sceneColor = scenePass.getTextureNode('output');
-      const bloomConfig = this.#config.postProcessing.bloom;
-      // Bloom is added on top of the beam in linear HDR; threshold keeps it to real highlights.
-      const outputNode = bloomConfig.enabled
-        ? sceneColor.add(
-            bloom(sceneColor, bloomConfig.strength, bloomConfig.radius, bloomConfig.threshold),
-          )
-        : sceneColor;
-
-      const pipeline = new RenderPipeline(this.#renderer, outputNode);
-      pipeline.outputColorTransform = true;
-
-      this.#scenePass = scenePass;
-      this.#pipeline = pipeline;
+    if (this.#chain === null) {
+      this.#chain = buildPostChain({
+        renderer: this.#renderer,
+        scene,
+        camera,
+        config: this.#config,
+      });
       this.#pipelineScene = scene;
       this.#pipelineCamera = camera;
       return true;
     }
 
     if (this.#pipelineScene !== scene || this.#pipelineCamera !== camera) {
-      this.#scenePass.scene = scene;
-      this.#scenePass.camera = camera;
+      this.#chain.scenePass.scene = scene;
+      this.#chain.scenePass.camera = camera;
       this.#pipelineScene = scene;
       this.#pipelineCamera = camera;
     }
