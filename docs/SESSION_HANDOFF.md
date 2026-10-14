@@ -2,7 +2,7 @@
 
 **Updated:** 2026-10-14  
 **Current stage:** Phases 1–2 implemented, verified, and pushed; the visual-fidelity re-plan and the free-and-open asset strategy are written; region, brand, audio, and sourcing decisions are resolved  
-**Authorized development phase:** Phases 1–2 only  
+**Authorized development phase:** Phases 1–3 (Phase 3 authorized 2026-10-14)  
 **Next development instruction:** Owner authorizes Phase 3 (renderer, lighting, post, asset/material pipeline). The five re-plan questions are answered and recorded in ADR 0005; see section 9. No development is authorized until then.
 
 > **Re-plan (2026-10-14, decisions resolved):** the owner rejected the Phase 2 presentation and set a

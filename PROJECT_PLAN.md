@@ -396,7 +396,7 @@ valid and are extended, not replaced.
 | 1     | Engine, loop, resize/DPR handling, orbit debug camera, reference lighting, diagnostics, disposal (ADR 0002)                                                      | `fbb48a4`, CI green                                            |
 | 2     | Rapier world + custom raycast force layer, slip-friction drift, smoothed keyboard input, damped chase camera, placeholder car meshes bound to physics (ADR 0003) | `b85c8ba`, `307efaa`, CI green; evidence in `/phase2-evidence` |
 
-**Phase 1 and Phase 2 are complete and pushed. Nothing below is authorized yet.**
+**Phase 1 and Phase 2 are complete and pushed. Phase 3 is authorized and in progress. Phases 4–8 remain gated.**
 
 ### Phase 3 — Renderer migration, lighting, post-processing, asset and material pipeline
 
@@ -606,7 +606,7 @@ CI verifies the checks actually present. A green scaffold CI does not certify ve
 | Phase 2                                                     | Complete (ADR 0003), pushed as `b85c8ba` + `307efaa`, CI green, evidence bundle archived                    |
 | Visual-fidelity research and re-plan                        | Complete 2026-10-14: `docs/RESEARCH_AAA_FIDELITY.md`, `docs/VISUAL_TARGET.md`, ADR 0004, this plan revision |
 | Free-and-open sourcing, region, brand, audio, photo mode    | Resolved 2026-10-14: `docs/ASSET_SOURCES.md`, `CREDITS.md`, ADR 0005, region brief (§6/§9 references)       |
-| Phase 3 — renderer, lighting, post, asset/material pipeline | **Gated** — not started; requires explicit authorization                                                    |
+| Phase 3 — renderer, lighting, post, asset/material pipeline | **Authorized 2026-10-14; in progress**                                                                      |
 | Phase 4 — terrain, roads, streaming                         | Gated                                                                                                       |
 | Phase 5 — vegetation, props, atmosphere                     | Gated                                                                                                       |
 | Phase 6 — hero car, materials, vehicle fidelity             | Gated; needs the car-asset decision                                                                         |
@@ -740,4 +740,4 @@ References guide implementation; pinned package APIs must still be checked at th
 
 ---
 
-**Next permitted development action:** None. All sourcing, region, brand, audio, and photo-mode decisions are resolved (ADR 0005), including the kept CC-BY-with-credit exception; Phase 3 requires explicit user authorization.
+**Next permitted development action:** Execute Phase 3 (authorized 2026-10-14) and stop at its gate before Phase 4.

@@ -2,7 +2,7 @@
 
 A cross-platform, procedural 3D web driving game built with **Three.js, Rapier, TypeScript, Vite, and Tailwind CSS**.
 
-> **Current state: Phases 1–2 implemented and pushed. The visual-fidelity re-plan and the free-and-open asset strategy are complete (region, brand, sourcing, and audio decided); Phases 3–8 are not authorized.**
+> **Current state: Phase 3 in progress (renderer, lighting, post-processing, and the asset/material pipeline). Phases 1–2 are implemented, verified, and pushed; Phases 4–8 are not authorized.**
 >
 > The Phase 2 car drives on a flat reference arena with raycast suspension, a six-speed drivetrain, a slip-based tire model, smoothed keyboard input, and a damped chase camera — but the presentation is still placeholder. The owner's target is Forza-Horizon-class visuals, so the roadmap was rearranged (ADR 0004):
 >
@@ -116,7 +116,7 @@ docs/             architecture, decisions, handoff, asset/Git policies
 | Phase 2: vehicle physics, input, camera                        | Implemented and verified (unit, physics, integration, and browser gates)                                         |
 | Visual-fidelity research and re-plan                           | Complete 2026-10-14 (`docs/RESEARCH_AAA_FIDELITY.md`, `docs/VISUAL_TARGET.md`, ADR 0004)                         |
 | Sourcing, region, brand, audio decisions                       | Complete 2026-10-14 (`docs/ASSET_SOURCES.md`, ADR 0005): free-and-open only, rural-Japan region, fictional brand |
-| Phase 3: renderer, lighting, post, asset and material pipeline | Gated — not started                                                                                              |
+| Phase 3: renderer, lighting, post, asset and material pipeline | **In progress** (authorized 2026-10-14)                                                                          |
 | Phase 4: terrain, roads, streaming                             | Gated                                                                                                            |
 | Phase 5: vegetation, props, atmosphere                         | Gated                                                                                                            |
 | Phase 6: hero car, materials, vehicle fidelity                 | Gated; needs the car-asset decision                                                                              |
