@@ -53,6 +53,12 @@ mesh is acceptable; wheels must visibly steer and roll from physics state.
   (21 files, +1129/−277) was pushed to `main`; `git ls-remote origin refs/heads/main` returned the
   same SHA and the `Validate project` GitHub Actions run for that commit (run #5,
   `38485484364`) completed successfully.
+- **Verified checkpoint (2026-10-14, sourcing decisions):** the free-and-open asset strategy,
+  region/brand/audio decisions, the settled credited-asset rule, and the one-time authorization
+  change were pushed as `fc3f049` → `5d54df8` → `46bb0b3`; `git ls-remote origin refs/heads/main`
+  returned `46bb0b3`, and `Validate project` run #7 (`38493119974`) completed successfully. The push
+  was performed by the durable-credential flow with **no re-authorization prompt** — see the
+  authorization note below.
 - Authentication for pushing uses the owner's official GitHub CLI device flow (the Arena GitHub
   connector is unsupported). Device codes expire after ~15 minutes.
 - **Changed 2026-10-14 (owner request): authorization is now one-time.** The access token is kept in
