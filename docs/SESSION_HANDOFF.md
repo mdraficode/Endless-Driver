@@ -53,9 +53,15 @@ mesh is acceptable; wheels must visibly steer and roll from physics state.
   (21 files, +1129/−277) was pushed to `main`; `git ls-remote origin refs/heads/main` returned the
   same SHA and the `Validate project` GitHub Actions run for that commit (run #5,
   `38485484364`) completed successfully.
-- Authentication for pushing uses the owner's official GitHub CLI device flow. Device codes expire
-  after ~15 minutes, so a fresh code must be issued and approved promptly in the same session; the
-  resulting token is stored outside the repository and does not survive a sandbox reset.
+- Authentication for pushing uses the owner's official GitHub CLI device flow (the Arena GitHub
+  connector is unsupported). Device codes expire after ~15 minutes.
+- **Changed 2026-10-14 (owner request): authorization is now one-time.** The access token is kept in
+  a durable workspace location outside the repository (not under the snapshot-excluded `.cache/`),
+  so sandbox restores no longer force a new approval. `~/.gitconfig` carries the repository identity
+  and `core.askpass`, so a plain `git push origin main` works with no environment variables; a
+  `push.sh` helper beside the token pushes and prints the local/remote SHA comparison.
+  The credential is never committed, printed, or included in evidence, and the owner can revoke it
+  from GitHub at any time — after which a single device-flow approval restores it.
 
 ## 3. What Phase 2 delivered
 

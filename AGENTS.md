@@ -91,6 +91,8 @@ The Arena GitHub connector remains unsupported. The owner authorized the officia
 
 On resume, verify the actual branch and remote. If `.git/config` did not persist and `origin` is absent, restore only the confirmed `https://github.com/mdraficode/Endless-Driver.git` URL after checking the project root. If write authentication is unavailable, reauthorize safely without asking for a token in chat. Public source can still be cloned/read without write credentials.
 
+**One-time authorization (owner request, 2026-10-14).** The owner asked not to be re-prompted for GitHub authorization on every push. Therefore push credentials are kept in a **durable location outside the repository** in the workspace (not under the snapshot-excluded `.cache/`), together with the device-flow helper, and `~/.gitconfig` is set with the repository identity and `core.askpass` so plain `git push` works without environment variables. Rules that still apply, unchanged: **never commit, print, or paste the credential**; the durable store is credential material and must stay outside the repository and out of any published material; the owner can revoke the authorization at any time (GitHub → Settings → Applications) and then a single device-flow approval re-establishes it. If the credential is missing or revoked, run the device flow in the workspace helper directory rather than improvising another auth path.
+
 ## Final status report for a phase
 
 Report: work completed, tests/results, manual checks still needed, commit and verified push status, known limitations, and the next gated phase. If anything is blocked, say so plainly. Do not autonomously deploy or proceed to the next phase.
