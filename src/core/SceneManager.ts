@@ -95,7 +95,7 @@ export class SceneManager {
   readonly #sunOffset: Vector3;
   readonly #sunTarget = new Vector3();
   readonly #csm: CSMShadowNode | null;
-  readonly #content: SceneContent;
+  #content: SceneContent;
   readonly #fog: Fog | null;
   readonly #addedObjects = new Set<Object3D>();
   readonly #disposables: readonly (() => void)[];
@@ -389,6 +389,23 @@ export class SceneManager {
       count += 1;
     });
     return count;
+  }
+
+  /**
+   * Replaces the scene's content.
+   *
+   * The content seam exists because the project has more than one thing to render; this is the part
+   * of it that says *when*. Content that has to be downloaded — a model, and later a streamed world
+   * chunk — cannot exist at construction time, so the manager starts with what the factory gives it
+   * and accepts a replacement once the real thing has arrived. The outgoing content is disposed by
+   * the caller rather than here, because the two are usually alive at the same instant during the
+   * swap and only the caller knows which one is going away.
+   */
+  setContent(content: SceneContent): void {
+    const previous = this.#content;
+    this.scene.remove(previous.root);
+    this.#content = content;
+    this.scene.add(content.root);
   }
 
   getDiagnostics(): SceneDiagnostics {

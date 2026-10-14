@@ -95,6 +95,19 @@ export type ContextHandler = () => void;
  * The engine never imports scene systems: callers register handlers and call `render(scene, camera)`
  * from a frame handler, which keeps ownership explicit.
  */
+/** Reads the renderer's counters into the shape the HUD and the tests use. */
+function readStatistics(info: {
+  render: { calls: number; drawCalls?: number; triangles: number };
+  memory: { geometries: number; textures: number };
+}): RenderStatistics {
+  return {
+    drawCalls: info.render.drawCalls ?? info.render.calls,
+    triangles: info.render.triangles,
+    geometries: info.memory.geometries,
+    textures: info.memory.textures,
+  };
+}
+
 export class Engine {
   readonly #canvas: HTMLCanvasElement;
   readonly #config: RenderConfig;
@@ -119,6 +132,7 @@ export class Engine {
   #disposed = false;
   #initialized = false;
   #backend: RendererBackendName | null = null;
+  #statistics: RenderStatistics = { drawCalls: 0, triangles: 0, geometries: 0, textures: 0 };
 
   constructor(options: EngineOptions) {
     this.#canvas = options.canvas;
@@ -139,6 +153,9 @@ export class Engine {
     this.#renderer.toneMapping = TONE_MAPPINGS[this.#config.renderer.toneMapping];
     this.#renderer.toneMappingExposure = this.#config.renderer.toneMappingExposure;
     this.#renderer.onDeviceLost = this.#handleDeviceLost;
+    // This engine owns the frame loop, so it owns the counter reset too; leaving three's automatic
+    // reset enabled would mean two resets at two different moments in the same frame.
+    this.#renderer.info.autoReset = false;
 
     this.#canvas.addEventListener('webglcontextlost', this.#handleContextLost);
     this.#canvas.addEventListener('webglcontextrestored', this.#handleContextRestored);
@@ -330,14 +347,15 @@ export class Engine {
     this.#renderer.render(scene, camera);
   }
 
+  /**
+   * What the last completed frame drew.
+   *
+   * A cached snapshot rather than a live read of the renderer's counters, because those are reset at
+   * the start of each frame: a caller that asks between the reset and the last draw would be told the
+   * frame was empty, and the HUD would flicker between the truth and a zero.
+   */
   getRenderStatistics(): RenderStatistics {
-    const { render, memory } = this.#renderer.info;
-    return {
-      drawCalls: render.drawCalls ?? render.calls,
-      triangles: render.triangles,
-      geometries: memory.geometries,
-      textures: memory.textures,
-    };
+    return this.#statistics;
   }
 
   dispose(): void {
@@ -447,11 +465,20 @@ export class Engine {
     this.#elapsed += delta;
     this.#frameCount += 1;
 
+    // The renderer's counters are reset here, at the top of the frame this engine drives, and the
+    // result is cached at the bottom. Both halves are deliberate: three only resets `info` inside its
+    // *own* animation loop, and this engine does not use that loop — so without the reset the numbers
+    // accumulate for as long as the page is open, and with it but without the cache a caller reading
+    // mid-frame (a HUD, a test, the screenshot harness) can catch the counters between the reset and
+    // the first draw and be told the scene is empty.
+    this.#renderer.info.reset();
+
     const frame: FrameState = { delta, elapsed: this.#elapsed, frame: this.#frameCount };
     for (const handler of [...this.#frameHandlers]) {
       handler(frame);
     }
 
+    this.#statistics = readStatistics(this.#renderer.info);
     this.#scheduleFrame();
   };
 

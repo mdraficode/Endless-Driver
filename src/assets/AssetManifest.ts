@@ -32,6 +32,29 @@ export interface AssetManifestSource {
   readonly retrieved: string;
 }
 
+/** One level of detail inside a derived model, as the build script recorded it. */
+export interface AssetManifestLod {
+  readonly level: number;
+  /** Name of the node in the GLB that carries this level's mesh. */
+  readonly node: string;
+  readonly triangles: number;
+  /** Ratio target the level was simplified to, before the error ceiling was applied. */
+  readonly ratio?: number;
+  /** Whether the derivation merged duplicated positions to reach it. */
+  readonly seamMerged?: boolean;
+}
+
+/** What the pipeline did to a source asset, and what came out. */
+export interface AssetManifestPipeline {
+  readonly resolution?: string;
+  readonly sourceBytes?: number;
+  readonly outputBytes?: number;
+  readonly reductions?: readonly string[];
+  /** Present on derived models: the level chain, closest first. */
+  readonly lods?: readonly AssetManifestLod[];
+  readonly notes?: string;
+}
+
 export interface AssetManifestEntry {
   readonly id: string;
   readonly kind: string;
@@ -39,6 +62,7 @@ export interface AssetManifestEntry {
   readonly assetClass: string;
   readonly source: AssetManifestSource;
   readonly role: string;
+  readonly pipeline?: AssetManifestPipeline;
   readonly files: readonly AssetManifestFile[];
 }
 

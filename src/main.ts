@@ -13,10 +13,11 @@ import {
   type TierEnvironment,
 } from './core/QualityTier';
 import { StudioApplication, type StudioDiagnostics } from './lab/StudioApplication';
+import { PropLabApplication, type PropLabDiagnostics } from './lab/PropLabApplication';
 import type { DiagnosticsSnapshot } from './ui/DiagnosticsOverlay';
 
 export interface EndlessDriverDebugHandle {
-  getDiagnostics(): DiagnosticsSnapshot | StudioDiagnostics;
+  getDiagnostics(): DiagnosticsSnapshot | StudioDiagnostics | PropLabDiagnostics;
   pause(): void;
   resume(): void;
 }
@@ -37,15 +38,26 @@ function readTimeRequest(search: string): number | null {
 }
 
 /**
- * Reads the `?scene=` switch.
+ * Reads the `?scene=` switch: `drive` (the default), `studio`, or `props`.
  *
- * The studio is a separate composition root rather than a mode on the driving application: it has no
- * vehicle, no physics, and no track, and pretending otherwise would mean threading `if (studio)`
- * through the whole driving path. Both share the engine, the scene manager, the lighting, and the
- * post chain, which is what makes it an honest place to judge what the game will look like.
+ * Each look-dev scene is a separate composition root rather than a mode on the driving application.
+ * The studio has no vehicle and the prop inspector has no track; pretending otherwise would mean
+ * threading `if (studio)` and `if (props)` through the whole driving path. All three share the engine,
+ * the scene manager, the lighting, and the post chain, which is what makes them honest places to judge
+ * what the game will look like.
  */
-function readSceneRequest(search: string): 'drive' | 'studio' {
-  return new URLSearchParams(search).get('scene') === 'studio' ? 'studio' : 'drive';
+function readSceneRequest(search: string): 'drive' | 'studio' | 'props' {
+  const scene = new URLSearchParams(search).get('scene');
+  if (scene === 'studio' || scene === 'props') {
+    return scene;
+  }
+  return 'drive';
+}
+
+/** Reads `?model=<manifest id>`: which model the prop inspector opens on. */
+function readModelRequest(search: string): string | undefined {
+  const id = new URLSearchParams(search).get('model');
+  return id === null || id === '' ? undefined : id;
 }
 
 export interface StudioRequest {
@@ -253,12 +265,75 @@ async function startStudio(): Promise<void> {
   }
 }
 
-async function start(): Promise<void> {
-  if (readSceneRequest(window.location.search) === 'studio') {
-    await startStudio();
+/**
+ * Boots the prop inspector: the scene that shows a derived model at every level of detail.
+ *
+ * No Rapier and no vehicle, so the only async preconditions are the renderer's device and the model
+ * itself — and the model is loaded *after* the first frame, so a slow download shows a lit stage
+ * rather than a blank screen.
+ */
+async function startProps(): Promise<void> {
+  if (!canvas) {
+    reportStartupFailure(new Error('missing #viewport-canvas element'));
     return;
   }
-  await startDrivingScene();
+
+  const request = readStudioRequest(window.location.search);
+  if (studioPanelRoot && request.showPanel) {
+    studioPanelRoot.hidden = false;
+  }
+  if (overlayRoot) {
+    overlayRoot.hidden = true;
+  }
+  setStatus('Loading the prop model…', 'info');
+
+  let application: PropLabApplication;
+  try {
+    const { config, tier } = resolveRenderConfig();
+    const startHour = readTimeRequest(window.location.search);
+    const assetId = readModelRequest(window.location.search);
+
+    application = await PropLabApplication.create({
+      canvas,
+      config,
+      tier,
+      panelRoot: studioPanelRoot,
+      clock: startHour === null ? undefined : { startHour },
+      ...(assetId === undefined ? {} : { assetId }),
+      panel: request.showPanel,
+    });
+  } catch (error) {
+    reportStartupFailure(error);
+    return;
+  }
+
+  setStatus(null);
+  window.addEventListener('resize', () => {
+    application.resize();
+  });
+
+  if (isDebugEnabled()) {
+    window.__ENDLESS_DRIVER__ = {
+      getDiagnostics: () => application.getDiagnostics(),
+      pause: () => {
+        application.dispose();
+      },
+      resume: () => undefined,
+    };
+  }
+}
+
+async function start(): Promise<void> {
+  switch (readSceneRequest(window.location.search)) {
+    case 'studio':
+      await startStudio();
+      return;
+    case 'props':
+      await startProps();
+      return;
+    default:
+      await startDrivingScene();
+  }
 }
 
 void start();

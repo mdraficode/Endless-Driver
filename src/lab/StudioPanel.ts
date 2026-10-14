@@ -113,7 +113,10 @@ export class StudioPanel {
       if (event.metaKey || event.ctrlKey || event.altKey) {
         return;
       }
-      const binding = KEY_BINDINGS.find((candidate) => candidate.key === event.key);
+      // Matched without case, as in the prop panel: one panel whose shortcuts survive Caps Lock and
+      // another whose shortcuts do not is worse than either rule on its own.
+      const pressed = event.key.toLowerCase();
+      const binding = KEY_BINDINGS.find((candidate) => candidate.key.toLowerCase() === pressed);
       if (binding === undefined) {
         return;
       }

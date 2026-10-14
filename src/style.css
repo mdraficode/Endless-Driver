@@ -181,3 +181,34 @@ body {
   padding: 0.4rem;
   background: rgb(9 14 24 / 70%);
 }
+
+/*
+ * The prop inspector's level table.
+ *
+ * The rows *are* the artefact being inspected — one per level of detail, with its triangle count — so
+ * they are laid out as a readable two-column table rather than prose, and the level currently on
+ * screen is marked. A row that is showing gets a colour as well as a marker, because the point is to
+ * see at a glance which of the three copies on screen is being described.
+ */
+.prop-levels {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15rem 0.6rem;
+  margin: 0.2rem 0 0.5rem;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.prop-levels dt {
+  color: rgb(203 213 225 / 85%);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.prop-levels dt[data-active='true'] {
+  color: rgb(125 211 252);
+}
+
+.prop-levels dd {
+  margin: 0;
+  color: rgb(226 232 240 / 75%);
+}

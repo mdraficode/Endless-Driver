@@ -537,6 +537,20 @@ post chain, draw calls, and triangles unchanged, no page errors.
 `?panel=0`. Keyboard: `P` hides the panel, `H` cycles the HDRI, `E` toggles image-based lighting, `,`/`.` rotate it,
 `←`/`→` move the hour, `R` reframes.
 
+**Prop inspector (`?scene=props`).** The look-dev scene judges materials; this one judges the _asset pipeline's
+output_. It loads `public/assets/models/boulder-01.glb` — one file whose three levels of detail share a KTX2 texture
+set — and stands one copy per level on the same floor under the same light, so "did the derivation degrade
+gracefully?" is a question one screenshot answers. Modes: the lineup, a close-up of any single level, and automatic,
+where one copy switches level by camera distance using the exact rule the streamed world will run
+(`LOD_SWITCH_RADII = [12, 24]` radii). Switches: `?model=<manifest id>`, `?time=<hours>`, `?panel=0`. Keyboard:
+`1`/`2`/`3` isolate a level, `L` the lineup, `A` automatic mode, `N` the next level, `←`/`→` the hour, `R` reframes,
+`P` hides the panel.
+
+**Verified in-browser** (headless Chromium, WebGL2, tier C): the lineup, each level isolated, and automatic mode at
+21.9 m; `23 draw calls · 91,197 tris` in the lineup against 26 draw calls / 182,361 triangles with every level
+showing, matching the panel's own counts, no page errors, no failed requests, and an unknown `?model=` id reported in
+the panel rather than thrown. Evidence in `/home/user/phase3-evidence/props-lab/`.
+
 **What the studio already earns its keep on.** Comparing `?hdri=hdri-ninomaru-teien-1k&time=12.5` with
 `?hdri=hdri-cedar-bridge-sunset-1k&time=6.5` shows the same materials under two completely different lights while
 the materials themselves stay recognisable — which is the property that has to hold before anything is authored

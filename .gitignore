@@ -30,3 +30,6 @@ Thumbs.db
 
 # Reproducible model sources (re-fetched by scripts/build-models.mjs)
 .asset-cache/
+
+# Browser decoders copied from node_modules at build time
+public/decoders/
