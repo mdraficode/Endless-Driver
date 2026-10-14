@@ -6,12 +6,16 @@
  * in the HUD, so every performance or quality statement can name the tier it was made under.
  *
  * Only settings that exist today are listed under `render`; everything a tier is contracted to
- * control *once implemented* (ambient occlusion, reflections, motion blur, the anti-aliasing
- * strategy, terrain layers, vegetation density, particles) is listed under `pending`. Nothing in
- * `pending` affects rendering yet, and nothing here pretends it does.
+ * control *once implemented* (reflections, terrain layers, vegetation density, particles) is listed under
+ * `pending`. Nothing in `pending` affects rendering yet, and nothing here pretends it does.
+ *
+ * The anti-aliasing strategy and motion blur moved out of `pending` when they landed: a tier now states
+ * *which* strategy it uses, and the difference between the tiers is measurable in the HUD (`Renderer`
+ * reports the strategy, the temporal row reports the render scale it resolves at).
  */
 import type {
   AmbientOcclusionConfig,
+  MotionBlurConfig,
   AtmosphereConfig,
   BloomConfig,
   ChromaticAberrationConfig,
@@ -26,6 +30,7 @@ import type {
   ShadowConfig,
   SharpenConfig,
   SkyConfig,
+  TemporalAntiAliasingConfig,
   VignetteConfig,
 } from './render';
 
@@ -59,9 +64,13 @@ export interface TierRenderOverrides {
       | 'filmGrain'
       | 'vignette'
       | 'depthOfField'
+      | 'motionBlur'
+      | 'temporalAntiAliasing'
     >
   > & {
     readonly bloom?: Partial<BloomConfig>;
+    readonly motionBlur?: Partial<MotionBlurConfig>;
+    readonly temporalAntiAliasing?: Partial<TemporalAntiAliasingConfig>;
     readonly ambientOcclusion?: Partial<AmbientOcclusionConfig>;
     readonly chromaticAberration?: Partial<ChromaticAberrationConfig>;
     readonly sharpen?: Partial<SharpenConfig>;
@@ -124,6 +133,13 @@ const TIER_C: TierDefinition = {
     postProcessing: {
       // No MSAA on this tier; the edges are handled by FXAA, which is the tier's contract.
       antiAliasing: 'fxaa',
+      // Neither of the effects that need motion vectors is here, and for the same reason: both of them are
+      // paid for by the whole scene pass (a second attachment, previous-frame matrices per object, a
+      // full-screen resolve with a history buffer), and on the hardware this tier exists for that budget
+      // buys resolution. The velocity attachment is not even requested, so the cost of the pair on this
+      // tier is exactly zero — not "small".
+      motionBlur: { enabled: false },
+      temporalAntiAliasing: { enabled: false },
       bloom: { strength: 0.18, radius: 0.4 },
       // No depth of field. It costs four passes and five half-resolution targets — on the constrained
       // tier that budget buys resolution, and there is no version of this effect worth a softer image
@@ -137,8 +153,10 @@ const TIER_C: TierDefinition = {
     },
   },
   pending: [
-    // FXAA and the absence of ambient occlusion are now implemented for this tier; what is still
-    // owed is the more expensive alternative anti-aliasing and the world systems Phase 4-5 bring.
+    // FXAA and the absence of ambient occlusion are now implemented for this tier; what is still owed is
+    // the more expensive alternative anti-aliasing and the world systems Phase 4-5 bring. TAA is
+    // deliberately *not* on that list as a candidate for this tier — it is implemented, and it stays off
+    // here because of what it costs, not because it is missing.
     'SMAA (as the higher-quality alternative to FXAA)',
     'reflection probes',
     '2 terrain layers',
@@ -158,8 +176,11 @@ const TIER_B: TierDefinition = {
     maxPixelRatio: 1.5,
     renderer: {
       backendPreference: 'auto',
-      antialias: true,
-      samples: 4,
+      // MSAA off: this tier resolves edges temporally, and the two strategies cannot both be on. See the
+      // note on `TemporalAntiAliasingConfig` — the trade is MSAA's perfect geometric edges for temporal
+      // stability of *everything* (specular, shadow edges, occlusion noise), which is the better half.
+      antialias: false,
+      samples: 0,
     },
     shadows: {
       mapSize: 2048,
@@ -176,7 +197,11 @@ const TIER_B: TierDefinition = {
       useAsBackground: false,
     },
     postProcessing: {
-      antiAliasing: 'msaa',
+      antiAliasing: 'taa',
+      // Two taps fewer than the baseline: this tier renders at 1.5x, so the same blur distance in UV is
+      // fifty percent more pixels to walk, and the effect is fill-rate bound.
+      motionBlur: { samples: 10 },
+      temporalAntiAliasing: { enabled: true, dynamicResolution: true },
       bloom: { strength: 0.22, radius: 0.45 },
       // A slightly tighter aperture than the baseline: this tier renders at 1.5x, and the blur is a
       // share of the frame, so the same number would read as a larger circle of confusion in pixels.
@@ -185,12 +210,7 @@ const TIER_B: TierDefinition = {
       filmGrain: { enabled: false },
     },
   },
-  pending: [
-    'TAAU/TRAA (alternative to MSAA)',
-    'SSR half-res',
-    '3 terrain layers',
-    'LOD1-2 vegetation',
-  ],
+  pending: ['SSR half-res', '3 terrain layers', 'LOD1-2 vegetation'],
 };
 
 /**
@@ -205,8 +225,8 @@ const TIER_A: TierDefinition = {
     maxPixelRatio: 2,
     renderer: {
       backendPreference: 'auto',
-      antialias: true,
-      samples: 4,
+      antialias: false,
+      samples: 0,
     },
     shadows: {
       mapSize: 4096,
@@ -223,14 +243,19 @@ const TIER_A: TierDefinition = {
       useAsBackground: false,
     },
     postProcessing: {
-      antiAliasing: 'msaa',
+      antiAliasing: 'taa',
+      motionBlur: { samples: 16 },
+      // A higher floor than the balanced tier: this tier is for hardware that was measured to hold its
+      // frame budget, so the controller has less reason to trade resolution away. It still adapts — the
+      // cost of not adapting is a stutter, and the schedule in `docs/REALISM_PLAN.md` §5 is what decides
+      // whether that floor is defensible on real hardware.
+      temporalAntiAliasing: { enabled: true, dynamicResolution: true, minScale: 0.75 },
       bloom: { strength: 0.26, radius: 0.5 },
       ambientOcclusion: { enabled: true, resolutionScale: 1, samples: 24 },
       filmGrain: { enabled: true, intensity: 0.05 },
     },
   },
   pending: [
-    'TAAU/TRAA',
     'SSR + probes + wet roads',
     '4 terrain layers + POM',
     'LOD0 vegetation',

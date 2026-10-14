@@ -101,6 +101,8 @@ export function applyTier(base: RenderConfig, tier: TierId): RenderConfig {
   const {
     bloom: bloomOverride,
     depthOfField: depthOfFieldOverride,
+    motionBlur: motionBlurOverride,
+    temporalAntiAliasing: temporalAntiAliasingOverride,
     ...postOverride
   } = overrides.postProcessing ?? {};
 
@@ -112,6 +114,11 @@ export function applyTier(base: RenderConfig, tier: TierId): RenderConfig {
     // Nested like bloom rather than spread whole: a tier that only wants a smaller bokeh must not have
     // to restate the focus falloff, and a field it forgets would silently become `undefined`.
     depthOfField: { ...base.postProcessing.depthOfField, ...depthOfFieldOverride },
+    motionBlur: { ...base.postProcessing.motionBlur, ...motionBlurOverride },
+    temporalAntiAliasing: {
+      ...base.postProcessing.temporalAntiAliasing,
+      ...temporalAntiAliasingOverride,
+    },
     ambientOcclusion: {
       ...base.postProcessing.ambientOcclusion,
       ...postOverride?.ambientOcclusion,
@@ -126,8 +133,9 @@ export function applyTier(base: RenderConfig, tier: TierId): RenderConfig {
   };
 
   // MSAA and a post-process AA mode are alternatives, not additions: paying for both would cost
-  // samples for no quality gain. A tier that selects FXAA/SMAA (or no AA) turns MSAA off here, so
-  // the two settings can never contradict each other.
+  // samples for no quality gain. A tier that selects FXAA/SMAA/TAA (or no AA) turns MSAA off here, so
+  // the two settings can never contradict each other. For `taa` it is not merely wasteful but invalid —
+  // temporal accumulation and multisampling cannot be combined, and the resolve node requires MSAA off.
   if (postProcessing.antiAliasing !== 'msaa') {
     renderer.antialias = false;
     renderer.samples = 0;

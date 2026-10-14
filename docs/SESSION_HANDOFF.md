@@ -1,6 +1,6 @@
 # Session Handoff — Endless Driver
 
-**Updated:** 2026-10-14  
+**Updated:** 2026-10-15  
 **Current stage:** Phases 1–2 implemented, verified, and pushed; the visual-fidelity re-plan and the free-and-open asset strategy are written; region, brand, audio, and sourcing decisions are resolved  
 **Authorized development phase:** Phases 1–3 (Phase 3 authorized 2026-10-14)  
 **Next development instruction:** Owner authorizes Phase 3 (renderer, lighting, post, asset/material pipeline). The five re-plan questions are answered and recorded in ADR 0005; see section 9. No development is authorized until then.
@@ -585,3 +585,89 @@ the materials themselves stay recognisable — which is the property that has to
 against them. It also makes the clock's remaining gaps obvious: the backdrop is still a captured photograph, so at
 18:30 the world darkens while the sky's own colour does not change, and the exposure lift that keeps night readable
 flattens dawn and dusk under a captured sky.
+
+## 17. The temporal slice — velocity, TAAU, dynamic resolution, motion blur (2026-10-15)
+
+The realism investigation (`docs/REALISM_PLAN.md`) ranked temporal stability first and motion blur second, and
+this slice implements both on **one shared velocity attachment** — the same buffer a future screen-space
+reflection or denoiser would reproject with, which is why they were built together rather than as two features.
+
+**What changed, in the chain's own terms.** `src/shaders/post-chain.ts` gained two effects and a new order:
+
+```
+ao → taa → motionBlur → grade → bloom → dof → smaa → lut → chromaticAberration → sharpen → filmGrain → vignette → fxaa
+```
+
+- **`taa` wraps the scene pass**, immediately after the occlusion term, because the resolve accumulates whatever
+  is upstream of it: placed there, the noise the scene pass itself produces — the AO estimate, shadow-map edges,
+  specular highlights crawling across a surface — is what gets averaged away. It is applied to the _resolved
+  texture node_ (`resolve.getTextureNode()`), not to the resolve node itself, and that distinction is the first
+  bug of this slice (below).
+- **`motionBlur` sits directly on the scene image**, ahead of the grade and the bloom. That position is both the
+  physically right one (an exposure integrates the light that reached the sensor, and the grade and bloom are
+  properties of that exposure) and the only one the node can _take_: `motionBlur` samples its input as a texture,
+  so any composed expression upstream of it is a `TypeError` inside node setup. It is the second bug, and the more
+  instructive one.
+- Both read `scenePass.getTextureNode('velocity')`. The attachment is requested only when one of them is in the
+  chain (`requiresSceneVelocity`), because writing motion vectors is a cost paid by every material in the scene:
+  it adds a second colour output and switches the renderer into keeping per-object previous-frame matrices.
+
+**Dynamic resolution** is the same node doing the second half of its job: TAAU reconstructs a reduced scene pass
+at full size, so lowering the render scale buys frame rate for the whole scene pass rather than for one effect.
+The controller is `src/core/DynamicResolution.ts` — deliberately three-free, DOM-free arithmetic with thirteen
+unit tests, because _when_ the resolution should move is the part that can be wrong in ways no screenshot shows.
+Its shape: a smoothed frame time, a dead band (`target ± 15%`, so a frame time parked _at_ the target is a stable
+state and the resolution never breathes), hysteresis (one adjustment per half second, one step of 0.08 at a time),
+and a floor. Its documented blindness: it is driven by _delivered_ frame time, so it cannot pre-empt a GPU that is
+using most of the budget without yet missing the display's deadline; it reacts when frames are actually dropped.
+
+**Tiers, switches, HUD.** Tiers B and A now resolve temporally (`antiAliasing: 'taa'`), which means **no tier uses
+MSAA any more** — the resolve requires it off, and `core/QualityTier.ts` already forced `samples: 0` for any
+non-MSAA mode. Tier C keeps FXAA and switches the temporal path off by cost, not by absence. New switches:
+`?taa=0|1`, `?aa=taa|smaa|fxaa|msaa|none` (names a strategy outright; naming a spatial one turns the temporal path
+off, so the arms of an A/B are exactly what they say), `?res=<scale>` (fixes the scale and stops the controller),
+`?dynres=0|1`, `?mblur=0|1`, `?mb=<shutter>`. The HUD gained a `Temporal` row (`taa @ 84%`, or `off`), and
+`Renderer` now reports the strategy.
+
+**Measured in a browser** (headless Chromium, **WebGL2 fallback**, tier B, `?res=0.5`, 640×400 unless noted):
+
+| What                                                 | Result                                                                                                                                                                                    |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chain and backend                                    | `ao → taa → motionBlur → grade → bloom → dof → lut → chromaticAberration → sharpen → vignette`, HUD `webgl2 · taa`, `Temporal taa @ 84%`, **zero page errors, zero failed requests**      |
+| Dynamic resolution is live                           | scale 1.0 → 0.84 → 0.67 as frame times exceeded the target; `?res=0.6`/`?res=1` fixes it and the HUD reports `taa @ 60%` / `taa @ 100%`                                                   |
+| Velocity buffer is populated                         | temporary debug view of the attachment: a coherent screen-space field across the frame (reverted; captures kept)                                                                          |
+| Motion blur, matched speed (~100 km/h, 66 m vs 64 m) | control pair (`mblur=0` twice) mean \|Δ\| **1.12**; treatment (`mblur=1`) **9.89 / 10.04** — ~9× the control noise, and the two independent comparisons agree within 1.5%                 |
+| Motion blur, direction                               | in the road band, \|dI/dx\| falls to **0.961** while \|dI/dy\| is unchanged at **1.025** — the smear is horizontal, i.e. along the lateral motion of a chase camera at speed              |
+| Motion blur, spatial distribution                    | mean \|Δ\| grows toward the bottom of the frame (5.97 → 13.15 by quarter) — strongest where the scene moves fastest, which is the signature of a correct field rather than a uniform blur |
+| Camera-rotation A/B (orbit drag, identical script)   | two controls agree to **0.10**; treatment differs by **1.42** — a 14× signal with matched poses                                                                                           |
+| Static scene, effect enabled                         | mean \|Δ\| 1.30 with max 142 localised on the car and near ground — the effect does _not_ fire across a still frame                                                                       |
+
+**Verified in-browser, end to end** (`?time=12.5&debug&tier=b`, chain as above): the driving scene renders with
+TAA and motion blur in the WebGL2 fallback at 800×520 and at 720×460 with the fixed scale, no page errors, no
+failed requests. Evidence: `/home/user/phase3-evidence/temporal/` (23 images, 10 JSON reports, 1.9 MB), including
+`drive-mb-compare.png` (the sharp/streaked pair side by side) and `vel-drive.png` (the velocity field).
+
+**The bug worth the most.** `motionBlur`'s `sampleColor` calls `input.sample(uv + offset)` — so its input must be
+a _texture_, and three has no way to say so: the failure is a `TypeError: e.sample is not a function` raised
+during `setupOutput`, which **three catches, logs to the console, and renders around**, producing a fully black
+frame with `pageErrors` empty and the HUD reporting everything as fine. Two distinct causes produced it in this
+slice: the temporal branch handing downstream effects the resolve _node_ (a `TempNode`) instead of
+`resolve.getTextureNode()`, and the motion blur sitting after the grade and bloom, where its input is a composed
+expression rather than a texture. Both are fixed; both are the same lesson — a black frame with a healthy HUD
+means _read the console_, and a node that samples its input cannot be fed arithmetic.
+
+**Also corrected in the docs while here:** the tier table in `docs/VISUAL_TARGET.md` §3 now matches what the code
+does (TAAU on B/A, FXAA on C, no MSAA anywhere, dynamic-scale ranges per tier), and the post-stack table lists the
+shipped stages rather than the pending ones.
+
+**What this slice does _not_ prove.** TAA's benefit is a property of _motion_ — a still frame cannot show that
+shimmer is gone, and the metric that can (per-pixel variance across consecutive frames in flat regions) is part of
+deliverable 11, not of this increment. What is proven about it is that the resolve is in the chain, that it
+jitters the projection and accumulates without error, and that the velocity buffer it reprojects with is correct —
+which the motion-blur measurement establishes independently, since both read the same attachment. Frame _cost_ is
+also unmeasured: the sandbox has no GPU, and under SwiftShader the vehicle simulation is frame-rate-coupled, which
+is why the matching had to be done by speed and distance rather than by timing.
+
+**Next in Phase 3:** the 2 km validation route with fixed camera bookmarks, the SSIM baseline, and the
+temporal-stability metric — the harness that turns "it looks better" and "it shimmers" into numbers — then god
+rays and height-aware aerial perspective (Ranks 3 and 10 of the realism ranking).

@@ -266,6 +266,7 @@ export class Application {
       postEffects: this.#engine.postEffects,
       look: this.#engine.lookSize,
       focusDistance: this.#engine.focusDistance,
+      renderScale: this.#engine.resolutionScale,
       shadowCascades: this.#config.shadows.csm.cascades,
       skyMode: scene.skyMode,
       environmentId: scene.environmentId,

@@ -4,9 +4,11 @@ import { applyTier } from '../../src/core/QualityTier';
 import {
   chainsOwnsOutputTransform,
   requiresSceneNormals,
+  requiresSceneVelocity,
   resolvePostEffects,
   type PostEffectName,
 } from '../../src/shaders/post-chain';
+import { applyRenderSwitches } from '../../src/config/render';
 
 /** A configuration with every display effect switched off, so each test enables only what it names. */
 const BARE: RenderConfig = {
@@ -29,6 +31,11 @@ const BARE: RenderConfig = {
     // be applied — otherwise `resolvePostEffects(BARE)` would silently depend on the tier table.
     depthOfField: { ...RENDER_CONFIG.postProcessing.depthOfField, enabled: false },
     lut: { ...RENDER_CONFIG.postProcessing.lut, enabled: false },
+    // The two effects that need motion vectors. `BARE` is a configuration with nothing in the HUD's effect
+    // row, so it has to switch off the temporal resolve as well — and with it the velocity attachment, which
+    // is why the bare case still asks for no extra render targets at all.
+    motionBlur: { ...RENDER_CONFIG.postProcessing.motionBlur, enabled: false },
+    temporalAntiAliasing: { ...RENDER_CONFIG.postProcessing.temporalAntiAliasing, enabled: false },
   },
 };
 
@@ -166,9 +173,14 @@ describe('post stack per tier', () => {
     expect(resolvePostEffects(tierC)).toContain('fxaa');
     expect(resolvePostEffects(tierC)).not.toContain('smaa');
 
-    // Tier B: MSAA, ambient occlusion at half resolution.
-    expect(tierB.postProcessing.antiAliasing).toBe('msaa');
-    expect(tierB.renderer.antialias).toBe(true);
+    // Tier B: temporal resolve, ambient occlusion at half resolution.
+    expect(tierB.postProcessing.antiAliasing).toBe('taa');
+    expect(tierB.renderer.antialias).toBe(false);
+    expect(tierB.renderer.samples).toBe(0);
+    expect(resolvePostEffects(tierB)).toContain('taa');
+    expect(resolvePostEffects(tierB)).toContain('motionBlur');
+    expect(resolvePostEffects(tierB)).not.toContain('smaa');
+    expect(resolvePostEffects(tierB)).not.toContain('fxaa');
     expect(tierB.postProcessing.ambientOcclusion.enabled).toBe(true);
     expect(tierB.postProcessing.ambientOcclusion.resolutionScale).toBe(0.5);
     expect(resolvePostEffects(tierB)).toContain('ao');
@@ -193,7 +205,23 @@ describe('post stack per tier', () => {
       const config = applyTier(RENDER_CONFIG, tier);
       const msaaOn = config.renderer.antialias && config.renderer.samples > 0;
       expect(msaaOn).toBe(config.postProcessing.antiAliasing === 'msaa');
+      // The temporal path is the strictest case of the same rule: the resolve requires MSAA off, so a tier
+      // that resolves temporally must not have samples configured at all.
+      if (config.postProcessing.antiAliasing === 'taa') {
+        expect(config.postProcessing.temporalAntiAliasing.enabled).toBe(true);
+        expect(config.renderer.samples).toBe(0);
+      }
     }
+  });
+
+  it('gives the constrained tier neither of the effects that need motion vectors', () => {
+    const tierC = applyTier(RENDER_CONFIG, 'C');
+    expect(tierC.postProcessing.temporalAntiAliasing.enabled).toBe(false);
+    expect(tierC.postProcessing.motionBlur.enabled).toBe(false);
+    // Nothing reads velocity, so the scene pass asks for no velocity attachment: the pair costs this tier
+    // exactly zero rather than "little".
+    expect(requiresSceneVelocity(resolvePostEffects(tierC))).toBe(false);
+    expect(resolvePostEffects(tierC)).toContain('fxaa');
   });
 
   it('keeps the AO settings the node actually consumes in a sane range', () => {
@@ -269,5 +297,184 @@ describe('depth of field and the look', () => {
       expect(config.postProcessing.depthOfField.enabled).toBe(true);
       expect(resolvePostEffects(config)).toContain('dof');
     }
+  });
+});
+
+describe('temporal anti-aliasing and motion blur', () => {
+  const temporal = (changes: Partial<RenderConfig['postProcessing']> = {}): RenderConfig =>
+    withEffects({
+      antiAliasing: 'taa',
+      temporalAntiAliasing: { ...BARE.postProcessing.temporalAntiAliasing, enabled: true },
+      motionBlur: { ...BARE.postProcessing.motionBlur, enabled: true },
+      ...changes,
+    });
+
+  it('requests a velocity attachment exactly when something reads motion vectors', () => {
+    expect(requiresSceneVelocity([])).toBe(false);
+    expect(requiresSceneVelocity(['taa'])).toBe(true);
+    // Motion blur alone is enough: it reads the same buffer the resolve does, which is what makes the pair
+    // one slice rather than two.
+    expect(requiresSceneVelocity(['motionBlur'])).toBe(true);
+    expect(requiresSceneVelocity(['bloom', 'lut'])).toBe(false);
+    expect(requiresSceneVelocity(resolvePostEffects(temporal()))).toBe(true);
+  });
+
+  it('runs the temporal resolve on the scene pass, ahead of everything that touches colour', () => {
+    const effects = resolvePostEffects(
+      temporal({
+        grade: { ...BARE.postProcessing.grade, enabled: true },
+        bloom: { ...BARE.postProcessing.bloom, enabled: true },
+        ambientOcclusion: { ...BARE.postProcessing.ambientOcclusion, enabled: true },
+        depthOfField: { ...BARE.postProcessing.depthOfField, enabled: true },
+        lut: { ...BARE.postProcessing.lut, enabled: true },
+      }),
+    );
+
+    // The ordering constraint: the resolve accumulates what is upstream of it, so it has to sit directly on
+    // the scene pass — after the occlusion term it is meant to denoise, before the first effect that is a
+    // *property of the finished frame* rather than of the scene.
+    expect(effects.indexOf('taa')).toBeLessThan(effects.indexOf('grade'));
+    expect(effects.indexOf('taa')).toBeLessThan(effects.indexOf('bloom'));
+    expect(effects.indexOf('taa')).toBeLessThan(effects.indexOf('dof'));
+    expect(effects.indexOf('taa')).toBeLessThan(effects.indexOf('lut'));
+    expect(effects.indexOf('taa')).toBeLessThan(effects.indexOf('motionBlur'));
+  });
+
+  it('blurs motion in the HDR stage on a sharp image, before the lens defocuses it', () => {
+    const effects = resolvePostEffects(
+      temporal({
+        grade: { ...BARE.postProcessing.grade, enabled: true },
+        bloom: { ...BARE.postProcessing.bloom, enabled: true },
+        depthOfField: { ...BARE.postProcessing.depthOfField, enabled: true },
+        lut: { ...BARE.postProcessing.lut, enabled: true },
+      }),
+    );
+
+    // It reads the scene as light, so it cannot run after tone mapping — and it runs directly on the
+    // scene image, ahead of the grade, the bloom and the depth of field: an exposure integrates the light
+    // that reached the sensor, and the defocus of the lens is a property of that same exposure. The
+    // position is also the only one the node can *take*: it samples its input as a texture, so a composed
+    // expression upstream of it — the grade's multiply, the bloom's add — is a `TypeError` inside node
+    // setup, which three catches, logs and renders around as a black frame.
+    expect(effects.indexOf('motionBlur')).toBeLessThan(effects.indexOf('grade'));
+    expect(effects.indexOf('motionBlur')).toBeLessThan(effects.indexOf('bloom'));
+    expect(effects.indexOf('motionBlur')).toBeLessThan(effects.indexOf('dof'));
+    expect(effects.indexOf('motionBlur')).toBeLessThan(effects.indexOf('lut'));
+    // The temporal resolve is the one thing that *does* precede it — it is the exposure's own history
+    // accumulation, and motion blur has to walk a resolved image rather than a jittered one.
+    expect(effects.indexOf('taa')).toBeLessThan(effects.indexOf('motionBlur'));
+    // Neither of the two forces the output transform into the chain — they are HDR-stage effects, and the
+    // LUT in this configuration is what owns the transform, not them. (Asserted on the pair alone so the
+    // test says that either way round.)
+    expect(chainsOwnsOutputTransform(['taa', 'motionBlur'])).toBe(false);
+    expect(chainsOwnsOutputTransform(effects)).toBe(true);
+  });
+
+  it('resolves with exactly one of the three strategies, never two at once', () => {
+    const strategies: readonly RenderConfig['postProcessing']['antiAliasing'][] = [
+      'taa',
+      'smaa',
+      'fxaa',
+      'none',
+    ];
+    for (const antiAliasing of strategies) {
+      for (const enabled of [true, false]) {
+        const effects = resolvePostEffects(
+          withEffects({
+            antiAliasing,
+            temporalAntiAliasing: {
+              ...BARE.postProcessing.temporalAntiAliasing,
+              enabled,
+            },
+          }),
+        );
+        const aaEffects = effects.filter(
+          (effect) => effect === 'taa' || effect === 'smaa' || effect === 'fxaa',
+        );
+        expect(aaEffects.length).toBeLessThanOrEqual(1);
+        // A tier that resolves temporally is never left without AA when the temporal path is switched off:
+        // `?taa=0` is a comparison switch, and comparing against a jagged frame proves nothing.
+        if (antiAliasing === 'taa' && !enabled) {
+          expect(aaEffects).toEqual(['smaa']);
+        }
+      }
+    }
+  });
+
+  it('turns both effects off from the URL, and leaves spatial AA in their place', () => {
+    const base = applyTier(RENDER_CONFIG, 'B');
+    const off = applyRenderSwitches(base, '?taa=0&mblur=0');
+    expect(resolvePostEffects(off)).not.toContain('taa');
+    expect(resolvePostEffects(off)).not.toContain('motionBlur');
+    expect(resolvePostEffects(off)).toContain('smaa');
+    expect(requiresSceneVelocity(resolvePostEffects(off))).toBe(false);
+
+    const on = applyRenderSwitches(base, '?taa=1&mblur=1');
+    expect(resolvePostEffects(on)).toContain('taa');
+    expect(resolvePostEffects(on)).toContain('motionBlur');
+  });
+
+  it('lets the URL name a strategy outright, for a like-for-like A/B', () => {
+    const base = applyTier(RENDER_CONFIG, 'B');
+    expect(resolvePostEffects(applyRenderSwitches(base, '?aa=fxaa'))).toContain('fxaa');
+    expect(resolvePostEffects(applyRenderSwitches(base, '?aa=fxaa'))).not.toContain('taa');
+    expect(resolvePostEffects(applyRenderSwitches(base, '?aa=smaa'))).toContain('smaa');
+    expect(resolvePostEffects(applyRenderSwitches(base, '?aa=none'))).toEqual(
+      resolvePostEffects(base).filter(
+        (effect) => effect !== 'taa' && effect !== 'smaa' && effect !== 'fxaa',
+      ),
+    );
+  });
+
+  it('treats an explicit render scale as a decision to stop adapting', () => {
+    const base = applyTier(RENDER_CONFIG, 'B');
+    const fixed = applyRenderSwitches(base, '?res=0.6');
+    expect(fixed.postProcessing.temporalAntiAliasing.dynamicResolution).toBe(false);
+    expect(fixed.postProcessing.temporalAntiAliasing.renderScale).toBeCloseTo(0.6, 5);
+
+    // The adaptive path is the default, and it can be switched back on independently of the scale.
+    expect(base.postProcessing.temporalAntiAliasing.dynamicResolution).toBe(true);
+    const adaptive = applyRenderSwitches(base, '?dynres=1');
+    expect(adaptive.postProcessing.temporalAntiAliasing.dynamicResolution).toBe(true);
+
+    // A scale above the ceiling is clamped rather than honoured: the effect may not supersample.
+    const tooHigh = applyRenderSwitches(base, '?res=4');
+    expect(tooHigh.postProcessing.temporalAntiAliasing.renderScale).toBe(
+      base.postProcessing.temporalAntiAliasing.maxScale,
+    );
+  });
+
+  it('keeps the dynamic scale bounds ordered and inside the frame', () => {
+    for (const tier of ['C', 'B', 'A'] as const) {
+      const taa = applyTier(RENDER_CONFIG, tier).postProcessing.temporalAntiAliasing;
+      expect(taa.minScale).toBeGreaterThan(0);
+      expect(taa.minScale).toBeLessThanOrEqual(taa.maxScale);
+      expect(taa.maxScale).toBeLessThanOrEqual(1);
+      expect(taa.tolerance).toBeGreaterThan(0);
+      expect(taa.tolerance).toBeLessThan(1);
+      expect(taa.smoothing).toBeGreaterThan(0);
+      expect(taa.smoothing).toBeLessThanOrEqual(1);
+      expect(taa.targetFrameTimeMs).toBeGreaterThan(0);
+      expect(taa.adjustmentIntervalSeconds).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps the motion blur sampler count an integer the loop can unroll', () => {
+    for (const tier of ['C', 'B', 'A'] as const) {
+      const blur = applyTier(RENDER_CONFIG, tier).postProcessing.motionBlur;
+      expect(Number.isInteger(blur.samples)).toBe(true);
+      expect(blur.samples).toBeGreaterThanOrEqual(2);
+      expect(blur.intensity).toBeGreaterThan(0);
+    }
+  });
+
+  it('scales the shutter angle from the URL', () => {
+    const base = applyTier(RENDER_CONFIG, 'B');
+    expect(applyRenderSwitches(base, '?mb=0.5').postProcessing.motionBlur.intensity).toBe(0.5);
+    expect(applyRenderSwitches(base, '?mb=-3').postProcessing.motionBlur.intensity).toBe(0);
+    // A non-numeric value is ignored rather than turned into NaN, which would smear every pixel by nothing.
+    expect(applyRenderSwitches(base, '?mb=lots').postProcessing.motionBlur.intensity).toBe(
+      base.postProcessing.motionBlur.intensity,
+    );
   });
 });

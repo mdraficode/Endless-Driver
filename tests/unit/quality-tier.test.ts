@@ -114,8 +114,13 @@ describe('applying a tier', () => {
     expect(c.renderer.backendPreference).toBe('auto');
     expect(b.renderer.backendPreference).toBe('auto');
     expect(a.renderer.backendPreference).toBe('auto');
+    // Anti-aliasing: no MSAA on any tier. Tier C resolves with FXAA and the desktop tiers resolve
+    // temporally — and temporal accumulation requires MSAA off, so `antialias` is false at both ends while
+    // the *strategy* differs. The mode is the thing that scales, not the sample count.
     expect(c.renderer.antialias).toBe(false);
-    expect(b.renderer.antialias).toBe(true);
+    expect(b.renderer.antialias).toBe(false);
+    expect(c.postProcessing.antiAliasing).toBe('fxaa');
+    expect(b.postProcessing.antiAliasing).toBe('taa');
   });
 
   it('swaps the backdrop on tier C and keeps the procedural sky on the desktop tiers', () => {

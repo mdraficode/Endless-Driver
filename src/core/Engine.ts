@@ -10,6 +10,7 @@ import {
   type Scene,
 } from 'three/webgpu';
 import { buildPostChain, type PostEffectName } from '../shaders/post-chain';
+import { DynamicResolutionController } from './DynamicResolution';
 import { writeLookTable } from '../shaders/lut-identity';
 import {
   RENDER_CONFIG,
@@ -121,6 +122,8 @@ export class Engine {
   readonly #resizeObserver: ResizeObserver | null;
   readonly #listensToWindow: boolean;
   #chain: ReturnType<typeof buildPostChain> | null = null;
+  readonly #resolution: DynamicResolutionController;
+  #renderScale = 1;
   #focusTarget: number | null = null;
   #lookName: string | null = null;
   #pendingLook: { readonly table: Uint8Array; readonly size: number } | null = null;
@@ -141,6 +144,18 @@ export class Engine {
   constructor(options: EngineOptions) {
     this.#canvas = options.canvas;
     this.#config = options.config ?? RENDER_CONFIG;
+    // The controller is built here, not when the chain appears, so that a page whose first frames are slow
+    // has already started averaging by the time there is a chain to apply a scale to.
+    const temporal = this.#config.postProcessing.temporalAntiAliasing;
+    this.#resolution = new DynamicResolutionController({
+      minScale: temporal.minScale,
+      maxScale: temporal.maxScale,
+      targetFrameTimeMs: temporal.targetFrameTimeMs,
+      tolerance: temporal.tolerance,
+      step: temporal.step,
+      adjustmentIntervalSeconds: temporal.adjustmentIntervalSeconds,
+      smoothing: temporal.smoothing,
+    });
 
     this.#renderer = new WebGPURenderer({
       canvas: this.#canvas,
@@ -228,6 +243,37 @@ export class Engine {
       return null;
     }
     return chain.focusDistance.value;
+  }
+
+  /**
+   * Render scale the scene pass is currently drawn at, as a fraction of the drawing buffer; `null` when the
+   * temporal resolve is not in the chain and nothing is scaling anything.
+   *
+   * Reported rather than assumed because this is the one number that says whether dynamic resolution is
+   * doing anything at all: a controller that never fires, a controller that fires constantly, and a fixed
+   * render scale all render a plausible-looking frame, and only the number distinguishes them.
+   */
+  get resolutionScale(): number | null {
+    const chain = this.#chain;
+    if (chain === null || !chain.effects.includes('taa')) {
+      return null;
+    }
+    return this.#renderScale;
+  }
+
+  /**
+   * Sets the shutter angle: the multiplier on the motion vectors, live.
+   *
+   * Same contract as `setBokehScale` — a write to a uniform node, so it takes effect on the next frame
+   * without rebuilding the graph, and zero reads as "the shutter was instant", which is the effect's own
+   * off switch without taking the effect out of the chain.
+   */
+  setMotionBlurIntensity(intensity: number): void {
+    const chain = this.#chain;
+    if (chain === null || !Number.isFinite(intensity)) {
+      return;
+    }
+    chain.motionBlurIntensity.value = Math.max(0, intensity);
   }
 
   /**
@@ -502,6 +548,7 @@ export class Engine {
       this.#pipelineCamera = camera;
       // The look may already be loaded and waiting; now there is a texture to put it in.
       this.#applyPendingLook();
+      this.#applyResolutionScale(true);
       return true;
     }
 
@@ -532,6 +579,56 @@ export class Engine {
     const fraction = 1 - Math.exp(-delta / tau);
     const current = chain.focusDistance.value;
     chain.focusDistance.value = current + (target - current) * fraction;
+  }
+
+  /**
+   * Moves the render scale towards what the frame time can afford, and applies it to the scene pass.
+   *
+   * Only meaningful when the temporal resolve is in the chain: the scale is set on the *pass*, and the
+   * resolve is what reconstructs the reduced image at full size. Without TAA, reducing the scale would just
+   * render a smaller picture and stretch it, which is softness for nothing — so this is a no-op unless
+   * `taa` is in the effects, and the HUD reports `null` in that case rather than a number that describes
+   * nothing.
+   *
+   * `delta` is the frame time this engine already measured, in seconds. It is not the GPU's own time — see
+   * the note at the top of `DynamicResolution.ts` for what that difference costs — but it is the time the
+   * player actually got.
+   */
+  #updateResolution(delta: number): void {
+    const chain = this.#chain;
+    if (chain === null || !chain.effects.includes('taa')) {
+      return;
+    }
+    if (!this.#config.postProcessing.temporalAntiAliasing.dynamicResolution) {
+      // A fixed render scale still has to be *applied* — once, and then never again.
+      if (this.#renderScale !== this.#resolution.scale) {
+        this.#renderScale = this.#resolution.scale;
+      }
+      return;
+    }
+
+    const decision = this.#resolution.updateFrameTime(delta * 1000);
+    if (decision.changed) {
+      this.#renderScale = decision.scale;
+      chain.scenePass.setResolutionScale(decision.scale);
+    }
+  }
+
+  /** Applies the configured render scale to the pass. `initial` also seeds the controller's own value. */
+  #applyResolutionScale(initial = false): void {
+    const chain = this.#chain;
+    if (chain === null || !chain.effects.includes('taa')) {
+      return;
+    }
+    const temporal = this.#config.postProcessing.temporalAntiAliasing;
+    if (initial) {
+      // Optimistic start: the highest scale the configuration allows, with the controller adapting down if
+      // the first second cannot hold it. Starting low would mean every session opens soft on the machines
+      // that did not need to trade anything away.
+      this.#resolution.reset(temporal.dynamicResolution ? temporal.maxScale : temporal.renderScale);
+    }
+    this.#renderScale = this.#resolution.scale;
+    chain.scenePass.setResolutionScale(this.#renderScale);
   }
 
   #scheduleFrame(): void {
@@ -583,6 +680,7 @@ export class Engine {
     // the first draw and be told the scene is empty.
     this.#renderer.info.reset();
     this.#updateFocus(delta);
+    this.#updateResolution(delta);
 
     const frame: FrameState = { delta, elapsed: this.#elapsed, frame: this.#frameCount };
     for (const handler of [...this.#frameHandlers]) {

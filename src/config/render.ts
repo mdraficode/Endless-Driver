@@ -184,7 +184,16 @@ export interface BloomConfig {
 }
 
 /** Anti-aliasing strategy. MSAA happens in the renderer; the others are post effects. */
-export type AntiAliasingMode = 'msaa' | 'fxaa' | 'smaa' | 'none';
+/**
+ * Anti-aliasing strategy.
+ *
+ * `taa` is a *temporal* strategy and therefore behaves differently from the others: it is the only one
+ * that needs the scene rendered with motion vectors, it must run with MSAA switched off, and it is the
+ * only one whose result cannot be judged from a single frame. It also has a fallback that the others do
+ * not — when temporal AA is switched off (by a tier or by `?taa=0`), a tier whose mode is `taa` resolves
+ * with SMAA instead, so turning the temporal path off never leaves the frame un-antialiased.
+ */
+export type AntiAliasingMode = 'msaa' | 'fxaa' | 'smaa' | 'taa' | 'none';
 
 /**
  * Ground-truth ambient occlusion. Applied to the scene pass through `builtinAOContext`, which is why
@@ -288,6 +297,93 @@ export interface DepthOfFieldConfig {
 }
 
 /**
+ * Per-object and camera motion blur.
+ *
+ * This is the effect that makes speed *readable*. A still frame cannot express 200 km/h; every frame of
+ * a racing game is an exposure, and what the shutter integrates is what the player perceives as velocity.
+ * It is also the cheapest large realism win available here, because it consumes the same velocity buffer
+ * the temporal anti-aliasing needs — one attachment, two effects.
+ */
+export interface MotionBlurConfig {
+  readonly enabled: boolean;
+  /**
+   * Taps along the velocity vector. The loop is unrolled at graph build time, so this is a compile-time
+   * cost as well as a per-pixel one: 8 on the balanced tier, 16 when there is budget to spare.
+   */
+  readonly samples: number;
+  /**
+   * Multiplier on the motion vectors — the shutter angle, in effect.
+   *
+   * 1 leaves the image as the frame's own motion describes it; lower values read as a faster shutter
+   * (crisper, more stroboscopic), higher as a longer one (smoother, smeared). It is a live uniform, so
+   * the number can be dialled while the car is moving, which is the only way to judge it.
+   */
+  readonly intensity: number;
+}
+
+/**
+ * Temporal anti-aliasing (TAAU) and the dynamic resolution scaling it makes possible.
+ *
+ * TAA is ranked first in `docs/REALISM_PLAN.md` §3 for a reason that has nothing to do with taste:
+ * temporal instability — crawling edges, sparkling specular highlights, foliage that flickers — is the
+ * loudest available signal that an image is synthetic, and it is the one flaw no amount of material or
+ * lighting work can hide. It is also the only effect in the stack that *accumulates*: the resolve keeps a
+ * history buffer, reprojects it with the motion vectors, and blends the current jittered frame into it, so
+ * a pixel's colour is the average of what several frames saw at that surface point. That is what makes
+ * both the aliasing and the noise from the effects upstream of it (ambient occlusion, shadow edges) settle
+ * down instead of boiling.
+ *
+ * The cost is a history buffer, a full-screen resolve, and one hard constraint: **MSAA must be off**.
+ * MSAA and temporal accumulation are alternative answers to the same question and the node rejects the
+ * combination, so a tier with TAA is a tier without MSAA — which is the standard trade in every shipping
+ * renderer, because MSAA does nothing for specular aliasing or shadow edges while TAA helps with all three.
+ */
+export interface TemporalAntiAliasingConfig {
+  readonly enabled: boolean;
+  /**
+   * Whether the render scale is allowed to move with the frame time.
+   *
+   * The scene pass renders at `renderScale x` the canvas and the resolve reconstructs it at full size —
+   * so the same node that anti-aliases also upscales, and lowering the scale buys frame rate for the
+   * whole scene pass rather than for one effect. What that buys in practice is a *stable* frame time
+   * instead of a fluctuating one: the scale moves a step at a time towards the target and settles.
+   */
+  readonly dynamicResolution: boolean;
+  /** Render scale used when dynamic resolution is off; 1 renders at native resolution. */
+  readonly renderScale: number;
+  /** Floor for the dynamic scale. Below this the reconstruction stops looking like an upscale. */
+  readonly minScale: number;
+  /** Ceiling for the dynamic scale. 1 means the effect may never supersample. */
+  readonly maxScale: number;
+  /**
+   * Frame time the controller aims for, in milliseconds.
+   *
+   * Deliberately *not* a frame rate: the controller is driven by delivered frame times, and a page whose
+   * frames are capped by the display can only see a GPU that is already missing the display's deadline.
+   * Targeting the display's own period would therefore fight vsync. 16.6 ms with a proportional dead band
+   * reacts to genuinely dropped frames and leaves a display that is comfortably keeping up alone — see
+   * the note on `tolerance`.
+   */
+  readonly targetFrameTimeMs: number;
+  /**
+   * Dead band as a fraction of the target.
+   *
+   * Without one, a frame time that sits exactly at the target oscillates: the scale moves down, the frame
+   * gets faster than the target, the scale moves back up, and the image resolution visibly breathes. The
+   * dead band is asymmetric by construction — the controller only shrinks above `target x (1 + tolerance)`
+   * and only grows below `target x (1 - tolerance)` — so a frame time parked *at* the target is a stable
+   * state rather than a boundary to be crossed.
+   */
+  readonly tolerance: number;
+  /** Fraction of the scale moved per adjustment, e.g. 0.08 for a twentieth of a step per half second. */
+  readonly step: number;
+  /** Minimum seconds between adjustments. The hysteresis that keeps a single slow frame from resizing. */
+  readonly adjustmentIntervalSeconds: number;
+  /** Exponential weight of the newest frame time; 0.1 is a ten-frame-ish window. */
+  readonly smoothing: number;
+}
+
+/**
  * The look, applied as a display-referred 3D LUT.
  *
  * After tone mapping and the sRGB transfer, because that is the only place a LUT may be sampled: the
@@ -319,6 +415,8 @@ export interface PostProcessingConfig {
   readonly grade: GradeConfig;
   readonly lut: LutConfig;
   readonly depthOfField: DepthOfFieldConfig;
+  readonly motionBlur: MotionBlurConfig;
+  readonly temporalAntiAliasing: TemporalAntiAliasingConfig;
   readonly bloom: BloomConfig;
   readonly ambientOcclusion: AmbientOcclusionConfig;
   readonly chromaticAberration: ChromaticAberrationConfig;
@@ -358,8 +456,11 @@ export const RENDER_CONFIG: RenderConfig = {
   maxFrameDeltaSeconds: 0.1,
   renderer: {
     backendPreference: 'auto',
-    antialias: true,
-    samples: 4,
+    // MSAA off in the baseline for the same reason the tier table has it off: the AA strategy in force is
+    // temporal, and the two cannot both be on. Tier C, which has no TAA, keeps MSAA off as well and uses
+    // FXAA; a caller that wants MSAA asks for it explicitly, and the tier test asserts the pairing.
+    antialias: false,
+    samples: 0,
     toneMapping: 'aces',
     toneMappingExposure: 1,
   },
@@ -458,7 +559,33 @@ export const RENDER_CONFIG: RenderConfig = {
       // hand moves. Faster reads as a snap, slower reads as a lens that cannot keep up with the car.
       focusSmoothingSeconds: 0.35,
     },
-    antiAliasing: 'msaa',
+    antiAliasing: 'taa',
+    // Roughly a 200-degree shutter: enough to read speed clearly at driving speed, short enough that the
+    // car and the road immediately around it stay sharp. Both are live: the samples are fixed at build
+    // time, the intensity is a uniform.
+    motionBlur: {
+      enabled: true,
+      samples: 12,
+      intensity: 1,
+    },
+    temporalAntiAliasing: {
+      enabled: true,
+      dynamicResolution: true,
+      renderScale: 1,
+      // Two thirds of native. The resolve already reconstructs from jittered samples, so a reduced render
+      // scale degrades less here than it would anywhere else — and it is the only reason the effect can
+      // pay for itself on a mid-range GPU.
+      minScale: 0.67,
+      maxScale: 1,
+      // A 60 Hz deadline, with the dead band below doing the work of keeping the controller from fighting
+      // a display that is comfortably meeting it.
+      targetFrameTimeMs: 16.6,
+      tolerance: 0.15,
+      step: 0.08,
+      // Two adjustments a second at most. Faster than that and one hitched frame resizes the frame.
+      adjustmentIntervalSeconds: 0.5,
+      smoothing: 0.1,
+    },
     bloom: {
       enabled: true,
       strength: 0.22,
@@ -523,6 +650,12 @@ export function applyRenderSwitches(config: RenderConfig, search: string): Rende
   const bokeh = Number.parseFloat(params.get('bokeh') ?? '');
   const lut = params.get('lut');
   const mix = Number.parseFloat(params.get('lutmix') ?? '');
+  const taa = params.get('taa');
+  const res = Number.parseFloat(params.get('res') ?? '');
+  const dynres = params.get('dynres');
+  const mblur = params.get('mblur');
+  const mbStrength = Number.parseFloat(params.get('mb') ?? '');
+  const aa = params.get('aa');
 
   const depthOfField = {
     ...config.postProcessing.depthOfField,
@@ -541,8 +674,62 @@ export function applyRenderSwitches(config: RenderConfig, search: string): Rende
     ...(Number.isFinite(mix) ? { intensity: Math.min(1, Math.max(0, mix)) } : {}),
   };
 
+  /**
+   * `?aa=<mode>` names the strategy outright, which is what makes an A/B between strategies a URL change
+   * rather than a rebuild. Naming a *spatial* strategy has to switch the temporal path off as well, or the
+   * switch would not do what it says: with the resolve still running, `?aa=fxaa` would resolve temporally
+   * and then run FXAA over the result — a frame that is neither of the two things being compared.
+   *
+   * `?taa=` is the narrower question ("should the temporal path run at all?") and is applied *after*
+   * `?aa=`, so if a URL asks both, the narrow switch wins. That is the useful precedence: the case worth
+   * supporting is `?aa=taa&taa=0`, which is how a temporal frame and the SMAA fallback are captured from
+   * one URL pattern.
+   */
+  const antiAliasing: AntiAliasingMode =
+    aa === 'msaa' || aa === 'fxaa' || aa === 'smaa' || aa === 'taa' || aa === 'none'
+      ? aa
+      : config.postProcessing.antiAliasing;
+  const namedStrategy =
+    aa === 'msaa' || aa === 'fxaa' || aa === 'smaa' || aa === 'taa' || aa === 'none';
+  const taaEnabled =
+    taa === null || taa === ''
+      ? namedStrategy
+        ? aa === 'taa'
+        : config.postProcessing.temporalAntiAliasing.enabled
+      : taa !== '0' && taa !== 'false';
+
+  const temporalAntiAliasing = {
+    ...config.postProcessing.temporalAntiAliasing,
+    enabled: taaEnabled,
+    // A fixed render scale implies fixed resolution: asking for `?res=0.6` and still letting the controller
+    // move the scale would be two answers to one question, so the explicit scale wins and the adaptive
+    // path is switched off with it.
+    ...(Number.isFinite(res) && res > 0
+      ? {
+          dynamicResolution: false,
+          renderScale: Math.min(config.postProcessing.temporalAntiAliasing.maxScale, res),
+        }
+      : {}),
+    ...(dynres === null || dynres === ''
+      ? {}
+      : { dynamicResolution: dynres !== '0' && dynres !== 'false' }),
+  };
+
+  const motionBlur = {
+    ...config.postProcessing.motionBlur,
+    ...(mblur === null || mblur === '' ? {} : { enabled: mblur !== '0' && mblur !== 'false' }),
+    ...(Number.isFinite(mbStrength) ? { intensity: Math.max(0, mbStrength) } : {}),
+  };
+
   return {
     ...config,
-    postProcessing: { ...config.postProcessing, depthOfField, lut: lutConfig },
+    postProcessing: {
+      ...config.postProcessing,
+      antiAliasing,
+      depthOfField,
+      motionBlur,
+      temporalAntiAliasing,
+      lut: lutConfig,
+    },
   };
 }

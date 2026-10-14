@@ -7,10 +7,12 @@ import {
   perspectiveDepthToViewZ,
   renderOutput,
   screenUV,
+  int,
   texture3D,
   uniform,
   vec2,
   vec4,
+  velocity,
 } from 'three/tsl';
 import { RenderPipeline } from 'three/webgpu';
 import { Vector3, type Camera, type Scene } from 'three';
@@ -26,6 +28,8 @@ import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 import { builtinAOContext } from 'three/tsl';
 import { dof } from 'three/addons/tsl/display/DepthOfFieldNode.js';
 import { lut3D } from 'three/addons/tsl/display/Lut3DNode.js';
+import { taau } from 'three/addons/tsl/display/TAAUNode.js';
+import { motionBlur as motionBlurNode } from 'three/addons/tsl/display/MotionBlur.js';
 import { createLookTexture } from './lut-identity';
 import type { RenderConfig } from '../config/render';
 import { createVignetteNode } from './vignette';
@@ -38,6 +42,10 @@ import { createVignetteNode } from './vignette';
 type ColorNode = Node<'vec4'>;
 const asColor = (node: unknown): ColorNode => node as ColorNode;
 
+/** The same cast for the `vec2` side of the graph — the motion vectors, and nothing else. */
+type TexelNode = Node<'vec2'>;
+const asTexel = (node: unknown): TexelNode => node as TexelNode;
+
 /**
  * The post-processing chain.
  *
@@ -48,8 +56,10 @@ const asColor = (node: unknown): ColorNode => node as ColorNode;
  */
 export type PostEffectName =
   | 'ao'
+  | 'taa'
   | 'grade'
   | 'bloom'
+  | 'motionBlur'
   | 'dof'
   | 'smaa'
   | 'lut'
@@ -64,6 +74,20 @@ export type PostEffectName =
  *
  * - ambient occlusion modulates *lighting*, so it is applied to the scene pass while the image is
  *   still linear HDR — not as a link in the display chain;
+ * - temporal anti-aliasing wraps the *scene pass* rather than the finished frame, immediately after the
+ *   occlusion term. That placement is the whole point of it: the resolve accumulates jittered samples of
+ *   whatever is upstream, so putting it here means the noise the scene pass itself produces — occlusion
+ *   estimate, shadow-map edges, specular highlights crawling across a surface — is what gets averaged
+ *   away. Placed at the end of the chain it would still smooth edges, but the frame it would be averaging
+ *   is one that already has grain and sharpening in it, and neither is something to accumulate;
+ * - motion blur is an exposure: it integrates the light the sensor received while the shutter was open,
+ *   so it belongs on the *scene* image in the linear HDR stage — directly on the resolved scene pass,
+ *   ahead of the grade, the bloom, and the depth of field. That position is also the only one the effect
+ *   can take: `motionBlur` samples its input as a texture (it walks `input.sample(uv + offset)` along the
+ *   motion vector), so the node it is handed has to *be* a texture. Handing it a composed expression —
+ *   a multiply, an add, the output of another effect — is a `TypeError` inside three's node setup, which
+ *   three catches, logs, and then renders around, producing a black frame with no exception on the page.
+ *   It was the second bug this slice found the hard way, and the reason the effect is not further down;
  * - the grade is a linear-light multiplier, so it sits in the HDR stage too, ahead of bloom so the
  *   highlights it warms are the ones that bloom;
  * - bloom is additive light, so it belongs in linear HDR before tone mapping;
@@ -82,6 +106,8 @@ export type PostEffectName =
  */
 const EFFECT_ORDER: readonly PostEffectName[] = [
   'ao',
+  'taa',
+  'motionBlur',
   'grade',
   'bloom',
   'dof',
@@ -106,20 +132,59 @@ export function resolvePostEffects(config: RenderConfig): PostEffectName[] {
   if (postProcessing.grade.enabled) enabled.add('grade');
   if (postProcessing.bloom.enabled) enabled.add('bloom');
   if (postProcessing.depthOfField.enabled) enabled.add('dof');
-  if (postProcessing.antiAliasing === 'smaa') enabled.add('smaa');
+  if (postProcessing.motionBlur.enabled) enabled.add('motionBlur');
   if (postProcessing.lut.enabled) enabled.add('lut');
+
+  /**
+   * The temporal resolve and the spatial ones are mutually exclusive, and the resolution of that conflict
+   * is what `AntiAliasingMode` is for. Temporal AA wins when it is switched on — it is strictly the more
+   * capable of the two, and running both would anti-alias an image that has already been resolved, on top
+   * of paying for a second full-screen pass. When the temporal path is *off* but the tier's strategy is
+   * `taa`, the frame falls back to SMAA rather than to nothing: `?taa=0` is a comparison switch, and a
+   * comparison against a jagged frame says nothing about temporal stability.
+   */
+  const temporal = postProcessing.temporalAntiAliasing.enabled;
+  if (temporal) {
+    enabled.add('taa');
+  } else if (postProcessing.antiAliasing === 'taa') {
+    enabled.add('smaa');
+  }
+  if (!temporal && postProcessing.antiAliasing === 'smaa') enabled.add('smaa');
   if (postProcessing.chromaticAberration.enabled) enabled.add('chromaticAberration');
   if (postProcessing.sharpen.enabled) enabled.add('sharpen');
   if (postProcessing.filmGrain.enabled) enabled.add('filmGrain');
   if (postProcessing.vignette.enabled) enabled.add('vignette');
-  if (postProcessing.antiAliasing === 'fxaa') enabled.add('fxaa');
+  if (!temporal && postProcessing.antiAliasing === 'fxaa') enabled.add('fxaa');
 
   return EFFECT_ORDER.filter((effect) => enabled.has(effect));
 }
 
-/** True when any effect needs the scene rendered with a normals attachment (AO does). */
+/**
+ * True when any effect needs the scene rendered with a normals attachment (AO does).
+ *
+ * A normals attachment costs a second colour target for the whole scene, so it is requested only when an
+ * effect in the chain actually reads it — which is also why the MRT dictionary is assembled rather than
+ * written out.
+ */
 export function requiresSceneNormals(effects: readonly PostEffectName[]): boolean {
   return effects.includes('ao');
+}
+
+/**
+ * True when any effect needs per-pixel motion vectors.
+ *
+ * Motion vectors are the single shared cost of the two effects this version adds, and the reason they were
+ * built in one slice: the velocity attachment is written once per frame by the scene pass whether one
+ * effect reads it or three, and both `taa` and `motionBlur` read *the same buffer*. One attachment, two
+ * effects — and the same buffer is what a future screen-space reflection or denoiser pass would reproject
+ * with.
+ *
+ * The attachment is only requested when something reads it, because writing velocity is not free: it makes
+ * every material in the scene emit a second output, and it switches the renderer into keeping
+ * previous-frame matrices per object (`NodeBuilder.needsPreviousData()` keys off exactly this).
+ */
+export function requiresSceneVelocity(effects: readonly PostEffectName[]): boolean {
+  return effects.includes('taa') || effects.includes('motionBlur');
 }
 
 /**
@@ -174,6 +239,11 @@ export interface PostChain {
   /** Look trim: 0 leaves the image ungraded, 1 applies the look as authored. */
   readonly lutIntensity: UniformNode<'float', number>;
   /**
+   * Live multiplier on the motion vectors — the shutter angle. Same contract as `focusDistance`: a node,
+   * not a number, so a caller cannot write to a copy and be told the effect is running.
+   */
+  readonly motionBlurIntensity: UniformNode<'float', number>;
+  /**
    * The table the look is sampled from, deliberately owned by the chain rather than handed to it.
    *
    * The look arrives over the network, long after the node graph exists, and a graph that had to be
@@ -204,11 +274,32 @@ export function buildPostChain(options: PostChainOptions): PostChain {
   const effects = resolvePostEffects(config);
   const scenePass = pass(scene, camera);
 
+  const wantsNormals = requiresSceneNormals(effects);
+  const wantsVelocity = requiresSceneVelocity(effects);
+
+  /**
+   * One scene render, as many attachments as the chain actually reads.
+   *
+   * The dictionary is assembled rather than written out because each attachment is a real cost paid by
+   * every material in the scene: normals double the colour output of the pass, motion vectors add a
+   * second target and force every object to keep its previous-frame matrix. Requesting a buffer nothing
+   * samples is the kind of overhead that never shows up in a screenshot and always shows up in a frame
+   * time, so the attachments follow the chain exactly.
+   */
+  if (wantsNormals || wantsVelocity) {
+    const attachments: Record<string, Node> = { output };
+    if (wantsNormals) {
+      attachments.normal = normalView;
+    }
+    if (wantsVelocity) {
+      attachments.velocity = velocity;
+    }
+    scenePass.setMRT(mrt(attachments));
+  }
+
   // --- ambient occlusion: applied to the scene pass, not chained after it -------------------
-  if (requiresSceneNormals(effects)) {
+  if (wantsNormals) {
     const aoConfig = config.postProcessing.ambientOcclusion;
-    // One scene render producing colour + view normals; AO reads both from this pass.
-    scenePass.setMRT(mrt({ output, normal: normalView }));
     const aoNode = ao(
       scenePass.getTextureNode('depth'),
       scenePass.getTextureNode('normal'),
@@ -227,6 +318,63 @@ export function buildPostChain(options: PostChainOptions): PostChain {
   }
 
   let color: ColorNode = asColor(scenePass.getTextureNode('output'));
+
+  // --- temporal resolve: wraps the scene pass, before anything else touches the colour -------------
+  if (effects.includes('taa')) {
+    // TAAU, not TRAA: the same node also upscales, which is what lets `dynamicResolution` buy frame rate
+    // from the scene pass rather than from a single effect. At a render scale of 1 it resolves at native
+    // resolution with the same reconstruction filter, so one node covers both cases and the dynamic path
+    // does not switch node types when the scale moves.
+    //
+    // The node owns its own history buffer, its own jitter sequence, and the camera's view offset: it
+    // installs a `OnBeforeRenderPipeline` hook to jitter the projection matrix each frame and clears it
+    // afterwards, which is why nothing in the engine has to know that jitter exists. That coupling is also
+    // why the camera passed here must be the one the pass renders with — a mismatch would reproject the
+    // history through the wrong projection and produce a frame that smears in the wrong direction, or
+    // ghosts, rather than an error.
+    const resolve = taau(
+      scenePass.getTextureNode('output'),
+      scenePass.getTextureNode('depth'),
+      scenePass.getTextureNode('velocity'),
+      camera,
+    );
+    // The *texture node*, not the resolve node itself, even though the resolve node's own setup returns
+    // this same texture. The distinction matters downstream: several effects (motion blur, and any future
+    // one) sample their input as a texture and so need an object that still has `.sample()`. The resolve
+    // node is a `TempNode` — a perfectly good thing to end a chain with, and exactly the wrong thing to
+    // feed into another effect.
+    color = asColor(resolve.getTextureNode());
+  }
+
+  // --- shutter: the exposure itself, on the scene image -------------------------------------------
+  const motionBlurConfig = config.postProcessing.motionBlur;
+  const motionBlurIntensity = uniform(motionBlurConfig.intensity);
+  if (effects.includes('motionBlur')) {
+    /**
+     * The velocity texture is sampled at the pixel's own screen position, and converted from the space the
+     * node writes it in to the space the blur walks in.
+     *
+     * `VelocityNode` returns a delta in **normalised device coordinates**: x to the right, y **up**, both
+     * in -1..1. The blur offsets a texture coordinate: x to the right, y **down**, both in 0..1. Passing
+     * the vector through unchanged therefore blurs in the wrong direction on one axis and at twice the
+     * intended distance on both — which renders as a plausible-looking smear, in the wrong direction, that
+     * a still frame gives no way to catch. `vec2(0.5, -0.5)` is the conversion, and it is the same one
+     * three's own temporal resolve applies to the same buffer.
+     *
+     * The multiplier after it is the shutter angle: 1 exposes the frame the motion vectors describe, less
+     * than 1 reads as a faster shutter, more as a longer one. It is a uniform, so the number can be moved
+     * while the car is driving, which is the only condition under which it can be judged.
+     */
+    const velocityUv = asTexel(
+      scenePass
+        .getTextureNode('velocity')
+        .sample(screenUV)
+        .mul(vec2(0.5, -0.5))
+        .mul(motionBlurIntensity),
+    );
+    color = asColor(motionBlurNode(color, velocityUv, int(motionBlurConfig.samples)));
+  }
+
   const gradeTint = new Vector3(1, 1, 1);
   const dofConfig = config.postProcessing.depthOfField;
   // Built once, here, and passed into the graph as *nodes*: see the note on `PostChain.focusDistance`.
@@ -328,6 +476,7 @@ export function buildPostChain(options: PostChainOptions): PostChain {
     focusDistance,
     bokehScale,
     lutIntensity,
+    motionBlurIntensity,
     lutTexture,
     lutSize,
   };

@@ -104,20 +104,20 @@ owns it. "Tier" refers to §3.
 Tiers are **explicit contracts**, not "auto magic". The tier system must be visible in the HUD/debug overlay and
 recorded in every performance claim.
 
-| System            | Tier C: mobile/low               | Tier B: desktop balanced          | Tier A: desktop high                                 |
-| ----------------- | -------------------------------- | --------------------------------- | ---------------------------------------------------- |
-| Renderer path     | WebGL2 backend                   | WebGPU (WebGL2 fallback)          | WebGPU                                               |
-| Resolution        | DPR ≤ 1.0, dynamic scale 0.6–1.0 | DPR ≤ 1.5, dynamic scale 0.7–1.0  | DPR ≤ 2.0 with resolution cap, dynamic scale 0.7–1.0 |
-| Anti-aliasing     | FXAA/SMAA                        | TAAU                              | TAAU/TRAA                                            |
-| Shadows           | 1–2 cascades, 1024               | 3 cascades, 2048                  | 4 cascades, 2048–4096                                |
-| Ambient occlusion | Off or baked                     | GTAO (half res)                   | GTAO full res                                        |
-| Reflections       | Cubemap probes                   | SSR (half res) + probes           | SSR + probes + wet-road layer                        |
-| Terrain layers    | 2                                | 3                                 | 4 + POM                                              |
-| Vegetation        | Impostors, ≤ 20k instances       | LOD1–2, ≤ 80k                     | Full LOD0 near, ≤ 200k                               |
-| Clouds/atmosphere | HDRI sky + fog                   | Sky + layered clouds + fog        | Sky + volumetric cloud/light shafts where enabled    |
-| Particles         | Capped, short-lived              | Moderate                          | Full, lit                                            |
-| Post stack        | Tone map + grade + light bloom   | + GTAO + DOF off, motion blur off | + SSR + motion blur + grain + anamorphic             |
-| Target frame      | 30–60 FPS                        | 60 FPS                            | 60+ FPS where hardware permits                       |
+| System            | Tier C: mobile/low             | Tier B: desktop balanced          | Tier A: desktop high                                  |
+| ----------------- | ------------------------------ | --------------------------------- | ----------------------------------------------------- |
+| Renderer path     | WebGL2 backend                 | WebGPU (WebGL2 fallback)          | WebGPU                                                |
+| Resolution        | DPR ≤ 1.0, no dynamic scale    | DPR ≤ 1.5, dynamic scale 0.67–1.0 | DPR ≤ 2.0 with resolution cap, dynamic scale 0.75–1.0 |
+| Anti-aliasing     | FXAA (SMAA by switch)          | TAAU + dynamic resolution         | TAAU + dynamic resolution, higher scale floor         |
+| Shadows           | 1–2 cascades, 1024             | 3 cascades, 2048                  | 4 cascades, 2048–4096                                 |
+| Ambient occlusion | Off or baked                   | GTAO (half res)                   | GTAO full res                                         |
+| Reflections       | Cubemap probes                 | SSR (half res) + probes           | SSR + probes + wet-road layer                         |
+| Terrain layers    | 2                              | 3                                 | 4 + POM                                               |
+| Vegetation        | Impostors, ≤ 20k instances     | LOD1–2, ≤ 80k                     | Full LOD0 near, ≤ 200k                                |
+| Clouds/atmosphere | HDRI sky + fog                 | Sky + layered clouds + fog        | Sky + volumetric cloud/light shafts where enabled     |
+| Particles         | Capped, short-lived            | Moderate                          | Full, lit                                             |
+| Post stack        | Tone map + grade + light bloom | + GTAO + DOF + motion blur + TAAU | + SSR (pending) + grain + anamorphic                  |
+| Target frame      | 30–60 FPS                      | 60 FPS                            | 60+ FPS where hardware permits                        |
 
 Budgets from `PROJECT_PLAN.md` §8 remain the reference; every tier gate is validated on **named hardware** with
 recorded resolution and settings. The dev sandbox (SwiftShader) may only validate correctness, never frame rate.
@@ -134,23 +134,31 @@ Two documented deviations from the table above:
 - **Tier C's renderer path.** The table says "WebGL2 backend"; the implementation leaves the backend on `auto`,
   because pinning the older API on a device that supports WebGPU would surrender performance for no quality gain.
   The WebGL2 fallback still engages wherever WebGPU is unavailable, and `?backend=webgl` forces it for comparison.
-- **Anti-aliasing.** MSAA, FXAA, and SMAA are implemented; the temporal modes (TAAU, TRAA) are not, and remain
-  declared as pending in each tier definition. Tier C now runs FXAA rather than MSAA, matching the table; tiers B
-  and A run MSAA. SMAA is available through the configuration (it must run before the colour-space conversion,
-  which the chain honours) but is not the default anywhere yet.
+- **Anti-aliasing.** Implemented: MSAA, FXAA, SMAA, and TAAU with dynamic resolution. The temporal strategy is
+  now what tiers B and A actually run, which retires the earlier note that they ran MSAA — the resolve requires
+  MSAA to be off, so **no tier uses multisampling any more** (the tier resolver forces `samples: 0` for any
+  non-`msaa` mode, and the unit tests assert the pairing). Tier C resolves with FXAA and has the temporal path
+  switched off _by cost_, not by absence: it is the same code. `?aa=fxaa|smaa|none|taa` names a strategy outright
+  for a like-for-like comparison, and when the temporal path is switched off on a `taa` tier the chain falls back
+  to SMAA rather than resolving nothing.
 
 **Post-processing status (Phase 3).** The stack is assembled by `src/shaders/post-chain.ts` in a fixed, documented
 order, and every effect is individually toggleable through configuration:
 
-| Stage                   | Effects                                                       | State   |
-| ----------------------- | ------------------------------------------------------------- | ------- |
-| Scene (linear HDR)      | ambient occlusion (GTAO), applied via the scene pass          | Shipped |
-| Linear HDR              | time-of-day grade, then bloom                                 | Shipped |
-| Pre-sRGB                | SMAA                                                          | Shipped |
-| Colour-space conversion | tone mapping + sRGB (once)                                    | Shipped |
-| Display-referred        | chromatic aberration, sharpening (RCAS), film grain, vignette | Shipped |
-| Post-sRGB               | FXAA                                                          | Shipped |
-| Pending                 | depth of field, motion blur, TAAU/TRAA, LUT grading, god rays | Not yet |
+| Stage                   | Effects                                                            | State   |
+| ----------------------- | ------------------------------------------------------------------ | ------- |
+| Scene (linear HDR)      | ambient occlusion (GTAO), applied via the scene pass               | Shipped |
+| Temporal resolve        | TAAU + dynamic resolution (wraps the scene pass)                   | Shipped |
+| Linear HDR              | motion blur (shutter), time-of-day grade, bloom, depth of field    | Shipped |
+| Pre-sRGB                | SMAA (fallback when the temporal path is off)                      | Shipped |
+| Colour-space conversion | tone mapping + sRGB (once)                                         | Shipped |
+| Display-referred        | look LUT, chromatic aberration, sharpening (RCAS), grain, vignette | Shipped |
+| Post-sRGB               | FXAA                                                               | Shipped |
+| Pending                 | god rays, contact shadows, SSGI on the high tier                   | Not yet |
+
+The velocity attachment that feeds the temporal resolve and the motion blur is requested only when one of them is
+in the chain: it is written by every material in the scene, so an unused motion-vector buffer is a cost paid per
+object for nothing.
 
 The time-of-day grade is in the linear stage on purpose. It is a per-frame RGB multiplier resolved from the clock
 (`src/environment/EnvironmentClock.ts`) and needed because a _captured_ HDRI backdrop can only be dimmed — it cannot

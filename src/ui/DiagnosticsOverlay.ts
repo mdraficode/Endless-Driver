@@ -44,6 +44,15 @@ export interface DiagnosticsSnapshot {
   readonly look: string | null;
   /** Focus distance the depth-of-field plane is using, in metres; `null` when it is off. */
   readonly focusDistance: number | null;
+  /**
+   * Fraction of the drawing buffer the scene pass is drawn at before the temporal resolve reconstructs it,
+   * or `null` when there is no temporal resolve in the chain.
+   *
+   * The third of the three post-processing values a screenshot cannot report. Dynamic resolution is
+   * invisible by design — that is the whole point of it — so a scale that never moves, a scale that has
+   * bottomed out, and a controller that has stopped observing anything all look like a normal frame.
+   */
+  readonly renderScale: number | null;
   /** Cascades in the shadow atlas; 1 means the plain single-frustum shadow path. */
   readonly shadowCascades: number;
   /** Backdrop in use; `hdri` means the environment texture is also the background. */
@@ -181,6 +190,13 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
     format: (snapshot) => `${snapshot.rendererBackend} · ${snapshot.antialiasing}`,
   },
   {
+    // Temporal AA and dynamic resolution in one row, because they are one system: the resolve is what makes
+    // a reduced render scale look like a full-size image, and a scale reported without the resolve that
+    // reconstructs it would describe nothing.
+    label: 'Temporal',
+    format: (snapshot) => formatTemporal(snapshot.renderScale),
+  },
+  {
     label: 'Post',
     format: (snapshot) =>
       snapshot.postProcessing ? snapshot.postEffects.join(' → ') || 'passthrough' : 'off',
@@ -218,6 +234,10 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
  * field is deliberately off on the constrained tier, and an ungraded frame is what a project with no
  * look should render. The row says so rather than showing zeroes.
  */
+function formatTemporal(renderScale: number | null): string {
+  return renderScale === null ? 'off' : `taa @ ${Math.round(renderScale * 100)}%`;
+}
+
 function formatLook(look: string | null, focusDistance: number | null): string {
   const parts: string[] = [];
   parts.push(look === null ? 'ungraded' : `LUT ${look}`);
