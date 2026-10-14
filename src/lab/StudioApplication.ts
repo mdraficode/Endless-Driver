@@ -16,6 +16,7 @@ import { EnvironmentClock, type EnvironmentClockOptions } from '../environment/E
 import { createMaterialLab, type MaterialLab } from './MaterialLab';
 import { StudioPanel, type StudioPanelAction, type StudioPanelState } from './StudioPanel';
 import { Engine } from '../core/Engine';
+import { loadLutAsset } from '../assets/LutAsset';
 import { SceneManager } from '../core/SceneManager';
 import type { TierResolution } from '../core/QualityTier';
 
@@ -54,6 +55,10 @@ export interface StudioDiagnostics {
   readonly tierReason: string;
   readonly rendererBackend: string | null;
   readonly postEffects: readonly string[];
+  /** Look LUT in force, as its lattice size (`17³`), or `null` when the frame is ungraded. */
+  readonly look: string | null;
+  /** Depth-of-field focus distance in metres, or `null` when the effect is not in the chain. */
+  readonly focusDistance: number | null;
   readonly skyMode: 'procedural' | 'hdri';
   readonly environmentId: string | null;
   readonly environmentRotationDegrees: number;
@@ -194,6 +199,7 @@ export class StudioApplication {
     // silently computes a square viewport's pose, which leaves the grid two thirds too far away.
     this.#frameScene(this.#focusId);
     await this.#loadEnvironment(this.#environmentIndex, { initial: true });
+    await this.#loadLook();
     // Before the first frame, so nothing is ever drawn under a different sun than the clock reports.
     this.#daylight.update(0, this.#scene, this.#engine);
     this.#scene.focusSun(this.#lab.centre);
@@ -216,6 +222,16 @@ export class StudioApplication {
       // only have to follow the camera as it orbits. Both are cheap, and both are what keep the
       // shadows and the atmosphere correct when the camera flies out to the edge of the grid.
       const camera = this.#scene.camera;
+      // The subject of the studio is the material grid, so that is what the lens focuses on — at the
+      // grid's own centre rather than at whatever the orbit controls happen to be tracking, because a
+      // close-up of one sphere and a wide shot of fourteen are focused the same way: on the material.
+      this.#engine.focusOn(
+        Math.hypot(
+          camera.position.x - this.#lab.centre.x,
+          camera.position.y - this.#lab.centre.y,
+          camera.position.z - this.#lab.centre.z,
+        ),
+      );
       this.#scene.followCamera(camera.position);
       this.#scene.focusSun(this.#lab.centre);
       // The engine owns the loop but not the scene: rendering is the caller's job, and the studio's
@@ -253,6 +269,8 @@ export class StudioApplication {
       tierReason: this.#tier.reason,
       backend: this.#engine.backend,
       postEffects: this.#engine.postEffects,
+      look: this.#engine.lookSize,
+      focusDistance: this.#engine.focusDistance,
     };
   }
 
@@ -332,6 +350,35 @@ export class StudioApplication {
     this.#frameScene();
   }
 
+  /**
+   * Loads the colour look and hands it to the renderer.
+   *
+   * Ungraded is a correct frame, so every failure here degrades rather than stops: the scene renders
+   * without the look and the console says so. The studio is the one place where that matters most —
+   * it exists to judge materials, and a material judged through a look that silently failed to load
+   * would be judged through no look at all.
+   */
+  async #loadLook(): Promise<void> {
+    if (!this.#config.postProcessing.lut.enabled) {
+      return;
+    }
+    try {
+      const requestedId = this.#config.postProcessing.lut.assetId;
+      const asset = await loadLutAsset({
+        ...(requestedId === null ? {} : { assetId: requestedId }),
+        expectedSize: this.#config.postProcessing.lut.size,
+      });
+      if (asset === null) {
+        return;
+      }
+      this.#engine.applyLookTable(asset);
+      this.#engine.setLookIntensity(this.#config.postProcessing.lut.intensity);
+      console.info(`material studio: colour look "${asset.name}" (${asset.licence})`);
+    } catch (error) {
+      console.warn('material studio: the colour look could not be applied; ungraded.', error);
+    }
+  }
+
   async #loadEnvironment(index: number, options: { initial?: boolean } = {}): Promise<void> {
     if (this.#environments.length === 0) {
       return;
@@ -369,6 +416,8 @@ export class StudioApplication {
       tierReason: this.#tier.reason,
       rendererBackend: this.#engine.backend,
       postEffects: this.#engine.postEffects,
+      look: this.#engine.lookSize,
+      focusDistance: this.#engine.focusDistance,
       skyMode: scene.skyMode,
       environmentId: this.#environmentEnabled ? scene.environmentId : null,
       environmentRotationDegrees: this.#rotationDegrees,

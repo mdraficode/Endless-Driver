@@ -24,6 +24,11 @@ const BARE: RenderConfig = {
     sharpen: { ...RENDER_CONFIG.postProcessing.sharpen, enabled: false },
     filmGrain: { ...RENDER_CONFIG.postProcessing.filmGrain, enabled: false },
     vignette: { ...RENDER_CONFIG.postProcessing.vignette, enabled: false },
+    // Depth of field and the look are the two effects a tier can switch off on its own, so a test that
+    // wants a *bare* configuration has to say so here rather than inheriting whatever tier happened to
+    // be applied — otherwise `resolvePostEffects(BARE)` would silently depend on the tier table.
+    depthOfField: { ...RENDER_CONFIG.postProcessing.depthOfField, enabled: false },
+    lut: { ...RENDER_CONFIG.postProcessing.lut, enabled: false },
   },
 };
 
@@ -202,6 +207,67 @@ describe('post stack per tier', () => {
       expect(ao.intensity).toBeLessThanOrEqual(1);
       expect(Number.isInteger(ao.samples)).toBe(true);
       expect(ao.samples).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('depth of field and the look', () => {
+  it('runs depth of field in the HDR stage, before antialiasing resolves edges', () => {
+    const effects = resolvePostEffects(
+      withEffects({
+        depthOfField: { ...BARE.postProcessing.depthOfField, enabled: true },
+        bloom: { ...BARE.postProcessing.bloom, enabled: true },
+        antiAliasing: 'smaa',
+      }),
+    );
+    // Blurring light rather than pixels is the whole reason it sits here: after tone mapping, an
+    // out-of-focus highlight is a grey disc instead of a bright one.
+    expect(effects).toContain('dof');
+    expect(effects.indexOf('dof')).toBeGreaterThan(effects.indexOf('bloom'));
+    expect(effects.indexOf('dof')).toBeLessThan(effects.indexOf('smaa'));
+    // It runs before tone mapping, so it does not by itself force the chain to own the output
+    // transform — only the effects that must run *after* the transfer do that.
+    expect(chainsOwnsOutputTransform(['dof', 'bloom'])).toBe(false);
+  });
+
+  it('runs the look after tone mapping, where a LUT can legally be sampled', () => {
+    const effects = resolvePostEffects(
+      withEffects({
+        lut: { ...BARE.postProcessing.lut, enabled: true },
+        antiAliasing: 'smaa',
+        sharpen: { ...BARE.postProcessing.sharpen, enabled: true },
+      }),
+    );
+    expect(effects).toContain('lut');
+    // `Lut3DNode` reads the incoming rgb as the lookup coordinates, so anything outside 0-1 samples
+    // outside the table: the look has to be behind the tone map and the transfer, and ahead of every
+    // other display-referred effect.
+    expect(effects.indexOf('lut')).toBeGreaterThan(effects.indexOf('smaa'));
+    expect(effects.indexOf('lut')).toBeLessThan(effects.indexOf('sharpen'));
+    expect(chainsOwnsOutputTransform(['lut'])).toBe(true);
+  });
+
+  it('leaves the frame ungraded and unblurred when both are switched off', () => {
+    const effects = resolvePostEffects(withEffects({ antiAliasing: 'fxaa' }));
+    expect(effects).not.toContain('lut');
+    expect(effects).not.toContain('dof');
+  });
+
+  it('switches depth of field off on the constrained tier and keeps the look', () => {
+    // Four passes and five half-resolution targets is the wrong place to spend a constrained device's
+    // budget; one texture fetch is not. The tier table is the contract, and this is where it is read.
+    const tierC = applyTier(RENDER_CONFIG, 'C');
+    expect(tierC.postProcessing.depthOfField.enabled).toBe(false);
+    expect(tierC.postProcessing.lut.enabled).toBe(true);
+    expect(resolvePostEffects(tierC)).not.toContain('dof');
+    expect(resolvePostEffects(tierC)).toContain('lut');
+  });
+
+  it('keeps depth of field on above the constrained tier', () => {
+    for (const tier of ['B', 'A'] as const) {
+      const config = applyTier(RENDER_CONFIG, tier);
+      expect(config.postProcessing.depthOfField.enabled).toBe(true);
+      expect(resolvePostEffects(config)).toContain('dof');
     }
   });
 });

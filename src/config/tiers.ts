@@ -17,6 +17,7 @@ import type {
   ChromaticAberrationConfig,
   CloudConfig,
   CsmConfig,
+  DepthOfFieldConfig,
   EnvironmentConfig,
   FilmGrainConfig,
   LightingConfig,
@@ -51,7 +52,13 @@ export interface TierRenderOverrides {
   readonly postProcessing?: Partial<
     Omit<
       PostProcessingConfig,
-      'bloom' | 'ambientOcclusion' | 'chromaticAberration' | 'sharpen' | 'filmGrain' | 'vignette'
+      | 'bloom'
+      | 'ambientOcclusion'
+      | 'chromaticAberration'
+      | 'sharpen'
+      | 'filmGrain'
+      | 'vignette'
+      | 'depthOfField'
     >
   > & {
     readonly bloom?: Partial<BloomConfig>;
@@ -60,6 +67,7 @@ export interface TierRenderOverrides {
     readonly sharpen?: Partial<SharpenConfig>;
     readonly filmGrain?: Partial<FilmGrainConfig>;
     readonly vignette?: Partial<VignetteConfig>;
+    readonly depthOfField?: Partial<DepthOfFieldConfig>;
   };
 }
 
@@ -117,6 +125,10 @@ const TIER_C: TierDefinition = {
       // No MSAA on this tier; the edges are handled by FXAA, which is the tier's contract.
       antiAliasing: 'fxaa',
       bloom: { strength: 0.18, radius: 0.4 },
+      // No depth of field. It costs four passes and five half-resolution targets — on the constrained
+      // tier that budget buys resolution, and there is no version of this effect worth a softer image
+      // on the devices the tier exists for. The look LUT stays: it is one texture fetch.
+      depthOfField: { enabled: false },
       ambientOcclusion: { enabled: false },
       chromaticAberration: { strength: 0.3 },
       sharpen: { sharpness: 0.75 },
@@ -166,6 +178,9 @@ const TIER_B: TierDefinition = {
     postProcessing: {
       antiAliasing: 'msaa',
       bloom: { strength: 0.22, radius: 0.45 },
+      // A slightly tighter aperture than the baseline: this tier renders at 1.5x, and the blur is a
+      // share of the frame, so the same number would read as a larger circle of confusion in pixels.
+      depthOfField: { bokehScale: 13 },
       ambientOcclusion: { enabled: true, resolutionScale: 0.5 },
       filmGrain: { enabled: false },
     },

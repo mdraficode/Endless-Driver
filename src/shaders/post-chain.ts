@@ -4,15 +4,18 @@ import {
   normalView,
   output,
   pass,
+  perspectiveDepthToViewZ,
   renderOutput,
   screenUV,
+  texture3D,
   uniform,
   vec2,
   vec4,
 } from 'three/tsl';
 import { RenderPipeline } from 'three/webgpu';
 import { Vector3, type Camera, type Scene } from 'three';
-import type { Node, WebGPURenderer } from 'three/webgpu';
+import type { Node, UniformNode, WebGPURenderer } from 'three/webgpu';
+import type { Data3DTexture } from 'three';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
@@ -21,6 +24,9 @@ import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
 import { smaa } from 'three/addons/tsl/display/SMAANode.js';
 import { builtinAOContext } from 'three/tsl';
+import { dof } from 'three/addons/tsl/display/DepthOfFieldNode.js';
+import { lut3D } from 'three/addons/tsl/display/Lut3DNode.js';
+import { createLookTexture } from './lut-identity';
 import type { RenderConfig } from '../config/render';
 import { createVignetteNode } from './vignette';
 
@@ -44,7 +50,9 @@ export type PostEffectName =
   | 'ao'
   | 'grade'
   | 'bloom'
+  | 'dof'
   | 'smaa'
+  | 'lut'
   | 'chromaticAberration'
   | 'sharpen'
   | 'filmGrain'
@@ -59,8 +67,15 @@ export type PostEffectName =
  * - the grade is a linear-light multiplier, so it sits in the HDR stage too, ahead of bloom so the
  *   highlights it warms are the ones that bloom;
  * - bloom is additive light, so it belongs in linear HDR before tone mapping;
+ * - depth of field blurs *light*, so it also belongs in the HDR stage: blurring after tone mapping
+ *   blurs compressed-and-clamped pixels, which is why out-of-focus highlights in a display-referred
+ *   pipeline look like grey discs instead of the bright blobs a real lens produces. It runs before
+ *   SMAA, which wants to resolve edges rather than re-antialias a blur;
  * - SMAA is documented as requiring **pre**-sRGB input, while FXAA requires **post**-sRGB input —
  *   they are the same stage conceptually but sit on opposite sides of the colour-space conversion;
+ * - the look LUT is display-referred by necessity, not by preference: `Lut3DNode` reads the incoming
+ *   `rgb` *as* the lookup coordinates, so anything outside 0-1 samples outside the table. It is
+ *   therefore the first effect after tone mapping and the colour-space transfer;
  * - chromatic aberration, sharpening, grain, and the vignette are all display-referred lens/grade
  *   effects and run after tone mapping; sharpening precedes grain so it never amplifies noise;
  * - FXAA runs last, on the finished sRGB image.
@@ -69,7 +84,9 @@ const EFFECT_ORDER: readonly PostEffectName[] = [
   'ao',
   'grade',
   'bloom',
+  'dof',
   'smaa',
+  'lut',
   'chromaticAberration',
   'sharpen',
   'filmGrain',
@@ -88,7 +105,9 @@ export function resolvePostEffects(config: RenderConfig): PostEffectName[] {
   if (postProcessing.ambientOcclusion.enabled) enabled.add('ao');
   if (postProcessing.grade.enabled) enabled.add('grade');
   if (postProcessing.bloom.enabled) enabled.add('bloom');
+  if (postProcessing.depthOfField.enabled) enabled.add('dof');
   if (postProcessing.antiAliasing === 'smaa') enabled.add('smaa');
+  if (postProcessing.lut.enabled) enabled.add('lut');
   if (postProcessing.chromaticAberration.enabled) enabled.add('chromaticAberration');
   if (postProcessing.sharpen.enabled) enabled.add('sharpen');
   if (postProcessing.filmGrain.enabled) enabled.add('filmGrain');
@@ -113,6 +132,7 @@ export function requiresSceneNormals(effects: readonly PostEffectName[]): boolea
 export function chainsOwnsOutputTransform(effects: readonly PostEffectName[]): boolean {
   return effects.some((effect) =>
     effect === 'smaa' ||
+    effect === 'lut' ||
     effect === 'chromaticAberration' ||
     effect === 'sharpen' ||
     effect === 'filmGrain' ||
@@ -136,6 +156,33 @@ export interface PostChain {
    * so a caller that writes to it unconditionally still cannot tint a frame it did not ask for.
    */
   readonly gradeTint: Vector3;
+  /**
+   * The uniform nodes the graph actually samples. Write `.value` on these; nothing else is connected.
+   *
+   * Handing out the *node* rather than a number is deliberate, and it is the difference between a
+   * working effect and one that silently does nothing: `uniform(plainNumber)` wraps a copy of that
+   * number, so a later write to the copy — or to the object it came from — never reaches the shader.
+   * The effect still runs, the diagnostics still report the value the engine thinks it set, and the
+   * frame is blurred at whatever number happened to be there when the graph was built. There is no
+   * error, no warning, and no way to see it without measuring the image.
+   *
+   * These are nodes, not numbers, for that reason: a caller cannot accidentally write to a copy.
+   */
+  readonly focusDistance: UniformNode<'float', number>;
+  /** Aperture multiplier, same contract as `focusDistance`. */
+  readonly bokehScale: UniformNode<'float', number>;
+  /** Look trim: 0 leaves the image ungraded, 1 applies the look as authored. */
+  readonly lutIntensity: UniformNode<'float', number>;
+  /**
+   * The table the look is sampled from, deliberately owned by the chain rather than handed to it.
+   *
+   * The look arrives over the network, long after the node graph exists, and a graph that had to be
+   * rebuilt when it did would either stutter on load or force every scene to wait for 100 KB of
+   * colour before its first frame. The table starts as the identity, so "no look yet" and "no look
+   * wanted" render identically — and a failed fetch degrades to no grading rather than no frame.
+   */
+  readonly lutTexture: Data3DTexture;
+  readonly lutSize: number;
 }
 
 export interface PostChainOptions {
@@ -181,6 +228,14 @@ export function buildPostChain(options: PostChainOptions): PostChain {
 
   let color: ColorNode = asColor(scenePass.getTextureNode('output'));
   const gradeTint = new Vector3(1, 1, 1);
+  const dofConfig = config.postProcessing.depthOfField;
+  // Built once, here, and passed into the graph as *nodes*: see the note on `PostChain.focusDistance`.
+  const focusDistance = uniform(dofConfig.focusDistance);
+  const bokehScale = uniform(dofConfig.bokehScale);
+  const lutConfig = config.postProcessing.lut;
+  const lutIntensity = uniform(lutConfig.intensity);
+  const lutSize = lutConfig.size;
+  const lutTexture = createLookTexture(lutSize);
 
   // --- linear HDR stage ----------------------------------------------------------------------
   if (effects.includes('grade')) {
@@ -195,6 +250,25 @@ export function buildPostChain(options: PostChainOptions): PostChain {
   }
 
   // --- pre-sRGB stage (SMAA documents that it must run before the colour-space conversion) ---
+  if (effects.includes('dof')) {
+    // `DepthOfFieldNode` wants view-space Z: the depth buffer run back through the projection, in
+    // metres, negative in front of the camera. Passing the raw depth buffer compiles, renders, and
+    // blurs by the wrong amount everywhere — a non-linear 0-1 depth is not a distance.
+    // Every camera this project renders through is perspective — the chase camera and the debug orbit
+    // camera both are — and the clip planes come from the scene's configuration rather than from a
+    // guess. The `in` check is a guard against a future orthographic camera producing a NaN-blurred
+    // frame rather than a compile error, not a statement that one is expected.
+    const clipNear = 'near' in camera ? (camera.near as number) : 0.1;
+    const clipFar = 'far' in camera ? (camera.far as number) : 1000;
+    // `float()` around the clip planes because three's overloads take nodes; the runtime would accept
+    // the numbers, and the conversion to a uniform is free.
+    const viewZ = perspectiveDepthToViewZ(
+      scenePass.getTextureNode('depth'),
+      float(clipNear),
+      float(clipFar),
+    );
+    color = asColor(dof(color, viewZ, focusDistance, float(dofConfig.focalLength), bokehScale));
+  }
   if (effects.includes('smaa')) {
     color = asColor(smaa(color));
   }
@@ -207,6 +281,17 @@ export function buildPostChain(options: PostChainOptions): PostChain {
   }
 
   // --- display-referred stage ---------------------------------------------------------------
+  if (effects.includes('lut')) {
+    // `Lut3DNode` reads the incoming rgb *as* the lookup coordinates, so this has to run where the
+    // pixel is 0-1: after tone mapping and the colour-space transfer, before the lens effects.
+    //
+    // `texture3D`, not `texture`: the table is a `Data3DTexture`, and binding it through the 2D
+    // accessor hands the shader a 2D sampler over a 3D texture — which compiles, reports nothing, and
+    // samples black. The whole frame goes black, which is at least honest, but the absence of an error
+    // is what makes it worth naming: there is no diagnostic between the wrong accessor and a black
+    // screen. Verified in a browser: the same chain with `texture()` renders a black frame.
+    color = asColor(lut3D(color, texture3D(lutTexture), lutSize, lutIntensity));
+  }
   if (effects.includes('chromaticAberration')) {
     const ca = config.postProcessing.chromaticAberration;
     // The centre must be an explicit node. Passing `undefined` (which the node's own default, and
@@ -235,5 +320,15 @@ export function buildPostChain(options: PostChainOptions): PostChain {
   const pipeline = new RenderPipeline(renderer, color);
   pipeline.outputColorTransform = !ownsOutput;
 
-  return { pipeline, scenePass, effects, gradeTint };
+  return {
+    pipeline,
+    scenePass,
+    effects,
+    gradeTint,
+    focusDistance,
+    bokehScale,
+    lutIntensity,
+    lutTexture,
+    lutSize,
+  };
 }

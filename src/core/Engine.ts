@@ -10,6 +10,7 @@ import {
   type Scene,
 } from 'three/webgpu';
 import { buildPostChain, type PostEffectName } from '../shaders/post-chain';
+import { writeLookTable } from '../shaders/lut-identity';
 import {
   RENDER_CONFIG,
   type RenderConfig,
@@ -120,6 +121,9 @@ export class Engine {
   readonly #resizeObserver: ResizeObserver | null;
   readonly #listensToWindow: boolean;
   #chain: ReturnType<typeof buildPostChain> | null = null;
+  #focusTarget: number | null = null;
+  #lookName: string | null = null;
+  #pendingLook: { readonly table: Uint8Array; readonly size: number } | null = null;
   #pipelineScene: Scene | null = null;
   #pipelineCamera: Camera | null = null;
   #viewport: Viewport = { width: 0, height: 0, pixelRatio: 1, aspect: 1 };
@@ -212,6 +216,20 @@ export class Engine {
     return this.#chain?.effects ?? [];
   }
 
+  /** Lattice size of the look currently applied, or `null` when the frame is ungraded. */
+  get lookSize(): string | null {
+    return this.#lookName;
+  }
+
+  /** Focus distance the chain is currently using, in metres; `null` when depth of field is off. */
+  get focusDistance(): number | null {
+    const chain = this.#chain;
+    if (chain === null || !chain.effects.includes('dof')) {
+      return null;
+    }
+    return chain.focusDistance.value;
+  }
+
   /**
    * Sets tone-mapping exposure.
    *
@@ -223,6 +241,76 @@ export class Engine {
     if (Number.isFinite(exposure) && exposure > 0) {
       this.#renderer.toneMappingExposure = exposure;
     }
+  }
+
+  /**
+   * Points the camera's focus at something.
+   *
+   * The distance is smoothed towards over `depthOfField.focusSmoothingSeconds`, because a focus plane
+   * that jumps is the single most obvious way depth of field reads as a bug rather than as a lens. The
+   * smoothing lives here, in the engine, so all three scenes rack focus the same way instead of each
+   * inventing its own damped lerp.
+   *
+   * When depth of field is not in the chain the call is a no-op — every scene may ask to be focused
+   * without asking whether the tier can afford it.
+   */
+  focusOn(distance: number): void {
+    if (Number.isFinite(distance) && distance > 0) {
+      this.#focusTarget = distance;
+    }
+  }
+
+  /**
+   * Applies a loaded look table to the chain's texture.
+   *
+   * Safe to call before the chain exists, which is not a hypothetical: a scene loads its assets during
+   * start-up and the chain is built lazily on the first `render()`, so the look *always* arrives first.
+   * Holding it until the chain is built rather than dropping it is the difference between a look that
+   * works and a look that is silently never applied — the failure mode being a frame with no grade at
+   * all, which looks exactly like a look that is simply subtle.
+   */
+  applyLookTable(asset: { readonly table: Uint8Array; readonly size: number }): void {
+    this.#pendingLook = asset;
+    this.#applyPendingLook();
+  }
+
+  #applyPendingLook(): void {
+    const asset = this.#pendingLook;
+    const chain = this.#chain;
+    if (asset === null || chain === null) {
+      return;
+    }
+    if (!chain.effects.includes('lut')) {
+      // The chain was built without the look — a tier or a switch removed it. Dropping the table is
+      // correct here: there is nothing to apply it to, and the frame is already ungraded by design.
+      this.#pendingLook = null;
+      return;
+    }
+    writeLookTable(chain.lutTexture, asset.table, asset.size);
+    this.#lookName = `${asset.size}³`;
+  }
+
+  /**
+   * Trims the look: 0 leaves the frame as the renderer produced it, 1 applies it as authored.
+   *
+   * Live, like exposure and the grade — which is the property that makes a LUT a *dial* rather than a
+   * decision, and lets the same table serve a bright noon and a night scene without a second file.
+   */
+  setLookIntensity(intensity: number): void {
+    const chain = this.#chain;
+    if (chain === null || !Number.isFinite(intensity)) {
+      return;
+    }
+    chain.lutIntensity.value = Math.min(1, Math.max(0, intensity));
+  }
+
+  /** Sets the aperture: the size of the blur itself, unitless. Zero disables the effect's look. */
+  setBokehScale(scale: number): void {
+    const chain = this.#chain;
+    if (chain === null || !Number.isFinite(scale)) {
+      return;
+    }
+    chain.bokehScale.value = Math.max(0, scale);
   }
 
   /**
@@ -412,6 +500,8 @@ export class Engine {
       });
       this.#pipelineScene = scene;
       this.#pipelineCamera = camera;
+      // The look may already be loaded and waiting; now there is a texture to put it in.
+      this.#applyPendingLook();
       return true;
     }
 
@@ -422,6 +512,26 @@ export class Engine {
       this.#pipelineCamera = camera;
     }
     return true;
+  }
+
+  /**
+   * Moves the focus plane most of the way to whatever the scene last asked for.
+   *
+   * Exponential damping on a time constant, not a per-frame lerp factor: the amount of travel per frame
+   * has to depend on how long the frame took, or the same code racks focus at a different speed on a
+   * 60 Hz display and a 144 Hz one. `1 - e^(-dt/τ)` is the fraction of the remaining distance covered
+   * in that time, and it is stable for any delta.
+   */
+  #updateFocus(delta: number): void {
+    const chain = this.#chain;
+    const target = this.#focusTarget;
+    if (chain === null || target === null || !chain.effects.includes('dof')) {
+      return;
+    }
+    const tau = Math.max(0.001, this.#config.postProcessing.depthOfField.focusSmoothingSeconds);
+    const fraction = 1 - Math.exp(-delta / tau);
+    const current = chain.focusDistance.value;
+    chain.focusDistance.value = current + (target - current) * fraction;
   }
 
   #scheduleFrame(): void {
@@ -472,6 +582,7 @@ export class Engine {
     // mid-frame (a HUD, a test, the screenshot harness) can catch the counters between the reset and
     // the first draw and be told the scene is empty.
     this.#renderer.info.reset();
+    this.#updateFocus(delta);
 
     const frame: FrameState = { delta, elapsed: this.#elapsed, frame: this.#frameCount };
     for (const handler of [...this.#frameHandlers]) {

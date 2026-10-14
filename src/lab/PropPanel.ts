@@ -39,6 +39,10 @@ export interface PropPanelState {
   readonly tierId: string;
   readonly backend: string | null;
   readonly postEffects: readonly string[];
+  /** Look LUT in force (`17³`) or `null` when the frame is ungraded. */
+  readonly look: string | null;
+  /** Depth-of-field focus distance in metres, or `null` when the effect is not in the chain. */
+  readonly focusDistance: number | null;
   /** Reported when the model never arrived, so the panel explains an empty scene. */
   readonly error: string | null;
 }

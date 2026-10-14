@@ -12,6 +12,7 @@ import { PropPanel, type PropPanelAction } from './PropPanel';
 import { DaylightController } from '../environment/DaylightController';
 import { EnvironmentClock, type EnvironmentClockOptions } from '../environment/EnvironmentClock';
 import { Engine } from '../core/Engine';
+import { loadLutAsset } from '../assets/LutAsset';
 import { SceneManager } from '../core/SceneManager';
 import type { TierResolution } from '../core/QualityTier';
 import type { LodLevel } from '../assets/LodSelection';
@@ -57,6 +58,10 @@ export interface PropLabDiagnostics {
   readonly tierReason: string;
   readonly rendererBackend: string | null;
   readonly postEffects: readonly string[];
+  /** Look LUT in force, as its lattice size (`17³`), or `null` when the frame is ungraded. */
+  readonly look: string | null;
+  /** Depth-of-field focus distance in metres, or `null` when the effect is not in the chain. */
+  readonly focusDistance: number | null;
   readonly timeOfDay: string;
   readonly sunElevationDegrees: number | null;
   readonly drawCalls: number;
@@ -140,6 +145,7 @@ export class PropLabApplication {
 
   private async init(options: PropLabApplicationOptions): Promise<void> {
     await this.#engine.init();
+    await this.#loadLook();
     this.#frameScene();
     this.#daylight.update(0, this.#scene, this.#engine);
     this.#scene.followCamera(this.#scene.camera.position);
@@ -158,6 +164,10 @@ export class PropLabApplication {
       // placed once: automatic mode orbits through 26 radii, and a surface placed for one distance
       // shows its edge at every other one.
       this.#lab?.followCamera(camera, this.#scene.controls.target);
+      // Focus follows the subject for the same reason the backdrop does: the model is what is being
+      // inspected, in every mode, so the lens is pointed at whatever the camera is looking at.
+      const target = this.#scene.controls.target;
+      this.#engine.focusOn(camera.position.distanceTo(target));
       this.#scene.followCamera(camera.position);
       this.#scene.focusSun({ x: 0, y: 0, z: 0 });
       this.#scene.setShadowCamera(camera);
@@ -173,6 +183,27 @@ export class PropLabApplication {
     // Loading starts after the first frame is on screen: a model that takes a second to decode must
     // never hold up the renderer, and the floor and backdrop are worth looking at while it arrives.
     await this.#loadModel(options.assetId);
+  }
+
+  /** Loads the colour look and hands it to the renderer; failure leaves the scene ungraded. */
+  async #loadLook(): Promise<void> {
+    if (!this.#config.postProcessing.lut.enabled) {
+      return;
+    }
+    try {
+      const requestedId = this.#config.postProcessing.lut.assetId;
+      const asset = await loadLutAsset({
+        ...(requestedId === null ? {} : { assetId: requestedId }),
+        expectedSize: this.#config.postProcessing.lut.size,
+      });
+      if (asset === null) {
+        return;
+      }
+      this.#engine.applyLookTable(asset);
+      this.#engine.setLookIntensity(this.#config.postProcessing.lut.intensity);
+    } catch (error) {
+      console.warn('prop inspector: the colour look could not be applied; ungraded.', error);
+    }
   }
 
   /** Loads the model and swaps the loaded lab in place of the placeholder. */
@@ -389,6 +420,8 @@ export class PropLabApplication {
       tierId: this.#tier.id,
       backend: this.#engine.backend,
       postEffects: this.#engine.postEffects,
+      look: this.#engine.lookSize,
+      focusDistance: this.#engine.focusDistance,
       error: this.#error,
     });
   }
@@ -428,6 +461,8 @@ export class PropLabApplication {
       tierReason: this.#tier.reason,
       rendererBackend: this.#engine.backend,
       postEffects: this.#engine.postEffects,
+      look: this.#engine.lookSize,
+      focusDistance: this.#engine.focusDistance,
       timeOfDay: this.#clock.label,
       sunElevationDegrees: scene.sunElevationDegrees ?? state.sunElevationDegrees,
       drawCalls: render.drawCalls,

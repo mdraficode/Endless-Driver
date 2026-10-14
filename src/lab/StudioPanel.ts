@@ -23,6 +23,10 @@ export interface StudioPanelState {
   readonly tierReason: string;
   readonly backend: string | null;
   readonly postEffects: readonly string[];
+  /** Look LUT in force (`17³`) or `null` when the frame is ungraded. */
+  readonly look: string | null;
+  /** Depth-of-field focus distance in metres, or `null` when the effect is not in the chain. */
+  readonly focusDistance: number | null;
 }
 
 export interface StudioPanelOptions {

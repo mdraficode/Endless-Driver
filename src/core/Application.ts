@@ -18,6 +18,7 @@ import {
   type EnvironmentClockOptions,
 } from '../environment/EnvironmentClock';
 import { Engine, type FrameState } from './Engine';
+import { loadLutAsset } from '../assets/LutAsset';
 import type { TierResolution } from './QualityTier';
 import { PerformanceMonitor } from './PerformanceMonitor';
 import { SceneManager } from './SceneManager';
@@ -202,6 +203,7 @@ export class Application {
     if (!this.#engine.isInitialized) {
       await this.#engine.init();
       await this.#loadEnvironment();
+      await this.#loadLook();
       this.#shadowCamera = null;
       this.#syncShadowCamera(this.#activeCamera());
     }
@@ -262,6 +264,8 @@ export class Application {
       postProcessing: this.#engine.isPostProcessingEnabled,
       antialiasing: this.#config.postProcessing.antiAliasing,
       postEffects: this.#engine.postEffects,
+      look: this.#engine.lookSize,
+      focusDistance: this.#engine.focusDistance,
       shadowCascades: this.#config.shadows.csm.cascades,
       skyMode: scene.skyMode,
       environmentId: scene.environmentId,
@@ -372,6 +376,18 @@ export class Application {
       this.#setStatus(null);
     }
 
+    // The car is the subject, so the car is what the lens focuses on: the focus plane sits at the
+    // distance from the camera to the car's own centre, and the road ahead and the scenery behind fall
+    // away from it. Smoothed in the engine, so a crest or a kerb does not snap the focus.
+    const focusCamera = this.#activeCamera();
+    this.#engine.focusOn(
+      Math.hypot(
+        focusCamera.position.x - pose.position.x,
+        focusCamera.position.y - pose.position.y,
+        focusCamera.position.z - pose.position.z,
+      ),
+    );
+
     this.#hudTimer += delta;
     if (this.#hudTimer >= this.#config.diagnostics.hudUpdateIntervalSeconds) {
       this.#hudTimer = 0;
@@ -390,6 +406,39 @@ export class Application {
     // frame) and still resolves and applies the light, so the pre-first-frame call and the per-frame
     // call are the same code path.
     this.#daylight = this.#daylightController.update(0, this.#scene, this.#engine);
+  }
+
+  /**
+   * Loads the colour look and hands it to the renderer.
+   *
+   * Failure is not fatal, and it is not silent either: the frame renders ungraded — which is a correct
+   * image — and the console says why. The alternatives are worse: refusing to start turns a missing
+   * 100 KB file into a broken build, and starting with a half-applied grade is a bug nobody can see.
+   */
+  async #loadLook(): Promise<void> {
+    if (!this.#config.postProcessing.lut.enabled) {
+      return;
+    }
+    try {
+      const requestedId = this.#config.postProcessing.lut.assetId;
+      const asset = await loadLutAsset({
+        ...(requestedId === null ? {} : { assetId: requestedId }),
+        expectedSize: this.#config.postProcessing.lut.size,
+      });
+      if (asset === null) {
+        return;
+      }
+      this.#engine.applyLookTable(asset);
+      this.#engine.setLookIntensity(this.#config.postProcessing.lut.intensity);
+      console.info(
+        `Endless Driver: colour look from "${asset.name}" (${asset.licence}, ${asset.creator})`,
+      );
+    } catch (error) {
+      console.warn(
+        'Endless Driver: the colour look could not be applied; rendering ungraded.',
+        error,
+      );
+    }
   }
 
   /**

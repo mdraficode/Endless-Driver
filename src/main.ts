@@ -1,6 +1,6 @@
 import './style.css';
 import { Application, type ApplicationOptions } from './core/Application';
-import { RENDER_CONFIG, type RenderConfig } from './config/render';
+import { RENDER_CONFIG, applyRenderSwitches, type RenderConfig } from './config/render';
 import { WORLD_CONFIG } from './config/world';
 import { loadRapier } from './physics/RapierModule';
 import {
@@ -86,12 +86,17 @@ export function readStudioRequest(search: string): StudioRequest {
 
 /**
  * Resolves the render configuration for this device: tier first (it decides the backend preference,
- * pixel-ratio cap, and shadow budget), then any forced-backend switch on top.
+ * pixel-ratio cap, and shadow budget), then any forced-backend switch, then the switchable post
+ * effects — which come last so that `?dof=1` can re-enable on a constrained device what the tier
+ * switched off, and `?lut=none` can remove a look without a code change.
  */
 function resolveRenderConfig(): { config: RenderConfig; tier: ReturnType<typeof resolveTier> } {
   const tier = resolveTier(probeEnvironment());
   const backendPreference = readBackendRequest(window.location.search);
-  const config = applyBackendOverride(applyTier(RENDER_CONFIG, tier.id), backendPreference);
+  const config = applyRenderSwitches(
+    applyBackendOverride(applyTier(RENDER_CONFIG, tier.id), backendPreference),
+    window.location.search,
+  );
   console.info(
     `Endless Driver: ${describeTierDetail(tier)}` +
       (backendPreference === null ? '' : `, backend forced to ${backendPreference}`),

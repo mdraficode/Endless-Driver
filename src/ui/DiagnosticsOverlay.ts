@@ -40,6 +40,10 @@ export interface DiagnosticsSnapshot {
   readonly antialiasing: AntiAliasingMode;
   /** Post effects applied to this frame, in order — the chain made observable. */
   readonly postEffects: readonly string[];
+  /** Lattice size of the look LUT in force (`17³`), or `null` when the frame is ungraded. */
+  readonly look: string | null;
+  /** Focus distance the depth-of-field plane is using, in metres; `null` when it is off. */
+  readonly focusDistance: number | null;
   /** Cascades in the shadow atlas; 1 means the plain single-frustum shadow path. */
   readonly shadowCascades: number;
   /** Backdrop in use; `hdri` means the environment texture is also the background. */
@@ -182,6 +186,14 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
       snapshot.postProcessing ? snapshot.postEffects.join(' → ') || 'passthrough' : 'off',
   },
   {
+    // The look and the focus plane are the two post-processing settings a screenshot cannot report:
+    // a look that failed to load, a look that is switched off, and a look that is doing nothing all
+    // render the same frame — and a focus plane parked at the wrong distance reads as a soft lens
+    // rather than as a bug. Printing them turns three silent states into one readable row.
+    label: 'Look',
+    format: (snapshot) => formatLook(snapshot.look, snapshot.focusDistance),
+  },
+  {
     label: 'Sky',
     format: (snapshot) =>
       snapshot.environmentId === null
@@ -198,6 +210,20 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
   },
   { label: 'Frames', format: (snapshot) => snapshot.totalFrames.toLocaleString('en-US') },
 ];
+
+/**
+ * One line describing the colour look and the focus plane.
+ *
+ * Both are `null` when the effect is not in the chain, which is a *state*, not a failure: depth of
+ * field is deliberately off on the constrained tier, and an ungraded frame is what a project with no
+ * look should render. The row says so rather than showing zeroes.
+ */
+function formatLook(look: string | null, focusDistance: number | null): string {
+  const parts: string[] = [];
+  parts.push(look === null ? 'ungraded' : `LUT ${look}`);
+  parts.push(focusDistance === null ? 'no dof' : `focus ${focusDistance.toFixed(1)} m`);
+  return parts.join(' · ');
+}
 
 const PANEL_CLASSES = [
   'pointer-events-none',

@@ -252,10 +252,73 @@ export interface GradeConfig {
   readonly enabled: boolean;
 }
 
+/**
+ * Depth of field.
+ *
+ * Focus is expressed as a distance along the camera's own axis, in world units, plus how far from that
+ * plane an object may sit before it is fully blurred. That is a lens description rather than a shader
+ * description — which is what makes it possible to say "the car is in focus and the horizon is not"
+ * and have it stay true as the camera moves.
+ */
+export interface DepthOfFieldConfig {
+  readonly enabled: boolean;
+  /** Initial focus distance in metres. Replaced every frame by whatever the scene focuses on. */
+  readonly focusDistance: number;
+  /** Distance from the focal plane at which blur reaches its maximum, in metres. */
+  readonly focalLength: number;
+  /**
+   * Blur radius at maximum defocus, as a fraction of the frame's short side — the aperture.
+   *
+   * This was the one value that had to be *measured* rather than reasoned about. The node describes it
+   * as "unitless, for artistic purposes", and its own default is 1: at 1, and at the 2.6 this project
+   * first shipped, the effect runs, blurs correctly, and is invisible — a 2.6 px radius on a 1440 px
+   * frame is less than the antialiasing. Depth of field only reads as a lens once the far field is
+   * blurred by roughly one percent of the frame, which is why the value here is an order of magnitude
+   * above the node's default.
+   */
+  readonly bokehScale: number;
+  /**
+   * Seconds for the focus plane to travel most of the way to a new subject.
+   *
+   * A camera racking focus between two subjects is a camera *pulling* focus — it takes time, and the
+   * movement is most of what makes the effect read as a lens rather than as a mask. Snapping is what
+   * a chase camera does when the car crosses a crest, and it looks like a bug.
+   */
+  readonly focusSmoothingSeconds: number;
+}
+
+/**
+ * The look, applied as a display-referred 3D LUT.
+ *
+ * After tone mapping and the sRGB transfer, because that is the only place a LUT may be sampled: the
+ * node reads `rgb` directly as texture coordinates, so an HDR value would sample outside the table.
+ * `intensity` is a live uniform — it trims the authored look towards the ungraded image without
+ * rebuilding the graph, which is what makes the "is this too much?" comparison a keystroke.
+ */
+export interface LutConfig {
+  readonly enabled: boolean;
+  /** Manifest id of the table to load; `null` uses the document's own default. */
+  readonly assetId: string | null;
+  /** Default trim: 1 applies the look as authored, 0 applies none. */
+  readonly intensity: number;
+  /**
+   * Lattice size per axis of the table, and therefore of the texture that samples it.
+   *
+   * This has to be known before the file arrives, because it sizes the texture the node graph is
+   * built around — so it is declared here and *checked* against the file's own `LUT_3D_SIZE` when it
+   * loads. A mismatch is rejected rather than sampled: sampling a 33³ table with 17³ coordinates, or
+   * the reverse, produces a wrong grade that still looks like a grade, which is the kind of error that
+   * survives every screenshot review.
+   */
+  readonly size: number;
+}
+
 export interface PostProcessingConfig {
   readonly enabled: boolean;
   readonly antiAliasing: AntiAliasingMode;
   readonly grade: GradeConfig;
+  readonly lut: LutConfig;
+  readonly depthOfField: DepthOfFieldConfig;
   readonly bloom: BloomConfig;
   readonly ambientOcclusion: AmbientOcclusionConfig;
   readonly chromaticAberration: ChromaticAberrationConfig;
@@ -369,6 +432,32 @@ export const RENDER_CONFIG: RenderConfig = {
   },
   postProcessing: {
     enabled: true,
+    lut: {
+      enabled: true,
+      assetId: null,
+      // The look is authored to be *visible* on top of ACES and the time-of-day grade, and this trim
+      // is where the project decides how much of it to take. Full strength is the authored look; the
+      // interesting property of a LUT is that it can be dialled without being re-authored.
+      intensity: 1,
+      // Must match the shipped table. Chosen by measurement in `scripts/build-lut.mjs --analyse`.
+      size: 17,
+    },
+    depthOfField: {
+      enabled: true,
+      focusDistance: 12,
+      // 20 m of falloff. The number that matters is not taste but *where the player is looking*: the
+      // chase camera sits about 6.7 m behind the car, and everything past focus + falloff is fully
+      // blurred — so a 9 m falloff makes the road 15 m ahead unreadable, which is precisely the
+      // surface the car is about to drive on. 20 m puts full blur beyond 26 m, so the near road stays
+      // legible, the mid-ground softens, and the horizon and the treeline still dissolve.
+      focalLength: 20,
+      // 17/1000 of the frame's short side: about 15 px at 1440x900, and the same *share* of the frame
+      // at every other resolution, because the offsets are in UV rather than in pixels.
+      bokehScale: 17,
+      // Focus is a third of a second behind the subject, which is about how fast a camera operator's
+      // hand moves. Faster reads as a snap, slower reads as a lens that cannot keep up with the car.
+      focusSmoothingSeconds: 0.35,
+    },
     antiAliasing: 'msaa',
     bloom: {
       enabled: true,
@@ -416,3 +505,44 @@ export const RENDER_CONFIG: RenderConfig = {
     exposeDebugHandle: true,
   },
 };
+
+/**
+ * Applies the `?dof=`, `?bokeh=`, `?lut=`, and `?lutmix=` switches to a resolved configuration.
+ *
+ * These exist for the same reason `?tier=` and `?time=` do: an effect that can only be judged in the
+ * one state the code ships it in cannot be judged at all. Depth of field in particular is off on the
+ * constrained tier by design, so without `?dof=1` the effect is unverifiable on any machine that
+ * resolves to that tier — including every headless capture.
+ *
+ * Returns a new configuration; the input is never mutated, so a caller may hold the baseline and
+ * apply different switches to it.
+ */
+export function applyRenderSwitches(config: RenderConfig, search: string): RenderConfig {
+  const params = new URLSearchParams(search);
+  const dof = params.get('dof');
+  const bokeh = Number.parseFloat(params.get('bokeh') ?? '');
+  const lut = params.get('lut');
+  const mix = Number.parseFloat(params.get('lutmix') ?? '');
+
+  const depthOfField = {
+    ...config.postProcessing.depthOfField,
+    ...(dof === null || dof === '' ? {} : { enabled: dof !== '0' && dof !== 'false' }),
+    ...(Number.isFinite(bokeh) ? { bokehScale: Math.max(0, bokeh) } : {}),
+  };
+
+  const lutEnabled =
+    lut === 'none' || lut === '0' || lut === 'false' ? false : config.postProcessing.lut.enabled;
+  const lutConfig = {
+    ...config.postProcessing.lut,
+    enabled: lutEnabled,
+    ...(lut === null || lut === '' || lutEnabled === false
+      ? {}
+      : { assetId: lut === 'default' ? config.postProcessing.lut.assetId : lut }),
+    ...(Number.isFinite(mix) ? { intensity: Math.min(1, Math.max(0, mix)) } : {}),
+  };
+
+  return {
+    ...config,
+    postProcessing: { ...config.postProcessing, depthOfField, lut: lutConfig },
+  };
+}

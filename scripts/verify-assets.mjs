@@ -27,7 +27,15 @@ const PUBLIC_DIR = join(ROOT, 'public');
 const MANIFEST_PATH = join(PUBLIC_DIR, 'assets', 'manifest.json');
 const CREDITS_PATH = join(ROOT, 'CREDITS.md');
 
-const ALLOWED_LICENCES = new Set(['CC0-1.0', 'CC-BY-4.0', 'CC-BY-3.0']);
+/**
+ * Licences the policy allows.
+ *
+ * `Project-Generated` is not a licence anyone granted us — it marks content this repository authored
+ * (the look LUT), which has no third-party rights to clear and no attribution to carry. Naming it
+ * explicitly keeps it from being silently lumped in with the CC0 assets, where a reader would assume
+ * a creator who does not exist.
+ */
+const ALLOWED_LICENCES = new Set(['CC0-1.0', 'CC-BY-4.0', 'CC-BY-3.0', 'Project-Generated']);
 const REQUIRED_SOURCE_FIELDS = ['url', 'creator', 'licence', 'retrieved', 'pinnedUrl'];
 const problems = [];
 
@@ -103,6 +111,41 @@ for (const asset of manifest.assets) {
   if (asset.kind === 'model') {
     await verifyModel(label, asset);
   }
+  if (asset.kind === 'lut') {
+    await verifyLut(label, asset);
+  }
+}
+
+/**
+ * Checks a LUT against its own header and against the manifest's claim about it.
+ *
+ * The hash already proves the file is the one that was committed; this proves the file *says* what
+ * the manifest and the runtime believe about it. The trap is real and quiet: `LUTCubeLoader` scales
+ * every data point by 255 and ignores `DOMAIN_MIN`/`DOMAIN_MAX` entirely, so a table authored with a
+ * 0–255 domain parses into values 255 times too large without a single error. A LUT that declares a
+ * domain other than 0–1 is therefore a LUT that will not render as authored, and it is caught here
+ * rather than in a screenshot.
+ */
+async function verifyLut(label, asset) {
+  const file = asset.files[0];
+  const text = await readFile(join(PUBLIC_DIR, file.path), 'utf8');
+  const declaredSize = Number(/LUT_3D_SIZE +(\d+)/.exec(text)?.[1] ?? NaN);
+  const manifestSize = Number(asset.pipeline?.resolution ?? NaN);
+  require_(Number.isInteger(declaredSize), `${label}: ${file.path} has no LUT_3D_SIZE header`);
+  require_(
+    declaredSize === manifestSize,
+    `${label}: ${file.path} declares size ${declaredSize}, manifest says ${manifestSize}`,
+  );
+  require_(
+    /DOMAIN_MIN +0(\.0+)? +0(\.0+)? +0(\.0+)?/.test(text) &&
+      /DOMAIN_MAX +1(\.0+)? +1(\.0+)? +1(\.0+)?/.test(text),
+    `${label}: ${file.path} must declare a 0-1 domain; LUTCubeLoader ignores other domains`,
+  );
+  const entries = (text.match(/^-?[\d.]+ +-?[\d.]+ +-?[\d.]+ *$/gm) ?? []).length;
+  require_(
+    entries === declaredSize ** 3,
+    `${label}: ${file.path} holds ${entries} entries, expected ${declaredSize ** 3}`,
+  );
 }
 
 /**

@@ -98,13 +98,20 @@ export function applyTier(base: RenderConfig, tier: TierId): RenderConfig {
   const overrides = TIER_DEFINITIONS[tier].render;
   const { csm: csmOverride, ...shadowOverride } = overrides.shadows ?? {};
   const { clouds: cloudOverride, ...atmosphereOverride } = overrides.atmosphere ?? {};
-  const { bloom: bloomOverride, ...postOverride } = overrides.postProcessing ?? {};
+  const {
+    bloom: bloomOverride,
+    depthOfField: depthOfFieldOverride,
+    ...postOverride
+  } = overrides.postProcessing ?? {};
 
   const renderer = { ...base.renderer, ...overrides.renderer };
   const postProcessing = {
     ...base.postProcessing,
     ...postOverride,
     bloom: { ...base.postProcessing.bloom, ...bloomOverride },
+    // Nested like bloom rather than spread whole: a tier that only wants a smaller bokeh must not have
+    // to restate the focus falloff, and a field it forgets would silently become `undefined`.
+    depthOfField: { ...base.postProcessing.depthOfField, ...depthOfFieldOverride },
     ambientOcclusion: {
       ...base.postProcessing.ambientOcclusion,
       ...postOverride?.ambientOcclusion,

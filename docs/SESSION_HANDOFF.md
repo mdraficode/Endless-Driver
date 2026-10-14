@@ -305,8 +305,8 @@ order and the tier gating are unit-tested without a GPU, and the HUD prints the 
 MSAA and a post-process AA mode can no longer be paid for simultaneously: `applyTier()` switches MSAA off whenever
 the tier selects FXAA/SMAA/none, and a test holds that invariant across all three tiers.
 
-**Remaining Phase 3 work, in planned order:** (1) the remaining post effects — depth of field, motion
-blur, LUT grading — plus TAAU/TRAA and dynamic resolution; (3) time-of-day clock with
+**Remaining Phase 3 work, in planned order:** (1) the remaining post effects — motion blur and god rays
+— plus TAAU/TRAA and dynamic resolution; (3) time-of-day clock with
 light colour/intensity curves, LUT grading and exposure-by-sun; (4) `gltf-transform` optimize/KTX2
 pipeline for models and the first materials library entries; (5) the studio look-dev scene
 (`?scene=studio`) and the 2 km validation route with fixed camera bookmarks, then the 12 baseline
@@ -536,6 +536,34 @@ post chain, draw calls, and triangles unchanged, no page errors.
 **Switches:** `?scene=studio`, `?hdri=<manifest id>`, `?rot=<degrees>`, `?time=<hours>`, `?focus=<material id>`,
 `?panel=0`. Keyboard: `P` hides the panel, `H` cycles the HDRI, `E` toggles image-based lighting, `,`/`.` rotate it,
 `←`/`→` move the hour, `R` reframes.
+
+**Colour look and depth of field.** The look is a 3D LUT applied _after_ tone mapping and the sRGB
+transfer — the only place a 3D LUT may be sampled, because `Lut3DNode` reads the incoming `rgb` as the
+lookup coordinates. Depth of field runs in the _linear HDR_ stage before it, so out-of-focus highlights
+blur as light rather than as clipped grey discs. Both are live uniforms: the look can be trimmed with
+`?lutmix=` without being re-authored, and the focus plane is damped over 0.35 s so a crest does not snap it.
+
+Switches: `?lut=none` (ungraded), `?lutmix=0..1` (trim), `?dof=0|1` (force on a tier that disables it),
+`?bokeh=<n>` (aperture as a fraction of the frame's short side, x1000).
+
+**Two failures worth remembering, both of which rendered a perfectly plausible frame:**
+
+1. `uniform(focusDistance.value)` wraps _a copy of a number_. The engine wrote the live focus distance
+   into its own object, the shader kept sampling the number captured when the graph was built, and both
+   the diagnostics and the HUD reported the value the engine believed it had set. The graph now holds
+   the uniform _nodes_, so a caller cannot write to a copy — the type no longer permits it.
+2. `bokehScale` is a fraction of the frame, and the node's own default of 1 — and the 2.6 this project
+   first shipped — blurs by a couple of pixels on a 1440 px frame, i.e. less than the antialiasing. The
+   effect ran correctly and was invisible. Measured, not reasoned: the horizon drops to 0.67 of its
+   unblurred detail at `bokehScale` 17, the car stays at 1.01.
+
+The LUT itself is generated (`npm run assets:lut`) from `scripts/lib/lut.mjs`, not downloaded: a dozen
+documented numbers, checked into the manifest and CREDITS like any other asset. Its size — 17³ — was
+_chosen by measurement_: `node scripts/build-lut.mjs --analyse` reports the reconstruction error for each
+candidate, and at 17³ the worst error in the near-neutral colours (the only place a lattice shows as
+banding) is 0.78 of an 8-bit code, unchanged from 33³ at a quarter of the size. The file is written with
+bin centres rather than `code/255` because three's loader truncates when it scales by 255 — and
+`tests/unit/lut.test.ts` parses the committed file with three's own loader to prove the round trip.
 
 **Prop inspector (`?scene=props`).** The look-dev scene judges materials; this one judges the _asset pipeline's
 output_. It loads `public/assets/models/boulder-01.glb` — one file whose three levels of detail share a KTX2 texture
