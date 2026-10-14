@@ -23,26 +23,16 @@ _None yet._ CC-BY entries will appear in this exact format:
 
 ## Assets used
 
-_None yet._
+All assets below are CC0 (public domain). Attribution is not required by the licence; the creators are
+listed because their work deserves the credit, not because the licence asks for it.
 
-## Libraries and tooling already in use
+- **Bamboo Tunnel — 1K HDR** — Dimitrios Savva, Jarod Guest — [source](https://polyhaven.com/a/bamboo_tunnel) — CC0-1.0
+  - file: `assets/hdri/bamboo_tunnel_1k.hdr`
+- **Cedar Bridge Sunset — 1K HDR** — Greg Zaal — [source](https://polyhaven.com/a/cedar_bridge_sunset_1) — CC0-1.0
+  - file: `assets/hdri/cedar_bridge_sunset_1k.hdr`
+- **Ninomaru Teien (Tokyo garden) — 1K HDR** — Greg Zaal — [source](https://polyhaven.com/a/ninomaru_teien) — CC0-1.0
+  - file: `assets/hdri/ninomaru_teien_1k.hdr`
+- **Japanese Cedar Planks — 1K PBR set** — Rob Tuytel — [source](https://polyhaven.com/a/japanese_cedar_planks) — CC0-1.0
+  - file: `assets/textures/japanese_cedar_planks_1k_diff_1k.jpg`, `assets/textures/japanese_cedar_planks_1k_nor_gl_1k.jpg`, `assets/textures/japanese_cedar_planks_1k_rough_1k.jpg`, `assets/textures/japanese_cedar_planks_1k_arm_1k.jpg`
 
-| Dependency                             | Licence    | Notes                                  |
-| -------------------------------------- | ---------- | -------------------------------------- |
-| three.js                               | MIT        | Renderer, loaders, TSL node materials  |
-| Rapier (`@dimforge/rapier3d-compat`)   | Apache-2.0 | Sole physics authority                 |
-| Vite, TypeScript, Vitest, Tailwind CSS | MIT        | Build, type checking, tests, UI styles |
-
-## Fonts (planned, Phase 3)
-
-| Font           | Licence     | Use                     |
-| -------------- | ----------- | ----------------------- |
-| Noto Sans JP   | SIL OFL 1.1 | Japanese signage and UI |
-| Inter          | SIL OFL 1.1 | Latin UI                |
-| JetBrains Mono | SIL OFL 1.1 | Diagnostics overlay     |
-
-## Attribution-free sources we still credit
-
-CC0 does not require attribution. Where a library or creator is credited in this file despite that (Poly Haven,
-ambientCG, Kenney, Quaternius, KayKit and others), it is done because their work deserves the mention — never
-because the licence demands it.
+`retrieved` and `sha256` for each file are recorded in `public/assets/manifest.json`.

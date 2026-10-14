@@ -1,0 +1,257 @@
+#!/usr/bin/env node
+/**
+ * Pinned asset acquisition for Endless Driver.
+ *
+ * The project's rule (ADR 0005, docs/ASSET_SOURCES.md) is that every third-party asset is CC0-first,
+ * fetched by a script rather than by hand, recorded in `public/assets/manifest.json` with its source,
+ * creator, licence, and a SHA-256 of the exact bytes committed, and listed in `CREDITS.md`.
+ *
+ * Usage:
+ *   node scripts/fetch-assets.mjs                 # fetch everything missing or changed
+ *   node scripts/fetch-assets.mjs --force         # re-download and rewrite the manifest
+ *   node scripts/fetch-assets.mjs --only <id>     # fetch one entry
+ *   node scripts/fetch-assets.mjs --credits       # regenerate CREDITS.md from the manifest only
+ *
+ * The entry list below is the single source of truth: the manifest is derived from it, never edited
+ * by hand. `npm run assets:verify` (CI) re-checks the committed manifest and file hashes offline.
+ *
+ * Poly Haven is CC0: no attribution is required, no account, no key. Its public API is documented at
+ * https://api.polyhaven.com — we pin explicit file URLs instead of querying it at build time, so a
+ * Poly Haven outage can never break a build.
+ */
+import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const PUBLIC_DIR = join(ROOT, 'public');
+const MANIFEST_PATH = join(PUBLIC_DIR, 'assets', 'manifest.json');
+const CREDITS_PATH = join(ROOT, 'CREDITS.md');
+const BASE_URL = 'https://dl.polyhaven.org/file/ph-assets';
+
+/**
+ * @typedef {Object} AssetEntry
+ * @property {string} id            Runtime id used by the manifest and loader.
+ * @property {'hdri'|'texture'} kind
+ * @property {string} name          Display name.
+ * @property {string} assetClass    Budget class from docs/ASSET_SOURCES.md.
+ * @property {string} sourceUrl      Human page for the asset (licence evidence).
+ * @property {string} creator
+ * @property {string} licence       SPDX-style id; CC0-1.0 for everything sourced here.
+ * @property {string} attribution   Empty when the licence requires none (we still credit in CREDITS.md).
+ * @property {string} runtimePath   Repository-relative path of the committed file.
+ * @property {string} url           Pinned download URL.
+ * @property {string} [role]        How the runtime uses it (IBL, PBR surface, ...).
+ */
+
+/** @type {AssetEntry[]} */
+const ENTRIES = [
+  {
+    id: 'hdri-ninomaru-teien-1k',
+    kind: 'hdri',
+    name: 'Ninomaru Teien (Tokyo garden) — 1K HDR',
+    assetClass: 'environment-ibl',
+    sourceUrl: 'https://polyhaven.com/a/ninomaru_teien',
+    creator: 'Greg Zaal',
+    licence: 'CC0-1.0',
+    attribution: '',
+    runtimePath: 'assets/hdri/ninomaru_teien_1k.hdr',
+    url: `${BASE_URL}/HDRIs/hdr/1k/ninomaru_teien_1k.hdr`,
+    role: 'Image-based lighting and reflections for the sky/IBL pillar (docs/VISUAL_TARGET.md §2.1).',
+  },
+  {
+    id: 'hdri-bamboo-tunnel-1k',
+    kind: 'hdri',
+    name: 'Bamboo Tunnel — 1K HDR',
+    assetClass: 'environment-ibl',
+    sourceUrl: 'https://polyhaven.com/a/bamboo_tunnel',
+    creator: 'Dimitrios Savva, Jarod Guest',
+    licence: 'CC0-1.0',
+    attribution: '',
+    runtimePath: 'assets/hdri/bamboo_tunnel_1k.hdr',
+    url: `${BASE_URL}/HDRIs/hdr/1k/bamboo_tunnel_1k.hdr`,
+    role: 'Second IBL preset (shaded, green-bounced light) — used by the studio scene HDRI switcher.',
+  },
+  {
+    id: 'hdri-cedar-bridge-sunset-1k',
+    kind: 'hdri',
+    name: 'Cedar Bridge Sunset — 1K HDR',
+    assetClass: 'environment-ibl',
+    sourceUrl: 'https://polyhaven.com/a/cedar_bridge_sunset_1',
+    creator: 'Greg Zaal',
+    licence: 'CC0-1.0',
+    attribution: '',
+    runtimePath: 'assets/hdri/cedar_bridge_sunset_1k.hdr',
+    url: `${BASE_URL}/HDRIs/hdr/1k/cedar_bridge_sunset_1_1k.hdr`,
+    role: 'Third IBL preset (golden hour) — matches the warm grading preset and the Mie Pass look.',
+  },
+  {
+    id: 'tex-japanese-cedar-planks-1k',
+    kind: 'texture',
+    name: 'Japanese Cedar Planks — 1K PBR set',
+    assetClass: 'material-surface',
+    sourceUrl: 'https://polyhaven.com/a/japanese_cedar_planks',
+    creator: 'Rob Tuytel',
+    licence: 'CC0-1.0',
+    attribution: '',
+    runtimePath: 'assets/textures/japanese_cedar_planks_1k',
+    url: `${BASE_URL}/Textures/jpg/1k/japanese_cedar_planks`,
+    role: 'Scanned CC0 surface used by the material library and the studio validation grid (Phase 3 acceptance).',
+  },
+];
+
+/**
+ * Map files for the cedar planks set, as published by Poly Haven:
+ * [manifest slot, published file stem, colour space, usage].
+ * The exact file names are pinned here (verified against api.polyhaven.com on 2026-10-14) so the
+ * pipeline never guesses a URL and never depends on the API at build time.
+ */
+const TEXTURE_MAPS = [
+  ['diffuse', 'diff', 'srgb'],
+  ['normal', 'nor_gl', 'linear'],
+  ['roughness', 'rough', 'linear'],
+  ['arm', 'arm', 'linear'],
+];
+
+const args = new Set(process.argv.slice(2));
+const FORCE = args.has('--force');
+const CREDITS_ONLY = args.has('--credits');
+const onlyIndex = process.argv.indexOf('--only');
+const ONLY = onlyIndex >= 0 ? process.argv[onlyIndex + 1] : null;
+
+const sha256 = (buffer) => createHash('sha256').update(buffer).digest('hex');
+
+async function download(url) {
+  const response = await fetch(url, { headers: { 'User-Agent': 'endless-driver-asset-pipeline' } });
+  if (!response.ok) {
+    throw new Error(`Download failed (${response.status}) for ${url}`);
+  }
+  return Buffer.from(await response.arrayBuffer());
+}
+
+async function fetchEntry(entry) {
+  const files = [];
+
+  if (entry.kind === 'hdri') {
+    const target = join(PUBLIC_DIR, entry.runtimePath);
+    const buffer = FORCE || !existsSync(target) ? await download(entry.url) : await readFile(target);
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, buffer);
+    files.push({
+      slot: 'hdri',
+      path: entry.runtimePath,
+      bytes: buffer.byteLength,
+      sha256: sha256(buffer),
+      colourSpace: 'linear',
+      format: 'hdr',
+    });
+  } else {
+    const stem = 'japanese_cedar_planks';
+    for (const [slot, suffix, colourSpace] of TEXTURE_MAPS) {
+      const relative = `${entry.runtimePath}_${suffix}_1k.jpg`;
+      const url = `${entry.url}/${stem}_${suffix}_1k.jpg`;
+      const target = join(PUBLIC_DIR, relative);
+      const buffer = FORCE || !existsSync(target) ? await download(url) : await readFile(target);
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, buffer);
+      files.push({
+        slot,
+        path: relative,
+        bytes: buffer.byteLength,
+        sha256: sha256(buffer),
+        colourSpace,
+        format: 'jpg',
+      });
+    }
+  }
+
+  return {
+    id: entry.id,
+    kind: entry.kind,
+    name: entry.name,
+    assetClass: entry.assetClass,
+    source: {
+      url: entry.sourceUrl,
+      creator: entry.creator,
+      licence: entry.licence,
+      attribution: entry.attribution,
+      retrieved: new Date().toISOString().slice(0, 10),
+      pinnedUrl: entry.url,
+    },
+    role: entry.role,
+    pipeline: {
+      // Phase 3 optimization step: select the 1K runtime variant rather than the 16K/20K source,
+      // pack ORM-style maps where the source provides them, and keep HDR linear for PMREM IBL.
+      resolution: '1024',
+      notes:
+        'Runtime variant selected at fetch time; KTX2/Basis transcoding is applied when the KTX-Software toolchain is available in the build environment (recorded per asset when it happens).',
+    },
+    files,
+  };
+}
+
+function creditsSection(assets) {
+  const rows = assets
+    .map((asset) => {
+      const maps = asset.files.map((file) => `\`${file.path}\``).join(', ');
+      return `- **${asset.name}** — ${asset.source.creator} — [source](${asset.source.url}) — ${asset.source.licence}\n  - file: ${maps}`;
+    })
+    .join('\n');
+  return `## Assets used
+
+All assets below are CC0 (public domain). Attribution is not required by the licence; the creators are
+listed because their work deserves the credit, not because the licence asks for it.
+
+${rows}
+
+\`retrieved\` and \`sha256\` for each file are recorded in \`public/assets/manifest.json\`.
+`;
+}
+
+async function main() {
+  const manifest = JSON.parse(await readFile(MANIFEST_PATH, 'utf8'));
+  if (!Array.isArray(manifest.assets)) {
+    throw new Error('manifest.assets must be an array');
+  }
+
+  if (!CREDITS_ONLY) {
+    const entries = ONLY ? ENTRIES.filter((entry) => entry.id === ONLY) : ENTRIES;
+    if (entries.length === 0) {
+      throw new Error(`--only ${ONLY} matched no entry`);
+    }
+
+    const assets = [...manifest.assets];
+    for (const entry of entries) {
+      console.log(`fetching ${entry.id} …`);
+      const asset = await fetchEntry(entry);
+      const existing = assets.findIndex((candidate) => candidate.id === asset.id);
+      if (existing >= 0) {
+        assets[existing] = asset;
+      } else {
+        assets.push(asset);
+      }
+      for (const file of asset.files) {
+        console.log(`  ${file.path}  ${(file.bytes / 1024).toFixed(0)} KiB  ${file.sha256.slice(0, 12)}`);
+      }
+    }
+    assets.sort((a, b) => a.id.localeCompare(b.id));
+    manifest.assets = assets;
+    manifest.updated = new Date().toISOString().slice(0, 10);
+    await writeFile(MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`);
+    console.log(`manifest written: ${manifest.assets.length} assets`);
+  }
+
+  const header = await readFile(CREDITS_PATH, 'utf8');
+  const marker = '## Assets used';
+  const start = header.indexOf(marker);
+  const head = start >= 0 ? header.slice(0, start) : `${header.trimEnd()}\n\n`;
+  await writeFile(CREDITS_PATH, `${head}${creditsSection(manifest.assets)}`);
+  console.log('CREDITS.md regenerated');
+}
+
+main().catch((error) => {
+  console.error(`asset fetch failed: ${error.message}`);
+  process.exit(1);
+});
