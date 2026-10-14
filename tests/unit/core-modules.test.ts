@@ -10,6 +10,15 @@ import { Drivetrain } from '../../src/vehicles/Drivetrain';
 import { PerformanceMonitor } from '../../src/core/PerformanceMonitor';
 import { SceneManager } from '../../src/core/SceneManager';
 import { DiagnosticsOverlay } from '../../src/ui/DiagnosticsOverlay';
+import {
+  ASSET_MANIFEST_URL,
+  findEnvironmentAsset,
+  loadEnvironmentAsset,
+  loadHdrTexture,
+  readAssetManifest,
+} from '../../src/assets/AssetManifest';
+import { applySunPosition, createAtmosphereSky } from '../../src/shaders/atmosphere-sky';
+import { createGroundGridColorNode, linearColor } from '../../src/shaders/ground-grid';
 
 /**
  * Module-level API checks. These run in a Node environment and deliberately do not
@@ -24,6 +33,7 @@ describe('core module API surface', () => {
   it('exposes the engine lifecycle and wiring API', () => {
     const methods = prototypeMethods(Engine);
     for (const method of [
+      'init',
       'start',
       'stop',
       'resize',
@@ -41,8 +51,44 @@ describe('core module API surface', () => {
 
   it('exposes the scene manager API', () => {
     const methods = prototypeMethods(SceneManager);
-    for (const method of ['update', 'resize', 'getObjectCount', 'getDiagnostics', 'dispose']) {
+    for (const method of [
+      'loadEnvironment',
+      'update',
+      'setDebugCameraEnabled',
+      'addObject',
+      'removeObject',
+      'followCamera',
+      'setShadowCamera',
+      'focusSun',
+      'resize',
+      'getObjectCount',
+      'getDiagnostics',
+      'dispose',
+    ]) {
       expect(methods).toContain(method);
+    }
+  });
+
+  it('exposes the Phase 3 asset manifest API', () => {
+    for (const fn of [
+      readAssetManifest,
+      findEnvironmentAsset,
+      loadEnvironmentAsset,
+      loadHdrTexture,
+    ]) {
+      expect(typeof fn).toBe('function');
+    }
+    expect(ASSET_MANIFEST_URL).toBe('assets/manifest.json');
+  });
+
+  it('exposes the Phase 3 shader node factories', () => {
+    for (const fn of [
+      createAtmosphereSky,
+      applySunPosition,
+      createGroundGridColorNode,
+      linearColor,
+    ]) {
+      expect(typeof fn).toBe('function');
     }
   });
 

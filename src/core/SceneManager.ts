@@ -1,26 +1,33 @@
 import {
   AmbientLight,
-  BackSide,
   BoxGeometry,
   Color,
-  type BufferGeometry,
-  type Material,
   DirectionalLight,
   Fog,
   Mesh,
-  MeshStandardMaterial,
   PerspectiveCamera,
   PlaneGeometry,
   Scene,
-  ShaderMaterial,
-  SphereGeometry,
   Vector3,
+  type BufferGeometry,
+  type Material,
   type Object3D,
 } from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
+import { uniform } from 'three/tsl';
+import { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
+import {
+  loadEnvironmentAsset,
+  loadHdrTexture,
+  type EnvironmentAsset,
+} from '../assets/AssetManifest';
 import type { RenderConfig } from '../config/render';
-import { WORLD_CONFIG, type GridConfig, type WorldConfig } from '../config/world';
+import { WORLD_CONFIG, type WorldConfig } from '../config/world';
 import type { Vec3 } from '../shared/vector';
+import { createAtmosphereSky } from '../shaders/atmosphere-sky';
+import { createGroundGridColorNode, linearColor } from '../shaders/ground-grid';
 import type { Viewport } from './Engine';
 
 export interface SceneManagerOptions {
@@ -32,81 +39,67 @@ export interface SceneManagerOptions {
 
 export interface SceneDiagnostics {
   readonly objectCount: number;
+  /** Backdrop currently drawn: the procedural Preetham sky or an HDRI background. */
+  readonly skyMode: 'procedural' | 'hdri';
+  /** Manifest id of the HDRI lighting the scene, or `null` while only the sun lights it. */
+  readonly environmentId: string | null;
   readonly cameraPosition: { readonly x: number; readonly y: number; readonly z: number };
 }
-
-const SKY_VERTEX_SHADER = /* glsl */ `
-varying vec3 vWorldDirection;
-
-void main() {
-  vWorldDirection = normalize(position);
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}
-`;
-
-/**
- * Three-stop gradient dome. The tone-mapping and color-space chunks are included so the
- * dome matches the tone-mapped scene instead of glowing outside the exposure curve.
- */
-const SKY_FRAGMENT_SHADER = /* glsl */ `
-uniform vec3 zenithColor;
-uniform vec3 horizonColor;
-uniform vec3 groundColor;
-uniform float gradientExponent;
-
-varying vec3 vWorldDirection;
-
-void main() {
-  float height = normalize(vWorldDirection).y;
-  float above = pow(clamp(height, 0.0, 1.0), gradientExponent);
-  float below = clamp(-height * 5.0, 0.0, 1.0);
-  vec3 sky = mix(horizonColor, zenithColor, above);
-  gl_FragColor = vec4(mix(sky, groundColor, below), 1.0);
-
-  #include <tonemapping_fragment>
-  #include <colorspace_fragment>
-}
-`;
 
 /** Sun/shadow focus quantization in meters; keeps the shadow map from crawling under motion. */
 const SHADOW_FOCUS_SNAP = 2;
 
+/** Degrees to radians. */
+const DEG_TO_RAD = Math.PI / 180;
+
 /**
- * Owns the scene graph: sky, reference lighting with a shadow-casting sun, the static arena
- * ground, and the debug orbit camera.
+ * Owns the scene graph: sky, lighting, the static arena ground, the debug orbit camera, and the
+ * environment lighting.
  *
- * Phase 2 responsibilities added to the Phase 1 foundation:
- * - ground and obstacle geometry come from `WORLD_CONFIG`, the same source the physics world
- *   builds its colliders from, so visuals and colliders cannot drift apart;
- * - the sun and its shadow frustum follow the vehicle (`focusSun`), because a fixed shadow
- *   camera would leave the car without shadows after a few seconds of driving;
- * - the debug orbit camera can be enabled/disabled so gameplay owns the render camera while the
- *   orbit controls remain available for inspection.
+ * Phase 3 responsibilities:
+ * - the sky is a Preetham atmosphere model (`SkyMesh`, TSL) instead of a hand-written gradient
+ *   shader, so the horizon, sun disc, and cloud layer respond to the same sun direction the shadow
+ *   camera and the fog colour use;
+ * - image-based lighting comes from a verified CC0 HDRI resolved through the asset manifest, so the
+ *   scene reflects a real captured environment while remaining licence-auditable;
+ * - shadows are cascaded (`CSMShadowNode`) so the car keeps a crisp shadow at distance without the
+ *   single shadow camera either ballooning or being forced to chase it;
+ * - the ground grid is a TSL node material. It used to be a GLSL patch injected through
+ *   `onBeforeCompile`, which does not exist on the WebGPU backend; `npm run guard:glsl` now forbids
+ *   that API from returning.
  *
  * Every resource created here is released in `dispose`. The ground and obstacles remain temporary
- * placeholders for the procedural world planned in Phase 3.
+ * placeholders for the procedural world planned in Phase 4.
  */
 export class SceneManager {
   readonly scene: Scene;
   /** Debug orbit camera. Gameplay renders through the chase camera owned by the application. */
   readonly camera: PerspectiveCamera;
   readonly controls: OrbitControls;
+  readonly #config: RenderConfig;
+  readonly #sky: SkyMesh;
   readonly #sun: DirectionalLight;
   readonly #sunOffset: Vector3;
   readonly #sunTarget = new Vector3();
+  readonly #csm: CSMShadowNode | null;
+  readonly #fog: Fog | null;
   readonly #addedObjects = new Set<Object3D>();
   readonly #disposables: readonly (() => void)[];
+  #environment: EnvironmentAsset | null = null;
+  #environmentTexture: { dispose(): void } | null = null;
+  #disposed = false;
 
   constructor(options: SceneManagerOptions) {
     const { config } = options;
     const worldConfig = options.worldConfig ?? WORLD_CONFIG;
     const aspect = Number.isFinite(options.aspect) && options.aspect > 0 ? options.aspect : 1;
 
+    this.#config = config;
     this.scene = new Scene();
-    this.scene.background = new Color(config.sky.horizonColor);
-    if (config.sky.fogEnabled) {
-      this.scene.fog = new Fog(config.sky.horizonColor, config.sky.fogNear, config.sky.fogFar);
-    }
+    this.#fog = config.sky.fogEnabled
+      ? new Fog(resolveFogColor(config), config.sky.fogNear, config.sky.fogFar)
+      : null;
+    this.scene.fog = this.#fog;
 
     this.camera = new PerspectiveCamera(
       config.camera.fov,
@@ -126,7 +119,7 @@ export class SceneManager {
     this.controls.maxPolarAngle = config.camera.maxPolarAngle;
     this.controls.update();
 
-    const sky = createSkyDome(config);
+    this.#sky = createAtmosphereSky(config);
     const ground = createGround(worldConfig);
     const obstacles = createObstacles(worldConfig);
     const ambient = new AmbientLight(
@@ -135,13 +128,55 @@ export class SceneManager {
     );
     this.#sun = createSun(config);
     this.#sunOffset = new Vector3(...config.lighting.sunPosition);
+    this.#csm = attachCascades(this.#sun, config);
 
-    this.scene.add(sky, ground, ambient, this.#sun, this.#sun.target);
+    this.scene.add(this.#sky, ground, ambient, this.#sun, this.#sun.target);
     if (obstacles.length > 0) {
       this.scene.add(...obstacles);
     }
 
     this.#disposables = [() => this.controls.dispose(), () => disposeObjectTree(this.scene)];
+  }
+
+  /**
+   * Loads the configured HDRI from the asset manifest and lights the scene with it.
+   *
+   * Called once by the composition root after the renderer is initialised. Until (and if) the asset
+   * resolves, the scene is lit by the procedural sky and the directional sun alone, which is a valid
+   * — if flatter — look, never a black scene.
+   */
+  async loadEnvironment(): Promise<EnvironmentAsset | null> {
+    if (this.#disposed || !this.#config.environment.enabled) {
+      return null;
+    }
+
+    try {
+      const asset = await loadEnvironmentAsset(this.#config.environment.assetId);
+      if (asset === null) {
+        return null;
+      }
+      const texture = await loadHdrTexture(asset.file);
+      if (this.#disposed) {
+        texture.dispose();
+        return null;
+      }
+      this.scene.environment = texture;
+      this.scene.environmentIntensity = this.#config.environment.intensity;
+      this.scene.environmentRotation.y = this.#config.environment.rotationDegrees * DEG_TO_RAD;
+      if (this.#config.environment.useAsBackground) {
+        this.scene.background = texture;
+        this.scene.backgroundIntensity = 1;
+      }
+      this.#environmentTexture = texture;
+      this.#environment = asset;
+    } catch (error) {
+      console.warn(
+        `could not load the environment HDRI (${this.#config.environment.assetId}); ` +
+          'falling back to the procedural sky',
+        error,
+      );
+    }
+    return this.#environment;
   }
 
   /**
@@ -174,11 +209,37 @@ export class SceneManager {
   }
 
   /**
-   * Moves the sun and its shadow frustum to follow the vehicle.
+   * Keeps the sky centred on the rendering camera. The dome is drawn at the far plane, so it is the
+   * *direction* from the camera that matters: moving it along means the atmosphere never shears as
+   * the car drives away from the origin.
+   */
+  followCamera(position: Vec3): void {
+    this.#sky.position.set(position.x, position.y, position.z);
+  }
+
+  /**
+   * Points the cascade shadow maps at the camera that is actually rendering.
+   *
+   * `CSMShadowNode` derives its cascade splits from a camera frustum and caches them, so the
+   * application must call this whenever the active camera or its projection changes (mode switch,
+   * field-of-view change, resize). It is cheap but not free, which is why it is event-driven rather
+   * than per-frame.
+   */
+  setShadowCamera(camera: PerspectiveCamera): void {
+    if (this.#csm === null || this.#csm.camera === camera) {
+      return;
+    }
+    this.#csm.camera = camera;
+    this.#csm.updateFrustums();
+  }
+
+  /**
+   * Moves the sun and its shadow focus to follow the vehicle.
    *
    * The focus is quantized to a couple of meters so the shadow map does not shimmer as the car
-   * creeps forward, and the vertical focus stays at ground level so the shadow camera always
-   * points at the surface shadows land on.
+   * creeps forward, and the vertical focus stays at ground level so the shadow camera always points
+   * at the surface shadows land on. Direction is what matters for a directional light; the cascade
+   * splits do the rest.
    */
   focusSun(position: Vec3): void {
     const x = Math.round(position.x / SHADOW_FOCUS_SNAP) * SHADOW_FOCUS_SNAP;
@@ -193,6 +254,9 @@ export class SceneManager {
   resize(viewport: Viewport): void {
     this.camera.aspect = viewport.aspect;
     this.camera.updateProjectionMatrix();
+    if (this.#csm !== null && this.#csm.camera === this.camera) {
+      this.#csm.updateFrustums();
+    }
   }
 
   getObjectCount(): number {
@@ -207,57 +271,76 @@ export class SceneManager {
     const { x, y, z } = this.camera.position;
     return {
       objectCount: this.getObjectCount(),
+      skyMode: this.scene.background === null ? 'procedural' : 'hdri',
+      environmentId: this.#environment?.id ?? null,
       cameraPosition: { x, y, z },
     };
   }
 
   dispose(): void {
+    if (this.#disposed) {
+      return;
+    }
+    this.#disposed = true;
     this.#addedObjects.clear();
+    this.scene.environment = null;
+    this.scene.background = null;
+    this.#environmentTexture?.dispose();
+    this.#environmentTexture = null;
     for (const dispose of this.#disposables) {
       dispose();
     }
   }
 }
 
-function createSkyDome(config: RenderConfig): Mesh {
-  const material = new ShaderMaterial({
-    uniforms: {
-      zenithColor: { value: new Color(config.sky.zenithColor) },
-      horizonColor: { value: new Color(config.sky.horizonColor) },
-      groundColor: { value: new Color(config.sky.groundColor) },
-      gradientExponent: { value: config.sky.gradientExponent },
-    },
-    vertexShader: SKY_VERTEX_SHADER,
-    fragmentShader: SKY_FRAGMENT_SHADER,
-    side: BackSide,
-    depthWrite: false,
-    fog: false,
-  });
+/**
+ * Fog colour for the configured sun elevation.
+ *
+ * Fog is what hides the end of the render distance, so it has to match the sky it is seen against: a
+ * warm, hazy tint near the horizon at low sun, a cooler blue once the sun is high. Interpolating
+ * between two endpoints keeps this a two-line rule while still being driven by the same sun the sky
+ * and the shadows use - when a later phase animates the sun, this follows for free.
+ */
+function resolveFogColor(config: RenderConfig): Color {
+  const [, sunY] = config.lighting.sunPosition;
+  const length = Math.hypot(...config.lighting.sunPosition);
+  const elevation = length > 0 ? sunY / length : 1;
+  // 0 at the horizon, 1 once the sun is well up.
+  const blend = Math.min(1, Math.max(0, (elevation - 0.08) / 0.35));
+  return new Color(config.sky.fogColorHorizon).lerp(new Color(config.sky.fogColorDay), blend);
+}
 
-  const sky = new Mesh(new SphereGeometry(config.sky.radius, 32, 16), material);
-  sky.name = 'sky-dome';
-  // The camera is always inside the dome; skip culling math for a static backdrop.
-  sky.frustumCulled = false;
-  // The dome is a backdrop, never a solid occluder. Without this it is drawn among the opaque
-  // objects after depth-less geometry and paints over it — visibly erasing every grid line below
-  // the horizon. Rendering first with depth testing disabled guarantees the dome sits behind
-  // everything regardless of draw order.
-  sky.renderOrder = -1;
-  material.depthTest = false;
-  return sky;
+/**
+ * Static obstacle meshes. These are still the Phase 1 reference blocks used as physics test targets;
+ * the collider for each one is built by `PhysicsWorld` from the same definitions, so visuals and
+ * colliders cannot drift apart. Phases 4-5 replace them with authored props.
+ */
+function createObstacles(worldConfig: WorldConfig): Mesh[] {
+  return worldConfig.obstacles.map((obstacle) => {
+    const material = new MeshStandardNodeMaterial({
+      color: new Color(obstacle.color),
+      roughness: 0.8,
+      metalness: 0,
+    });
+    const mesh = new Mesh(new BoxGeometry(...obstacle.size), material);
+    mesh.name = `obstacle-${obstacle.id}`;
+    mesh.position.set(...obstacle.position);
+    mesh.castShadow = obstacle.castShadow;
+    mesh.receiveShadow = true;
+    return mesh;
+  });
 }
 
 function createGround(worldConfig: WorldConfig): Mesh {
   const { ground } = worldConfig;
-  const material = new MeshStandardMaterial({
-    color: new Color(ground.color),
+  const material = new MeshStandardNodeMaterial({
+    name: 'ground',
     roughness: ground.roughness,
     metalness: ground.metalness,
   });
-
-  if (ground.grid.enabled) {
-    applyProceduralGrid(material, ground.grid);
-  }
+  material.colorNode = ground.grid.enabled
+    ? createGroundGridColorNode(ground)
+    : uniform(linearColor(ground.color));
 
   const mesh = new Mesh(new PlaneGeometry(ground.size, ground.size), material);
   mesh.name = 'ground-plane';
@@ -267,117 +350,12 @@ function createGround(worldConfig: WorldConfig): Mesh {
 }
 
 /**
- * Static obstacle meshes. Phase 2 keeps the Phase 1 reference blocks as physics test targets; the
- * collider for each one is built by `PhysicsWorld` from the same definitions.
- */
-function createObstacles(worldConfig: WorldConfig): Mesh[] {
-  return worldConfig.obstacles.map((obstacle) => {
-    const geometry = new BoxGeometry(...obstacle.size);
-    const material = new MeshStandardMaterial({
-      color: new Color(obstacle.color),
-      roughness: 0.8,
-      metalness: 0,
-    });
-    const mesh = new Mesh(geometry, material);
-    mesh.name = `obstacle-${obstacle.id}`;
-    mesh.position.set(...obstacle.position);
-    mesh.castShadow = obstacle.castShadow;
-    mesh.receiveShadow = true;
-    return mesh;
-  });
-}
-
-interface GridUniforms {
-  readonly gridLineColor: { value: Color };
-  readonly gridCenterLineColor: { value: Color };
-  readonly gridSpacing: { value: number };
-  readonly gridLineWidth: { value: number };
-  readonly gridFadeDistance: { value: number };
-  readonly gridStrength: { value: number };
-}
-
-/**
- * Draws the reference grid inside the ground material instead of as separate coplanar geometry.
+ * Shadow-casting sun.
  *
- * A `GridHelper` 1-2 cm above an 800 m plane z-fights badly: at that scale the depth buffer cannot
- * resolve two nearly coincident surfaces, so distant lines dissolve and the surface visibly
- * flickers. Deriving anti-aliased lines from the world position keeps the plane a single surface,
- * respects the PBR lighting/shadows, and fades the grid out before it aliases at distance.
- *
- * This is what Phase 3 terrain material blending will build on; it is replaced, not extended, by
- * authored roads and terrain splatting.
+ * With cascades the shadow camera no longer has to be a compromise between a tight focus around the
+ * car and a usable range; each cascade covers a slice of the view frustum. The single-frustum values
+ * in the config remain as the path used when cascades are disabled.
  */
-function applyProceduralGrid(material: MeshStandardMaterial, grid: GridConfig): void {
-  const uniforms: GridUniforms = {
-    gridLineColor: { value: new Color(grid.lineColor) },
-    gridCenterLineColor: { value: new Color(grid.centerLineColor) },
-    gridSpacing: { value: grid.spacing },
-    gridLineWidth: { value: grid.lineWidth },
-    gridFadeDistance: { value: grid.fadeDistance },
-    gridStrength: { value: grid.strength },
-  };
-
-  material.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, uniforms);
-
-    shader.vertexShader = shader.vertexShader
-      .replace(
-        '#include <common>',
-        ['#include <common>', 'varying vec3 vGridWorldPosition;'].join('\n'),
-      )
-      .replace(
-        '#include <begin_vertex>',
-        [
-          '#include <begin_vertex>',
-          'vGridWorldPosition = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;',
-        ].join('\n'),
-      );
-
-    shader.fragmentShader = shader.fragmentShader
-      .replace(
-        '#include <common>',
-        [
-          '#include <common>',
-          'varying vec3 vGridWorldPosition;',
-          'uniform vec3 gridLineColor;',
-          'uniform vec3 gridCenterLineColor;',
-          'uniform float gridSpacing;',
-          'uniform float gridLineWidth;',
-          'uniform float gridFadeDistance;',
-          'uniform float gridStrength;',
-          '',
-          'float gridCoverage( vec2 coord, float width ) {',
-          '  vec2 derivative = max( fwidth( coord ), vec2( 1e-5 ) );',
-          '  vec2 distanceToLine = abs( fract( coord - 0.5 ) - 0.5 ) / derivative;',
-          '  float line = min( distanceToLine.x, distanceToLine.y );',
-          '  return 1.0 - min( line / width, 1.0 );',
-          '}',
-        ].join('\n'),
-      )
-      .replace(
-        '#include <color_fragment>',
-        [
-          '#include <color_fragment>',
-          '{',
-          '  vec2 planeCoord = vGridWorldPosition.xz;',
-          '  float gridMask = gridCoverage( planeCoord / gridSpacing, gridLineWidth );',
-          '  vec2 axisDerivative = max( fwidth( planeCoord ), vec2( 1e-5 ) );',
-          '  vec2 axisDistance = abs( planeCoord ) / ( axisDerivative * gridLineWidth * 3.0 );',
-          '  float axisMask = 1.0 - min( min( axisDistance.x, axisDistance.y ), 1.0 );',
-          '  float visibility = 1.0 - smoothstep( gridFadeDistance * 0.5, gridFadeDistance,',
-          '    distance( vGridWorldPosition, cameraPosition ) );',
-          '  vec3 lineColor = mix( gridLineColor, gridCenterLineColor, axisMask );',
-          '  float blend = max( gridMask, axisMask ) * gridStrength * visibility;',
-          '  diffuseColor.rgb = mix( diffuseColor.rgb, lineColor, blend );',
-          '}',
-        ].join('\n'),
-      );
-  };
-
-  // Distinguish the patched program from the stock MeshStandardMaterial program.
-  material.customProgramCacheKey = () => 'endless-driver-ground-grid';
-}
-
 function createSun(config: RenderConfig): DirectionalLight {
   const sun = new DirectionalLight(
     new Color(config.lighting.sunColor),
@@ -399,6 +377,30 @@ function createSun(config: RenderConfig): DirectionalLight {
   sun.shadow.blurSamples = config.shadows.vsmBlurSamples;
   sun.target.name = 'sun-target';
   return sun;
+}
+
+/**
+ * Attaches the cascaded shadow node to the sun's shadow.
+ *
+ * `AnalyticLightNode` checks `light.shadow.shadowNode` first and uses it verbatim when present, so
+ * assigning it here is the whole integration. A single cascade is not cascaded shadows, so the
+ * plain shadow path is used when the config asks for one.
+ */
+function attachCascades(sun: DirectionalLight, config: RenderConfig): CSMShadowNode | null {
+  const { csm } = config.shadows;
+  if (csm.cascades < 2) {
+    return null;
+  }
+  const node = new CSMShadowNode(sun, {
+    cascades: csm.cascades,
+    maxFar: Math.min(csm.maxFar, config.camera.far),
+    mode: csm.mode,
+    lightMargin: csm.lightMargin,
+  });
+  // `fade` is a public property of the node; the pinned type definitions predate it.
+  node.fade = csm.fade;
+  sun.shadow.shadowNode = node;
+  return node;
 }
 
 function disposeObjectTree(scene: Scene): void {

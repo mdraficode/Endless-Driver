@@ -52,8 +52,9 @@ async function start(): Promise<void> {
 
   let application: Application;
   try {
-    // Rapier ships as WebAssembly and initialises asynchronously, so the composition root awaits
-    // it before wiring the vehicle. Nothing else in the application is async.
+    // Two async preconditions before the first frame: Rapier ships as WebAssembly and has to
+    // initialise before the vehicle can be wired, and `WebGPURenderer` builds its device and
+    // backend asynchronously. `start()` awaits the renderer and the environment HDRI.
     const rapier = await loadRapier();
 
     const options: ApplicationOptions = {
@@ -66,7 +67,7 @@ async function start(): Promise<void> {
     };
 
     application = new Application(options);
-    application.start();
+    await application.start();
   } catch (error) {
     reportStartupFailure(error);
     return;
@@ -79,7 +80,7 @@ async function start(): Promise<void> {
         application.stop();
       },
       resume: () => {
-        application.start();
+        void application.start();
       },
     };
   }

@@ -87,8 +87,9 @@ and **falls back to a WebGL2 backend automatically**. TSL compiles to WGSL on We
 backend, and the same `RenderPipeline` post-processing stack runs on both. The WebGL2 backend emulates compute
 via transform feedback and lacks storage textures and indirect draws.
 
-**Cost of migrating.** Our current custom shaders use `ShaderMaterial`/`onBeforeCompile` (the Phase 1 ground grid
-does), which **do not run on the WebGPU backend** and must be rewritten in TSL; `EffectComposer` and
+**Cost of migrating.** Our custom shaders used `ShaderMaterial`/`onBeforeCompile` (the Phase 1 sky dome and ground
+grid did), which **do not run on the WebGPU backend**; the Phase 3 migration rewrote both in TSL and added a
+source guard (`npm run guard:glsl`). `EffectComposer` and
 `pmndrs/postprocessing` are WebGL-only and are replaced by `RenderPipeline`. Community reports put non-trivial
 ports at weeks-to-months of work ([migration guide](https://www.utsubo.com/blog/webgpu-threejs-migration-guide),
 [field notes](https://www.buildmvpfast.com/blog/threejs-webgl-to-webgpu-renderer-migration-2026)).

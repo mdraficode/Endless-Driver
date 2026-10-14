@@ -61,7 +61,10 @@ for (const asset of manifest.assets) {
       `${label}: CC-BY assets must carry an attribution string`,
     );
   }
-  require_(Array.isArray(asset.files) && asset.files.length > 0, `${label}: at least one file is required`);
+  require_(
+    Array.isArray(asset.files) && asset.files.length > 0,
+    `${label}: at least one file is required`,
+  );
 
   for (const file of asset.files ?? []) {
     const absolute = join(PUBLIC_DIR, file.path);
@@ -73,7 +76,10 @@ for (const asset of manifest.assets) {
       continue;
     }
     require_(info.isFile(), `${label}: ${file.path} is not a regular file`);
-    require_(info.size === file.bytes, `${label}: ${file.path} size ${info.size} != manifest ${file.bytes}`);
+    require_(
+      info.size === file.bytes,
+      `${label}: ${file.path} size ${info.size} != manifest ${file.bytes}`,
+    );
     const digest = sha256(await readFile(absolute));
     require_(
       digest === file.sha256,
@@ -81,7 +87,10 @@ for (const asset of manifest.assets) {
     );
   }
 
-  require_(credits.includes(asset.source.url), `${label}: CREDITS.md does not reference ${asset.source.url}`);
+  require_(
+    credits.includes(asset.source.url),
+    `${label}: CREDITS.md does not reference ${asset.source.url}`,
+  );
 }
 
 if (problems.length > 0) {

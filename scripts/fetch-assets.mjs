@@ -136,7 +136,8 @@ async function fetchEntry(entry) {
 
   if (entry.kind === 'hdri') {
     const target = join(PUBLIC_DIR, entry.runtimePath);
-    const buffer = FORCE || !existsSync(target) ? await download(entry.url) : await readFile(target);
+    const buffer =
+      FORCE || !existsSync(target) ? await download(entry.url) : await readFile(target);
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, buffer);
     files.push({
@@ -233,7 +234,9 @@ async function main() {
         assets.push(asset);
       }
       for (const file of asset.files) {
-        console.log(`  ${file.path}  ${(file.bytes / 1024).toFixed(0)} KiB  ${file.sha256.slice(0, 12)}`);
+        console.log(
+          `  ${file.path}  ${(file.bytes / 1024).toFixed(0)} KiB  ${file.sha256.slice(0, 12)}`,
+        );
       }
     }
     assets.sort((a, b) => a.id.localeCompare(b.id));

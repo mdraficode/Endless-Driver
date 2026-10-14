@@ -1,10 +1,13 @@
 import type { CameraMode } from '../config/camera';
+import type { RendererBackendName } from '../config/render';
 
 /**
  * Diagnostics HUD.
  *
- * Phase 1 reported render health; Phase 2 adds vehicle and physics state so driving behaviour can
- * be observed without a debugger. The overlay only touches the DOM when `update` is called on the
+ * Phase 1 reported render health; Phase 2 added vehicle and physics state; Phase 3 reports which
+ * renderer backend is actually running and where the scene's light comes from, because "did the
+ * WebGL2 fallback engage, and did the HDRI load?" is the first question any rendering problem on a
+ * given machine starts with. The overlay only touches the DOM when `update` is called on the
  * application's HUD interval, keeping per-frame work out of the render loop. All values are
  * formatted from the snapshot; nothing here reads engine internals directly.
  */
@@ -15,6 +18,19 @@ export interface DiagnosticsSnapshot {
   readonly p95FrameTimeMilliseconds: number;
   readonly drawCalls: number;
   readonly triangles: number;
+  /**
+   * Backend that ended up rendering: `webgpu` when the browser exposes a working WebGPU device,
+   * `webgl2` when the renderer fell back, `pending` before initialisation resolves.
+   */
+  readonly rendererBackend: RendererBackendName | 'pending';
+  /** Whether frames go through the `RenderPipeline` output chain (bloom, tone mapping). */
+  readonly postProcessing: boolean;
+  /** Cascades in the shadow atlas; 1 means the plain single-frustum shadow path. */
+  readonly shadowCascades: number;
+  /** Backdrop in use; `hdri` means the environment texture is also the background. */
+  readonly skyMode: 'procedural' | 'hdri';
+  /** Manifest id of the HDRI lighting the scene, or `null` when only the sun lights it. */
+  readonly environmentId: string | null;
   readonly pixelRatio: number;
   readonly viewport: { readonly width: number; readonly height: number };
   readonly cameraPosition: { readonly x: number; readonly y: number; readonly z: number };
@@ -131,6 +147,18 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
     format: (snapshot) =>
       `${snapshot.viewport.width}×${snapshot.viewport.height} @ ${snapshot.pixelRatio.toFixed(2)}x`,
   },
+  {
+    label: 'Renderer',
+    format: (snapshot) =>
+      `${snapshot.rendererBackend}${snapshot.postProcessing ? ' · post' : ''} · ${snapshot.shadowCascades}x shadow`,
+  },
+  {
+    label: 'Sky',
+    format: (snapshot) =>
+      snapshot.environmentId === null
+        ? snapshot.skyMode
+        : `${snapshot.skyMode} · ${snapshot.environmentId}`,
+  },
   { label: 'Draw calls', format: (snapshot) => String(snapshot.drawCalls) },
   { label: 'Triangles', format: (snapshot) => snapshot.triangles.toLocaleString('en-US') },
   { label: 'Scene objects', format: (snapshot) => String(snapshot.sceneObjects) },
@@ -178,7 +206,7 @@ export class DiagnosticsOverlay {
 
     const heading = document.createElement('p');
     heading.className = 'mb-1 font-sans text-[10px] font-semibold tracking-[0.18em] uppercase';
-    heading.textContent = options.subtitle ?? 'Phase 2 · vehicle physics';
+    heading.textContent = options.subtitle ?? 'Phase 3 · renderer & lighting';
     heading.classList.add('text-teal-300');
     this.#panel.append(heading);
 

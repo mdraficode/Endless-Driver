@@ -63,6 +63,9 @@ export class Application {
   #cameraMode: CameraMode = 'chase';
   #hudTimer = 0;
   #firstFrameRendered = false;
+  #environmentLoaded = false;
+  #shadowCamera: PerspectiveCamera | null = null;
+  #shadowCameraFieldOfView = 0;
   #disposed = false;
 
   constructor(options: ApplicationOptions) {
@@ -101,12 +104,15 @@ export class Application {
     this.#carVisual.sync(initialPose);
     this.#chaseCamera.snapTo(initialPose);
     this.#scene.focusSun(initialPose.position);
+    this.#scene.followCamera(this.#chaseCamera.camera.position);
     this.#syncDebugCamera(initialPose, true);
 
     this.#unsubscribers = [
       this.#engine.onResize((viewport) => {
         this.#scene.resize(viewport);
         this.#chaseCamera.resize(viewport.aspect);
+        // Cascade splits are derived from the camera frustum, so the aspect change invalidates them.
+        this.#shadowCamera = null;
       }),
       this.#engine.onFrame((frame) => {
         this.#renderFrame(frame);
@@ -122,7 +128,7 @@ export class Application {
     this.#scene.setDebugCameraEnabled(this.#cameraMode === 'orbit');
     this.#engine.resize();
     this.#hudTimer = this.#config.diagnostics.hudUpdateIntervalSeconds;
-    this.#setStatus('Loading complete — drive with W A S D, Space handbrake, R reset, C camera.');
+    this.#setStatus('Preparing the renderer…');
     this.#overlay?.update(this.getDiagnostics());
   }
 
@@ -154,10 +160,29 @@ export class Application {
     return this.#engine.isRunning;
   }
 
-  start(): void {
+  /**
+   * Starts the renderer and the frame loop.
+   *
+   * Async because `WebGPURenderer` builds its device, backend, and node systems asynchronously, and
+   * the environment HDRI is fetched from the asset manifest after that. The first frame is only
+   * scheduled once both are ready, so the loop never renders against a renderer that is still
+   * initialising.
+   */
+  async start(): Promise<void> {
+    if (!this.#engine.isInitialized) {
+      await this.#engine.init();
+      await this.#loadEnvironment();
+      this.#shadowCamera = null;
+      this.#syncShadowCamera(this.#activeCamera());
+    }
+
     this.#physics.resetAccumulator();
     this.#input.reset();
     this.#engine.start();
+
+    if (!this.#firstFrameRendered) {
+      this.#setStatus('Loading complete — drive with W A S D, Space handbrake, R reset, C camera.');
+    }
   }
 
   stop(): void {
@@ -172,6 +197,8 @@ export class Application {
     }
     this.#cameraMode = mode;
     this.#scene.setDebugCameraEnabled(mode === 'orbit');
+    // The render camera changed, so the cascade splits have to be rebuilt for it.
+    this.#shadowCamera = null;
     const pose = this.#car.getInterpolatedPose(this.#physics.interpolationAlpha);
     if (mode === 'orbit') {
       this.#syncDebugCamera(pose, true);
@@ -193,8 +220,14 @@ export class Application {
     const telemetry = this.#car.telemetry;
     const physics = this.#physics.statistics;
     const pose = this.#car.getInterpolatedPose(this.#physics.interpolationAlpha);
+    const scene = this.#scene.getDiagnostics();
 
     return {
+      rendererBackend: this.#engine.backend ?? 'pending',
+      postProcessing: this.#engine.isPostProcessingEnabled,
+      shadowCascades: this.#config.shadows.csm.cascades,
+      skyMode: scene.skyMode,
+      environmentId: scene.environmentId,
       framesPerSecond: statistics.averageFramesPerSecond,
       minimumFramesPerSecond: statistics.minimumFramesPerSecond,
       averageFrameTimeMilliseconds: statistics.averageFrameTimeMilliseconds,
@@ -204,7 +237,7 @@ export class Application {
       pixelRatio: viewport.pixelRatio,
       viewport: { width: viewport.width, height: viewport.height },
       cameraPosition: { x: cameraPosition.x, y: cameraPosition.y, z: cameraPosition.z },
-      sceneObjects: this.#scene.getObjectCount(),
+      sceneObjects: scene.objectCount,
       totalFrames: this.#monitor.totalFrames,
       cameraMode: this.#cameraMode,
       cameraFov: activeCamera.fov,
@@ -288,7 +321,10 @@ export class Application {
       this.#scene.update(delta);
     }
 
-    this.#engine.render(this.#scene.scene, this.#activeCamera());
+    const activeCamera = this.#activeCamera();
+    this.#syncShadowCamera(activeCamera);
+    this.#scene.followCamera(activeCamera.position);
+    this.#engine.render(this.#scene.scene, activeCamera);
     this.#monitor.record(delta);
 
     if (!this.#firstFrameRendered) {
@@ -301,6 +337,39 @@ export class Application {
       this.#hudTimer = 0;
       this.#overlay?.update(this.getDiagnostics());
     }
+  }
+
+  /**
+   * Loads the environment lighting once. Failure is not fatal: the scene keeps the procedural sky
+   * and the directional sun, so a missing asset degrades the look instead of breaking the build.
+   */
+  async #loadEnvironment(): Promise<void> {
+    if (this.#environmentLoaded) {
+      return;
+    }
+    this.#environmentLoaded = true;
+    const asset = await this.#scene.loadEnvironment();
+    if (asset !== null) {
+      console.info(
+        `Endless Driver: environment lighting from "${asset.name}" (${asset.licence}, ${asset.creator})`,
+      );
+    }
+  }
+
+  /**
+   * Keeps the cascade shadow maps pointed at the camera that is actually rendering.
+   *
+   * Rebuilding cascades is event-driven, not per-frame: `CSMShadowNode` caches its splits, so it is
+   * told only when the camera identity or its field of view changes (mode switch, speed-based zoom,
+   * resize).
+   */
+  #syncShadowCamera(camera: PerspectiveCamera): void {
+    if (camera === this.#shadowCamera && camera.fov === this.#shadowCameraFieldOfView) {
+      return;
+    }
+    this.#shadowCamera = camera;
+    this.#shadowCameraFieldOfView = camera.fov;
+    this.#scene.setShadowCamera(camera);
   }
 
   #activeCamera(): PerspectiveCamera {

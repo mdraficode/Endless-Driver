@@ -1,13 +1,23 @@
 import {
   ACESFilmicToneMapping,
+  AgXToneMapping,
+  NeutralToneMapping,
   PCFShadowMap,
+  RenderPipeline,
   Timer,
   VSMShadowMap,
-  WebGLRenderer,
+  WebGPURenderer,
   type Camera,
   type Scene,
-} from 'three';
-import { RENDER_CONFIG, type RenderConfig } from '../config/render';
+} from 'three/webgpu';
+import { pass } from 'three/tsl';
+import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import {
+  RENDER_CONFIG,
+  type RenderConfig,
+  type RendererBackendName,
+  type ToneMappingName,
+} from '../config/render';
 import { clampFrameDelta, resolvePixelRatio } from '../shared/math';
 
 export interface Viewport {
@@ -42,36 +52,51 @@ export interface RenderStatistics {
 }
 
 /**
- * Shadow filtering modes supported by the pinned Three.js release. `PCFSoftShadowMap` was removed
- * in r186 (the renderer warns and downgrades to PCF), so the soft-shadow intent is expressed as PCF
- * by default with VSM available as an opt-in soft alternative.
+ * Shadow filtering modes. `PCFSoftShadowMap` was removed in r186 (the renderer warns and downgrades
+ * to PCF), so the soft-shadow intent is expressed as PCF by default with VSM as an opt-in
+ * alternative. Both backends of `WebGPURenderer` understand these filters.
  */
 const SHADOW_MAP_TYPES = {
   pcf: PCFShadowMap,
   vsm: VSMShadowMap,
 } as const;
 
+/** The scene pass node produced by the TSL `pass()` helper. */
+type ScenePassNode = ReturnType<typeof pass>;
+
+const TONE_MAPPINGS = {
+  aces: ACESFilmicToneMapping,
+  agx: AgXToneMapping,
+  neutral: NeutralToneMapping,
+} as const satisfies Record<ToneMappingName, number>;
+
 export type FrameHandler = (frame: FrameState) => void;
 export type ResizeHandler = (viewport: Viewport) => void;
 export type ContextHandler = () => void;
 
 /**
- * Owns the WebGL renderer, canvas sizing, and the requestAnimationFrame loop.
+ * Owns the renderer, the post-processing pipeline, canvas sizing, and the frame loop.
  *
- * Phase 1 responsibilities:
- * - one renderer with antialiasing, soft shadows, and ACES filmic tone mapping;
- * - a resize path that keeps the camera aspect and drawing buffer in sync while
- *   capping devicePixelRatio for mobile GPUs;
- * - a delta-time loop that clamps long frames and survives tab switches and
- *   WebGL context loss/restore.
+ * Phase 3 responsibilities:
+ * - one `WebGPURenderer` that renders through WebGPU where the browser has it and falls back to its
+ *   WebGL2 backend where it does not — a single code path, one set of TSL node materials, and the
+ *   backend choice reported through `backend` so the HUD can show what is actually running;
+ * - async initialisation (`renderer.init()` builds the device and the node systems), which the
+ *   application awaits before the first frame;
+ * - a `RenderPipeline` output chain (scene pass → bloom) with tone mapping and colour-space
+ *   conversion applied at the end of the chain, so post effects work in linear HDR;
+ * - a resize path that keeps the camera aspect and drawing buffer in sync while capping
+ *   devicePixelRatio for mobile GPUs;
+ * - a delta-time loop that clamps long frames and survives tab switches, WebGL context loss/restore
+ *   and WebGPU device loss.
  *
- * The engine never imports scene systems: callers register handlers and call
- * `render(scene, camera)` from a frame handler, which keeps ownership explicit.
+ * The engine never imports scene systems: callers register handlers and call `render(scene, camera)`
+ * from a frame handler, which keeps ownership explicit.
  */
 export class Engine {
   readonly #canvas: HTMLCanvasElement;
   readonly #config: RenderConfig;
-  readonly #renderer: WebGLRenderer;
+  readonly #renderer: WebGPURenderer;
   readonly #timer = new Timer();
   readonly #frameHandlers = new Set<FrameHandler>();
   readonly #resizeHandlers = new Set<ResizeHandler>();
@@ -79,6 +104,10 @@ export class Engine {
   readonly #contextRestoredHandlers = new Set<ContextHandler>();
   readonly #resizeObserver: ResizeObserver | null;
   readonly #listensToWindow: boolean;
+  #pipeline: RenderPipeline | null = null;
+  #scenePass: ScenePassNode | null = null;
+  #pipelineScene: Scene | null = null;
+  #pipelineCamera: Camera | null = null;
   #viewport: Viewport = { width: 0, height: 0, pixelRatio: 1, aspect: 1 };
   #animationFrame: number | null = null;
   #resizeFrame: number | null = null;
@@ -87,22 +116,28 @@ export class Engine {
   #wantsRunning = false;
   #contextLost = false;
   #disposed = false;
+  #initialized = false;
+  #backend: RendererBackendName | null = null;
 
   constructor(options: EngineOptions) {
     this.#canvas = options.canvas;
     this.#config = options.config ?? RENDER_CONFIG;
 
-    this.#renderer = new WebGLRenderer({
+    this.#renderer = new WebGPURenderer({
       canvas: this.#canvas,
-      antialias: true,
+      antialias: this.#config.renderer.antialias,
+      samples: this.#config.renderer.samples,
       alpha: false,
       stencil: false,
-      powerPreference: 'high-performance',
+      // `auto` keeps the WebGPU backend with its built-in WebGL2 fallback; `webgl` forces the
+      // fallback backend so the two paths can be compared on the same machine.
+      forceWebGL: this.#config.renderer.backendPreference === 'webgl',
     });
     this.#renderer.shadowMap.enabled = true;
     this.#renderer.shadowMap.type = SHADOW_MAP_TYPES[this.#config.shadows.shadowMapType];
-    this.#renderer.toneMapping = ACESFilmicToneMapping;
-    this.#renderer.toneMappingExposure = 1;
+    this.#renderer.toneMapping = TONE_MAPPINGS[this.#config.renderer.toneMapping];
+    this.#renderer.toneMappingExposure = this.#config.renderer.toneMappingExposure;
+    this.#renderer.onDeviceLost = this.#handleDeviceLost;
 
     this.#canvas.addEventListener('webglcontextlost', this.#handleContextLost);
     this.#canvas.addEventListener('webglcontextrestored', this.#handleContextRestored);
@@ -123,7 +158,7 @@ export class Engine {
     this.resize();
   }
 
-  get renderer(): WebGLRenderer {
+  get renderer(): WebGPURenderer {
     return this.#renderer;
   }
 
@@ -138,6 +173,34 @@ export class Engine {
 
   get isContextLost(): boolean {
     return this.#contextLost;
+  }
+
+  get isInitialized(): boolean {
+    return this.#initialized;
+  }
+
+  /** The backend that ended up rendering, or `null` before `init()` resolves. */
+  get backend(): RendererBackendName | null {
+    return this.#backend;
+  }
+
+  /** True when the post-processing output chain is in use for the current configuration. */
+  get isPostProcessingEnabled(): boolean {
+    return this.#config.postProcessing.enabled;
+  }
+
+  /**
+   * Starts the renderer. `WebGPURenderer` builds its device, backend, and node systems
+   * asynchronously, so nothing may be rendered before this resolves.
+   */
+  async init(): Promise<void> {
+    if (this.#initialized || this.#disposed) {
+      return;
+    }
+    await this.#renderer.init();
+    const backend = this.#renderer.backend as { isWebGLBackend?: boolean } | undefined;
+    this.#backend = backend?.isWebGLBackend === true ? 'webgl2' : 'webgpu';
+    this.#initialized = true;
   }
 
   onFrame(handler: FrameHandler): () => void {
@@ -215,8 +278,17 @@ export class Engine {
     }
   }
 
+  /**
+   * Renders one frame. When post-processing is configured the frame goes through the pipeline's
+   * output chain (scene pass → bloom → tone mapping → colour space); otherwise the renderer draws
+   * the scene directly.
+   */
   render(scene: Scene, camera: Camera): void {
-    if (this.#disposed || this.#contextLost) {
+    if (this.#disposed || this.#contextLost || !this.#initialized) {
+      return;
+    }
+    if (this.#updatePipeline(scene, camera)) {
+      this.#pipeline?.render();
       return;
     }
     this.#renderer.render(scene, camera);
@@ -225,7 +297,7 @@ export class Engine {
   getRenderStatistics(): RenderStatistics {
     const { render, memory } = this.#renderer.info;
     return {
-      drawCalls: render.calls,
+      drawCalls: render.drawCalls ?? render.calls,
       triangles: render.triangles,
       geometries: memory.geometries,
       textures: memory.textures,
@@ -258,7 +330,51 @@ export class Engine {
     this.#contextLostHandlers.clear();
     this.#contextRestoredHandlers.clear();
     this.#timer.dispose();
+    this.#pipeline?.dispose();
+    this.#pipeline = null;
+    this.#scenePass = null;
     this.#renderer.dispose();
+  }
+
+  /**
+   * Builds the post-processing chain on first use and re-points its scene pass when the active
+   * camera changes (gameplay chase camera ↔ debug orbit camera).
+   *
+   * Returns `true` when the caller must render through the pipeline.
+   */
+  #updatePipeline(scene: Scene, camera: Camera): boolean {
+    if (!this.#config.postProcessing.enabled) {
+      return false;
+    }
+
+    if (this.#pipeline === null || this.#scenePass === null) {
+      const scenePass = pass(scene, camera);
+      const sceneColor = scenePass.getTextureNode('output');
+      const bloomConfig = this.#config.postProcessing.bloom;
+      // Bloom is added on top of the beam in linear HDR; threshold keeps it to real highlights.
+      const outputNode = bloomConfig.enabled
+        ? sceneColor.add(
+            bloom(sceneColor, bloomConfig.strength, bloomConfig.radius, bloomConfig.threshold),
+          )
+        : sceneColor;
+
+      const pipeline = new RenderPipeline(this.#renderer, outputNode);
+      pipeline.outputColorTransform = true;
+
+      this.#scenePass = scenePass;
+      this.#pipeline = pipeline;
+      this.#pipelineScene = scene;
+      this.#pipelineCamera = camera;
+      return true;
+    }
+
+    if (this.#pipelineScene !== scene || this.#pipelineCamera !== camera) {
+      this.#scenePass.scene = scene;
+      this.#scenePass.camera = camera;
+      this.#pipelineScene = scene;
+      this.#pipelineCamera = camera;
+    }
+    return true;
   }
 
   #scheduleFrame(): void {
@@ -332,11 +448,7 @@ export class Engine {
 
   #handleContextLost = (event: Event): void => {
     event.preventDefault();
-    this.#contextLost = true;
-    this.#cancelFrame();
-    for (const handler of [...this.#contextLostHandlers]) {
-      handler();
-    }
+    this.#enterLostState();
   };
 
   #handleContextRestored = (): void => {
@@ -349,4 +461,27 @@ export class Engine {
       this.#scheduleFrame();
     }
   };
+
+  /**
+   * WebGPU device loss (driver reset, adapter removal) has no restore event, so the loop stops for
+   * good and the application is told to surface the failure. The WebGL2 fallback backend reports
+   * through the canvas events above instead.
+   */
+  #handleDeviceLost = (info: { api?: string; message: string; reason?: string | null }): void => {
+    console.error(
+      `WebGPU device lost (${info.api ?? 'unknown API'}): ${info.message ?? 'no message'}`,
+    );
+    this.#enterLostState();
+  };
+
+  #enterLostState(): void {
+    if (this.#contextLost) {
+      return;
+    }
+    this.#contextLost = true;
+    this.#cancelFrame();
+    for (const handler of [...this.#contextLostHandlers]) {
+      handler();
+    }
+  }
 }
