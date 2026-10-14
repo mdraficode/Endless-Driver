@@ -1,4 +1,4 @@
-import { float, mrt, normalView, output, pass, renderOutput, screenUV } from 'three/tsl';
+import { float, mrt, normalView, output, pass, renderOutput, screenUV, vec2 } from 'three/tsl';
 import { RenderPipeline } from 'three/webgpu';
 import type { Camera, Scene } from 'three';
 import type { Node, WebGPURenderer } from 'three/webgpu';
@@ -172,8 +172,14 @@ export function buildPostChain(options: PostChainOptions): PostChain {
   // --- display-referred stage ---------------------------------------------------------------
   if (effects.includes('chromaticAberration')) {
     const ca = config.postProcessing.chromaticAberration;
-    // The published types want nodes where the runtime accepts numbers; `float()` satisfies both.
-    color = asColor(chromaticAberration(color, float(ca.strength), undefined, float(ca.scale)));
+    // The centre must be an explicit node. Passing `undefined` (which the node's own default, and
+    // its documentation, suggest is fine) makes its internal `Fn` receive a null input; three logs
+    // `Cannot read properties of null (reading 'build')` from `generateInput()` instead of throwing,
+    // so the frame silently renders black. Verified in a browser: the effect works with a real
+    // centre and fails without one.
+    color = asColor(
+      chromaticAberration(color, float(ca.strength), vec2(0.5, 0.5), float(ca.scale)),
+    );
   }
   if (effects.includes('sharpen')) {
     const sharpenConfig = config.postProcessing.sharpen;

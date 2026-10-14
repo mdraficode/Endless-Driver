@@ -357,3 +357,36 @@ through the manifest on a static host, and the `RenderPipeline` output chain ren
 came from a headless renderer, so it proves start-up and the fallback path — **not** frame rate,
 sustained behaviour, or final image quality, and not the WebGPU path itself (that environment fell
 back to WebGL2). Those still need a GPU-backed browser.
+
+## 13. Browser verification is now possible in the sandbox (2026-10-14)
+
+Earlier handoffs stated that rendering could not be verified in this environment. That is no longer true, and
+the change matters for what future phases may claim.
+
+**What was set up:** Playwright plus headless Chromium, installed **outside the repository** (`/tmp/verify`,
+browsers in `/tmp/pw-browsers`) so no project dependency or lockfile entry was added. System libraries come from
+`apt-get` (`libnspr4`, `libnss3`, and the usual Chromium runtime set). Both are sandbox-local and vanish on a
+sandbox rotation; re-provisioning is `npm i playwright && npx playwright install chromium` in `/tmp/verify` plus
+the `apt-get` line, roughly 20 seconds.
+
+**What it can establish:** that the app boots, that the shader graph compiles, that the frame is not black, which
+tier and backend were used, the reported draw-call/triangle counts, and every console warning or TSL error — with
+a screenshot as evidence. **What it still cannot establish:** frame rate (SwiftShader software rendering measured
+13 FPS on a scene that will be GPU-bound elsewhere), image quality as a human would judge it, or the WebGPU path
+(no adapter in the sandbox; the renderer correctly falls back to WebGL2).
+
+**It paid for itself immediately.** The first run reported a TSL error and a completely black frame:
+
+```
+error: THREE.TSL: TypeError: Cannot read properties of null (reading 'build') at generateInput()
+Post: bloom → chromaticAberration → sharpen → vignette → fxaa
+```
+
+Bisected with a temporary probe page that built each effect in isolation: **`chromaticAberration` with an
+undefined `center` argument** fails. The node's own default is `null`, and its documentation says an absent
+centre means "screen centre (0.5, 0.5)", but three logs the failure and returns nothing rather than falling back
+or throwing — so the pipeline kept rendering a black image while everything looked healthy. Passing an explicit
+`vec2(0.5, 0.5)` fixes it, and `post-chain.ts` now documents why the argument is not optional in practice.
+
+Screenshot: `/home/user/phase3-evidence/renders-after-fix.png` (HDRI backdrop resolving, grid ground, the
+placeholder car, obstacles, post chain active on the WebGL2 backend).
