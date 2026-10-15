@@ -461,6 +461,22 @@ export class SceneManager {
     return this.scene.background === null ? 'procedural' : 'hdri';
   }
 
+  readonly #contactSunView = new Vector3();
+
+  /**
+   * Unit direction towards the sun in view space, for the contact-shadow march.
+   *
+   * `transformDirection` applies the rotation part of the camera's world-inverse and
+   * renormalises, which is all a direction needs. The camera's matrices are refreshed by the
+   * renderer each frame; this runs before the frame renders, so it reads last frame's camera
+   * — a one-frame-old light direction during camera motion, invisible in practice.
+   */
+  contactSunViewDirection(): { x: number; y: number; z: number } {
+    return this.#contactSunView
+      .copy(this.#sunDirection)
+      .transformDirection(this.camera.matrixWorldInverse);
+  }
+
   getObjectCount(): number {
     let count = 0;
     this.scene.traverse(() => {

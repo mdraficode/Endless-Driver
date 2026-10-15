@@ -64,7 +64,7 @@ owns it. "Tier" refers to §3.
 | Dense instanced ground cover (≥ 100k instances on high tier) with wind animation      | Grass covers the verge continuously with no visible instance grid pattern; wind is visible but not uniform across the field | 5     |
 | Trees: 3+ LODs with impostor billboards, shadow casting fitted to distance            | Tree count at 300 m distance shows no LOD popping in a slow fly-by; impostors match silhouette and colour                   | 5     |
 | Translucent foliage material (leaf backlight, subsurface tint)                        | Leaves at low sun glow without blowing out; backlit and frontlit foliage differ clearly                                     | 5     |
-| Contact/screen-space shadows beneath small props and foliage                          | Rocks and grass clumps are visually anchored (no floating), shadow contact density scales with tier                         | 5     |
+| Contact/screen-space shadows beneath small props and foliage                          | Rocks and grass clumps are visually anchored (no floating), shadow contact density scales with tier                         | 3, 5  |
 | Props: rocks, barriers, signs, poles, fences with correct scale and material response | Scale check against the car (1.8 m tall reference); no intersected/oversized props in the drive route                       | 5     |
 
 ### 2.4 The car (Phase 6)
@@ -95,6 +95,8 @@ owns it. "Tier" refers to §3.
 | Tone mapping + colour grading pipeline (ACES/AgX + LUT) applied exactly once                                               | No double tone mapping (grey/washed look); grading LUT visible in the look-dev scene     | 3     |
 | Bloom, GTAO/SSAO, SSR, DOF (photography), motion blur (camera), grain, chromatic aberration, vignette as one ordered chain | Each effect individually toggleable with a visible-on/off reference; ordering documented | 3     |
 | Temporal AA / upscaling with dynamic resolution                                                                            | Edges resolve cleanly at 0.7× scale; no persistent ghosting on fast camera pans          | 3     |
+| Contact shadows grounding props against the sun                                                                            | Contact darkening at surface junctions on the sun side; median frame pixel untouched     | 3     |
+| Bounced diffuse light (SSGI, high tier)                                                                                    | Shadowed sides lift with neighbour colour; replaces (never stacks on) GTAO               | 3     |
 | No artefact regressions on the WebGL2 fallback path                                                                        | Identical scene validated on `?webgl` with the documented per-backend differences        | 3     |
 
 ---
@@ -145,16 +147,17 @@ Two documented deviations from the table above:
 **Post-processing status (Phase 3).** The stack is assembled by `src/shaders/post-chain.ts` in a fixed, documented
 order, and every effect is individually toggleable through configuration:
 
-| Stage                   | Effects                                                                            | State   |
-| ----------------------- | ---------------------------------------------------------------------------------- | ------- |
-| Scene (linear HDR)      | ambient occlusion (GTAO), applied via the scene pass                               | Shipped |
-| Temporal resolve        | TAAU + dynamic resolution (wraps the scene pass)                                   | Shipped |
-| Linear HDR              | motion blur (shutter), god rays (tier A), time-of-day grade, bloom, depth of field | Shipped |
-| Pre-sRGB                | SMAA (fallback when the temporal path is off)                                      | Shipped |
-| Colour-space conversion | tone mapping + sRGB (once)                                                         | Shipped |
-| Display-referred        | look LUT, chromatic aberration, sharpening (RCAS), grain, vignette                 | Shipped |
-| Post-sRGB               | FXAA                                                                               | Shipped |
-| Pending                 | contact shadows, SSGI on the high tier                                             | Not yet |
+| Stage                   | Effects                                                                                                      | State   |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------ | ------- |
+| Scene (linear HDR)      | ambient occlusion (GTAO), applied via the scene pass                                                         | Shipped |
+| Scene-stage HDR         | SSGI composite (tier A; replaces GTAO), contact shadows (tiers B/A)                                          | Shipped |
+| Temporal resolve        | TAAU + dynamic resolution (wraps the scene pass)                                                             | Shipped |
+| Linear HDR              | motion blur (shutter), god rays (tier A), time-of-day grade, bloom, depth of field                           | Shipped |
+| Pre-sRGB                | SMAA (fallback when the temporal path is off)                                                                | Shipped |
+| Colour-space conversion | tone mapping + sRGB (once)                                                                                   | Shipped |
+| Display-referred        | look LUT, chromatic aberration, sharpening (RCAS), grain, vignette                                           | Shipped |
+| Post-sRGB               | FXAA                                                                                                         | Shipped |
+| Pending                 | screen-space reflections (SSR) — tier-declared; its first real surface is the Phase 6 car / Phase 7 wet road | Not yet |
 
 The velocity attachment that feeds the temporal resolve and the motion blur is requested only when one of them is
 in the chain: it is written by every material in the scene, so an unused motion-vector buffer is a cost paid per

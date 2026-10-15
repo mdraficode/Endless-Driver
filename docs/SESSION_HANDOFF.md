@@ -732,3 +732,88 @@ what staring at route code had not.
 
 **Still owed in Phase 3:** contact shadows (Rank 4), SSGI on the high tier (Rank 7), an AgX-vs-ACES
 comparison. Then Phase 3 review. **Phase 4 remains gated.**
+
+## 19. Contact shadows, SSGI, the tone-curve comparison — and the Phase 3 review (2026-10-15)
+
+Owner approval 2026-10-15 ("Ok go ahead") for the three items §18 left owed. All verification is
+headless Chromium under **SwiftShader on the WebGL2 fallback** — structural evidence only, never
+frame rate. Evidence: `/home/user/phase3-evidence/contact-ssgi-tonemap/`.
+
+**Contact shadows (Rank 4).** `src/shaders/contact-shadows.ts`: from each surface point, a short
+march (8 taps tier B, 16 tier A, ≤1.6 m) through the scene depth towards the sun; an occluder
+within thickness darkens the pixel. It runs in the HDR stage ahead of the temporal resolve, fed
+the daylight-gated sun direction in view space (`DaylightController → Engine.setContactSun →
+chain uniform`), so it fades out at night rather than darkening a sunless scene. Measured in the
+studio at noon: A/B MAD 2.82 with the **median pixel at 0** and p99 at 115 — nothing moves except
+where surfaces meet, and every material sphere now pools a contact shadow on its sun side. The
+route stability metric with the effect in tier B's chain: TAA-on flat σ 0.079 (0.048 without it —
+march noise included, same ballpark), TAA-off 0.000.
+
+**SSGI (Rank 7, SSGI half).** `SSGINode` on tier A only, in three's own composite form —
+`beauty × ssao + diffuse × gi` — placed on the unresolved scene image so the temporal resolve
+downstream accumulates its noise (the node's temporal filtering assumes exactly that). It
+_replaces_ GTAO on tier A: two horizon-based occlusion terms over the same crevices would
+double-darken, so `resolvePostEffects` never emits both. It costs two extra scene attachments
+(diffuse, and the normals GTAO already needed), requested only when the effect is in the chain.
+Measured: studio A/B MAD 4.37 (shadowed sides lift, softly); route start-noon MAD 0.56 — an open
+white plain at noon has almost no occlusion for bounce to work with, and the number says so
+honestly. Bounce will matter when Phases 4–5 give it geometry; radiance cascades remain the
+Phase 7 go/no-go, not a Phase 3 promise.
+
+**AgX vs ACES (deliverable: comparison via config).** `?tonemap=aces|agx|neutral` replays any
+frame through another curve (the renderer mapping already existed; the switch is new). Studio
+noon: AgX clips fewer highlights (0.037% vs 0.052% of pixels ≥250) but saturates less (0.196 vs
+0.221 mean saturation). Route dawn: no clipping under either (the sky there is fog-limited, not
+curve-limited), ACES brighter (mean luminance 192 vs 175). **Decision: ACES stays the default** —
+its highlight disadvantage is small where this game's sky actually lives, and the look LUT was
+authored on top of it; AgX remains one URL switch away for a future re-grade.
+
+**Bug 1 — god rays were inert in the shipped build.** `Engine.setGodrays()` had no caller:
+`DaylightController.update()` never pushed the tint, so the shafts' colour stayed black and the
+effect contributed nothing while every diagnostic reported it in the chain. The line was lost in
+an earlier edit-recovery (§18's measurements predate the loss). Worse, when wired, the shipped
+strength (0.9) blew the canopy-dawn frame to white — the march accumulates up to maxDensity
+everywhere the dedicated shadow map does not reach. Re-measured in steps (SSGI/clouds/grain/DOF
+held): 0.9 → MAD ~33 frame-wide white; 0.28 → 20.8 broad glow; **0.12 with density 0.7 → MAD 6.1,
+sun-side brightening with post streaks, scene intact** — that is what ships. The wiring is now
+pinned by a controller test with fake targets (`daylight controller drives the engine uniforms`),
+and `resolveContactSunGate` follows the same path.
+
+**Bug 2 — the texture contract, again.** The stability harness's TAA-off arm threw
+`e.sample is not a function`: the contact node's output is an expression, and motion blur —
+the next stage when TAA is off — samples its input as a texture. Three logged it and rendered
+around it, so the off-arm "measurement" was a dead frame with σ 0.000. Fixed by normalizing to
+a texture once after the scene-stage effects (identity when the input already is one), and the
+TAA-off frame re-verified clean. This is the third time this exact trap has bitten (§17 had two);
+the normalization point is commented as load-bearing.
+
+**Sandbox limits found, recorded plainly.** Chrome 156's SwiftShader (both the headless shell
+and the full build) **segfaults its GPU process allocating tier A's 4096×4 cascade shadow maps**
+— context lost at the first heavy frame, reproduced on the unmodified previous commit `f8e73f3`,
+at 400×250 as readily as 800×500. At 2048 the same chain renders indefinitely. Tier A therefore
+keeps its 4096 contract (routine on real GPUs) and the tier-A captures in this round were taken
+with shadow maps temporarily at 2048 — the one axis this sandbox cannot allocate; that caveat is
+in the evidence README and applies to every tier-A image in it. Tier A also renders at ~3 s/frame
+here, so harness timeouts (tuned for tier B) do not fit it; tier-A bookmarks were captured with
+a settle-polling script instead.
+
+**Baseline regenerated.** Tier B's chain gained contact shadows, so `baseline/route/` was
+re-captured in this commit — deliberately, with the reason here and in the commit message, per
+the rule in `baseline/route/README.md` that a baseline is only ever rewritten alongside the
+rendering change that moved the pictures. Self-consistency re-verified on a subset after the
+regen. Tier A (640×400, 2048-shadow caveat) and tier C (800×500) bookmark sets were also
+captured for the review record and live in the evidence folder, not the repo — the committed
+baseline stays tier B, the tier every later phase diffs against.
+
+**Phase 3 review.** Against the Phase 3 acceptance list: WebGPU-first renderer with WebGL2
+fallback ✓; colour pipeline with LUT and sun-driven exposure ✓ (AgX compared, ACES kept); dynamic
+sky/sun clock pre-dawn to night ✓ (headlights/streetlights were carved out to Phase 7 in the
+visual target); CSM + contact shadows ✓; post stack ✓ except SSR, which stays tier-declared
+pending its first real surface (Phase 6 car, Phase 7 wet road) rather than being faked onto a
+placeholder; TAAU + dynamic resolution + stability metric ✓ (motion-validated TAA evidence still
+needs a moving camera on a real GPU — recorded, not claimed); asset pipeline with manifest and
+licence register ✓; studio + props + route look-dev scenes ✓; tier contracts in code and HUD ✓;
+no GLSL-era material code (guard in `npm run check`) ✓. **Phase 3 is code-complete.** The one
+acceptance item no sandbox can close is frame budgets on named hardware: open the Pages build,
+force `?tier=a`, and read the HUD on a real machine — that measurement belongs to the owner, and
+tiers should be adjusted to it, never to a claim. **Phase 4 remains gated on owner instruction.**

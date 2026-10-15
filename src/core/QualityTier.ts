@@ -117,6 +117,11 @@ export function applyTier(base: RenderConfig, tier: TierId): RenderConfig {
     depthOfField: { ...base.postProcessing.depthOfField, ...depthOfFieldOverride },
     motionBlur: { ...base.postProcessing.motionBlur, ...motionBlurOverride },
     godrays: { ...base.postProcessing.godrays, ...godraysOverride },
+    contactShadows: {
+      ...base.postProcessing.contactShadows,
+      ...postOverride?.contactShadows,
+    },
+    ssgi: { ...base.postProcessing.ssgi, ...postOverride?.ssgi },
     temporalAntiAliasing: {
       ...base.postProcessing.temporalAntiAliasing,
       ...temporalAntiAliasingOverride,

@@ -96,6 +96,54 @@ describe('render configuration', () => {
   });
 });
 
+describe('tone curve comparison switch', () => {
+  it('defaults to ACES and replays through AgX only when the URL asks', () => {
+    expect(RENDER_CONFIG.renderer.toneMapping).toBe('aces');
+    expect(applyRenderSwitches(RENDER_CONFIG, '?tonemap=agx').renderer.toneMapping).toBe('agx');
+    expect(applyRenderSwitches(RENDER_CONFIG, '?tonemap=neutral').renderer.toneMapping).toBe(
+      'neutral',
+    );
+    expect(applyRenderSwitches(RENDER_CONFIG, '?tonemap=bogus').renderer.toneMapping).toBe('aces');
+  });
+});
+
+describe('contact shadows and SSGI configuration', () => {
+  it('ships both off in the baseline: a tier buys them, the defaults do not', () => {
+    expect(RENDER_CONFIG.postProcessing.contactShadows.enabled).toBe(false);
+    expect(RENDER_CONFIG.postProcessing.ssgi.enabled).toBe(false);
+  });
+
+  it('keeps the contact march at contact scale with a sane tap count', () => {
+    const { contactShadows } = RENDER_CONFIG.postProcessing;
+    expect(Number.isInteger(contactShadows.steps)).toBe(true);
+    expect(contactShadows.steps).toBeGreaterThan(0);
+    expect(contactShadows.maxDistanceMeters).toBeGreaterThan(0);
+    expect(contactShadows.maxDistanceMeters).toBeLessThanOrEqual(3);
+    expect(contactShadows.thicknessMeters).toBeGreaterThan(0);
+    expect(contactShadows.strength).toBeGreaterThan(0);
+    expect(contactShadows.strength).toBeLessThanOrEqual(1);
+  });
+
+  it('keeps the SSGI sampling within the node documented ranges', () => {
+    const { ssgi } = RENDER_CONFIG.postProcessing;
+    expect(ssgi.sliceCount).toBeGreaterThanOrEqual(1);
+    expect(ssgi.sliceCount).toBeLessThanOrEqual(4);
+    expect(ssgi.stepCount).toBeGreaterThanOrEqual(1);
+    expect(ssgi.stepCount).toBeLessThanOrEqual(32);
+    expect(ssgi.radiusMeters).toBeGreaterThan(0);
+  });
+
+  it('switches each effect independently from the URL', () => {
+    expect(
+      applyRenderSwitches(RENDER_CONFIG, '?contact=1').postProcessing.contactShadows.enabled,
+    ).toBe(true);
+    expect(applyRenderSwitches(RENDER_CONFIG, '?ssgi=1').postProcessing.ssgi.enabled).toBe(true);
+    expect(applyRenderSwitches(RENDER_CONFIG, '').postProcessing.contactShadows.enabled).toBe(
+      false,
+    );
+  });
+});
+
 describe('height-aware fog and god rays configuration', () => {
   it('keeps the height-fog densities in the range the factor functions expect', () => {
     const { heightFog } = RENDER_CONFIG.sky;

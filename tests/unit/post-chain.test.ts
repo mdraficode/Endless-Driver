@@ -3,6 +3,7 @@ import { RENDER_CONFIG, type RenderConfig } from '../../src/config/render';
 import { applyTier } from '../../src/core/QualityTier';
 import {
   chainsOwnsOutputTransform,
+  requiresSceneDiffuse,
   requiresSceneNormals,
   requiresSceneVelocity,
   resolvePostEffects,
@@ -505,5 +506,46 @@ describe('god rays', () => {
     expect(applyRenderSwitches(tierB, '?godrays=1').postProcessing.godrays.enabled).toBe(true);
     const tierA = applyTier(RENDER_CONFIG, 'A');
     expect(applyRenderSwitches(tierA, '?godrays=0').postProcessing.godrays.enabled).toBe(false);
+  });
+});
+
+describe('contact shadows and SSGI', () => {
+  it('places both in the HDR stage, ahead of the temporal resolve', () => {
+    const effects = resolvePostEffects(applyTier(RENDER_CONFIG, 'A'));
+    expect(effects.indexOf('ssgi')).toBeLessThan(effects.indexOf('contactShadows'));
+    expect(effects.indexOf('contactShadows')).toBeLessThan(effects.indexOf('taa'));
+    expect(effects.indexOf('contactShadows')).toBeLessThan(effects.indexOf('motionBlur'));
+  });
+
+  it('replaces GTAO with SSGI on the high tier instead of stacking both occlusion terms', () => {
+    const tierA = resolvePostEffects(applyTier(RENDER_CONFIG, 'A'));
+    expect(tierA).toContain('ssgi');
+    expect(tierA).not.toContain('ao');
+    const tierB = resolvePostEffects(applyTier(RENDER_CONFIG, 'B'));
+    expect(tierB).toContain('ao');
+    expect(tierB).not.toContain('ssgi');
+  });
+
+  it('buys contact shadows from tier B up, never on the constrained tier', () => {
+    expect(resolvePostEffects(applyTier(RENDER_CONFIG, 'C'))).not.toContain('contactShadows');
+    expect(resolvePostEffects(applyTier(RENDER_CONFIG, 'B'))).toContain('contactShadows');
+    expect(resolvePostEffects(applyTier(RENDER_CONFIG, 'A'))).toContain('contactShadows');
+  });
+
+  it('requests the diffuse attachment only for SSGI, and normals for either occlusion path', () => {
+    expect(requiresSceneDiffuse(resolvePostEffects(applyTier(RENDER_CONFIG, 'A')))).toBe(true);
+    expect(requiresSceneDiffuse(resolvePostEffects(applyTier(RENDER_CONFIG, 'B')))).toBe(false);
+    expect(requiresSceneNormals(resolvePostEffects(applyTier(RENDER_CONFIG, 'A')))).toBe(true);
+    expect(requiresSceneNormals(resolvePostEffects(applyTier(RENDER_CONFIG, 'B')))).toBe(true);
+    expect(requiresSceneNormals(resolvePostEffects(applyTier(RENDER_CONFIG, 'C')))).toBe(false);
+  });
+
+  it('honours the comparison switches from the URL', () => {
+    const tierB = applyTier(RENDER_CONFIG, 'B');
+    expect(resolvePostEffects(applyRenderSwitches(tierB, '?contact=0'))).not.toContain(
+      'contactShadows',
+    );
+    expect(resolvePostEffects(applyRenderSwitches(tierB, '?ssgi=1'))).toContain('ssgi');
+    expect(resolvePostEffects(applyRenderSwitches(tierB, '?ssgi=1'))).not.toContain('ao');
   });
 });

@@ -6,7 +6,13 @@ import {
   wrapHour,
 } from '../../src/environment/EnvironmentClock';
 import { solarPosition, sunDeclinationDegrees, toDegrees } from '../../src/environment/solar';
-import { resolveGodraysTint } from '../../src/environment/DaylightController';
+import {
+  DaylightController,
+  resolveContactSunGate,
+  resolveGodraysTint,
+  type DaylightEngineTarget,
+  type DaylightTarget,
+} from '../../src/environment/DaylightController';
 
 const config = DAYLIGHT_CONFIG;
 
@@ -308,5 +314,70 @@ describe('god-ray tint from daylight', () => {
   it('carries the sun colour: warmer (redder) at dusk than in the morning', () => {
     const dusk = tintAt(17.4);
     expect(dusk.r).toBeGreaterThan(dusk.b);
+  });
+});
+
+describe('daylight controller drives the engine uniforms', () => {
+  // The controller is the *only* place daylight becomes engine uniforms, and the god-ray
+  // half of that wiring was lost once in an edit recovery: the effect stayed in the chain
+  // with a permanently black tint, reported by every diagnostic and visible in none. These
+  // fakes exist to make that class of loss a failing test instead of a quiet frame.
+  const makeTargets = () => {
+    const godraysCalls: { r: number; g: number; b: number }[] = [];
+    const contactCalls: { direction: { x: number; y: number; z: number }; gate: number }[] = [];
+    const scene: DaylightTarget = {
+      applyDaylight: () => undefined,
+      skyMode: 'procedural',
+      contactSunViewDirection: () => ({ x: 0, y: 1, z: 0 }),
+    };
+    const engine: DaylightEngineTarget = {
+      setExposure: () => undefined,
+      setGrade: () => undefined,
+      setGodrays: (tint) => godraysCalls.push(tint),
+      setContactSun: (direction, gate) => contactCalls.push({ direction, gate }),
+    };
+    return { scene, engine, godraysCalls, contactCalls };
+  };
+  const updateAt = (hour: number) => {
+    const clock = new EnvironmentClock();
+    clock.setHour(hour);
+    const controller = new DaylightController(clock);
+    const targets = makeTargets();
+    controller.update(0, targets.scene, targets.engine);
+    return targets;
+  };
+
+  it('drives the god-ray tint: lit at dawn, black at night', () => {
+    const dawn = updateAt(7);
+    expect(dawn.godraysCalls).toHaveLength(1);
+    const dawnTint = dawn.godraysCalls[0] as { r: number; g: number; b: number };
+    expect(Math.max(dawnTint.r, dawnTint.g)).toBeGreaterThan(0.05);
+    const night = updateAt(0);
+    expect(night.godraysCalls).toEqual([{ r: 0, g: 0, b: 0 }]);
+  });
+
+  it('drives the contact-shadow light with the scene view-space direction and a daylight gate', () => {
+    const noon = updateAt(12.5);
+    expect(noon.contactCalls).toHaveLength(1);
+    const noonCall = noon.contactCalls[0] as {
+      direction: { x: number; y: number; z: number };
+      gate: number;
+    };
+    expect(noonCall.direction).toEqual({ x: 0, y: 1, z: 0 });
+    expect(noonCall.gate).toBeGreaterThan(0.9);
+    const night = updateAt(0);
+    expect(night.contactCalls).toEqual([{ direction: { x: 0, y: 1, z: 0 }, gate: 0 }]);
+  });
+
+  it('gates contact shadows by sun elevation: nothing below the horizon, full by mid-morning', () => {
+    const gateAt = (hour: number) => {
+      const clock = new EnvironmentClock();
+      clock.setHour(hour);
+      return resolveContactSunGate(resolveDaylight(clock.sunPosition(), clock.config));
+    };
+    expect(gateAt(0)).toBe(0);
+    expect(gateAt(12.5)).toBeGreaterThan(0.9);
+    expect(gateAt(7)).toBeGreaterThan(0);
+    expect(gateAt(7)).toBeLessThan(gateAt(12.5));
   });
 });

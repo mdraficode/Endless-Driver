@@ -483,6 +483,60 @@ export interface GodraysConfig {
   readonly shadowMapSize: number;
 }
 
+/**
+ * Screen-space contact shadows: a short raymarch from each surface point towards the sun,
+ * through the depth buffer the frame already has. Where an occluder sits within
+ * `maxDistanceMeters` along that ray, the pixel darkens.
+ *
+ * This is the centimetre-scale half of shadowing that cascaded maps cannot resolve: a 2048
+ * shadow map spread over 300 m has ~15 cm texels, so the tyre's contact patch, the kerb's
+ * foot, and the underside of a guardrail all float. GTAO darkens crevices without knowing
+ * where the light is; this knows, and grounds objects *against the sun's side*. It is cheap
+ * (a dozen depth taps), entirely screen-space (its known failure is the same as every
+ * screen-space effect: an occluder off-screen casts nothing), and gated by the daylight
+ * controller so it only bites while the sun is up to cast it.
+ */
+export interface ContactShadowsConfig {
+  readonly enabled: boolean;
+  /** Depth taps along the sun ray. The dominant cost; fixed at graph build. */
+  readonly steps: number;
+  /** How far along the sun ray to look for an occluder, metres. Contact scale, by design. */
+  readonly maxDistanceMeters: number;
+  /** How far behind the ray point an occluder may sit and still count, metres. */
+  readonly thicknessMeters: number;
+  /** 0-1 ceiling on the darkening at full occlusion. */
+  readonly strength: number;
+}
+
+/**
+ * Screen-space global illumination (`SSGINode`, SSRT3-derived): horizon-based ray sampling
+ * of the rendered frame itself, producing bounced diffuse light plus its own ambient
+ * occlusion term. When enabled it *replaces* GTAO — the composite is
+ * `beauty × ssao + diffuse × gi`, the form three's own example uses — because running both
+ * occlusion terms would darken every crevice twice.
+ *
+ * High tier only: the sampling is the most expensive per-pixel work in the stack after the
+ * god-ray march, it needs two extra scene attachments (normals, diffuse), and its noise is
+ * only acceptable because the temporal resolve downstream accumulates it (the node's
+ * temporal filtering assumes exactly that). The WebGL2 fallback runs the same TSL; what it
+ * cannot do is take the cost anywhere, which is the tier system's problem to state honestly.
+ */
+export interface SsgiConfig {
+  readonly enabled: boolean;
+  /** Hemisphere slices per pixel. Samples per pixel = slices × steps × 2. */
+  readonly sliceCount: number;
+  /** Samples along each side of a slice. */
+  readonly stepCount: number;
+  /** Indirect diffuse intensity (the node's own scale; its default is 10). */
+  readonly giIntensity: number;
+  /** Power applied to the occlusion term. */
+  readonly aoIntensity: number;
+  /** World-space radius the bounce can arrive from, metres. */
+  readonly radiusMeters: number;
+  /** Assumed surface thickness for occlusion, metres. */
+  readonly thicknessMeters: number;
+}
+
 export interface PostProcessingConfig {
   readonly enabled: boolean;
   readonly antiAliasing: AntiAliasingMode;
@@ -492,6 +546,8 @@ export interface PostProcessingConfig {
   readonly motionBlur: MotionBlurConfig;
   readonly temporalAntiAliasing: TemporalAntiAliasingConfig;
   readonly godrays: GodraysConfig;
+  readonly contactShadows: ContactShadowsConfig;
+  readonly ssgi: SsgiConfig;
   readonly bloom: BloomConfig;
   readonly ambientOcclusion: AmbientOcclusionConfig;
   readonly chromaticAberration: ChromaticAberrationConfig;
@@ -678,12 +734,33 @@ export const RENDER_CONFIG: RenderConfig = {
     godrays: {
       enabled: false,
       raymarchSteps: 60,
-      density: 1.1,
-      maxDensity: 0.6,
+      density: 0.7,
+      maxDensity: 0.45,
       distanceAttenuation: 2,
       resolutionScale: 0.5,
       shadowExtentMeters: 110,
       shadowMapSize: 1024,
+    },
+    // On from tier B up (the tiers set the tap counts); off in the baseline config so the
+    // effect is always a tier's deliberate purchase, never an accident of the defaults.
+    contactShadows: {
+      enabled: false,
+      steps: 12,
+      maxDistanceMeters: 1.6,
+      thicknessMeters: 0.6,
+      strength: 0.55,
+    },
+    // High tier only, for the reasons in `SsgiConfig`. The preset is three's medium
+    // with-temporal-filtering recommendation (2 slices x 8 steps): our temporal resolve is
+    // downstream of the composite, which is the arrangement the preset assumes.
+    ssgi: {
+      enabled: false,
+      sliceCount: 2,
+      stepCount: 8,
+      giIntensity: 1.4,
+      aoIntensity: 1,
+      radiusMeters: 4,
+      thicknessMeters: 0.5,
     },
     bloom: {
       enabled: true,
@@ -756,6 +833,9 @@ export function applyRenderSwitches(config: RenderConfig, search: string): Rende
   const mbStrength = Number.parseFloat(params.get('mb') ?? '');
   const aa = params.get('aa');
   const godrays = params.get('godrays');
+  const contact = params.get('contact');
+  const ssgiSwitch = params.get('ssgi');
+  const tonemap = params.get('tonemap');
   const grain = params.get('grain');
   const clouds = params.get('clouds');
   const hfog = params.get('hfog');
@@ -832,6 +912,33 @@ export function applyRenderSwitches(config: RenderConfig, search: string): Rende
       : { enabled: godrays !== '0' && godrays !== 'false' }),
   };
 
+  const contactShadows = {
+    ...config.postProcessing.contactShadows,
+    ...(contact === null || contact === ''
+      ? {}
+      : { enabled: contact !== '0' && contact !== 'false' }),
+  };
+
+  const ssgi = {
+    ...config.postProcessing.ssgi,
+    ...(ssgiSwitch === null || ssgiSwitch === ''
+      ? {}
+      : { enabled: ssgiSwitch !== '0' && ssgiSwitch !== 'false' }),
+  };
+
+  /**
+   * `?tonemap=aces|agx|neutral` replays the same frame through a different tone curve. The
+   * look LUT was authored on top of ACES, so an AgX frame is *not* the shipped look — it is
+   * the comparison the plan owes (which curve's highlight behaviour suits this game's sky),
+   * and it can only be run as a switch, never by editing the default between captures.
+   */
+  const renderer: RendererConfig = {
+    ...config.renderer,
+    ...(tonemap === 'aces' || tonemap === 'agx' || tonemap === 'neutral'
+      ? { toneMapping: tonemap }
+      : {}),
+  };
+
   /**
    * `?fog=off` removes distance cueing entirely; `?hfog=0` keeps fog but returns it to the
    * linear band. Both exist so the height-aware term can be A/B'd against exactly what it
@@ -850,6 +957,7 @@ export function applyRenderSwitches(config: RenderConfig, search: string): Rende
 
   return {
     ...config,
+    renderer,
     sky,
     atmosphere: {
       ...config.atmosphere,
@@ -869,6 +977,8 @@ export function applyRenderSwitches(config: RenderConfig, search: string): Rende
       motionBlur,
       temporalAntiAliasing,
       godrays: godraysConfig,
+      contactShadows,
+      ssgi,
       // A switch of its own because grain is per-frame random: any A/B measurement between two
       // captures is grain noise until it can be turned off.
       filmGrain: {

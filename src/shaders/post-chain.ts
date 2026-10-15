@@ -1,4 +1,6 @@
 import {
+  convertToTexture,
+  diffuseColor,
   float,
   mrt,
   normalView,
@@ -15,7 +17,13 @@ import {
   velocity,
 } from 'three/tsl';
 import { RenderPipeline } from 'three/webgpu';
-import { Vector3, type Camera, type DirectionalLight, type Scene } from 'three';
+import {
+  Vector3,
+  type Camera,
+  type DirectionalLight,
+  type PerspectiveCamera,
+  type Scene,
+} from 'three';
 import type { Node, UniformNode, WebGPURenderer } from 'three/webgpu';
 import type { Data3DTexture } from 'three';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
@@ -31,7 +39,9 @@ import { lut3D } from 'three/addons/tsl/display/Lut3DNode.js';
 import { taau } from 'three/addons/tsl/display/TAAUNode.js';
 import { motionBlur as motionBlurNode } from 'three/addons/tsl/display/MotionBlur.js';
 import { godrays } from 'three/addons/tsl/display/GodraysNode.js';
+import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
 import { createLookTexture } from './lut-identity';
+import { createContactShadowNode, type ContactShadowHandles } from './contact-shadows';
 import type { RenderConfig } from '../config/render';
 import { createVignetteNode } from './vignette';
 
@@ -47,6 +57,10 @@ const asColor = (node: unknown): ColorNode => node as ColorNode;
 type TexelNode = Node<'vec2'>;
 const asTexel = (node: unknown): TexelNode => node as TexelNode;
 
+/** The scene pass's texture type, for effects (the temporal resolve) that demand one. */
+type SceneTextureNode = ReturnType<ReturnType<typeof pass>['getTextureNode']>;
+const asTexture = (node: unknown): SceneTextureNode => node as SceneTextureNode;
+
 /**
  * The post-processing chain.
  *
@@ -57,6 +71,8 @@ const asTexel = (node: unknown): TexelNode => node as TexelNode;
  */
 export type PostEffectName =
   | 'ao'
+  | 'ssgi'
+  | 'contactShadows'
   | 'taa'
   | 'grade'
   | 'bloom'
@@ -108,6 +124,8 @@ export type PostEffectName =
  */
 const EFFECT_ORDER: readonly PostEffectName[] = [
   'ao',
+  'ssgi',
+  'contactShadows',
   'taa',
   'motionBlur',
   'godrays',
@@ -131,7 +149,15 @@ export function resolvePostEffects(config: RenderConfig): PostEffectName[] {
   }
 
   const enabled = new Set<PostEffectName>();
-  if (postProcessing.ambientOcclusion.enabled) enabled.add('ao');
+  // SSGI's composite carries its own occlusion term, so when it runs it *replaces* GTAO:
+  // two horizon-based darkenings over the same crevices would double-darken them, and the
+  // chain would be paying for both. The tier that buys the bounce sells the separate AO.
+  if (postProcessing.ssgi.enabled) {
+    enabled.add('ssgi');
+  } else if (postProcessing.ambientOcclusion.enabled) {
+    enabled.add('ao');
+  }
+  if (postProcessing.contactShadows.enabled) enabled.add('contactShadows');
   if (postProcessing.grade.enabled) enabled.add('grade');
   if (postProcessing.bloom.enabled) enabled.add('bloom');
   if (postProcessing.depthOfField.enabled) enabled.add('dof');
@@ -171,7 +197,19 @@ export function resolvePostEffects(config: RenderConfig): PostEffectName[] {
  * written out.
  */
 export function requiresSceneNormals(effects: readonly PostEffectName[]): boolean {
-  return effects.includes('ao');
+  return effects.includes('ao') || effects.includes('ssgi');
+}
+
+/**
+ * True when any effect needs the scene's diffuse (albedo) attachment — SSGI does, because
+ * bounced light must be tinted by the surface it bounced *onto*, so the composite multiplies
+ * the GI term by the diffuse colour rather than adding raw radiance.
+ *
+ * A third colour target for the whole scene pass, requested only when something reads it,
+ * under the same rule as the normals and velocity attachments.
+ */
+export function requiresSceneDiffuse(effects: readonly PostEffectName[]): boolean {
+  return effects.includes('ssgi');
 }
 
 /**
@@ -257,6 +295,15 @@ export interface PostChain {
    */
   readonly godraysTint: Vector3;
   /**
+   * The contact-shadow light handles, or null when the effect is not in the chain.
+   *
+   * `Engine.setContactSun()` writes through these per frame (view-space sun direction and
+   * the daylight-gated strength). Null is the honest state for a chain that never built the
+   * march: the engine checks, and a scene that asks for contact shadows it did not configure
+   * gets silence rather than a darkened frame it cannot explain.
+   */
+  readonly contact: ContactShadowHandles | null;
+  /**
    * The table the look is sampled from, deliberately owned by the chain rather than handed to it.
    *
    * The look arrives over the network, long after the node graph exists, and a graph that had to be
@@ -307,7 +354,8 @@ export function buildPostChain(options: PostChainOptions): PostChain {
    * samples is the kind of overhead that never shows up in a screenshot and always shows up in a frame
    * time, so the attachments follow the chain exactly.
    */
-  if (wantsNormals || wantsVelocity) {
+  const wantsDiffuse = requiresSceneDiffuse(effects);
+  if (wantsNormals || wantsVelocity || wantsDiffuse) {
     const attachments: Record<string, Node> = { output };
     if (wantsNormals) {
       attachments.normal = normalView;
@@ -315,11 +363,14 @@ export function buildPostChain(options: PostChainOptions): PostChain {
     if (wantsVelocity) {
       attachments.velocity = velocity;
     }
+    if (wantsDiffuse) {
+      attachments.diffuseColor = diffuseColor;
+    }
     scenePass.setMRT(mrt(attachments));
   }
 
   // --- ambient occlusion: applied to the scene pass, not chained after it -------------------
-  if (wantsNormals) {
+  if (effects.includes('ao')) {
     const aoConfig = config.postProcessing.ambientOcclusion;
     const aoNode = ao(
       scenePass.getTextureNode('depth'),
@@ -340,6 +391,68 @@ export function buildPostChain(options: PostChainOptions): PostChain {
 
   let color: ColorNode = asColor(scenePass.getTextureNode('output'));
 
+  // --- bounced light: the SSGI composite, where the high tier buys its GI -----------------------
+  if (effects.includes('ssgi')) {
+    const ssgiConfig = config.postProcessing.ssgi;
+    /**
+     * The composite three's own SSGI example uses: the beauty pass multiplied by the node's
+     * occlusion term, plus the frame's diffuse colour multiplied by its GI term. The node
+     * ray-samples the scene colour for bounce and the depth/normal pair for horizons — the
+     * normals in view space, which is what the MRT already stores for GTAO.
+     *
+     * It runs on the *unresolved* scene image, ahead of the temporal resolve: the node's
+     * temporal filtering assumes a TRAA-class accumulation downstream, and ours is exactly
+     * that, one link later. Run after the resolve instead, its per-frame sampling noise
+     * would land on the finished frame with nothing left to average it.
+     */
+    // Every camera this project renders through is perspective (the node's horizon maths
+    // assumes a projection with a near/far pair), so the cast states a fact the types
+    // cannot: see the same guard where the depth of field reads the clip planes.
+    const giNode = ssgi(
+      scenePass.getTextureNode('output'),
+      scenePass.getTextureNode('depth'),
+      scenePass.getTextureNode('normal'),
+      camera as PerspectiveCamera,
+    );
+    giNode.sliceCount.value = ssgiConfig.sliceCount;
+    giNode.stepCount.value = ssgiConfig.stepCount;
+    giNode.giIntensity.value = ssgiConfig.giIntensity;
+    giNode.aoIntensity.value = ssgiConfig.aoIntensity;
+    giNode.radius.value = ssgiConfig.radiusMeters;
+    giNode.thickness.value = ssgiConfig.thicknessMeters;
+    const occlusionTerm = giNode.getAONode().sample(screenUV).r;
+    const bounce = giNode.getGINode().sample(screenUV).rgb;
+    const diffuse = scenePass.getTextureNode('diffuseColor').sample(screenUV).rgb;
+    color = asColor(vec4(color.rgb.mul(occlusionTerm).add(diffuse.mul(bounce)), color.a));
+  }
+
+  // --- contact shadows: the centimetre-scale half of the shadow map -----------------------------
+  let contact: ContactShadowHandles | null = null;
+  if (effects.includes('contactShadows')) {
+    /**
+     * Fed a texture, never an expression: the march samples its input at the pixel's own
+     * position, which is the `TextureNode` contract the motion blur taught this file.
+     * `convertToTexture` is the identity on a texture and renders an expression (the SSGI
+     * composite above) into one when it has to.
+     */
+    contact = createContactShadowNode(
+      asColor(convertToTexture(color)),
+      asColor(scenePass.getTextureNode('depth')),
+      camera,
+      config.postProcessing.contactShadows,
+    );
+    color = contact.node;
+  }
+
+  // The two scene-stage effects above produce *expressions*; several downstream effects
+  // (the motion blur above all) sample their input as a texture and fail — silently, in
+  // three's console — when handed one. Normalize back to a texture here, once, so every
+  // later stage can rely on the contract the temporal resolve used to guarantee by
+  // accident. On a texture this conversion is the identity, so the common path pays
+  // nothing. (Found by the stability harness: its TAA-off arm threw
+  // `e.sample is not a function` from the blur and rendered around the failure.)
+  color = asColor(convertToTexture(color));
+
   // --- temporal resolve: wraps the scene pass, before anything else touches the colour -------------
   if (effects.includes('taa')) {
     // TAAU, not TRAA: the same node also upscales, which is what lets `dynamicResolution` buy frame rate
@@ -354,7 +467,7 @@ export function buildPostChain(options: PostChainOptions): PostChain {
     // history through the wrong projection and produce a frame that smears in the wrong direction, or
     // ghosts, rather than an error.
     const resolve = taau(
-      scenePass.getTextureNode('output'),
+      asTexture(convertToTexture(color)),
       scenePass.getTextureNode('depth'),
       scenePass.getTextureNode('velocity'),
       camera,
@@ -520,6 +633,7 @@ export function buildPostChain(options: PostChainOptions): PostChain {
     lutIntensity,
     motionBlurIntensity,
     godraysTint,
+    contact,
     lutTexture,
     lutSize,
   };

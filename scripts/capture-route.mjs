@@ -150,7 +150,7 @@ async function openSettled(page, url, settleFrames) {
       return handle !== undefined && handle.getDiagnostics().frames > frames;
     },
     settleFrames,
-    { timeout: 240_000 },
+    { timeout: 600_000 },
   );
   // Orbit damping and the temporal history both need real time to come to rest. Where the
   // scene reports a camera position, wait until it stops moving rather than guessing a delay:
@@ -206,6 +206,7 @@ async function main() {
     args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
   });
   const page = await browser.newPage({ viewport: { width: args.width, height: args.height } });
+  page.setDefaultTimeout(300_000);
 
   const failures = [];
   const entries = [];
@@ -235,7 +236,10 @@ async function main() {
       args.settleFrames,
     );
     const file = join(args.out, `${id}.png`);
-    await page.screenshot({ path: file });
+    // A screenshot on a software renderer waits for a presented frame and reads it back;
+    // under SwiftShader with a heavy chain that is tens of seconds, far past the default
+    // action timeout. The capture is the product here, so it gets the long leash.
+    await page.screenshot({ path: file, timeout: 300_000 });
 
     const entry = {
       bookmark: id,
@@ -302,7 +306,7 @@ async function main() {
         const { consoleErrors, pageErrors } = await openSettled(page, url, args.settleFrames);
         const frames = [];
         for (let i = 0; i < args.burstFrames; i += 1) {
-          const buffer = await page.screenshot();
+          const buffer = await page.screenshot({ timeout: 300_000 });
           const decoded = await decodePngBuffer(buffer);
           frames.push(decoded);
         }

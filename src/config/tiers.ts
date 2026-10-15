@@ -15,6 +15,8 @@
  */
 import type {
   AmbientOcclusionConfig,
+  ContactShadowsConfig,
+  SsgiConfig,
   MotionBlurConfig,
   AtmosphereConfig,
   BloomConfig,
@@ -71,10 +73,14 @@ export interface TierRenderOverrides {
       | 'motionBlur'
       | 'temporalAntiAliasing'
       | 'godrays'
+      | 'contactShadows'
+      | 'ssgi'
     >
   > & {
     readonly bloom?: Partial<BloomConfig>;
     readonly godrays?: Partial<GodraysConfig>;
+    readonly contactShadows?: Partial<ContactShadowsConfig>;
+    readonly ssgi?: Partial<SsgiConfig>;
     readonly motionBlur?: Partial<MotionBlurConfig>;
     readonly temporalAntiAliasing?: Partial<TemporalAntiAliasingConfig>;
     readonly ambientOcclusion?: Partial<AmbientOcclusionConfig>;
@@ -219,6 +225,10 @@ const TIER_B: TierDefinition = {
       // share of the frame, so the same number would read as a larger circle of confusion in pixels.
       depthOfField: { bokehScale: 13 },
       ambientOcclusion: { enabled: true, resolutionScale: 0.5 },
+      // Eight taps of a depth buffer this tier already renders. The grounding this buys —
+      // tyres, kerbs, posts meeting the ground against the sun — is the cheapest credibility
+      // in the stack, and it is why the route baseline is captured with it on.
+      contactShadows: { enabled: true, steps: 8 },
       filmGrain: { enabled: false },
     },
   },
@@ -259,6 +269,11 @@ const TIER_A: TierDefinition = {
       // The raymarch tier. Sixty shadow taps per pixel at half resolution is the most expensive
       // single effect in the stack, and it belongs to the tier that exists for measured headroom.
       godrays: { enabled: true },
+      // Full-length contact march, and the bounce light: SSGI replaces GTAO on this tier
+      // (its composite carries its own occlusion term). Both are stated here rather than
+      // defaulted on, so a frame can always name what it paid for them.
+      contactShadows: { enabled: true, steps: 16 },
+      ssgi: { enabled: true },
       motionBlur: { samples: 16 },
       // A higher floor than the balanced tier: this tier is for hardware that was measured to hold its
       // frame budget, so the controller has less reason to trade resolution away. It still adapts — the
@@ -274,7 +289,7 @@ const TIER_A: TierDefinition = {
     'SSR + probes + wet roads',
     '4 terrain layers + POM',
     'LOD0 vegetation',
-    'volumetric clouds / light shafts',
+    'volumetric clouds',
   ],
 };
 

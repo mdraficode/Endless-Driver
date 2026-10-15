@@ -404,6 +404,32 @@ export class Engine {
   }
 
   /**
+   * Sets the contact-shadow light for the coming frame: view-space direction towards the
+   * sun, and the daylight gate the controller resolved (0 at night). The chain multiplies
+   * the gate by its configured strength here, so the value the shader sees is the final
+   * one and the controller never needs to know the configuration. Safe on any tier: when
+   * the effect is not in the chain there are no handles and the call is a no-op.
+   */
+  setContactSun(
+    direction: { readonly x: number; readonly y: number; readonly z: number },
+    gate: number,
+  ): void {
+    const contact = this.#chain?.contact;
+    if (contact === null || contact === undefined) {
+      return;
+    }
+    if (
+      Number.isFinite(direction.x) &&
+      Number.isFinite(direction.y) &&
+      Number.isFinite(direction.z)
+    ) {
+      contact.sunDirectionView.set(direction.x, direction.y, direction.z);
+    }
+    contact.sunStrength.value =
+      contact.baseStrength * (Number.isFinite(gate) ? Math.min(1, Math.max(0, gate)) : 0);
+  }
+
+  /**
    * Starts the renderer. `WebGPURenderer` builds its device, backend, and node systems
    * asynchronously, so nothing may be rendered before this resolves.
    */

@@ -24,6 +24,14 @@ A baseline is only ever rewritten deliberately, in the same commit as the render
 moved the pictures, with the reason in the commit message. Silent drift is the failure this
 folder exists to catch.
 
+## Regeneration log
+
+- **2026-10-15 (second set):** regenerated because tier B's chain gained screen-space
+  contact shadows (`src/shaders/contact-shadows.ts`) — the deliberate-rewrite case this
+  README exists for. Self-consistency on the new set: start-noon 0.9999, canopy-dawn
+  0.9989, summit-night 0.9812, exit 0 (night sits lowest: near-black frames converge
+  with more TAA variance, still above the 0.97 gate).
+
 ## What the numbers said when this set was accepted (2026-10-15)
 
 - Self-consistency: re-capturing three bookmarks scored SSIM 0.9999–1.0000 against this set.
