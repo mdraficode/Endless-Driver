@@ -44,7 +44,7 @@ owns it. "Tier" refers to §3.
 | Exposure control that survives dawn/dusk/night transitions                                           | No clipping of the sky or crushed shadows across a 24 h sweep at fixed camera; histogram spread stays inside bounds            | 3     |
 | Cascaded shadows: sharp and stable near camera, extended range at distance                           | Shadow map resolution ≥ 1024 per near cascade, ≤ 1 px shimmer when the camera moves 1 m laterally, no visible cascade seams    | 3     |
 | Aerial perspective + distance fog consistent with sky colour                                         | Distant hills desaturate toward sky colour; toggling aerial perspective off is immediately obvious                             | 3, 5  |
-| God rays / light shafts at low sun on the high tier                                                  | Visible under tree canopies and through gaps at sun elevation < 15°, no banding, disabled below the high tier                  | 5     |
+| God rays / light shafts at low sun on the high tier                                                  | Visible under tree canopies and through gaps at sun elevation < 15°, no banding, disabled below the high tier                  | 3, 7  |
 
 ### 2.2 Terrain and roads
 
@@ -145,16 +145,16 @@ Two documented deviations from the table above:
 **Post-processing status (Phase 3).** The stack is assembled by `src/shaders/post-chain.ts` in a fixed, documented
 order, and every effect is individually toggleable through configuration:
 
-| Stage                   | Effects                                                            | State   |
-| ----------------------- | ------------------------------------------------------------------ | ------- |
-| Scene (linear HDR)      | ambient occlusion (GTAO), applied via the scene pass               | Shipped |
-| Temporal resolve        | TAAU + dynamic resolution (wraps the scene pass)                   | Shipped |
-| Linear HDR              | motion blur (shutter), time-of-day grade, bloom, depth of field    | Shipped |
-| Pre-sRGB                | SMAA (fallback when the temporal path is off)                      | Shipped |
-| Colour-space conversion | tone mapping + sRGB (once)                                         | Shipped |
-| Display-referred        | look LUT, chromatic aberration, sharpening (RCAS), grain, vignette | Shipped |
-| Post-sRGB               | FXAA                                                               | Shipped |
-| Pending                 | god rays, contact shadows, SSGI on the high tier                   | Not yet |
+| Stage                   | Effects                                                                            | State   |
+| ----------------------- | ---------------------------------------------------------------------------------- | ------- |
+| Scene (linear HDR)      | ambient occlusion (GTAO), applied via the scene pass                               | Shipped |
+| Temporal resolve        | TAAU + dynamic resolution (wraps the scene pass)                                   | Shipped |
+| Linear HDR              | motion blur (shutter), god rays (tier A), time-of-day grade, bloom, depth of field | Shipped |
+| Pre-sRGB                | SMAA (fallback when the temporal path is off)                                      | Shipped |
+| Colour-space conversion | tone mapping + sRGB (once)                                                         | Shipped |
+| Display-referred        | look LUT, chromatic aberration, sharpening (RCAS), grain, vignette                 | Shipped |
+| Post-sRGB               | FXAA                                                                               | Shipped |
+| Pending                 | contact shadows, SSGI on the high tier                                             | Not yet |
 
 The velocity attachment that feeds the temporal resolve and the motion blur is requested only when one of them is
 in the chain: it is written by every material in the scene, so an unused motion-vector buffer is a cost paid per
@@ -181,12 +181,17 @@ reflections, motion blur, terrain layers, vegetation density). Nothing listed th
    (asphalt, gravel, soil, grass, snow, water, glass, chrome, rubber, 3 paint variants), and a control panel.
    **Implemented (Phase 3).** The grid shares the world's lighting, shadows, and post chain. The car turntable and
    the reference board wait for the Phase 6 vehicle; weather controls wait for Phase 7.
-2. **Route scene** (the real world): a fixed 2 km validation route with camera bookmarks at dawn, noon, dusk,
-   night, rain, snow, and each season — the same 12 screenshots every phase, diffed against the previous phase
-   with a perceptual metric (SSIM) and reviewed by eye.
-3. **Screenshot regression in CI-adjacent tooling**: the existing Playwright harness gains a visual-diff mode
-   with generous thresholds (structure changes are expected between phases; unexpected large deltas or missing
-   features fail the run).
+2. **Route scene** (`?scene=route`, implemented Phase 3): a fixed 2 km validation route with camera bookmarks
+   — 3 stations (start, canopy, summit) × 4 phases (dawn, noon, dusk, night) — the same 12 screenshots every
+   phase, diffed against the accepted baseline in `baseline/route/` with SSIM and reviewed by eye. Weather and
+   season bookmarks join when Phase 7 makes weather and seasons real; until then bookmarks pin
+   `weather: clear, season: summer`.
+3. **Screenshot regression in CI-adjacent tooling** (implemented): `npm run capture:route` re-shoots the
+   bookmarks headlessly and fails (exit 1) below SSIM 0.97 per bookmark against `baseline/route/`; `--baseline`
+   accepts a new set deliberately, and `--stability` adds the TAA on/off temporal-stability bursts. Thresholds
+   stay generous — structure changes are expected between phases; unexpected large deltas or missing features
+   fail the run. It runs locally, not in CI: the sandbox renderer is SwiftShader, so it asserts structure and
+   colour, never frame rate.
 4. **Performance gates**: rolling FPS, frame-time percentiles, draw calls, triangles, GPU memory estimate, and
    physics cost, recorded per tier on real devices and stored in the handoff.
 5. **Definition of done for a visual system**: reference board exists → implementation → studio scene validated →

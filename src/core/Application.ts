@@ -98,6 +98,7 @@ export class Application {
       worldConfig: this.#worldConfig,
       aspect: this.#engine.viewport.aspect,
     });
+    this.#engine.setGodraysLight(this.#scene.godraysLight);
 
     this.#physics = new PhysicsWorld({
       rapier: options.rapier,

@@ -108,10 +108,49 @@ export interface SkyConfig {
   /** Fog tint as the sun approaches the horizon, warmer and hazier. */
   readonly fogColorHorizon: number;
   /**
+   * Height-aware aerial perspective, replacing the linear distance fog when enabled.
+   *
+   * A distance band (`fogNear`/`fogFar` above) can only say "far is hazy". Real distance cues
+   * are three separate facts, and this is the config for all three: density that grows with
+   * distance, density that pools in low places and thins with height, and in-scattered light
+   * that brightens towards the sun — which is why a valley at dawn is a glowing bowl while the
+   * ridge above it is clear. Implemented as a TSL `scene.fogNode`
+   * (`src/shaders/height-fog.ts`), so it applies inside each material's lighting rather than as
+   * a post-process wash, and both renderer backends compile the same graph.
+   */
+  readonly heightFog: HeightFogConfig;
+  /**
    * Sky dome scale as a multiple of the camera far plane. The dome follows the camera, so it must
    * stay inside the far plane (its corners included) to never be clipped.
    */
   readonly domeScaleFactor: number;
+}
+
+export interface HeightFogConfig {
+  readonly enabled: boolean;
+  /**
+   * Exponential distance density. The fog factor is `1 - exp(-(density x distance)^2)`, so this
+   * is roughly "one over the distance at which the air turns opaque": the shipped 0.0014 puts
+   * that near 700 m, close to where the old linear band ended, but reached smoothly instead of
+   * in a ramp with a visible near edge.
+   */
+  readonly distanceDensity: number;
+  /**
+   * Extra density below `heightMeters`. Fragments under the height threshold are fogged by
+   * how far below it they sit multiplied by their distance - the valley-haze term. Ridges above
+   * the threshold get none of it, which is the entire point.
+   */
+  readonly heightDensity: number;
+  /** World height in metres below which the height term applies. */
+  readonly heightMeters: number;
+  /**
+   * Strength of the sun-facing brightening, 0-1: how far the fog colour travels towards the
+   * sun's colour when the camera looks into the light. This forward-scatter lobe is the cue
+   * that makes low sun read as *in* the air rather than behind it.
+   */
+  readonly sunScatterStrength: number;
+  /** Tightness of the scatter lobe; higher values concentrate it nearer the sun disc. */
+  readonly sunScatterPower: number;
 }
 
 /** Preetham atmospheric scattering parameters plus the optional cloud layer. */
@@ -409,6 +448,41 @@ export interface LutConfig {
   readonly size: number;
 }
 
+/**
+ * Screen-space god rays: a raymarch through the sun's shadow map, accumulating the light that
+ * survives between occluders (`GodraysNode`, from three-good-godrays).
+ *
+ * This is the one volumetric effect whose cost and character fit a browser budget: it needs no
+ * volume texture and no compute pass, just the shadow map the scene already renders — sixty
+ * shadow taps per pixel at half resolution, gated to the high tier. What it buys is the single
+ * most dramatic lighting event available to the project: shafts through the route canopy at
+ * dawn, headlight-cone drama's daylight cousin. It is also elevation-gated by construction —
+ * the tint the daylight controller feeds it fades to nothing once the sun is high or down, so
+ * the pass is only ever *visible* when shafts are plausible, and `?godrays=0` removes it.
+ *
+ * The node marches a *dedicated* shadow map, not the cascaded one: CSM splits its shadow into
+ * per-cascade targets the node's single shadow matrix cannot address. `SceneManager` therefore
+ * owns a second, shadow-only directional light (zero intensity, so it lights nothing) whose
+ * frustum hugs the near field where shafts are readable.
+ */
+export interface GodraysConfig {
+  readonly enabled: boolean;
+  /** Raymarch taps per pixel. The dominant cost of the effect; the loop is fixed at build. */
+  readonly raymarchSteps: number;
+  /** Accumulation rate per step — roughly how humid the air is. */
+  readonly density: number;
+  /** Ceiling on accumulated shaft brightness, so a clear gap cannot blow out the frame. */
+  readonly maxDensity: number;
+  /** How quickly shafts fade with distance from the light. */
+  readonly distanceAttenuation: number;
+  /** Fraction of the drawing buffer the raymarch runs at. */
+  readonly resolutionScale: number;
+  /** Half-extent in metres of the dedicated shadow frustum the march samples. */
+  readonly shadowExtentMeters: number;
+  /** Resolution of the dedicated shadow map. */
+  readonly shadowMapSize: number;
+}
+
 export interface PostProcessingConfig {
   readonly enabled: boolean;
   readonly antiAliasing: AntiAliasingMode;
@@ -417,6 +491,7 @@ export interface PostProcessingConfig {
   readonly depthOfField: DepthOfFieldConfig;
   readonly motionBlur: MotionBlurConfig;
   readonly temporalAntiAliasing: TemporalAntiAliasingConfig;
+  readonly godrays: GodraysConfig;
   readonly bloom: BloomConfig;
   readonly ambientOcclusion: AmbientOcclusionConfig;
   readonly chromaticAberration: ChromaticAberrationConfig;
@@ -498,6 +573,18 @@ export const RENDER_CONFIG: RenderConfig = {
     fogFar: 760,
     fogColorDay: 0x9ec6ea,
     fogColorHorizon: 0xe8b98a,
+    heightFog: {
+      enabled: true,
+      distanceDensity: 0.0014,
+      // Small, deliberately: the height factor multiplies depth-below-threshold by distance, so
+      // it grows quadratically along the view ray - at 0.00035 it had already saturated by
+      // 200 m and the whole route rendered as fog colour. At this value the valley floor is
+      // ~5% hazed at 300 m and ~50% at 1.2 km, while slopes above the threshold stay clear.
+      heightDensity: 0.00006,
+      heightMeters: 12,
+      sunScatterStrength: 0.65,
+      sunScatterPower: 6,
+    },
     domeScaleFactor: 1.05,
   },
   atmosphere: {
@@ -586,6 +673,18 @@ export const RENDER_CONFIG: RenderConfig = {
       adjustmentIntervalSeconds: 0.5,
       smoothing: 0.1,
     },
+    // Off in the baseline: the raymarch is the high tier's budget to spend (tier A enables it),
+    // and `?godrays=1` turns it on anywhere for comparison.
+    godrays: {
+      enabled: false,
+      raymarchSteps: 60,
+      density: 1.1,
+      maxDensity: 0.6,
+      distanceAttenuation: 2,
+      resolutionScale: 0.5,
+      shadowExtentMeters: 110,
+      shadowMapSize: 1024,
+    },
     bloom: {
       enabled: true,
       strength: 0.22,
@@ -656,6 +755,11 @@ export function applyRenderSwitches(config: RenderConfig, search: string): Rende
   const mblur = params.get('mblur');
   const mbStrength = Number.parseFloat(params.get('mb') ?? '');
   const aa = params.get('aa');
+  const godrays = params.get('godrays');
+  const grain = params.get('grain');
+  const clouds = params.get('clouds');
+  const hfog = params.get('hfog');
+  const fogSwitch = params.get('fog');
 
   const depthOfField = {
     ...config.postProcessing.depthOfField,
@@ -721,14 +825,56 @@ export function applyRenderSwitches(config: RenderConfig, search: string): Rende
     ...(Number.isFinite(mbStrength) ? { intensity: Math.max(0, mbStrength) } : {}),
   };
 
+  const godraysConfig = {
+    ...config.postProcessing.godrays,
+    ...(godrays === null || godrays === ''
+      ? {}
+      : { enabled: godrays !== '0' && godrays !== 'false' }),
+  };
+
+  /**
+   * `?fog=off` removes distance cueing entirely; `?hfog=0` keeps fog but returns it to the
+   * linear band. Both exist so the height-aware term can be A/B'd against exactly what it
+   * replaced, from the same URL pattern as every other effect in the stack.
+   */
+  const sky = {
+    ...config.sky,
+    ...(fogSwitch === 'off' || fogSwitch === '0' || fogSwitch === 'false'
+      ? { fogEnabled: false }
+      : {}),
+    heightFog: {
+      ...config.sky.heightFog,
+      ...(hfog === null || hfog === '' ? {} : { enabled: hfog !== '0' && hfog !== 'false' }),
+    },
+  };
+
   return {
     ...config,
+    sky,
+    atmosphere: {
+      ...config.atmosphere,
+      clouds: {
+        ...config.atmosphere.clouds,
+        // The cloud layer animates with wall-clock time even when the sun is frozen, so a
+        // temporal-stability capture needs to be able to hold it still.
+        ...(clouds === null || clouds === ''
+          ? {}
+          : { enabled: clouds !== '0' && clouds !== 'false' }),
+      },
+    },
     postProcessing: {
       ...config.postProcessing,
       antiAliasing,
       depthOfField,
       motionBlur,
       temporalAntiAliasing,
+      godrays: godraysConfig,
+      // A switch of its own because grain is per-frame random: any A/B measurement between two
+      // captures is grain noise until it can be turned off.
+      filmGrain: {
+        ...config.postProcessing.filmGrain,
+        ...(grain === null || grain === '' ? {} : { enabled: grain !== '0' && grain !== 'false' }),
+      },
       lut: lutConfig,
     },
   };

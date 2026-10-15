@@ -26,7 +26,8 @@
     "assets:models": "node scripts/build-models.mjs",
     "assets:lut": "node scripts/build-lut.mjs",
     "assets:verify": "node scripts/verify-assets.mjs",
-    "guard:glsl": "node scripts/guard-no-glsl.mjs"
+    "guard:glsl": "node scripts/guard-no-glsl.mjs",
+    "capture:route": "node scripts/capture-route.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.21.0",

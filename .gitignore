@@ -33,3 +33,6 @@ Thumbs.db
 
 # Browser decoders copied from node_modules at build time
 public/decoders/
+
+# Visual harness output (the accepted baseline under baseline/ is committed)
+captures/

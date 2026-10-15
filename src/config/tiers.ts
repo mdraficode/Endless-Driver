@@ -24,6 +24,8 @@ import type {
   DepthOfFieldConfig,
   EnvironmentConfig,
   FilmGrainConfig,
+  GodraysConfig,
+  HeightFogConfig,
   LightingConfig,
   PostProcessingConfig,
   RendererConfig,
@@ -48,7 +50,9 @@ export interface TierRenderOverrides {
   readonly maxPixelRatio?: number;
   readonly renderer?: Partial<RendererConfig>;
   readonly shadows?: Partial<Omit<ShadowConfig, 'csm'>> & { readonly csm?: Partial<CsmConfig> };
-  readonly sky?: Partial<SkyConfig>;
+  readonly sky?: Partial<Omit<SkyConfig, 'heightFog'>> & {
+    readonly heightFog?: Partial<HeightFogConfig>;
+  };
   readonly atmosphere?: Partial<Omit<AtmosphereConfig, 'clouds'>> & {
     readonly clouds?: Partial<CloudConfig>;
   };
@@ -66,9 +70,11 @@ export interface TierRenderOverrides {
       | 'depthOfField'
       | 'motionBlur'
       | 'temporalAntiAliasing'
+      | 'godrays'
     >
   > & {
     readonly bloom?: Partial<BloomConfig>;
+    readonly godrays?: Partial<GodraysConfig>;
     readonly motionBlur?: Partial<MotionBlurConfig>;
     readonly temporalAntiAliasing?: Partial<TemporalAntiAliasingConfig>;
     readonly ambientOcclusion?: Partial<AmbientOcclusionConfig>;
@@ -126,6 +132,12 @@ const TIER_C: TierDefinition = {
     },
     atmosphere: {
       clouds: { enabled: false },
+    },
+    sky: {
+      // The linear distance band stays on this tier: the height-aware term costs a world-space
+      // varying and three exponentials per fragment, and on the hardware tier C exists for that
+      // budget buys resolution instead. The distance cue is not lost, only simpler.
+      heightFog: { enabled: false },
     },
     environment: {
       useAsBackground: true,
@@ -244,6 +256,9 @@ const TIER_A: TierDefinition = {
     },
     postProcessing: {
       antiAliasing: 'taa',
+      // The raymarch tier. Sixty shadow taps per pixel at half resolution is the most expensive
+      // single effect in the stack, and it belongs to the tier that exists for measured headroom.
+      godrays: { enabled: true },
       motionBlur: { samples: 16 },
       // A higher floor than the balanced tier: this tier is for hardware that was measured to hold its
       // frame budget, so the controller has less reason to trade resolution away. It still adapts — the

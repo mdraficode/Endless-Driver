@@ -6,6 +6,7 @@ import {
   wrapHour,
 } from '../../src/environment/EnvironmentClock';
 import { solarPosition, sunDeclinationDegrees, toDegrees } from '../../src/environment/solar';
+import { resolveGodraysTint } from '../../src/environment/DaylightController';
 
 const config = DAYLIGHT_CONFIG;
 
@@ -283,5 +284,29 @@ describe('daylight curves', () => {
     const state = clock.daylight();
     expect(state).toEqual(resolveDaylight(clock.sunPosition(), config));
     expect(state.sunDirection.y).toBeCloseTo(Math.sin(clock.sunPosition().elevationRadians), 6);
+  });
+});
+
+describe('god-ray tint from daylight', () => {
+  const tintAt = (hour: number) => {
+    const clock = new EnvironmentClock();
+    clock.setHour(hour);
+    return resolveGodraysTint(resolveDaylight(clock.sunPosition(), clock.config));
+  };
+  const strength = (hour: number) => {
+    const tint = tintAt(hour);
+    return Math.max(tint.r, tint.g, tint.b);
+  };
+
+  it('is black at night and at high sun, and burns in the low band between', () => {
+    expect(strength(0)).toBe(0);
+    expect(strength(12.5)).toBe(0);
+    expect(strength(7)).toBeGreaterThan(0.05);
+    expect(strength(17.4)).toBeGreaterThan(0.05);
+  });
+
+  it('carries the sun colour: warmer (redder) at dusk than in the morning', () => {
+    const dusk = tintAt(17.4);
+    expect(dusk.r).toBeGreaterThan(dusk.b);
   });
 });

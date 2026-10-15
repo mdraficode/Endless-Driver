@@ -87,6 +87,14 @@ in-scatter with distance, height-dependent density (valley haze, clear ridges), 
 brightening at low sun. This is what makes a _distant_ landscape read as distant rather than as a
 painted backdrop — the single most photographic cue available for an open world, and mostly mathematics.
 
+**Status: shipped (Phase 3).** `src/shaders/height-fog.ts` composes the exponential height falloff with the
+distance term on tiers B/A (tier C keeps the cheaper band alone). Measured at the dawn bookmark with depth of
+field disabled: against fog-off, the height fog moved the far band further (MAD 11.2) than the linear band
+(≈8.9), and the distant volcano sampled [188, 200, 213] under height fog vs [164, 180, 194] linear vs
+[121, 137, 155] off — distance desaturating toward the sky, as intended. Tuning caveat recorded: the height
+density saturates fast (the factor multiplies depth-below-threshold by distance), so the shipped value is
+far smaller than the first guess.
+
 ### Rank 4 — Contact shadows and shadow quality. Phase 3/5. **Medium cost, high credibility.**
 
 Objects that do not touch their own shadow read as pasted on. Screen-space contact shadows (a few
@@ -152,18 +160,25 @@ God rays through a cedar canopy, headlight cones in fog, streetlight pools at ni
 exists; the rest is authored volumetrics. Cheap, dramatic, and the scenes where a browser game is
 compared against a console one.
 
+**Status: god rays shipped (Phase 3, tier A).** In the HDR chain after motion blur, driven by a
+daylight-resolved tint (black at night = off, never a boolean), marching a dedicated non-CSM shaft light.
+Measured at the canopy dawn bookmark (grain and depth of field disabled): unchanged-frame diff mean-max
+5.64, max 108, localized through canopy and sky — present and correctly placed, but visually subtle
+through the sparse placeholder slats; it will read properly when Phase 5 gives it real foliage density.
+Headlight cones and streetlight pools remain Phase 7.
+
 ---
 
 ## 4. What this changes in the plan
 
-| Phase       | Added or re-prioritised work                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **3 (now)** | **Landed:** the velocity buffer, TAAU with dynamic resolution (Rank 1), and motion blur (Rank 2) — see `docs/SESSION_HANDOFF.md` for the measured evidence. **Still owed:** the temporal-stability metric that makes "it shimmers less" a number rather than an impression, **height-aware aerial perspective** (Rank 3), **contact shadows** (Rank 4), an AgX-vs-ACES comparison via config, `SSGINode` on the high tier (Rank 7), and the **image-quality harness** below as the regression net for everything after. |
-| **4**       | Terrain material stack (splat + macro + detail + POM) (Rank 5); road surfacing craft; aerial perspective parametrised from the atmosphere model.                                                                                                                                                                                                                                                                                                                                                                        |
-| **5**       | GPU-driven instancing and culling (Rank 6); density as an explicit budget; vegetation translucency (`SSSNode`) and wind; contact shadows extended to scatter.                                                                                                                                                                                                                                                                                                                                                           |
-| **6**       | Hero car materials — clearcoat, flake normal, anisotropy — plus **reflection probes** and wear layers (Rank 8).                                                                                                                                                                                                                                                                                                                                                                                                         |
-| **7**       | Radiance cascades **go/no-go outcome**, if the Phase 3 prototype succeeds; wet-surface response, puddle masks, spray, rain on lens (Rank 9); volumetric light shafts (Rank 10).                                                                                                                                                                                                                                                                                                                                         |
-| **8**       | Photo mode with real camera controls; final grade and lens; the accepted baseline captures become the regression suite.                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Phase       | Added or re-prioritised work                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **3 (now)** | **Landed:** the velocity buffer, TAAU with dynamic resolution (Rank 1), motion blur (Rank 2), **height-aware aerial perspective** (Rank 3), **god rays** (Rank 10), and the **image-quality harness** below — 12 route bookmarks, committed SSIM baseline, and the temporal-stability metric — all with measured evidence in `docs/SESSION_HANDOFF.md`. The stability metric ships with its caveat: static bursts under a deterministic software renderer validate the machinery, not TAA’s in-motion benefit. **Still owed:** **contact shadows** (Rank 4), an AgX-vs-ACES comparison via config, and `SSGINode` on the high tier (Rank 7). |
+| **4**       | Terrain material stack (splat + macro + detail + POM) (Rank 5); road surfacing craft; aerial perspective parametrised from the atmosphere model.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| **5**       | GPU-driven instancing and culling (Rank 6); density as an explicit budget; vegetation translucency (`SSSNode`) and wind; contact shadows extended to scatter.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **6**       | Hero car materials — clearcoat, flake normal, anisotropy — plus **reflection probes** and wear layers (Rank 8).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **7**       | Radiance cascades **go/no-go outcome**, if the Phase 3 prototype succeeds; wet-surface response, puddle masks, spray, rain on lens (Rank 9); volumetric light shafts (Rank 10).                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **8**       | Photo mode with real camera controls; final grade and lens; the accepted baseline captures become the regression suite.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 **Cross-cutting:** every item above must declare what the **WebGL2 fallback** does instead. The fallback
 is not a debug path — it is roughly a fifth of the audience, and "it degrades to a still-good image" is a
@@ -175,13 +190,16 @@ requirement, not a hope.
 
 Aesthetic claims cannot be argued into existence, so the acceptance is mechanical:
 
-1. **Baseline captures.** The 2 km route with fixed camera bookmarks (already a Phase 3 deliverable),
-   captured at every tier and several times of day, archived and committed as the reference set.
-2. **SSIM against the accepted baseline.** Per-bookmark structural similarity, so a change that quietly
+1. **Baseline captures.** ✅ Shipped: the 2 km route with 12 fixed bookmarks, tier B, archived and
+   committed in `baseline/route/` as the reference set (per-bookmark conditions in its `manifest.json`).
+2. **SSIM against the accepted baseline.** ✅ Shipped: `npm run capture:route` re-shoots the bookmarks and
+   fails below SSIM 0.97 per bookmark (self-consistency measured 0.9999–1.0000), so a change that quietly
    breaks framing, exposure, or colour is caught rather than admired.
-3. **A temporal-stability metric.** From a static camera, capture N consecutive frames and measure
-   per-pixel variance in flat regions. This turns "it shimmers" into a number that can be tracked —
-   and it is the metric that validates Rank 1.
+3. **A temporal-stability metric.** ✅ Machinery shipped (`--stability`: 12-frame bursts, flat-region σ,
+   TAA on/off arms). Under SwiftShader a static TAA-off burst is exactly 0.000 by construction and TAA-on
+   shows small jitter residual (σ 0.048 start / 0.436 canopy, p95 flagging the thin posts) — so this
+   validates the metric and names a watch item; validating Rank 1 itself still needs moving-camera bursts
+   on real GPU hardware, which remains open.
 4. **Frame budget on named hardware.** The sandbox has no GPU and cannot time anything; only the owner
    can. Each tier gets a target (16.6 ms for B/A on a mid-range dGPU) measured with a capture switch, and
    tiers are adjusted to the measurement, never the claim.

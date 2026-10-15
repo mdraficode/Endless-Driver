@@ -1,0 +1,362 @@
+{
+  "generatedAt": "2026-10-15T03:35:50.985Z",
+  "mode": "baseline",
+  "baseUrl": "http://127.0.0.1:4173",
+  "tier": "B",
+  "viewport": {
+    "width": 800,
+    "height": 500
+  },
+  "threshold": 0.97,
+  "bookmarks": [
+    {
+      "bookmark": "start-dawn",
+      "file": "start-dawn.png",
+      "url": "http://127.0.0.1:4173/?scene=route&bookmark=start-dawn&debug&tier=B&res=1",
+      "diagnostics": {
+        "backend": "webgl2",
+        "tier": "B",
+        "effects": [
+          "ao",
+          "taa",
+          "motionBlur",
+          "grade",
+          "bloom",
+          "dof",
+          "lut",
+          "chromaticAberration",
+          "sharpen",
+          "vignette"
+        ],
+        "fogMode": "height",
+        "renderScale": 1,
+        "timeOfDay": "06:48",
+        "sunElevationDegrees": 9.563080134657978,
+        "drawCalls": 47,
+        "triangles": 3848
+      },
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "bookmark": "start-noon",
+      "file": "start-noon.png",
+      "url": "http://127.0.0.1:4173/?scene=route&bookmark=start-noon&debug&tier=B&res=1",
+      "diagnostics": {
+        "backend": "webgl2",
+        "tier": "B",
+        "effects": [
+          "ao",
+          "taa",
+          "motionBlur",
+          "grade",
+          "bloom",
+          "dof",
+          "lut",
+          "chromaticAberration",
+          "sharpen",
+          "vignette"
+        ],
+        "fogMode": "height",
+        "renderScale": 1,
+        "timeOfDay": "12:30",
+        "sunElevationDegrees": 53.132115742254236,
+        "drawCalls": 50,
+        "triangles": 4820
+      },
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "bookmark": "start-dusk",
+      "file": "start-dusk.png",
+      "url": "http://127.0.0.1:4173/?scene=route&bookmark=start-dusk&debug&tier=B&res=1",
+      "diagnostics": {
+        "backend": "webgl2",
+        "tier": "B",
+        "effects": [
+          "ao",
+          "taa",
+          "motionBlur",
+          "grade",
+          "bloom",
+          "dof",
+          "lut",
+          "chromaticAberration",
+          "sharpen",
+          "vignette"
+        ],
+        "fogMode": "height",
+        "renderScale": 1,
+        "timeOfDay": "17:23",
+        "sunElevationDegrees": 7.151170365375949,
+        "drawCalls": 47,
+        "triangles": 3848
+      },
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "bookmark": "start-night",
+      "file": "start-night.png",
+      "url": "http://127.0.0.1:4173/?scene=route&bookmark=start-night&debug&tier=B&res=1",
+      "diagnostics": {
+        "backend": "webgl2",
+        "tier": "B",
+        "effects": [
+          "ao",
+          "taa",
+          "motionBlur",
+          "grade",
+          "bloom",
+          "dof",
+          "lut",
+          "chromaticAberration",
+          "sharpen",
+          "vignette"
+        ],
+        "fogMode": "height",
+        "renderScale": 1,
+        "timeOfDay": "23:47",
+        "sunElevationDegrees": -54.09328785945964,
+        "drawCalls": 50,
+        "triangles": 5564
+      },
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "bookmark": "canopy-dawn",
+      "file": "canopy-dawn.png",
+      "url": "http://127.0.0.1:4173/?scene=route&bookmark=canopy-dawn&debug&tier=B&res=1",
+      "diagnostics": {
+        "backend": "webgl2",
+        "tier": "B",
+        "effects": [
+          "ao",
+          "taa",
+          "motionBlur",
+          "grade",
+          "bloom",
+          "dof",
+          "lut",
+          "chromaticAberration",
+          "sharpen",
+          "vignette"
+        ],
+        "fogMode": "height",
+        "renderScale": 1,
+        "timeOfDay": "06:48",
+        "sunElevationDegrees": 9.563080134657978,
+        "drawCalls": 48,
+        "triangles": 6284
+      },
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "bookmark": "canopy-noon",
+      "file": "canopy-noon.png",
+      "url": "http://127.0.0.1:4173/?scene=route&bookmark=canopy-noon&debug&tier=B&res=1",
+      "diagnostics": {
+        "backend": "webgl2",
+        "tier": "B",
+        "effects": [
+          "ao",
+          "taa",
+          "motionBlur",
+          "grade",
+          "bloom",
+          "dof",
+          "lut",
+          "chromaticAberration",
+          "sharpen",
+          "vignette"
+        ],
+        "fogMode": "height",
+        "renderScale": 1,
+        "timeOfDay": "12:30",
+        "sunElevationDegrees": 53.132115742254236,
+        "drawCalls": 49,
+        "triangles": 7040
+      },
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "bookmark": "canopy-dusk",
+      "file": "canopy-dusk.png",
+      "url": "http://127.0.0.1:4173/?scene=route&bookmark=canopy-dusk&debug&tier=B&res=1",
+      "diagnostics": {
+        "backend": "webgl2",
+        "tier": "B",
+        "effects": [
+          "ao",
+          "taa",
+          "motionBlur",
+          "grade",
+          "bloom",
+          "dof",
+          "lut",
+          "chromaticAberration",
+          "sharpen",
+          "vignette"
+        ],
+        "fogMode": "height",
+        "renderScale": 1,
+        "timeOfDay": "17:23",
+        "sunElevationDegrees": 7.151170365375949,
+        "drawCalls": 48,
+        "triangles": 6284
+      },
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "bookmark": "canopy-night",
+      "file": "canopy-night.png",
+      "url": "http://127.0.0.1:4173/?scene=route&bookmark=canopy-night&debug&tier=B&res=1",
+      "diagnostics": {
+        "backend": "webgl2",
+        "tier": "B",
+        "effects": [
+          "ao",
+          "taa",
+          "motionBlur",
+          "grade",
+          "bloom",
+          "dof",
+          "lut",
+          "chromaticAberration",
+          "sharpen",
+          "vignette"
+        ],
+        "fogMode": "height",
+        "renderScale": 1,
+        "timeOfDay": "23:47",
+        "sunElevationDegrees": -54.09328785945964,
+        "drawCalls": 48,
+        "triangles": 6284
+      },
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "bookmark": "summit-dawn",
+      "file": "summit-dawn.png",
+      "url": "http://127.0.0.1:4173/?scene=route&bookmark=summit-dawn&debug&tier=B&res=1",
+      "diagnostics": {
+        "backend": "webgl2",
+        "tier": "B",
+        "effects": [
+          "ao",
+          "taa",
+          "motionBlur",
+          "grade",
+          "bloom",
+          "dof",
+          "lut",
+          "chromaticAberration",
+          "sharpen",
+          "vignette"
+        ],
+        "fogMode": "height",
+        "renderScale": 1,
+        "timeOfDay": "06:48",
+        "sunElevationDegrees": 9.563080134657978,
+        "drawCalls": 43,
+        "triangles": 3996
+      },
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "bookmark": "summit-noon",
+      "file": "summit-noon.png",
+      "url": "http://127.0.0.1:4173/?scene=route&bookmark=summit-noon&debug&tier=B&res=1",
+      "diagnostics": {
+        "backend": "webgl2",
+        "tier": "B",
+        "effects": [
+          "ao",
+          "taa",
+          "motionBlur",
+          "grade",
+          "bloom",
+          "dof",
+          "lut",
+          "chromaticAberration",
+          "sharpen",
+          "vignette"
+        ],
+        "fogMode": "height",
+        "renderScale": 1,
+        "timeOfDay": "12:30",
+        "sunElevationDegrees": 53.132115742254236,
+        "drawCalls": 43,
+        "triangles": 3996
+      },
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "bookmark": "summit-dusk",
+      "file": "summit-dusk.png",
+      "url": "http://127.0.0.1:4173/?scene=route&bookmark=summit-dusk&debug&tier=B&res=1",
+      "diagnostics": {
+        "backend": "webgl2",
+        "tier": "B",
+        "effects": [
+          "ao",
+          "taa",
+          "motionBlur",
+          "grade",
+          "bloom",
+          "dof",
+          "lut",
+          "chromaticAberration",
+          "sharpen",
+          "vignette"
+        ],
+        "fogMode": "height",
+        "renderScale": 1,
+        "timeOfDay": "17:23",
+        "sunElevationDegrees": 7.151170365375949,
+        "drawCalls": 43,
+        "triangles": 3996
+      },
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    {
+      "bookmark": "summit-night",
+      "file": "summit-night.png",
+      "url": "http://127.0.0.1:4173/?scene=route&bookmark=summit-night&debug&tier=B&res=1",
+      "diagnostics": {
+        "backend": "webgl2",
+        "tier": "B",
+        "effects": [
+          "ao",
+          "taa",
+          "motionBlur",
+          "grade",
+          "bloom",
+          "dof",
+          "lut",
+          "chromaticAberration",
+          "sharpen",
+          "vignette"
+        ],
+        "fogMode": "height",
+        "renderScale": 1,
+        "timeOfDay": "23:47",
+        "sunElevationDegrees": -54.09328785945964,
+        "drawCalls": 43,
+        "triangles": 3996
+      },
+      "consoleErrors": [],
+      "pageErrors": []
+    }
+  ],
+  "stability": []
+}

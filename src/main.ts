@@ -14,10 +14,11 @@ import {
 } from './core/QualityTier';
 import { StudioApplication, type StudioDiagnostics } from './lab/StudioApplication';
 import { PropLabApplication, type PropLabDiagnostics } from './lab/PropLabApplication';
+import { RouteApplication, type RouteDiagnostics } from './lab/RouteApplication';
 import type { DiagnosticsSnapshot } from './ui/DiagnosticsOverlay';
 
 export interface EndlessDriverDebugHandle {
-  getDiagnostics(): DiagnosticsSnapshot | StudioDiagnostics | PropLabDiagnostics;
+  getDiagnostics(): DiagnosticsSnapshot | StudioDiagnostics | PropLabDiagnostics | RouteDiagnostics;
   pause(): void;
   resume(): void;
 }
@@ -46,12 +47,18 @@ function readTimeRequest(search: string): number | null {
  * the scene manager, the lighting, and the post chain, which is what makes them honest places to judge
  * what the game will look like.
  */
-function readSceneRequest(search: string): 'drive' | 'studio' | 'props' {
+function readSceneRequest(search: string): 'drive' | 'studio' | 'props' | 'route' {
   const scene = new URLSearchParams(search).get('scene');
-  if (scene === 'studio' || scene === 'props') {
+  if (scene === 'studio' || scene === 'props' || scene === 'route') {
     return scene;
   }
   return 'drive';
+}
+
+/** Reads `?bookmark=<id>`: which fixed camera the validation route opens on. */
+function readBookmarkRequest(search: string): string | undefined {
+  const id = new URLSearchParams(search).get('bookmark');
+  return id === null || id === '' ? undefined : id;
 }
 
 /** Reads `?model=<manifest id>`: which model the prop inspector opens on. */
@@ -328,6 +335,62 @@ async function startProps(): Promise<void> {
   }
 }
 
+/**
+ * Boots the validation route: the 2 km strip under one of its fixed camera bookmarks.
+ *
+ * No Rapier and no vehicle, for the same reason the other look-dev scenes are separate
+ * composition roots: the bookmarks have to be reachable without driving to them, or the
+ * captures would measure the driving instead of the rendering. The driving HUD is hidden
+ * rather than reused — it would report a vehicle that does not exist here.
+ */
+async function startRoute(): Promise<void> {
+  if (!canvas) {
+    reportStartupFailure(new Error('missing #viewport-canvas element'));
+    return;
+  }
+
+  if (overlayRoot) {
+    overlayRoot.hidden = true;
+  }
+  if (studioPanelRoot) {
+    studioPanelRoot.hidden = true;
+  }
+  setStatus('Loading the validation route…', 'info');
+
+  let application: RouteApplication;
+  try {
+    const { config, tier } = resolveRenderConfig();
+    const startHour = readTimeRequest(window.location.search);
+    const bookmarkId = readBookmarkRequest(window.location.search);
+
+    application = await RouteApplication.create({
+      canvas,
+      config,
+      tier,
+      ...(bookmarkId === undefined ? {} : { bookmarkId }),
+      ...(startHour === null ? {} : { hourOverride: startHour }),
+    });
+  } catch (error) {
+    reportStartupFailure(error);
+    return;
+  }
+
+  setStatus(null);
+  window.addEventListener('resize', () => {
+    application.resize();
+  });
+
+  if (isDebugEnabled()) {
+    window.__ENDLESS_DRIVER__ = {
+      getDiagnostics: () => application.getDiagnostics(),
+      pause: () => {
+        application.dispose();
+      },
+      resume: () => undefined,
+    };
+  }
+}
+
 async function start(): Promise<void> {
   switch (readSceneRequest(window.location.search)) {
     case 'studio':
@@ -335,6 +398,9 @@ async function start(): Promise<void> {
       return;
     case 'props':
       await startProps();
+      return;
+    case 'route':
+      await startRoute();
       return;
     default:
       await startDrivingScene();

@@ -7,6 +7,7 @@ import {
   VSMShadowMap,
   WebGPURenderer,
   type Camera,
+  type DirectionalLight,
   type Scene,
 } from 'three/webgpu';
 import { buildPostChain, type PostEffectName } from '../shaders/post-chain';
@@ -122,6 +123,7 @@ export class Engine {
   readonly #resizeObserver: ResizeObserver | null;
   readonly #listensToWindow: boolean;
   #chain: ReturnType<typeof buildPostChain> | null = null;
+  #godraysLight: DirectionalLight | null = null;
   readonly #resolution: DynamicResolutionController;
   #renderScale = 1;
   #focusTarget: number | null = null;
@@ -377,6 +379,31 @@ export class Engine {
   }
 
   /**
+   * Hands the chain the scene's shadow-only god-ray light. Called by composition roots before
+   * the first frame; the chain is built lazily, so the light only has to exist by then. Without
+   * it the effect is dropped from the graph (see `buildPostChain`), never built broken.
+   */
+  setGodraysLight(light: DirectionalLight | null): void {
+    this.#godraysLight = light;
+  }
+
+  /**
+   * Sets the god-ray shaft colour for the coming frame: the sun's colour, pre-scaled by the
+   * daylight controller to how plausible shafts are at this hour. Black is the off state, so the
+   * call is safe at any hour and on any tier - the controller never has to ask whether the
+   * effect is in the chain before describing the sky to it.
+   */
+  setGodrays(tint: { readonly r: number; readonly g: number; readonly b: number }): void {
+    const { godraysTint } = this.#chain ?? {};
+    if (godraysTint === undefined) {
+      return;
+    }
+    const clamp = (value: number) =>
+      Number.isFinite(value) ? Math.min(MAX_GRADE, Math.max(0, value)) : 0;
+    godraysTint.set(clamp(tint.r), clamp(tint.g), clamp(tint.b));
+  }
+
+  /**
    * Starts the renderer. `WebGPURenderer` builds its device, backend, and node systems
    * asynchronously, so nothing may be rendered before this resolves.
    */
@@ -543,6 +570,7 @@ export class Engine {
         scene,
         camera,
         config: this.#config,
+        godraysLight: this.#godraysLight,
       });
       this.#pipelineScene = scene;
       this.#pipelineCamera = camera;

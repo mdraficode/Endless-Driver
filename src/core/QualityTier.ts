@@ -103,6 +103,7 @@ export function applyTier(base: RenderConfig, tier: TierId): RenderConfig {
     depthOfField: depthOfFieldOverride,
     motionBlur: motionBlurOverride,
     temporalAntiAliasing: temporalAntiAliasingOverride,
+    godrays: godraysOverride,
     ...postOverride
   } = overrides.postProcessing ?? {};
 
@@ -115,6 +116,7 @@ export function applyTier(base: RenderConfig, tier: TierId): RenderConfig {
     // to restate the focus falloff, and a field it forgets would silently become `undefined`.
     depthOfField: { ...base.postProcessing.depthOfField, ...depthOfFieldOverride },
     motionBlur: { ...base.postProcessing.motionBlur, ...motionBlurOverride },
+    godrays: { ...base.postProcessing.godrays, ...godraysOverride },
     temporalAntiAliasing: {
       ...base.postProcessing.temporalAntiAliasing,
       ...temporalAntiAliasingOverride,
@@ -151,7 +153,13 @@ export function applyTier(base: RenderConfig, tier: TierId): RenderConfig {
       ...shadowOverride,
       csm: { ...base.shadows.csm, ...csmOverride },
     },
-    sky: { ...base.sky, ...overrides.sky },
+    sky: {
+      ...base.sky,
+      ...overrides.sky,
+      // Nested like the cascade config: a tier that only switches the height term off must not
+      // have to restate its densities, and a field it forgets would silently become `undefined`.
+      heightFog: { ...base.sky.heightFog, ...overrides.sky?.heightFog },
+    },
     atmosphere: {
       ...base.atmosphere,
       ...atmosphereOverride,

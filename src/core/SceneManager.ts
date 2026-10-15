@@ -15,6 +15,8 @@ import {
 import { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
+import type { Node } from 'three/webgpu';
+import { createHeightFog, type HeightFog } from '../shaders/height-fog';
 import {
   loadEnvironmentAsset,
   loadHdrTexture,
@@ -50,6 +52,8 @@ export interface SceneDiagnostics {
   /** Manifest id of the HDRI lighting the scene, or `null` while only the sun lights it. */
   readonly environmentId: string | null;
   readonly contentKind: string;
+  /** Which distance-cueing model the frame used: height-aware, the linear band, or none. */
+  readonly fogMode: 'height' | 'linear' | 'off';
   /** Sun elevation in degrees, or `null` before the first daylight update. */
   readonly sunElevationDegrees: number | null;
   readonly isNight: boolean;
@@ -97,6 +101,8 @@ export class SceneManager {
   readonly #csm: CSMShadowNode | null;
   #content: SceneContent;
   readonly #fog: Fog | null;
+  readonly #heightFog: HeightFog | null;
+  readonly #godraysLight: DirectionalLight | null;
   readonly #addedObjects = new Set<Object3D>();
   readonly #disposables: readonly (() => void)[];
   #environment: EnvironmentAsset | null = null;
@@ -113,10 +119,24 @@ export class SceneManager {
     this.#config = config;
     this.#sunDistance = config.lighting.sunDistance;
     this.scene = new Scene();
-    this.#fog = config.sky.fogEnabled
-      ? new Fog(resolveFogColor(config), config.sky.fogNear, config.sky.fogFar)
-      : null;
-    this.scene.fog = this.#fog;
+    /**
+     * Distance cueing, in one of two models. The height-aware term is a `scene.fogNode` — it is
+     * evaluated inside every material's fragment stage, so it tints lit colour rather than
+     * washing the finished frame, and both backends compile the same TSL. The linear band is
+     * kept for the tier that cannot afford the world-space varying (and for `?hfog=0`
+     * comparisons against exactly what the height term replaced).
+     */
+    this.#heightFog =
+      config.sky.fogEnabled && config.sky.heightFog.enabled ? createHeightFog(config.sky) : null;
+    if (this.#heightFog !== null) {
+      (this.scene as Scene & { fogNode?: Node<'vec4'> }).fogNode = this.#heightFog.node;
+      this.#fog = null;
+    } else {
+      this.#fog = config.sky.fogEnabled
+        ? new Fog(resolveFogColor(config), config.sky.fogNear, config.sky.fogFar)
+        : null;
+      this.scene.fog = this.#fog;
+    }
 
     this.camera = new PerspectiveCamera(
       config.camera.fov,
@@ -148,9 +168,22 @@ export class SceneManager {
     this.#sunOffset = new Vector3(...config.lighting.sunPosition).normalize();
     this.#csm = attachCascades(this.#sun, config);
 
+    /**
+     * The god-ray march samples a shadow map addressed by a single shadow matrix, which the
+     * cascaded sun cannot provide (CSM keeps one target per cascade). So the effect gets its own
+     * directional light that exists only to cast that map: intensity zero, so it contributes no
+     * light and its shadows darken nothing; a tight frustum around the camera focus, where
+     * shafts are readable, instead of the sun's whole cascade range. It is created only when the
+     * configuration enables the effect, so tiers without god rays pay exactly nothing for it.
+     */
+    this.#godraysLight = config.postProcessing.godrays.enabled ? createGodraysLight(config) : null;
+
     this.#content = (options.content ?? createDrivingWorld)({ config, worldConfig });
 
     this.scene.add(this.#sky, ambient, this.#sun, this.#sun.target, this.#content.root);
+    if (this.#godraysLight !== null) {
+      this.scene.add(this.#godraysLight, this.#godraysLight.target);
+    }
 
     this.#disposables = [() => this.controls.dispose(), () => disposeObjectTree(this.scene)];
   }
@@ -319,6 +352,33 @@ export class SceneManager {
     );
     this.#sun.target.updateMatrixWorld();
     this.#sun.updateMatrixWorld();
+
+    // The shaft light shares the sun's direction and focus, so the map it casts covers the same
+    // ground the cascades do — at its own, tighter extent.
+    const shaft = this.#godraysLight;
+    if (shaft !== null) {
+      shaft.target.position.copy(this.#sunTarget);
+      shaft.position.set(
+        x + this.#sunOffset.x * this.#sunDistance,
+        this.#sunOffset.y * this.#sunDistance,
+        z + this.#sunOffset.z * this.#sunDistance,
+      );
+      shaft.target.updateMatrixWorld();
+      shaft.updateMatrixWorld();
+    }
+  }
+
+  /** The shadow-only light the god-ray march samples, or `null` when the effect is off. */
+  get godraysLight(): DirectionalLight | null {
+    return this.#godraysLight;
+  }
+
+  /** Which distance-cueing model is active, for diagnostics. */
+  get fogMode(): 'height' | 'linear' | 'off' {
+    if (this.#heightFog !== null) {
+      return 'height';
+    }
+    return this.#fog !== null ? 'linear' : 'off';
   }
 
   /**
@@ -358,6 +418,24 @@ export class SceneManager {
     this.#sky.showSunDisc.value = state.showSunDisc ? 1 : 0;
 
     this.#fog?.color.setHex(state.fogColorHex);
+    if (this.#heightFog !== null) {
+      const { uniforms } = this.#heightFog;
+      const heightFogConfig = this.#config.sky.heightFog;
+      // The haze thickens with the atmosphere's own turbidity curve, which peaks in the horizon
+      // band — dawn mist is the same fact stated in the sky model's language.
+      const densityScale = state.turbidity / Math.max(0.001, this.#config.atmosphere.turbidity);
+      uniforms.fogColour.value.setHex(state.fogColorHex);
+      // Pre-scaled by intensity: at night the sun contributes nothing to scatter, so the lobe
+      // switches itself off rather than needing a second gate in the shader.
+      uniforms.sunColour.value.setHex(state.sunColorHex).multiplyScalar(state.sunIntensity);
+      uniforms.sunDirection.value.set(
+        state.sunDirection.x,
+        state.sunDirection.y,
+        state.sunDirection.z,
+      );
+      uniforms.distanceDensity.value = heightFogConfig.distanceDensity * densityScale;
+      uniforms.heightDensity.value = heightFogConfig.heightDensity * densityScale;
+    }
     this.scene.environmentIntensity = state.environmentIntensity;
     if (this.scene.background !== null) {
       this.scene.backgroundIntensity = state.environmentIntensity;
@@ -414,6 +492,7 @@ export class SceneManager {
       objectCount: this.getObjectCount(),
       skyMode: this.skyMode,
       contentKind: this.#content.kind,
+      fogMode: this.fogMode,
       environmentId: this.#environment?.id ?? null,
       sunElevationDegrees: this.#daylight?.sunElevationDegrees ?? null,
       isNight: this.#daylight?.isNight ?? false,
@@ -437,6 +516,33 @@ export class SceneManager {
       dispose();
     }
   }
+}
+
+/**
+ * The shadow-only light the god-ray march samples.
+ *
+ * Zero intensity is the whole design: the renderer still renders its shadow map (shadow maps are
+ * rendered for every shadow-casting light), while the light's own contribution — the only thing
+ * its shadows could darken — is nothing. Its frustum is a single orthographic box sized by the
+ * effect's config rather than the cascade range, because the march only ever reads the near
+ * field where shafts are visible.
+ */
+function createGodraysLight(config: RenderConfig): DirectionalLight {
+  const godrays = config.postProcessing.godrays;
+  const light = new DirectionalLight(0xffffff, 0);
+  light.name = 'godrays-sun';
+  light.castShadow = true;
+  light.shadow.mapSize.set(godrays.shadowMapSize, godrays.shadowMapSize);
+  light.shadow.camera.left = -godrays.shadowExtentMeters;
+  light.shadow.camera.right = godrays.shadowExtentMeters;
+  light.shadow.camera.top = godrays.shadowExtentMeters;
+  light.shadow.camera.bottom = -godrays.shadowExtentMeters;
+  light.shadow.camera.near = 1;
+  light.shadow.camera.far = config.lighting.sunDistance * 4;
+  light.shadow.bias = config.shadows.bias;
+  light.shadow.normalBias = config.shadows.normalBias;
+  light.target.name = 'godrays-sun-target';
+  return light;
 }
 
 /**

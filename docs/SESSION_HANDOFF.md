@@ -671,3 +671,64 @@ is why the matching had to be done by speed and distance rather than by timing.
 **Next in Phase 3:** the 2 km validation route with fixed camera bookmarks, the SSIM baseline, and the
 temporal-stability metric — the harness that turns "it looks better" and "it shimmers" into numbers — then god
 rays and height-aware aerial perspective (Ranks 3 and 10 of the realism ranking).
+
+## 18. The route + atmosphere slice — validation route, SSIM baseline, stability metric, height fog, god rays (2026-10-15)
+
+Owner approval 2026-10-15 ("Ok go ahead") for the follow-up to §17. This supersedes the "Next in Phase 3"
+paragraph at the end of §17 and the stale §7. All verification is headless Chromium under **SwiftShader on
+the WebGL2 fallback** (the sandbox browser has no WebGPU adapter): structural evidence only, never frame
+rate. Evidence: `/home/user/phase3-evidence/route-atmosphere/`.
+
+**The route.** `src/config/route.ts` + `src/world/RouteWorld.ts` + `src/lab/RouteApplication.ts`,
+`?scene=route&bookmark=<station>-<phase>`. A straight 2 km look-dev road toward −Z (Phase 4 owns real
+terrain/roads; this is a measurement stage, not world content): 3 stations — `start` (open plain, volcano
+on the horizon), `canopy` (overhead slatted trellis, the god-ray stage), `summit` (far end, looking back) —
+× 4 phases at measured solar hours (dawn 6.8, noon 12.5, dusk 17.4, night 23.8; the project's solar model
+at lat 36°/doy 264 has sunrise ≈06:00, sunset ≈18:00 — hours were measured, not guessed). Bookmarks pin
+`weather: clear, season: summer` until Phase 7. The camera focuses on the bookmark look target
+(photographer focus); `dof=0` remains for system-isolation captures.
+
+**The harness.** `npm run capture:route` (`scripts/capture-route.mjs`): `--baseline` writes the accepted
+set, default mode re-shoots and SSIM-diffs against it (exit 1 below 0.97 per bookmark), `--stability` adds
+12-frame TAA on/off bursts, `--extra k=v` appends URL switches for A/B arms, `--bookmarks a,b` subsets.
+Metrics are pure functions in `scripts/lib/image-metrics.mjs`, unit-tested on synthetic images with known
+answers. The accepted baseline — 12 tier-B bookmarks at 800×500 — is committed in `baseline/route/` with a
+per-capture manifest (backend, fog mode, sun elevation, SSIM). Re-capturing three bookmarks scored SSIM
+0.9999–1.0000, exit 0. The harness polls diagnostics until the camera settles before shooting; three
+confounds were found and removed along the way — tier-A film grain is per-frame random (`?grain=0` in
+A/B arms), clouds animate by wall clock even with a frozen sun (`?clouds=0` in stability arms), and DOF
+focus can masquerade as fog (`dof=0` for isolation captures).
+
+**Height fog (Rank 3).** `src/shaders/height-fog.ts`: exponential height falloff composed with the
+distance term as the scene `fogNode` on tiers B/A; tier C keeps the linear band. Measured at `start-dawn`
+with `dof=0`: far-band MAD vs fog-off 11.197 (height) vs ≈8.9 (linear); volcano pixel [188, 200, 213]
+(height) vs [164, 180, 194] (linear) vs [121, 137, 155] (off) — distance desaturates toward the sky more
+than the old band. Two tuning lessons: the height factor multiplies depth-below-threshold by distance, so
+the first density (0.00035) rendered the whole route as fog colour — shipped is 0.00006 with
+distanceDensity 0.0014 — and the volcano originally sat at −2320 m, beyond the 2000 m camera far plane,
+so it was clipped and its "pixels" were sky; it now stands at −1900 m.
+
+**God rays (Rank 10).** `GodraysNode` in the HDR chain after `motionBlur`, before the grade — the chain is
+now `ao → taa → motionBlur → godrays → grade → bloom → dof → smaa | tonemap+sRGB | lut → …`. Strength is a
+daylight-resolved tint (black = off), marching a dedicated non-CSM shaft light whose intensity is 0 (it
+renders the shadow map the march needs and lights nothing). Tier A only, or `?godrays=1`. Measured at
+`canopy-dawn` (tier A, grain and DOF off, unchanged frames): diff mean-max 5.64, max 108, localized through
+canopy and sky. A cross-sun composition measured only 0.45 and was rejected — the shipped bookmark looks
+down the road through the canopy. Verdict: real, correctly placed, visually subtle through sparse
+placeholder slats; Phase 5 foliage density is what will make it read.
+
+**Temporal stability — the honest caveat.** With clouds held and the camera settled: TAA off σ = 0.000 at
+both tested bookmarks (a static, deterministic software renderer has zero shimmer by construction); TAA
+on σ = 0.048 (start-noon, p95 0.353) and σ = 0.436 (canopy-noon, p95 3.297, concentrated on the thin
+canopy posts). So the metric machinery works and is sensitive, and it names thin canopy geometry as a
+watch item — but it does **not** validate Rank 1. What would: bursts from a _moving_ camera on real GPU
+hardware. Still open, and recorded here so nobody quotes the static numbers as a TAA verdict.
+
+**A debugging note worth keeping.** The washed-out route frames that opened this slice were not a grade
+regression: a studio capture at the same hour was correct (colours, chrome, glass, exposure), which
+exonerated the global pipeline and isolated the causes to the route scene — over-strong first fog tuning
+plus DOF focus distance. The control-capture habit (same pipeline, known-good scene) found in minutes
+what staring at route code had not.
+
+**Still owed in Phase 3:** contact shadows (Rank 4), SSGI on the high tier (Rank 7), an AgX-vs-ACES
+comparison. Then Phase 3 review. **Phase 4 remains gated.**

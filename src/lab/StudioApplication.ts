@@ -139,6 +139,7 @@ export class StudioApplication {
       aspect: this.#engine.viewport.aspect,
       content: () => lab,
     });
+    this.#engine.setGodraysLight(this.#scene.godraysLight);
     // The studio does not drive, so its orbit camera is the only camera.
     this.#scene.setDebugCameraEnabled(true);
     // `SceneManager` builds its camera from the *render* configuration, which is authored for a

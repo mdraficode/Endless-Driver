@@ -119,6 +119,7 @@ export class PropLabApplication {
         return lab;
       },
     });
+    this.#engine.setGodraysLight(this.#scene.godraysLight);
     this.#scene.setDebugCameraEnabled(true);
     this.#scene.camera.fov = this.#propsConfig.camera.fov;
     this.#scene.camera.updateProjectionMatrix();

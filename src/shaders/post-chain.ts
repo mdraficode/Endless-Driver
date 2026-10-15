@@ -15,7 +15,7 @@ import {
   velocity,
 } from 'three/tsl';
 import { RenderPipeline } from 'three/webgpu';
-import { Vector3, type Camera, type Scene } from 'three';
+import { Vector3, type Camera, type DirectionalLight, type Scene } from 'three';
 import type { Node, UniformNode, WebGPURenderer } from 'three/webgpu';
 import type { Data3DTexture } from 'three';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
@@ -30,6 +30,7 @@ import { dof } from 'three/addons/tsl/display/DepthOfFieldNode.js';
 import { lut3D } from 'three/addons/tsl/display/Lut3DNode.js';
 import { taau } from 'three/addons/tsl/display/TAAUNode.js';
 import { motionBlur as motionBlurNode } from 'three/addons/tsl/display/MotionBlur.js';
+import { godrays } from 'three/addons/tsl/display/GodraysNode.js';
 import { createLookTexture } from './lut-identity';
 import type { RenderConfig } from '../config/render';
 import { createVignetteNode } from './vignette';
@@ -60,6 +61,7 @@ export type PostEffectName =
   | 'grade'
   | 'bloom'
   | 'motionBlur'
+  | 'godrays'
   | 'dof'
   | 'smaa'
   | 'lut'
@@ -108,6 +110,7 @@ const EFFECT_ORDER: readonly PostEffectName[] = [
   'ao',
   'taa',
   'motionBlur',
+  'godrays',
   'grade',
   'bloom',
   'dof',
@@ -133,6 +136,7 @@ export function resolvePostEffects(config: RenderConfig): PostEffectName[] {
   if (postProcessing.bloom.enabled) enabled.add('bloom');
   if (postProcessing.depthOfField.enabled) enabled.add('dof');
   if (postProcessing.motionBlur.enabled) enabled.add('motionBlur');
+  if (postProcessing.godrays.enabled) enabled.add('godrays');
   if (postProcessing.lut.enabled) enabled.add('lut');
 
   /**
@@ -244,6 +248,15 @@ export interface PostChain {
    */
   readonly motionBlurIntensity: UniformNode<'float', number>;
   /**
+   * Live colour of the god-ray shafts, mutated in place by `Engine.setGodrays()`.
+   *
+   * A plain vector for the same reason as `gradeTint`: the graph holds `uniform(thisVector)`, so
+   * writing `set()` updates the next frame with no rebuild. It is black whenever the sun cannot
+   * produce shafts - night, high noon - so the effect can stay in the chain and simply contribute
+   * nothing, which is what lets its strength follow the sun instead of a toggle.
+   */
+  readonly godraysTint: Vector3;
+  /**
    * The table the look is sampled from, deliberately owned by the chain rather than handed to it.
    *
    * The look arrives over the network, long after the node graph exists, and a graph that had to be
@@ -260,6 +273,14 @@ export interface PostChainOptions {
   readonly scene: Scene;
   readonly camera: Camera;
   readonly config: RenderConfig;
+  /**
+   * The shadow-only light the god-ray march samples, owned by the scene. Without one the effect
+   * cannot be built — the node raymarches a shadow map, and a chain built without the light
+   * would have nothing to march — so the effect is silently dropped from the graph rather than
+   * built broken. Composition roots pass `SceneManager.godraysLight`, which exists exactly when
+   * the configuration asks for the effect.
+   */
+  readonly godraysLight?: DirectionalLight | null;
 }
 
 /**
@@ -375,6 +396,27 @@ export function buildPostChain(options: PostChainOptions): PostChain {
     color = asColor(motionBlurNode(color, velocityUv, int(motionBlurConfig.samples)));
   }
 
+  // --- light shafts: sunlight that survived between the occluders --------------------------------
+  const godraysTint = new Vector3(0, 0, 0);
+  if (effects.includes('godrays') && options.godraysLight) {
+    const godraysConfig = config.postProcessing.godrays;
+    /**
+     * The march runs on the scene depth and the dedicated shadow map. Its output is a texture of
+     * accumulated illumination (zero where the shadow map says the light never arrived), tinted by
+     * a live uniform the daylight controller drives: black at night and at high sun, warm and
+     * strong in the low band where shafts are physically plausible — so "the effect is in the
+     * chain" and "shafts are visible" are separate facts, both reported honestly.
+     */
+    const rays = godrays(scenePass.getTextureNode('depth'), camera, options.godraysLight);
+    rays.raymarchSteps.value = godraysConfig.raymarchSteps;
+    rays.density.value = godraysConfig.density;
+    rays.maxDensity.value = godraysConfig.maxDensity;
+    rays.distanceAttenuation.value = godraysConfig.distanceAttenuation;
+    rays.resolutionScale = godraysConfig.resolutionScale;
+    const shaft = rays.getTextureNode().sample(screenUV).rgb.mul(uniform(godraysTint));
+    color = asColor(color.add(vec4(shaft, 0)));
+  }
+
   const gradeTint = new Vector3(1, 1, 1);
   const dofConfig = config.postProcessing.depthOfField;
   // Built once, here, and passed into the graph as *nodes*: see the note on `PostChain.focusDistance`.
@@ -477,6 +519,7 @@ export function buildPostChain(options: PostChainOptions): PostChain {
     bokehScale,
     lutIntensity,
     motionBlurIntensity,
+    godraysTint,
     lutTexture,
     lutSize,
   };

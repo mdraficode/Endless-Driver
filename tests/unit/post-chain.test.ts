@@ -478,3 +478,32 @@ describe('temporal anti-aliasing and motion blur', () => {
     );
   });
 });
+
+describe('god rays', () => {
+  it('marches after the shutter and before the grade, so the grade tints the shafts', () => {
+    const config = withEffects({
+      godrays: { ...RENDER_CONFIG.postProcessing.godrays, enabled: true },
+      motionBlur: { ...RENDER_CONFIG.postProcessing.motionBlur, enabled: true },
+      grade: { enabled: true },
+      bloom: { ...RENDER_CONFIG.postProcessing.bloom, enabled: true },
+    });
+    const effects = resolvePostEffects(config);
+    expect(effects).toContain('godrays');
+    expect(effects.indexOf('godrays')).toBeGreaterThan(effects.indexOf('motionBlur'));
+    expect(effects.indexOf('godrays')).toBeLessThan(effects.indexOf('grade'));
+    expect(effects.indexOf('godrays')).toBeLessThan(effects.indexOf('bloom'));
+  });
+
+  it('is the high tier’s effect: on for A, off for B and C', () => {
+    expect(resolvePostEffects(applyTier(RENDER_CONFIG, 'A'))).toContain('godrays');
+    expect(resolvePostEffects(applyTier(RENDER_CONFIG, 'B'))).not.toContain('godrays');
+    expect(resolvePostEffects(applyTier(RENDER_CONFIG, 'C'))).not.toContain('godrays');
+  });
+
+  it('switches from the URL in both directions', () => {
+    const tierB = applyTier(RENDER_CONFIG, 'B');
+    expect(applyRenderSwitches(tierB, '?godrays=1').postProcessing.godrays.enabled).toBe(true);
+    const tierA = applyTier(RENDER_CONFIG, 'A');
+    expect(applyRenderSwitches(tierA, '?godrays=0').postProcessing.godrays.enabled).toBe(false);
+  });
+});

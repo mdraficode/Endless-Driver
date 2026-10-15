@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { RENDER_CONFIG } from '../../src/config/render';
+import { RENDER_CONFIG, applyRenderSwitches } from '../../src/config/render';
+import { applyTier } from '../../src/core/QualityTier';
 import { WORLD_CONFIG } from '../../src/config/world';
 
 describe('render configuration', () => {
@@ -92,5 +93,49 @@ describe('render configuration', () => {
     expect(typeof postProcessing.bloom.enabled).toBe('boolean');
     expect(postProcessing.bloom.strength).toBeGreaterThanOrEqual(0);
     expect(postProcessing.bloom.threshold).toBeGreaterThan(0);
+  });
+});
+
+describe('height-aware fog and god rays configuration', () => {
+  it('keeps the height-fog densities in the range the factor functions expect', () => {
+    const { heightFog } = RENDER_CONFIG.sky;
+    expect(heightFog.distanceDensity).toBeGreaterThan(0);
+    expect(heightFog.distanceDensity).toBeLessThan(0.01);
+    expect(heightFog.heightDensity).toBeGreaterThan(0);
+    expect(heightFog.heightDensity).toBeLessThan(heightFog.distanceDensity);
+    expect(heightFog.heightMeters).toBeGreaterThan(0);
+    expect(heightFog.heightMeters).toBeLessThan(100);
+    expect(heightFog.sunScatterStrength).toBeGreaterThanOrEqual(0);
+    expect(heightFog.sunScatterStrength).toBeLessThanOrEqual(1);
+    expect(heightFog.sunScatterPower).toBeGreaterThan(1);
+  });
+
+  it('gives the constrained tier the linear band and the desktop tiers the height term', () => {
+    expect(applyTier(RENDER_CONFIG, 'C').sky.heightFog.enabled).toBe(false);
+    expect(applyTier(RENDER_CONFIG, 'B').sky.heightFog.enabled).toBe(true);
+    expect(applyTier(RENDER_CONFIG, 'A').sky.heightFog.enabled).toBe(true);
+    // A tier that only flips the switch must not lose the tuned densities to the merge.
+    expect(applyTier(RENDER_CONFIG, 'C').sky.heightFog.distanceDensity).toBe(
+      RENDER_CONFIG.sky.heightFog.distanceDensity,
+    );
+  });
+
+  it('switches the height term and fog itself from the URL', () => {
+    expect(applyRenderSwitches(RENDER_CONFIG, '?hfog=0').sky.heightFog.enabled).toBe(false);
+    expect(applyRenderSwitches(RENDER_CONFIG, '?hfog=1').sky.heightFog.enabled).toBe(true);
+    expect(applyRenderSwitches(RENDER_CONFIG, '?fog=off').sky.fogEnabled).toBe(false);
+  });
+
+  it('keeps the god-ray march parameters the node can consume', () => {
+    const { godrays } = RENDER_CONFIG.postProcessing;
+    expect(Number.isInteger(godrays.raymarchSteps)).toBe(true);
+    expect(godrays.raymarchSteps).toBeGreaterThan(0);
+    expect(godrays.density).toBeGreaterThan(0);
+    expect(godrays.maxDensity).toBeGreaterThan(0);
+    expect(godrays.maxDensity).toBeLessThanOrEqual(1);
+    expect(godrays.resolutionScale).toBeGreaterThan(0);
+    expect(godrays.resolutionScale).toBeLessThanOrEqual(1);
+    expect(godrays.shadowExtentMeters).toBeGreaterThan(0);
+    expect(godrays.shadowMapSize).toBeGreaterThanOrEqual(256);
   });
 });

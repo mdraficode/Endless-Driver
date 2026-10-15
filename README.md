@@ -49,18 +49,19 @@ No environment variables, API keys, or third-party assets are required. Installe
 
 ## Commands
 
-| Command                | Purpose                                              |
-| ---------------------- | ---------------------------------------------------- |
-| `npm run dev`          | Vite dev server on port 5173 with the drivable car   |
-| `npm run build`        | Static production output in `dist/`                  |
-| `npm run preview`      | Serve the production build on port 4173              |
-| `npm run typecheck`    | Type-check application and tooling/test TypeScript   |
-| `npm run lint`         | ESLint checks                                        |
-| `npm run format`       | Format tracked source/configuration/documentation    |
-| `npm run format:check` | Verify formatting without modifying files            |
-| `npm test`             | Run unit/scaffold tests (Node environment)           |
-| `npm run test:watch`   | Local test watcher                                   |
-| `npm run check`        | Formatting, lint, types, tests, and production build |
+| Command                 | Purpose                                                                                                                                                             |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`           | Vite dev server on port 5173 with the drivable car                                                                                                                  |
+| `npm run build`         | Static production output in `dist/`                                                                                                                                 |
+| `npm run preview`       | Serve the production build on port 4173                                                                                                                             |
+| `npm run typecheck`     | Type-check application and tooling/test TypeScript                                                                                                                  |
+| `npm run lint`          | ESLint checks                                                                                                                                                       |
+| `npm run format`        | Format tracked source/configuration/documentation                                                                                                                   |
+| `npm run format:check`  | Verify formatting without modifying files                                                                                                                           |
+| `npm test`              | Run unit/scaffold tests (Node environment)                                                                                                                          |
+| `npm run test:watch`    | Local test watcher                                                                                                                                                  |
+| `npm run check`         | Formatting, lint, types, tests, and production build                                                                                                                |
+| `npm run capture:route` | Re-shoot the 12 route bookmarks and SSIM-diff them against `baseline/route/` (needs a `vite preview` server on port 4173 and Playwright installed with `--no-save`) |
 
 Vite binds to `0.0.0.0` and accepts the Arena `.e2b.app` preview domain. Browser-facing code must use relative URLs so a dev-server proxy can reach services; never call the sandbox's `localhost` from the user's browser.
 
@@ -100,7 +101,7 @@ src/
   environment/    solar model, time-of-day clock, daylight curves; seasons/weather in Phase 7
   shaders/        TSL node materials: atmosphere sky, post chain, vignette
   assets/         pinned fetch pipeline, loaders, manifest, licence register
-  lab/            look-dev studio (?scene=studio), prop inspector (?scene=props) (Phase 3)
+  lab/            look-dev studio (?scene=studio), prop inspector (?scene=props), validation route (?scene=route) (Phase 3)
   workers/        bounded CPU generation jobs                      (Phase 4, not implemented)
 public/assets/    empty licensed-asset inventory and future folders
 tests/            scaffold checks, unit tests, future test layers
@@ -139,9 +140,9 @@ No open-source distribution license has been selected, so project metadata remai
 
 ## Next step
 
-**Phase 3 is authorized and in progress.** Landed so far: `WebGPURenderer` with the WebGL2 fallback, a TSL-lit scene (Preetham sky, HDRI environment lighting, cascaded shadows), the full `RenderPipeline` post chain, the C/B/A tier system, the time-of-day clock with sun-driven exposure and colour grade, the pinned and verified asset pipeline with its glTF/KTX2 derivation, the material studio at `?scene=studio`, and the prop inspector at `?scene=props` — every level of detail of a derived model, side by side on the floor, with the distance rule the streamed world will use. The look now goes through a generated 3D LUT applied after tone mapping, and the frame has depth of field focused on the car. Still to come in the phase: motion blur, god rays, TAAU with dynamic resolution, and the 2 km validation route with its screenshot pass. Phase 4 (terrain, roads, streaming) is **not** authorized — see [`PROJECT_PLAN.md`](PROJECT_PLAN.md) §9 for the deliverable list and the stop condition.
+**Phase 3 is authorized and in progress.** Landed so far: `WebGPURenderer` with the WebGL2 fallback, a TSL-lit scene (Preetham sky, HDRI environment lighting, cascaded shadows), the full `RenderPipeline` post chain, the C/B/A tier system, the time-of-day clock with sun-driven exposure and colour grade, the pinned and verified asset pipeline with its glTF/KTX2 derivation, the material studio at `?scene=studio`, and the prop inspector at `?scene=props` — every level of detail of a derived model, side by side on the floor, with the distance rule the streamed world will use. The look now goes through a generated 3D LUT applied after tone mapping, and the frame has depth of field focused on the car. The temporal slice added a shared velocity buffer feeding TAAU with dynamic resolution and motion blur; the atmosphere slice added height-aware fog (tiers B/A), god rays (tier A), and the 2 km validation route at `?scene=route` — 12 fixed camera bookmarks whose captures are committed in `baseline/route/` and re-diffed with SSIM by `npm run capture:route`, which also measures frame-to-frame temporal stability with TAA on and off. Still to come in the phase: contact shadows, SSGI on the high tier, and an AgX-vs-ACES comparison. Phase 4 (terrain, roads, streaming) is **not** authorized — see [`PROJECT_PLAN.md`](PROJECT_PLAN.md) §9 for the deliverable list and the stop condition.
 
-**Try it:** <https://mdraficode.github.io/Endless-Driver/> drives with the keyboard. Add `?scene=studio` for the look-dev grid, `?scene=props` for the derived-model inspector, `?time=6.5` / `?time=18.5` for dawn and night, `?tier=a|b|c` to force a quality tier, and `?backend=webgl` to force the fallback path. `?lut=none` removes the colour look, `?lutmix=0.5` trims it, and `?dof=1&bokeh=17` forces depth of field at a chosen aperture. The temporal path has its own switches, because it is the one system whose job is invisible in a still frame: `?taa=0` turns it off (falling back to SMAA), `?aa=smaa|fxaa|none|taa` names a strategy outright, `?res=0.7` fixes the render scale, `?mblur=0` removes motion blur and `?mb=0.5` shortens the shutter. The HUD's `Temporal` row reports the scale the scene is currently drawn at (`taa @ 84%`).
+**Try it:** <https://mdraficode.github.io/Endless-Driver/> drives with the keyboard. Add `?scene=studio` for the look-dev grid, `?scene=props` for the derived-model inspector, `?time=6.5` / `?time=18.5` for dawn and night, `?tier=a|b|c` to force a quality tier, and `?backend=webgl` to force the fallback path. `?lut=none` removes the colour look, `?lutmix=0.5` trims it, and `?dof=1&bokeh=17` forces depth of field at a chosen aperture. The temporal path has its own switches, because it is the one system whose job is invisible in a still frame: `?taa=0` turns it off (falling back to SMAA), `?aa=smaa|fxaa|none|taa` names a strategy outright, `?res=0.7` fixes the render scale, `?mblur=0` removes motion blur and `?mb=0.5` shortens the shutter. The route scene takes `?bookmark=start-noon` (3 stations × dawn/noon/dusk/night), and the atmosphere has its own A/B switches: `?hfog=0` drops the height falloff, `?fog=off` removes fog entirely, `?godrays=1` forces light shafts on, `?grain=0` and `?clouds=0` hold the two per-frame confounds still when comparing captures. The HUD's `Temporal` row reports the scale the scene is currently drawn at (`taa @ 84%`).
 
 Phase 2 verification evidence, measured handling numbers, and the exact browser checks that were run are recorded in [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md). How the project intends to reach a look
 that holds up next to a console racing game — levers ranked by what actually changes how real the image feels, and

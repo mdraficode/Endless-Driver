@@ -17,6 +17,47 @@ export interface DaylightTarget {
 export interface DaylightEngineTarget {
   setExposure(exposure: number): void;
   setGrade(tint: { readonly r: number; readonly g: number; readonly b: number }): void;
+  setGodrays(tint: { readonly r: number; readonly g: number; readonly b: number }): void;
+}
+
+/** Packed sRGB hex to linear RGB components (the renderer's working space). */
+function hexToLinear(hex: number): { r: number; g: number; b: number } {
+  const channel = (byte: number): number => {
+    const srgb = byte / 255;
+    return srgb <= 0.04045 ? srgb / 12.92 : Math.pow((srgb + 0.055) / 1.055, 2.4);
+  };
+  return {
+    r: channel((hex >> 16) & 0xff),
+    g: channel((hex >> 8) & 0xff),
+    b: channel(hex & 0xff),
+  };
+}
+
+/** Clamped linear ramp: 0 below `edge0`, 1 above `edge1`. */
+function ramp(edge0: number, edge1: number, value: number): number {
+  if (edge0 === edge1) {
+    return value < edge0 ? 0 : 1;
+  }
+  return Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0)));
+}
+
+/**
+ * How strongly the god-ray shafts burn at a given daylight state, as a colour ready for the
+ * chain's tint uniform.
+ *
+ * Shafts are a low-sun phenomenon with a specific shape: nothing below the horizon, a fast
+ * arrival as the sun clears it, a broad plateau through the hours when light comes in sideways,
+ * and a fade to nothing by the time the sun is high enough that "shafts" would just be glare.
+ * Encoding that shape here — rather than as a switch in the tier config — is what lets the
+ * effect stay in the high tier's chain all day and only ever *show* when it is plausible.
+ */
+export function resolveGodraysTint(state: DaylightState): { r: number; g: number; b: number } {
+  const elevation = state.sunElevationDegrees;
+  const gate =
+    ramp(-2, 3, elevation) * (1 - ramp(14, 30, elevation)) * Math.min(1, state.sunIntensity * 1.4);
+  const colour = hexToLinear(state.sunColorHex);
+  const strength = gate * 0.9;
+  return { r: colour.r * strength, g: colour.g * strength, b: colour.b * strength };
 }
 
 /**
