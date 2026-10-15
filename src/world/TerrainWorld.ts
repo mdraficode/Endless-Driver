@@ -143,7 +143,12 @@ export class TerrainWorld implements SceneContent {
       smoothstep(float(90), float(260), positionWorld.sub(cameraPosition).length()),
     );
 
-    const grassAlbedo = texture(grass.diffuse, wxz.mul(0.5)).rgb;
+    // The leafy-grass scan grades straw-brown under warm sun (it is half leaf litter);
+    // a saturation lift and a green-leaning tint pull it back to living grass while the
+    // scan's detail — blades, twigs, soil — survives untouched.
+    const grassRaw = texture(grass.diffuse, wxz.mul(0.85)).rgb;
+    const grassLuma = grassRaw.dot(vec3(0.299, 0.587, 0.114));
+    const grassAlbedo = mix(vec3(grassLuma), grassRaw, float(1.45)).mul(vec3(0.74, 1.12, 0.62));
     const soilAlbedo = texture(soil.diffuse, wxz.mul(0.65)).rgb;
     const snowAlbedo = texture(snow.diffuse, wxz.mul(0.5)).rgb;
     // Rock triplanar: three projections blended by the world normal, so a cliff face
@@ -165,7 +170,7 @@ export class TerrainWorld implements SceneContent {
 
     const sampleArm = (set: MaterialTextureSet, uvScale: number) =>
       set.arm !== null ? texture(set.arm, wxz.mul(uvScale)) : null;
-    const grassArm = sampleArm(grass, 0.5);
+    const grassArm = sampleArm(grass, 0.85);
     const soilArm = sampleArm(soil, 0.65);
     const rockArm = sampleArm(rock, 0.22);
     const snowArm = sampleArm(snow, 0.5);
@@ -188,7 +193,7 @@ export class TerrainWorld implements SceneContent {
     // Normal detail, blended like the albedo and faded with it: the far field keeps the
     // geometry normals, which is what makes distant LOD steps stop crawling.
     const flatNormal = vec3(0.5, 0.5, 1);
-    const detailNormal = texture(grass.normal, wxz.mul(0.5))
+    const detailNormal = texture(grass.normal, wxz.mul(0.85))
       .rgb.mul(splat.x)
       .add(texture(soil.normal, wxz.mul(0.65)).rgb.mul(splat.y))
       .add(texture(rock.normal, wxz.mul(0.22)).rgb.mul(splat.z))
