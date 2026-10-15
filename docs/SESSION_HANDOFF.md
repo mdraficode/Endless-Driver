@@ -1032,3 +1032,12 @@ creation/GPU uploads rather than CPU construction. Browser proof: diagnostics re
 `terrainGeneratorMode: 1` and `terrainWorkerBuilds: 121` (every spawn-window chunk
 worker-built), backlog 0, zero errors; 382 tests green. Phase 4 remaining:
 floating-origin rebasing, district build-out (bridges/tunnels deferred).
+
+## 28. Fog density retune (2026-10-15)
+
+Owner reported the spawn view looks foggy. It is the intended height-aware
+atmospheric fog (aerial perspective), not a defect — but the distance density
+0.0014 (opaque ≈700 m, tuned on mountain routes) was too strong on the flat
+spawn plain. Thinned to 0.00085 (opaque ≈1.2 km); valley-haze term and sun
+forward-scatter unchanged, ridges still pop clear of valleys. A/B spawn
+captures in /home/user/phase4-evidence/fog/; 382 tests green.

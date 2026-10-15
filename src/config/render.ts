@@ -130,9 +130,9 @@ export interface HeightFogConfig {
   readonly enabled: boolean;
   /**
    * Exponential distance density. The fog factor is `1 - exp(-(density x distance)^2)`, so this
-   * is roughly "one over the distance at which the air turns opaque": the shipped 0.0014 puts
-   * that near 700 m, close to where the old linear band ended, but reached smoothly instead of
-   * in a ramp with a visible near edge.
+   * is roughly "one over the distance at which the air turns opaque": the shipped 0.00085 puts
+   * that near 1.2 km (owner feedback 2026-10-15: the original 0.0014 / ~700 m read as "foggy"
+   * on the flat spawn plain), reached smoothly instead of in a ramp with a visible near edge.
    */
   readonly distanceDensity: number;
   /**
@@ -631,7 +631,7 @@ export const RENDER_CONFIG: RenderConfig = {
     fogColorHorizon: 0xe8b98a,
     heightFog: {
       enabled: true,
-      distanceDensity: 0.0014,
+      distanceDensity: 0.00085,
       // Small, deliberately: the height factor multiplies depth-below-threshold by distance, so
       // it grows quadratically along the view ray - at 0.00035 it had already saturated by
       // 200 m and the whole route rendered as fog colour. At this value the valley floor is
