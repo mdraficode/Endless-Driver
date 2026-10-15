@@ -172,6 +172,26 @@ describe('chase camera', () => {
     expect(camera.camera.aspect).toBe(2);
   });
 
+  it('lags its heading behind a turn, then settles behind the car', () => {
+    const camera = new ChaseCamera(CHASE_CAMERA_CONFIG, 1);
+    camera.snapTo(pose(0, 0.6, 0, 0));
+    const turned = pose(0, 0.6, 0, Math.PI / 2);
+    camera.update(1 / 60, turned, telemetry());
+    // One frame after a 90-degree snap the camera is still mostly behind the old heading:
+    // its position is dominated by +Z (old behind), not yet by +X (new behind).
+    expect(camera.camera.position.z).toBeGreaterThan(camera.camera.position.x);
+    advance(camera, 3, turned);
+    expect(camera.camera.position.x).toBeCloseTo(CHASE_CAMERA_CONFIG.offset[2], 0);
+    expect(Math.abs(camera.camera.position.z)).toBeLessThan(0.5);
+  });
+
+  it('clamps above provided terrain height, not just y=0', () => {
+    const camera = new ChaseCamera(CHASE_CAMERA_CONFIG, 1);
+    camera.setGroundHeightProvider(() => 12);
+    camera.snapTo(pose(0, 0.6, 0, 0));
+    expect(camera.camera.position.y).toBeGreaterThanOrEqual(12.6 - 1e-6);
+  });
+
   it('is total for degenerate deltas and telemetry', () => {
     const camera = new ChaseCamera(CHASE_CAMERA_CONFIG, 1);
     camera.snapTo(pose());

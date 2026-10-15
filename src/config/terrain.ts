@@ -29,6 +29,16 @@ export interface TerrainConfig {
   readonly physicsSegmentsPerChunk: number;
   /** Chunk builds (or LOD rebuilds) allowed per rendered frame: the upload budget. */
   readonly maxBuildsPerFrame: number;
+  /**
+   * Streaming hysteresis, metres: the loaded window only recentres once the focus has
+   * moved this far past the current centre chunk's edge, so a car straddling a chunk
+   * boundary cannot make the window (and its build queue) oscillate.
+   */
+  readonly hysteresisMeters: number;
+  /** Visual prefetch: the plan is biased this far along the velocity, seconds ahead. */
+  readonly prefetchSeconds: number;
+  /** Cap on the prefetch bias, metres (the physics window is never biased). */
+  readonly prefetchMaxMeters: number;
   /** How far chunk skirts drop below the border, metres: hides LOD T-junction cracks. */
   readonly skirtDepthMeters: number;
   /** Rolling-hill amplitude and base wavelength, metres (fBm in terrain-height). */
@@ -62,6 +72,9 @@ export const TERRAIN_CONFIG: TerrainConfig = {
   physicsRadiusChunks: 1,
   physicsSegmentsPerChunk: 64,
   maxBuildsPerFrame: 2,
+  hysteresisMeters: 24,
+  prefetchSeconds: 1.4,
+  prefetchMaxMeters: 112,
   skirtDepthMeters: 1.6,
   hillAmplitudeMeters: 24,
   hillWavelengthMeters: 420,

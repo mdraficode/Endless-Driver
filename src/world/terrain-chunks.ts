@@ -41,14 +41,57 @@ export function segmentsForRing(config: TerrainConfig, ring: number): number {
 }
 
 /**
+ * The window centre for a focus, with hysteresis: once a centre exists it is kept until
+ * the focus leaves the centre chunk expanded by `hysteresisMeters` on every side. A car
+ * parked on a chunk seam otherwise re-plans (and re-queues) the whole window whenever
+ * physics jitter crosses the line — the budget absorbs it, but the horizon flickers.
+ */
+export function resolveWindowCenter(
+  current: ChunkCoord | null,
+  config: TerrainConfig,
+  focusX: number,
+  focusZ: number,
+): ChunkCoord {
+  const size = config.chunkSizeMeters;
+  const candidate: ChunkCoord = {
+    cx: chunkIndexAt(focusX, size),
+    cz: chunkIndexAt(focusZ, size),
+  };
+  if (current === null) {
+    return candidate;
+  }
+  const centreX = (current.cx + 0.5) * size;
+  const centreZ = (current.cz + 0.5) * size;
+  const reach = size / 2 + config.hysteresisMeters;
+  if (Math.abs(focusX - centreX) <= reach && Math.abs(focusZ - centreZ) <= reach) {
+    return current;
+  }
+  return candidate;
+}
+
+/**
  * The chunks that should exist around a focus, nearest first. The load order matters: the
  * streamer spends its per-frame budget from the front of this list, so the ground under
  * the car always materialises before the horizon does.
  */
 export function planChunks(config: TerrainConfig, focusX: number, focusZ: number): PlannedChunk[] {
-  const size = config.chunkSizeMeters;
-  const centerX = chunkIndexAt(focusX, size);
-  const centerZ = chunkIndexAt(focusZ, size);
+  return planChunksAround(
+    config,
+    chunkIndexAt(focusX, config.chunkSizeMeters),
+    chunkIndexAt(focusZ, config.chunkSizeMeters),
+    focusX,
+    focusZ,
+  );
+}
+
+/** The visual plan around an explicit centre chunk (the streamer's hysteretic centre). */
+export function planChunksAround(
+  config: TerrainConfig,
+  centerX: number,
+  centerZ: number,
+  focusX: number,
+  focusZ: number,
+): PlannedChunk[] {
   const radius = config.viewRadiusChunks;
   const planned: PlannedChunk[] = [];
   for (let dz = -radius; dz <= radius; dz += 1) {
@@ -62,10 +105,11 @@ export function planChunks(config: TerrainConfig, focusX: number, focusZ: number
       });
     }
   }
+  const size = config.chunkSizeMeters;
   planned.sort((a, b) => {
     if (a.ring !== b.ring) return a.ring - b.ring;
-    const da = (a.cx - centerX) ** 2 + (a.cz - centerZ) ** 2;
-    const db = (b.cx - centerX) ** 2 + (b.cz - centerZ) ** 2;
+    const da = (a.cx * size - focusX) ** 2 + (a.cz * size - focusZ) ** 2;
+    const db = (b.cx * size - focusX) ** 2 + (b.cz * size - focusZ) ** 2;
     return da - db;
   });
   return planned;
@@ -77,9 +121,19 @@ export function planPhysicsChunks(
   focusX: number,
   focusZ: number,
 ): ChunkCoord[] {
-  const size = config.chunkSizeMeters;
-  const centerX = chunkIndexAt(focusX, size);
-  const centerZ = chunkIndexAt(focusZ, size);
+  return planPhysicsAround(
+    config,
+    chunkIndexAt(focusX, config.chunkSizeMeters),
+    chunkIndexAt(focusZ, config.chunkSizeMeters),
+  );
+}
+
+/** The physics window around an explicit centre chunk. */
+export function planPhysicsAround(
+  config: TerrainConfig,
+  centerX: number,
+  centerZ: number,
+): ChunkCoord[] {
   const radius = config.physicsRadiusChunks;
   const planned: ChunkCoord[] = [];
   for (let dz = -radius; dz <= radius; dz += 1) {

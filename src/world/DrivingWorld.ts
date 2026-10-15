@@ -30,8 +30,8 @@ export function createDrivingWorld({
   return {
     root,
     kind: 'driving',
-    updateStreaming: (focus) => {
-      terrain.updateStreaming(focus);
+    updateStreaming: (focus, velocity) => {
+      terrain.updateStreaming(focus, velocity);
     },
     loadSurfaces: () => terrain.loadSurfaces(),
     getContentStats: () => terrain.getContentStats(),

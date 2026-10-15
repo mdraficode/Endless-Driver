@@ -3,7 +3,12 @@ import { TERRAIN_CONFIG } from '../../src/config/terrain';
 import { createTerrainSampler } from '../../src/world/terrain-height';
 import { buildChunkGeometry } from '../../src/world/terrain-geometry';
 import { sampleTerrainSurface } from '../../src/world/terrain-surface';
-import { planChunks, planPhysicsChunks, segmentsForRing } from '../../src/world/terrain-chunks';
+import {
+  planChunks,
+  planPhysicsChunks,
+  resolveWindowCenter,
+  segmentsForRing,
+} from '../../src/world/terrain-chunks';
 
 /**
  * Phase 4 terrain contracts, tested headlessly against the pure modules:
@@ -159,6 +164,17 @@ describe('streaming planner', () => {
     expect(segmentsForRing(TERRAIN_CONFIG, 0)).toBe(TERRAIN_CONFIG.lodSegments[0]);
     expect(segmentsForRing(TERRAIN_CONFIG, 3)).toBe(TERRAIN_CONFIG.lodSegments[1]);
     expect(segmentsForRing(TERRAIN_CONFIG, 9)).toBe(TERRAIN_CONFIG.lodSegments[2]);
+  });
+
+  it('holds the window centre against chunk-seam jitter (hysteresis)', () => {
+    const centre = resolveWindowCenter(null, TERRAIN_CONFIG, 10, 10);
+    expect(centre).toEqual({ cx: 0, cz: 0 });
+    // Jitter across the x=128 seam and back: the centre must not move.
+    expect(resolveWindowCenter(centre, TERRAIN_CONFIG, 129, 10)).toEqual(centre);
+    expect(resolveWindowCenter(centre, TERRAIN_CONFIG, 127, 10)).toEqual(centre);
+    expect(resolveWindowCenter(centre, TERRAIN_CONFIG, 140, -10)).toEqual(centre);
+    // Genuinely leaving the expanded centre chunk recentres on the focus chunk.
+    expect(resolveWindowCenter(centre, TERRAIN_CONFIG, 200, 10)).toEqual({ cx: 1, cz: 0 });
   });
 
   it('plans a 3x3 physics window at physics radius 1', () => {

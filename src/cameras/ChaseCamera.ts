@@ -9,6 +9,8 @@ import {
   rotateVec3ByQuat,
   smoothingFactor,
   vec3,
+  yawFromQuat,
+  type Quat,
   type Vec3,
 } from '../shared/vector';
 import type { VehiclePose, VehicleTelemetry } from '../vehicles/types';
@@ -31,6 +33,9 @@ export class ChaseCamera {
   readonly #lookAt = vec3();
   #fov: number;
   #initialized = false;
+  /** Smoothed heading: the camera's yaw chases the car's yaw on its own time constant. */
+  #yaw = 0;
+  #groundHeight: ((x: number, z: number) => number) | null = null;
 
   // Scratch vectors kept out of the per-frame allocation path.
   readonly #desiredPosition = vec3();
@@ -58,8 +63,18 @@ export class ChaseCamera {
     this.camera.updateProjectionMatrix();
   }
 
+  /**
+   * Gives the camera the ground height function (the terrain sampler in the game). The
+   * desired position is then clamped above the actual ground, not above y=0 — a chase
+   * camera that clips through a hillside behind the car breaks immersion instantly.
+   */
+  setGroundHeightProvider(provider: ((x: number, z: number) => number) | null): void {
+    this.#groundHeight = provider;
+  }
+
   /** Places the camera immediately at the ideal pose (spawn, reset, teleports). */
   snapTo(pose: VehiclePose): void {
+    this.#yaw = yawFromQuat(pose.rotation);
     this.#computeDesired(pose);
     copyVec3(this.#position, this.#desiredPosition);
     copyVec3(this.#lookAt, this.#desiredLook);
@@ -75,6 +90,14 @@ export class ChaseCamera {
       this.snapTo(pose);
       return;
     }
+
+    // Heading lag: yaw follows on the heading time constant (the config's
+    // `headingLagSeconds`, finally wired), turning with the shortest arc.
+    const targetYaw = yawFromQuat(pose.rotation);
+    let delta = targetYaw - this.#yaw;
+    while (delta > Math.PI) delta -= Math.PI * 2;
+    while (delta < -Math.PI) delta += Math.PI * 2;
+    this.#yaw += delta * smoothingFactor(dt, config.headingLagSeconds);
 
     this.#computeDesired(pose);
 
@@ -106,14 +129,24 @@ export class ChaseCamera {
       z: config.lookOffset[2],
     });
 
-    const worldOffset = rotateVec3ByQuat(this.#offset, this.#offset, pose.rotation);
-    const worldLookOffset = rotateVec3ByQuat(this.#lookOffset, this.#lookOffset, pose.rotation);
+    // Offsets rotate by the smoothed heading only: the camera does not pitch and roll
+    // with every crest the chassis crosses, which is what makes a chase view feel stable
+    // at speed while the car visibly works underneath it.
+    const half = this.#yaw / 2;
+    const heading: Quat = { x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) };
+    const worldOffset = rotateVec3ByQuat(this.#offset, this.#offset, heading);
+    const worldLookOffset = rotateVec3ByQuat(this.#lookOffset, this.#lookOffset, heading);
     addVec3(this.#desiredPosition, pose.position, worldOffset);
     addVec3(this.#desiredLook, pose.position, worldLookOffset);
 
-    // Never dip below the ground plane.
-    if (this.#desiredPosition.y < 0.5) {
-      this.#desiredPosition.y = 0.5;
+    // Never dip below the ground: the terrain height where the camera wants to be, when
+    // a provider is wired, else the flat y=0 convention.
+    const groundY =
+      this.#groundHeight !== null
+        ? this.#groundHeight(this.#desiredPosition.x, this.#desiredPosition.z) + 0.6
+        : 0.5;
+    if (this.#desiredPosition.y < groundY) {
+      this.#desiredPosition.y = groundY;
     }
   }
 

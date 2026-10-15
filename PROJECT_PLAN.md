@@ -520,9 +520,20 @@ by raycast tests; procedural vertex-colour splat (grass/soil/rock/snow by height
 with shader grain. Determinism, seam-exactness (bit-identical shared borders), planner,
 and collider-window properties are unit/integration tested (349 tests green); the car
 drives the terrain in-browser at ~95 km/h with all wheels grounded. Remaining in this
-phase: worker-side generation, scanned CC0 splat detail (triplanar/POM), the spline road
-network with junctions/bridges/tunnels, velocity-aware prefetch, floating-origin rebasing,
-surface-state traction plumbing, and the §5 district build-out.
+phase: worker-side generation, POM, the spline road network with
+junctions/bridges/tunnels, floating-origin rebasing, and the §5 district build-out.
+
+**Progress (2026-10-15, realism pass — owner-requested before roads):** the splat is now
+scanned, not tinted: four CC0 Poly Haven sets (leafy grass, dry mud, rock face, snow;
+10 assets verified) blend by the per-vertex weights with world-space tiling, triplanar
+rock, packed AO/roughness, normal detail, and a 90–260 m fade to the macro tint; ridged
+noise and curvature occlusion sharpen the landform. Those same weights now drive the car
+— `terrain-surface.ts` mixes grip/rolling resistance, `PhysicsWorld.surfaceAt` answers
+the Phase 2 surface query per contact patch, and identical throttle measurably accelerates
+slower on grass than on asphalt. Streaming gained hysteresis (no seam-jitter re-plans)
+and velocity-aware visual prefetch (physics stays centred on the car); Tier C dropped
+the HDRI backdrop (IBL only at all tiers); the chase camera wired its heading-lag
+constant and clamps above real terrain height instead of y=0.
 
 **Stop:** Request authorization before Phase 5.
 

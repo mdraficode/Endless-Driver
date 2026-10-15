@@ -873,3 +873,35 @@ and the images regenerate with `scripts/capture-route.mjs` and
 `scripts/capture-drive.mjs` as needed. Kept locally, deliberately outside the repo: the
 GitHub credential helper directory (`~/.github-auth/`) and `~/preview-prepare.sh` —
 the keys that make the clean checkout one `git clone` away.
+
+## 22. The terrain realism & driving-feel pass (2026-10-15)
+
+Owner asked what could be made more realistic on the existing foundation before roads;
+the answer (renderer is ahead of content; surfaces/shape/feel are the bottleneck) became
+this pass, in the recommended order.
+
+**Scanned splat (was: flat tints).** Four CC0 Poly Haven 1K sets — leafy grass
+(Charlotte Baglioni), brown mud dry (Rob Tuytel), rock face 03 (Dario Barresi/Rico Cilliers),
+snow 01 (Rob Tuytel) — fetched through the pinned pipeline (fetch-assets generalised with a
+per-entry stem; manifest now 10 assets, verify green). Geometry grew a `splat` vec4
+attribute ([grass, soil, rock, snow], normalised, unit-tested) and a `tint` macro
+attribute (variation + curvature occlusion from the halo grid). The material tiles by
+world XZ, blends albedos by splat, samples rock triplanar, reads packed AO/roughness,
+blends normal maps, and fades all detail to the macro tint between 90–260 m so far LODs
+stop shimmering. Heightfield gained ridged noise (crests, broken volcano rim).
+`loadSurfaces` resolves at startup beside the HDRI; failure keeps the flat material.
+
+**Surface-driven grip.** `terrainSurfaceWeights` is now the one source for renderer and
+physics. `terrain-surface.ts` mixes grip (grass .80, soil .64, rock .95, snow .40) and
+rolling resistance (.035/.05/.02/.08); `PhysicsWorld.surfaceAt` answers per contact
+patch; each wheel's friction limit and rolling drag follow its own patch. Headless proof
+(`tests/physics/terrain-driving.test.ts`): wheels report grass on the plateau, and
+identical throttle accelerates slower on grass than asphalt (existing 24 vehicle tests
+untouched and green). Tier C no longer uses the garden HDRI as backdrop — IBL only at
+every tier; quality-tier test updated deliberately.
+
+**Streaming/camera feel.** `resolveWindowCenter` adds 24 m hysteresis for both windows
+(visual plan may be velocity-biased up to 112 m/1.4 s; physics never biased); seam-jitter
+re-plans are gone (test). ChaseCamera finally uses `headingLagSeconds` (yaw-only smoothed
+heading — the camera no longer pitches over every crest) and clamps above the real
+terrain height via a provider wired to the sampler. 356 tests green at the pass commit.

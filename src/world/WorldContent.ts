@@ -28,7 +28,10 @@ export interface SceneContent {
    * `SceneManager.streamContent`, which `Application` drives beside the sun focus — the
    * ground under the car and the light that falls on it follow the same point.
    */
-  updateStreaming?(focus: { x: number; y: number; z: number }): void;
+  updateStreaming?(
+    focus: { x: number; y: number; z: number },
+    velocity?: { x: number; z: number },
+  ): void;
   /**
    * Async surface/texture loading, resolved once at startup (the terrain's scanned sets).
    * Content renders acceptably before it resolves; failure keeps the fallback material.

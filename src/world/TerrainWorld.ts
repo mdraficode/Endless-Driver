@@ -21,7 +21,7 @@ import { loadMaterialTextureSet, type MaterialTextureSet } from '../assets/Asset
 import type { TerrainSampler } from './terrain-height';
 import type { SceneContent } from './WorldContent';
 import { buildChunkGeometry } from './terrain-geometry';
-import { chunkKey, planChunks } from './terrain-chunks';
+import { chunkKey, planChunksAround, resolveWindowCenter, type ChunkCoord } from './terrain-chunks';
 
 interface LoadedChunk {
   readonly mesh: Mesh;
@@ -64,6 +64,7 @@ export class TerrainWorld implements SceneContent {
   readonly #material: MeshStandardNodeMaterial;
   readonly #chunks = new Map<string, LoadedChunk>();
   #surfaceSets: readonly MaterialTextureSet[] = [];
+  #center: ChunkCoord | null = null;
   #desiredCount = 0;
   #pendingBuilds = 0;
   #buildsLastFrame = 0;
@@ -195,8 +196,22 @@ export class TerrainWorld implements SceneContent {
     this.#material.normalNode = mix(flatNormal, detailNormal, detailFade.mul(0.85));
   }
 
-  updateStreaming(focus: { x: number; y: number; z: number }): void {
-    const plan = planChunks(this.#config, focus.x, focus.z);
+  updateStreaming(
+    focus: { x: number; y: number; z: number },
+    velocity: { x: number; z: number } = { x: 0, z: 0 },
+  ): void {
+    // Velocity-aware prefetch: the window is planned around where the car is heading,
+    // capped so a fast car still keeps ground behind it; the build order stays sorted by
+    // distance to the car itself, so the ground under the wheels always wins the budget.
+    const speed = Math.hypot(velocity.x, velocity.z);
+    const bias =
+      speed > 0.01
+        ? Math.min(this.#config.prefetchMaxMeters, speed * this.#config.prefetchSeconds) / speed
+        : 0;
+    const biasedX = focus.x + velocity.x * bias;
+    const biasedZ = focus.z + velocity.z * bias;
+    this.#center = resolveWindowCenter(this.#center, this.#config, biasedX, biasedZ);
+    const plan = planChunksAround(this.#config, this.#center.cx, this.#center.cz, focus.x, focus.z);
     this.#desiredCount = plan.length;
     const desired = new Map(plan.map((chunk) => [chunkKey(chunk.cx, chunk.cz), chunk]));
 

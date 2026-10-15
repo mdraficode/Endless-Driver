@@ -124,6 +124,7 @@ export class Application {
     this.#scene.addObject(this.#carVisual.root);
 
     this.#chaseCamera = new ChaseCamera(CHASE_CAMERA_CONFIG, this.#engine.viewport.aspect);
+    this.#chaseCamera.setGroundHeightProvider((x, z) => terrainSampler.heightAt(x, z));
     this.#input = new InputManager();
     this.#input.attach();
 
@@ -384,7 +385,12 @@ export class Application {
     this.#scene.focusSun(pose.position);
     // Ground follows the same point as the light: terrain chunks stream and heightfield
     // colliders slide their window with the car, each inside its own budget.
-    this.#scene.streamContent(pose.position);
+    const yaw = yawFromQuat(pose.rotation);
+    const forwardSpeed = this.#car.telemetry.forwardSpeed;
+    this.#scene.streamContent(pose.position, {
+      x: -Math.sin(yaw) * forwardSpeed,
+      z: -Math.cos(yaw) * forwardSpeed,
+    });
     this.#physics.syncTerrain(pose.position);
 
     if (this.#cameraMode === 'chase') {

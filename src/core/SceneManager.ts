@@ -520,8 +520,8 @@ export class SceneManager {
    * vehicle position by `Application`, beside the sun focus: ground and light follow the
    * same point. Content without streaming pays one optional-call check.
    */
-  streamContent(focus: Vec3): void {
-    this.#content.updateStreaming?.(focus);
+  streamContent(focus: Vec3, velocity?: { x: number; z: number }): void {
+    this.#content.updateStreaming?.(focus, velocity);
   }
 
   /** Resolves the content's async surface loading (terrain scans), if it has any. */

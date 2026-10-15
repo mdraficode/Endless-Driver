@@ -4,7 +4,12 @@ import { clamp } from '../shared/math';
 import { cloneVec3, type Quat, type Vec3 } from '../shared/vector';
 import type { TerrainSampler } from '../world/terrain-height';
 import { sampleTerrainSurface, type TerrainSurfaceSample } from '../world/terrain-surface';
-import { chunkKey, planPhysicsChunks } from '../world/terrain-chunks';
+import {
+  chunkKey,
+  planPhysicsAround,
+  resolveWindowCenter,
+  type ChunkCoord,
+} from '../world/terrain-chunks';
 import type { RapierCollider, RapierModule, RapierRigidBody, RapierWorld } from './RapierModule';
 
 export interface PhysicsWorldOptions {
@@ -53,6 +58,7 @@ export class PhysicsWorld {
   #groundBody: RapierRigidBody | null = null;
   #terrainSampler: TerrainSampler | null = null;
   readonly #terrainBodies = new Map<string, RapierRigidBody>();
+  #terrainCenter: ChunkCoord | null = null;
   #accumulator = 0;
   #elapsed = 0;
   #stepsLastUpdate = 0;
@@ -265,7 +271,10 @@ export class PhysicsWorld {
       return;
     }
     const { config } = sampler;
-    const planned = planPhysicsChunks(config, focus.x, focus.z);
+    // Never velocity-biased: colliders centre on where the car is, with the same
+    // hysteresis as the visual window so the two windows slide together.
+    this.#terrainCenter = resolveWindowCenter(this.#terrainCenter, config, focus.x, focus.z);
+    const planned = planPhysicsAround(config, this.#terrainCenter.cx, this.#terrainCenter.cz);
     const wanted = new Set(planned.map((chunk) => chunkKey(chunk.cx, chunk.cz)));
     for (const [key, body] of this.#terrainBodies) {
       if (!wanted.has(key)) {
