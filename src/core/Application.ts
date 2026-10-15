@@ -135,6 +135,7 @@ export class Application {
       // The car asks the physics world what it stands on; the answer comes from the same
       // terrain weights the renderer blends, so grip follows looks by construction.
       surfaceProvider: (x, z) => this.#physics.surfaceAt(x, z),
+      groundNormalProvider: (x, z) => terrainSampler.normalAt(x, z),
     });
 
     this.#carVisual = new CarVisual();

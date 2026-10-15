@@ -53,8 +53,15 @@ export interface WheelState {
   suspensionLength: number;
   /** Suspension compression relative to rest, in meters. */
   compression: number;
+  /** Compression after the facet-smoothing lag; this is what the spring pushes on. */
+  smoothedCompression: number;
+  /** Suspension force applied last step (the slew-rate limiter's memory). */
+  suspensionForce: number;
   /** Vertical load carried by the wheel, in newtons (including downforce). */
   normalLoad: number;
+  /** Load as the tire model sees it: lightly low-passed so facet spikes cannot
+   * modulate grip at step frequency. The spring keeps the true value. */
+  tireLoad: number;
   slipAngle: number;
   /** Longitudinal force applied at the contact patch, in newtons. */
   longitudinalForce: number;

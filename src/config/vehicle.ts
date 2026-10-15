@@ -46,6 +46,24 @@ export interface WheelConfig {
   readonly maxForce: number;
   /** Anti-roll bar stiffness per axle in N/m of compression difference. */
   readonly antiRollStiffness: number;
+  /**
+   * Damper blow-off speed (m/s of compression velocity): damping force saturates
+   * beyond it instead of growing linearly, so landing from a crest cannot produce a
+   * 20 kN one-step spike. Real dampers blow off for the same reason.
+   */
+  readonly dampingBlowoffSpeed: number;
+  /**
+   * Time constant (s) for smoothing the measured compression before the spring sees
+   * it: triangulated ground makes the raw measurement step at facet edges, and a
+   * 30 ms lag removes the steps without making real bumps feel soft.
+   */
+  readonly compressionSmoothingSeconds: number;
+  /**
+   * Maximum rate of change of suspension force (N/s). A force that cannot change
+   * faster than this cannot kick the chassis in a single step, however hard the
+   * landing; real damper/spring stacks have the same effective limit.
+   */
+  readonly maxForceRatePerSecond: number;
 }
 
 export interface TireConfig {
@@ -67,6 +85,13 @@ export interface TireConfig {
   readonly lateralCurvature: number;
   /** Speed used as the slip-angle denominator floor, preventing noise at low speed. */
   readonly slipAngleReferenceSpeed: number;
+  /**
+   * Tire relaxation length in metres: lateral force builds over this much rolling
+   * distance instead of appearing instantly. Real tires do this; in the model it is
+   * also the filter that stops per-step load spikes on faceted ground from kicking
+   * the chassis sideways dozens of times a second.
+   */
+  readonly relaxationLengthMeters: number;
   /** Rear grip multiplier while the handbrake is held. */
   readonly handbrakeGripScale: number;
   /** Rolling resistance as a fraction of wheel load. */
@@ -100,6 +125,27 @@ export interface DrivetrainConfig {
   readonly reverseEngageSeconds: number;
   /** Drivetrain layout; rear-drive keeps the car loose and drift-friendly. */
   readonly drivenWheels: 'rear' | 'all';
+}
+
+/**
+ * Electronic stability assist (sim-cade, always on except during handbrake drifts).
+ *
+ * The assist damps the car's yaw rate toward the rate the steering is actually asking
+ * for (bicycle model, capped by the tires' cornering budget). It does not steer the
+ * car and it cannot create grip; it removes the excess rotation that turns a slide
+ * into a spin, which is exactly the assistance every accessible arcade-sim ships.
+ */
+export interface StabilityConfig {
+  /** How aggressively yaw error is corrected, per second (error fraction removed). */
+  readonly yawResponsePerSecond: number;
+  /** Below this forward speed (m/s) the assist stays out of parking-speed manoeuvres. */
+  readonly minSpeedMps: number;
+  /**
+   * Extra gravity (as a fraction of g) applied while fully airborne at speed. Crests
+   * at 140 km/h launch any honest suspension; extra fall gravity shortens the flight
+   * and lands the car sooner and flatter instead of floating into a spin.
+   */
+  readonly airborneGravityScale: number;
 }
 
 export interface BrakeConfig {
@@ -159,6 +205,7 @@ export interface VehicleConfig {
   readonly drivetrain: DrivetrainConfig;
   readonly brakes: BrakeConfig;
   readonly steering: SteeringConfig;
+  readonly stability: StabilityConfig;
   readonly aero: AeroConfig;
   readonly spawn: SpawnConfig;
 }
@@ -189,6 +236,9 @@ export const VEHICLE_CONFIG: VehicleConfig = {
     reboundDamping: 3600,
     maxForce: 22000,
     antiRollStiffness: 14000,
+    dampingBlowoffSpeed: 2.2,
+    compressionSmoothingSeconds: 0.03,
+    maxForceRatePerSecond: 420_000,
   },
   tires: {
     frictionCoefficient: 1.15,
@@ -197,6 +247,7 @@ export const VEHICLE_CONFIG: VehicleConfig = {
     lateralShape: 1.55,
     lateralCurvature: 0.15,
     slipAngleReferenceSpeed: 1.5,
+    relaxationLengthMeters: 0.45,
     handbrakeGripScale: 0.5,
     rollingResistance: 0.015,
     longitudinalSaturation: 0.98,
@@ -234,15 +285,20 @@ export const VEHICLE_CONFIG: VehicleConfig = {
     rearForce: 2200,
     handbrakeForce: 2600,
   },
+  stability: {
+    yawResponsePerSecond: 3.2,
+    minSpeedMps: 4,
+    airborneGravityScale: 0.6,
+  },
   steering: {
     maxAngle: 0.55,
     minAngle: 0.015,
     gripBudgetFactor: 1.2,
-    slipReliefFactor: 1,
+    slipReliefFactor: 0.7,
     ackermann: 0.25,
   },
   aero: {
-    downforceCoefficient: 1.2,
+    downforceCoefficient: 2.4,
     dragCoefficient: 1,
   },
   spawn: {

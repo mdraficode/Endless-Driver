@@ -51,6 +51,12 @@ export interface CarOptions {
    * uses the default asphalt response the tire model is tuned against.
    */
   readonly surfaceProvider?: SurfaceProvider;
+  /**
+   * Analytic ground normal from the terrain generator, when one exists. Blended with
+   * the raycast facet normal so faceted heightfield ground stops kicking the
+   * suspension with a new normal direction every triangle.
+   */
+  readonly groundNormalProvider?: (x: number, z: number) => Vec3;
 }
 
 interface WheelDefinition {
@@ -90,6 +96,11 @@ export class Car {
   readonly #physics: PhysicsWorld;
   readonly #drivetrain: Drivetrain;
   readonly #surfaceProvider: SurfaceProvider | null;
+
+  readonly #groundNormalProvider: ((x: number, z: number) => Vec3) | null;
+
+  /** Yaw moment of inertia captured at body creation, for the stability assist. */
+  #yawInertia = 0;
   readonly #ray: RapierRay;
   readonly #unsubscribers: (() => void)[] = [];
   readonly #referenceLoad: number;
@@ -139,6 +150,7 @@ export class Car {
     this.#rapier = options.rapier;
     this.#physics = options.physics;
     this.#surfaceProvider = options.surfaceProvider ?? null;
+    this.#groundNormalProvider = options.groundNormalProvider ?? null;
     this.#ray = new this.#rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
     this.#drivetrain = new Drivetrain(this.#config.drivetrain, this.#config.wheels.radius);
     this.#referenceLoad = (this.#config.chassis.mass * 9.81) / 4;
@@ -232,8 +244,11 @@ export class Car {
     for (const wheel of this.wheels) {
       wheel.inContact = false;
       wheel.normalLoad = 0;
+      wheel.tireLoad = 0;
       wheel.suspensionLength = this.#config.wheels.restLength;
       wheel.compression = 0;
+      wheel.smoothedCompression = 0;
+      wheel.suspensionForce = 0;
       wheel.slipAngle = 0;
       wheel.longitudinalForce = 0;
       wheel.lateralForce = 0;
@@ -282,7 +297,10 @@ export class Car {
       contactNormal: vec3(0, 1, 0),
       suspensionLength: this.#config.wheels.restLength,
       compression: 0,
+      smoothedCompression: 0,
+      suspensionForce: 0,
       normalLoad: 0,
+      tireLoad: 0,
       slipAngle: 0,
       longitudinalForce: 0,
       lateralForce: 0,
@@ -309,6 +327,7 @@ export class Car {
     const [pitchScale, yawScale, rollScale] = chassis.inertiaScale;
     const pitchInertia = (mass / 12) * (4 * halfHeight ** 2 + 4 * halfLength ** 2) * pitchScale;
     const yawInertia = (mass / 12) * (4 * halfWidth ** 2 + 4 * halfLength ** 2) * yawScale;
+    this.#yawInertia = yawInertia;
     const rollInertia = (mass / 12) * (4 * halfWidth ** 2 + 4 * halfHeight ** 2) * rollScale;
 
     const bodyDesc = this.#rapier.RigidBodyDesc.dynamic()
@@ -408,11 +427,13 @@ export class Car {
       dotVec3(linearVelocity, scratch.right),
       Math.max(Math.abs(dotVec3(linearVelocity, scratch.forward)), 1),
     );
-    const maxSteerAngle = clamp(
-      budgetAngle + Math.abs(chassisSlip) * steering.slipReliefFactor,
-      steering.minAngle,
-      steering.maxAngle,
-    );
+    // Relief is for catching slides, not feeding them: extra authority is only
+    // granted when the driver is steering against the slide (counter-steering).
+    // Granting it while steering into the slide was a positive-feedback loop that
+    // turned small yaw kicks into spins under noisy thumb/keyboard input.
+    const counterSteering = chassisSlip * actions.steer > 0;
+    const slipRelief = counterSteering ? Math.abs(chassisSlip) * steering.slipReliefFactor : 0;
+    const maxSteerAngle = clamp(budgetAngle + slipRelief, steering.minAngle, steering.maxAngle);
     // Sign convention: `actions.steer` is +1 for right, while the physical steering angle is
     // positive for a left turn (counter-clockwise about +Y, matching Three.js rotation.y and the
     // wheel visual). The single sign flip happens here so the rest of the model reads naturally.
@@ -454,7 +475,10 @@ export class Car {
       if (!hit) {
         wheel.inContact = false;
         wheel.normalLoad = 0;
+        wheel.tireLoad = 0;
         wheel.compression = 0;
+        wheel.smoothedCompression = 0;
+        wheel.suspensionForce = 0;
         wheel.suspensionLength = wheelConfig.maxLength;
         wheel.longitudinalForce = 0;
         wheel.lateralForce = 0;
@@ -480,9 +504,32 @@ export class Car {
       );
       wheel.suspensionLength = lengthAlongAxis;
       wheel.compression = wheelConfig.restLength - lengthAlongAxis;
+      // Facet smoothing: the measured compression steps at triangle edges; the spring
+      // works from a 30 ms-lagged value so steps become ramps. On first contact the
+      // lag starts from the measurement so a landing still lands.
+      const compressionBlend = clamp(
+        dt / Math.max(wheelConfig.compressionSmoothingSeconds, 0.001),
+        0,
+        1,
+      );
+      wheel.smoothedCompression +=
+        (wheel.compression - wheel.smoothedCompression) * compressionBlend;
 
       addScaledVec3(scratch.contactPoint, anchorWorld, this.#ray.dir as Vec3, distanceToContact);
       copyVec3(wheel.contactPoint, scratch.contactPoint);
+
+      // Facet normals on triangulated ground jump direction every triangle; at speed
+      // that reads as constant small kicks through the suspension. When the generator
+      // can answer analytically, lean the contact normal most of the way to its smooth
+      // normal (only on upward ground — walls and obstacle sides keep the true hit).
+      if (this.#groundNormalProvider !== null && scratch.normal.y > 0.5) {
+        const analytic = this.#groundNormalProvider(scratch.contactPoint.x, scratch.contactPoint.z);
+        scratch.normal.x = scratch.normal.x * 0.15 + analytic.x * 0.85;
+        scratch.normal.y = scratch.normal.y * 0.15 + analytic.y * 0.85;
+        scratch.normal.z = scratch.normal.z * 0.15 + analytic.z * 0.85;
+        normalizeVec3(scratch.normal, scratch.normal);
+        copyVec3(wheel.contactNormal, scratch.normal);
+      }
 
       // What is under this wheel, per the generator. Asked once per contact per step at
       // the patch, so a car straddling a grass/soil boundary loads each tire honestly.
@@ -554,20 +601,34 @@ export class Car {
       }
 
       // Suspension spring, damper, and the anti-roll contribution along the contact normal.
-      const springForce = wheelConfig.stiffness * wheel.compression;
+      const springForce = wheelConfig.stiffness * wheel.smoothedCompression;
       const velocityAlongNormal = dotVec3(wheel.surfaceVelocity, wheel.contactNormal);
       const dampingCoefficient =
         velocityAlongNormal < 0 ? wheelConfig.compressionDamping : wheelConfig.reboundDamping;
-      const suspensionForce = clamp(
+      // Blow-off: beyond the blow-off speed the damper's force saturates instead of
+      // scaling linearly with impact velocity (a landed crest must not spike 20 kN).
+      const blowoff = Math.max(wheelConfig.dampingBlowoffSpeed, 0.01);
+      const dampingVelocity = velocityAlongNormal / (1 + Math.abs(velocityAlongNormal) / blowoff);
+      const unslewedForce = clamp(
         springForce -
-          dampingCoefficient * velocityAlongNormal +
+          dampingCoefficient * dampingVelocity +
           (this.#antiRollForces[definition.index] ?? 0),
         0,
         wheelConfig.maxForce,
       );
+      // Slew-rate limit: the applied force approaches the computed force at a capped
+      // rate, so even a cliff-edge landing spreads over a few steps instead of
+      // arriving as a one-step 20 kN kick through one corner of the chassis.
+      const maxForceDelta = wheelConfig.maxForceRatePerSecond * dt;
+      const suspensionForce =
+        wheel.suspensionForce +
+        clamp(unslewedForce - wheel.suspensionForce, -maxForceDelta, maxForceDelta);
+      wheel.suspensionForce = suspensionForce;
 
       const normalLoad = Math.max(0, suspensionForce + downforcePerWheel);
       wheel.normalLoad = normalLoad;
+      const loadBlend = clamp(dt / 0.025, 0, 1);
+      wheel.tireLoad += (normalLoad - wheel.tireLoad) * loadBlend;
 
       // Wheel-plane axes: forward rotated by the steering angle about the contact normal.
       addScaledVec3(scratch.temp, scratch.forward, scratch.left, Math.tan(wheelSteerAngle));
@@ -609,18 +670,28 @@ export class Car {
       longitudinalForce -= wheel.surfaceRollingResistance * normalLoad * motionSign;
 
       const frictionLimit =
-        effectiveFriction(normalLoad, this.#referenceLoad, tires) *
-        normalLoad *
+        effectiveFriction(wheel.tireLoad, this.#referenceLoad, tires) *
+        wheel.tireLoad *
         wheel.surfaceGripModifier;
       const gripLimit = frictionLimit * tires.longitudinalSaturation;
       const clampedLongitudinal = clamp(longitudinalForce, -gripLimit, gripLimit);
 
       const handbrakeScale = handbrake && !definition.isFront ? tires.handbrakeGripScale : 1;
-      const lateralForce =
-        -lateralForceMagnitude(normalLoad, slipAngle, this.#referenceLoad, tires) *
+      const lateralTarget =
+        -lateralForceMagnitude(wheel.tireLoad, slipAngle, this.#referenceLoad, tires) *
         wheel.surfaceGripModifier *
         handbrakeScale *
         frictionCircleScale(clampedLongitudinal, gripLimit);
+      // Relaxation: the tire reaches its target force over a rolling distance, not in
+      // one step. This is both the physical behaviour and the low-pass filter that
+      // keeps facet/load spikes out of the chassis' yaw.
+      const patchSpeed = Math.hypot(velocityLongitudinal, velocityLateral);
+      const relaxation = clamp(
+        (patchSpeed * dt) / Math.max(tires.relaxationLengthMeters, 0.01),
+        0,
+        1,
+      );
+      const lateralForce = wheel.lateralForce + (lateralTarget - wheel.lateralForce) * relaxation;
 
       wheel.longitudinalForce = clampedLongitudinal;
       wheel.lateralForce = lateralForce;
@@ -634,6 +705,55 @@ export class Car {
       addScaledVec3(scratch.force, scratch.force, scratch.wheelRight, lateralForce);
       scaleVec3(scratch.impulse, scratch.force, dt);
       body.applyImpulseAtPoint(scratch.impulse, wheel.contactPoint, true);
+    }
+
+    // Yaw stability assist: damp rotation toward the rate the steering asks for
+    // (bicycle model capped by the cornering budget the steering limit derives from).
+    // Excess yaw is what turns a slide into a spin; the assist removes the excess
+    // without steering the car or inventing grip. Handbrake = deliberate drift, so
+    // the assist stands down and the slide is the player's to catch.
+    let groundedContacts = 0;
+    for (const wheel of this.wheels) {
+      if (wheel.inContact) {
+        groundedContacts += 1;
+      }
+    }
+    // Planted landings: fully airborne at speed, extra gravity pulls the car back to
+    // the ground sooner and flatter. Flight is fun; floating into a spin is not.
+    if (groundedContacts === 0 && config.stability.airborneGravityScale > 0 && speed > 6) {
+      setVec3(scratch.temp, 0, -1, 0);
+      scaleVec3(
+        scratch.impulse,
+        scratch.temp,
+        body.mass() * GRAVITY * config.stability.airborneGravityScale * dt,
+      );
+      body.applyImpulse(scratch.impulse, true);
+    }
+    if (!handbrake && this.#yawInertia > 0) {
+      const contacts = groundedContacts;
+      const forwardSpeed = dotVec3(linearVelocity, scratch.forward);
+      if (contacts >= 2 && Math.abs(forwardSpeed) > config.stability.minSpeedMps) {
+        const yawCap = corneringBudget / Math.max(Math.abs(forwardSpeed), 1);
+        const desiredYawRate = clamp(
+          (forwardSpeed / wheelbase) * Math.tan(steerAngle),
+          -yawCap,
+          yawCap,
+        );
+        const currentYawRate = dotVec3(angularVelocity, scratch.up);
+        const yawError = currentYawRate - desiredYawRate;
+        // Partially grounded (landing on two wheels, crest unloading) is when kicks
+        // arrive, so the assist answers faster then; a hard cap on total yaw rate
+        // catches the rotation that is already beyond what tires could sustain.
+        const response = config.stability.yawResponsePerSecond * (contacts < 4 ? 1.7 : 1);
+        let correction = -yawError * Math.min(1, response * dt);
+        const hardCap = yawCap * 1.5 + 0.5;
+        if (Math.abs(currentYawRate) > hardCap) {
+          correction +=
+            (Math.sign(currentYawRate) * hardCap - currentYawRate) * Math.min(1, 8 * dt);
+        }
+        scaleVec3(scratch.impulse, scratch.up, this.#yawInertia * correction);
+        body.applyTorqueImpulse(scratch.impulse, true);
+      }
     }
 
     // Aerodynamic drag acts on the chassis as a whole.

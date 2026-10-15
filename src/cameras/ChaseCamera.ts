@@ -35,6 +35,9 @@ export class ChaseCamera {
   #initialized = false;
   /** Smoothed heading: the camera's yaw chases the car's yaw on its own time constant. */
   #yaw = 0;
+  /** Smoothed horizon roll: telemetry lateral acceleration is a finite difference and
+   * spikes on every bump; the roll must chase it, never mirror it. */
+  #roll = 0;
   #groundHeight: ((x: number, z: number) => number) | null = null;
 
   // Scratch vectors kept out of the per-frame allocation path.
@@ -102,9 +105,14 @@ export class ChaseCamera {
     this.#computeDesired(pose);
 
     // Position lag produces the spring-arm feel; look-at lags less so the car stays centered.
+    // Vertical follows more slowly still: the chassis pitches and bounces over crests
+    // and landings, and a camera that mirrors every hop reads as screen shake.
     const positionFactor = smoothingFactor(dt, config.positionLagSeconds);
+    const verticalFactor = smoothingFactor(dt, config.positionLagSeconds * 2.2);
     const lookFactor = smoothingFactor(dt, config.lookLagSeconds);
+    const yBefore = this.#position.y;
     lerpVec3(this.#position, this.#position, this.#desiredPosition, positionFactor);
+    this.#position.y = yBefore + (this.#desiredPosition.y - yBefore) * verticalFactor;
     lerpVec3(this.#lookAt, this.#lookAt, this.#desiredLook, lookFactor);
 
     // Speed-scaled FOV: smoothstep so the widening is gentle at low speed and assertive at pace.
@@ -113,7 +121,7 @@ export class ChaseCamera {
     const targetFov = config.baseFov + (config.maxFov - config.baseFov) * smoothRatio;
     this.#fov += (targetFov - this.#fov) * smoothingFactor(dt, config.fovLagSeconds);
 
-    this.#apply(telemetry);
+    this.#apply(telemetry, dt);
   }
 
   dispose(): void {
@@ -150,20 +158,21 @@ export class ChaseCamera {
     }
   }
 
-  #apply(telemetry?: VehicleTelemetry): void {
+  #apply(telemetry?: VehicleTelemetry, deltaSeconds = 0): void {
     this.camera.position.set(this.#position.x, this.#position.y, this.#position.z);
     this.camera.lookAt(this.#lookAt.x, this.#lookAt.y, this.#lookAt.z);
 
     if (telemetry) {
       const config = this.#config;
-      const roll = clamp(
-        -telemetry.lateralAcceleration * config.lateralRollFactor,
+      const targetRoll = clamp(
+        -clamp(telemetry.lateralAcceleration, -30, 30) * config.lateralRollFactor,
         -config.maxLateralRoll,
         config.maxLateralRoll,
       );
-      if (roll !== 0) {
+      this.#roll += (targetRoll - this.#roll) * smoothingFactor(deltaSeconds, 0.12);
+      if (this.#roll !== 0) {
         // Local Z rotation tilts the horizon slightly into the corner.
-        this.camera.rotateZ(roll);
+        this.camera.rotateZ(this.#roll);
       }
     }
 

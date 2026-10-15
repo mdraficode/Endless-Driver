@@ -984,3 +984,35 @@ errors. The owner-facing screenshots are now the `landscape-player.png` clean vi
 **Workspace note:** `.git/config` is excluded from environment snapshots — after a
 rotation, `git remote add origin https://github.com/mdraficode/Endless-Driver.git`
 and `chmod +x /home/user/.github-auth/*.sh` may be needed before pushing.
+
+## 26. Handling stability & screen-shake fix (2026-10-15, owner report)
+
+Owner: "the whole preview is shaking every now and then… the car loses control after
+driving for some time." Reproduced headlessly before touching anything: on flat
+asphalt the car was already perfect, but cross-country on the real terrain a
+PD driver-model (stand-in for a player's correcting thumb) **spun out 4–18% of a
+30 s run and ended facing backwards**, with single-step wheel-load spikes of
+**22 kN** and wheels airborne 24% of fast steps. Forensics: crests at speed launch
+the car; asymmetric landings on triangulated (2 m facet) ground kick the yaw;
+slip-relief steering authority then fed the slide instead of only catching it.
+
+Fixes (all tuned/verified by the new `tests/physics/vehicle-stability.test.ts`):
+yaw **stability assist** (damps yaw rate toward the bicycle-model target, faster
+when partially grounded, hard yaw cap; stands down for handbrake drifts); **tire
+relaxation** (lateral force builds over 0.45 m of roll, not one step); tire load
+low-pass (25 ms); **damper blow-off** (saturates above 2.2 m/s compression
+velocity); 30 ms compression smoothing + **suspension force slew limit**
+(420 kN/s); analytic terrain normals blended over facet normals; slip relief now
+only while **counter-steering**; downforce 1.2 → 2.4 (the single biggest lever;
+2.6 scored marginally better in one course but breaks the aero guard test's
+⅓-weight rule); extra airborne gravity (0.6 g) for planted landings. Camera:
+lateral-acceleration roll is now low-passed and clamped before it can shake the
+frame, and vertical chase uses a 2.2× slower lag than horizontal.
+
+Results: terrain course-keeping over 3 noise seeds — **0% spinning, max slip <35°**
+(was 80°), load spikes <9 kN; high-speed slalom max slip 36° → 4°; all 21 legacy
+handling tests (incl. handbrake drift + opposite-lock catch) still pass; 379 tests
+green. Browser capture on the mountain road re-verified (4/4 contacts, 0.3° slip,
+zero errors). Adversarial note: a random-walk input holding full lock for seconds
+at 170 km/h can still step the tail out transiently — beyond any human input the
+driver-model represents; it recovers and drives on.
