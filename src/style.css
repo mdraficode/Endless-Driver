@@ -212,3 +212,176 @@ body {
   margin: 0;
   color: rgb(226 232 240 / 75%);
 }
+
+/* --- Touch driving surface (mobile) ---------------------------------------
+   Landscape-first layout: joystick bottom-left, pedals bottom-right, small
+   utilities top-right. Shown only when TouchControls activates (coarse
+   pointer or ?touch=1); the rotate prompt covers portrait touch sessions. */
+.touch-controls {
+  z-index: 30;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
+}
+
+.touch-joystick {
+  position: absolute;
+  left: max(1.1rem, env(safe-area-inset-left));
+  bottom: max(1.1rem, env(safe-area-inset-bottom));
+  width: 8.5rem;
+  height: 8.5rem;
+  border-radius: 9999px;
+  border: 2px solid rgb(226 232 240 / 35%);
+  background: rgb(13 21 32 / 38%);
+  pointer-events: auto;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.touch-joystick.is-active {
+  background: rgb(13 21 32 / 55%);
+  border-color: rgb(226 232 240 / 60%);
+}
+
+.touch-joystick-knob {
+  width: 3.6rem;
+  height: 3.6rem;
+  border-radius: 9999px;
+  background: rgb(226 232 240 / 75%);
+  box-shadow: 0 2px 10px rgb(0 0 0 / 45%);
+  pointer-events: none;
+  transition: transform 60ms linear;
+}
+
+.touch-pedals {
+  position: absolute;
+  right: max(1.1rem, env(safe-area-inset-right));
+  bottom: max(1.1rem, env(safe-area-inset-bottom));
+  display: flex;
+  align-items: flex-end;
+  gap: 0.8rem;
+  pointer-events: none;
+}
+
+.touch-pedal {
+  pointer-events: auto;
+  touch-action: none;
+  border-radius: 1rem;
+  border: 2px solid rgb(226 232 240 / 35%);
+  color: #e2e8f0;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  font-size: 0.95rem;
+  width: 5.2rem;
+}
+
+.touch-pedal-brake {
+  height: 6.2rem;
+  background: rgb(127 29 29 / 55%);
+}
+
+.touch-pedal-gas {
+  height: 8rem;
+  background: rgb(20 83 45 / 55%);
+}
+
+.touch-pedal.is-active {
+  filter: brightness(1.6);
+  border-color: rgb(255 255 255 / 80%);
+}
+
+.touch-handbrake {
+  position: absolute;
+  right: calc(max(1.1rem, env(safe-area-inset-right)) + 6.8rem);
+  bottom: calc(max(1.1rem, env(safe-area-inset-bottom)) + 8.6rem);
+  width: 3.4rem;
+  height: 3.4rem;
+  border-radius: 9999px;
+  border: 2px solid rgb(226 232 240 / 35%);
+  background: rgb(120 53 15 / 55%);
+  color: #e2e8f0;
+  font-weight: 700;
+  font-size: 0.8rem;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.touch-handbrake.is-active {
+  filter: brightness(1.6);
+  border-color: rgb(255 255 255 / 80%);
+}
+
+.touch-utilities {
+  position: absolute;
+  top: max(0.7rem, env(safe-area-inset-top));
+  right: max(0.7rem, env(safe-area-inset-right));
+  display: flex;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.touch-utility {
+  pointer-events: auto;
+  touch-action: none;
+  width: 2.9rem;
+  height: 2.9rem;
+  border-radius: 9999px;
+  border: 2px solid rgb(226 232 240 / 30%);
+  background: rgb(13 21 32 / 50%);
+  color: #e2e8f0;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.touch-utility:active {
+  filter: brightness(1.7);
+}
+
+/* Rotate-to-landscape prompt: only for touch sessions, only in portrait. */
+.rotate-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgb(6 10 18 / 88%);
+  text-align: center;
+  padding: 1.5rem;
+}
+
+body.touch-enabled .rotate-overlay {
+  /* Shown/hidden by the media query below; keep it in the tree but inert. */
+  display: none;
+}
+
+@media (orientation: portrait) {
+  body.touch-enabled .rotate-overlay:not([hidden]) {
+    display: flex;
+  }
+}
+
+.rotate-overlay-card {
+  max-width: 20rem;
+  color: #e2e8f0;
+}
+
+.rotate-overlay-icon {
+  font-size: 3rem;
+  margin-bottom: 0.8rem;
+}
+
+.rotate-overlay-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin: 0 0 0.4rem;
+}
+
+.rotate-overlay-text {
+  margin: 0;
+  color: #94a3b8;
+  line-height: 1.45;
+}

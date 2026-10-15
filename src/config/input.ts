@@ -62,3 +62,16 @@ export const INPUT_CONFIG: InputConfig = {
   },
   commandLifetimeSeconds: 0.25,
 };
+
+/** Touch-control geometry/tuning for the on-screen driving controls (mobile). */
+export interface TouchControlConfig {
+  /** Joystick travel radius in CSS pixels: full deflection = full steering lock. */
+  readonly joystickRadiusPx: number;
+  /** Fraction of travel ignored around the centre, so a resting thumb holds straight. */
+  readonly joystickDeadzone: number;
+}
+
+export const TOUCH_CONTROL_CONFIG: TouchControlConfig = {
+  joystickRadiusPx: 52,
+  joystickDeadzone: 0.12,
+};

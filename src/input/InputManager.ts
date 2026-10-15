@@ -2,6 +2,7 @@ import { INPUT_CONFIG, KEY_BINDINGS, type InputConfig, type KeyBindings } from '
 import { clamp } from '../shared/math';
 import { smoothingFactor } from '../shared/vector';
 import { NEUTRAL_ACTIONS, type VehicleActions } from '../vehicles/types';
+import type { TouchDriveState } from './touch-state';
 
 export interface InputManagerOptions {
   readonly config?: InputConfig;
@@ -67,6 +68,7 @@ export class InputManager {
   #steerRaw = 0;
   #steer = 0;
   #attached = false;
+  #touch: TouchDriveState | null = null;
 
   constructor(options: InputManagerOptions = {}) {
     this.#config = options.config ?? INPUT_CONFIG;
@@ -118,6 +120,7 @@ export class InputManager {
 
   /** Clears all held keys and accumulated axis values (pause, blur, tab switch). */
   reset(): void {
+    this.#touch = null;
     this.#pressed.clear();
     this.#throttle = 0;
     this.#brake = 0;
@@ -126,23 +129,46 @@ export class InputManager {
     this.#steer = 0;
   }
 
+  /**
+   * Publishes the touch surface's current state (or clears it with `null`). Touch and
+   * keyboard merge in `update`: either device can drive, neither has to know about the
+   * other. Called by `TouchControls` whenever a thumb moves.
+   */
+  setTouchState(state: TouchDriveState | null): void {
+    this.#touch = state;
+  }
+
+  /** One-shot commands for on-screen buttons (keyboard queues them from key events). */
+  requestReset(): void {
+    this.#resetCommand.remaining = this.#config.commandLifetimeSeconds;
+  }
+
+  requestToggleCamera(): void {
+    this.#cameraCommand.remaining = this.#config.commandLifetimeSeconds;
+  }
+
   /** Advances smoothing. Call once per rendered frame before the physics update. */
   update(deltaSeconds: number): void {
     const config = this.#config;
     const dt = deltaSeconds > 0 ? deltaSeconds : 0;
+    const touch = this.#touch;
 
-    const throttleTarget = this.#isAnyPressed(this.#bindings.throttle) ? 1 : 0;
-    const brakeTarget = this.#isAnyPressed(this.#bindings.brake) ? 1 : 0;
-    const handbrakeTarget = this.#isAnyPressed(this.#bindings.handbrake) ? 1 : 0;
+    const throttleTarget = this.#isAnyPressed(this.#bindings.throttle) || touch?.throttle ? 1 : 0;
+    const brakeTarget = this.#isAnyPressed(this.#bindings.brake) || touch?.brake ? 1 : 0;
+    const handbrakeTarget =
+      this.#isAnyPressed(this.#bindings.handbrake) || touch?.handbrake ? 1 : 0;
 
     this.#throttle = this.#smoothAxis(this.#throttle, throttleTarget, dt, config.throttle);
     this.#brake = this.#smoothAxis(this.#brake, brakeTarget, dt, config.brake);
     this.#handbrake = this.#smoothAxis(this.#handbrake, handbrakeTarget, dt, config.handbrake);
 
     // Steering: symmetric input, asymmetric rates (centering is faster than turning).
-    const steerTarget =
+    // A held joystick publishes an analog target through the same rate limiter, so the
+    // wheel sweeps to the thumb's angle instead of snapping to it.
+    const keyboardSteer =
       (this.#isAnyPressed(this.#bindings.steerRight) ? 1 : 0) -
       (this.#isAnyPressed(this.#bindings.steerLeft) ? 1 : 0);
+    const steerTarget = touch?.steer ?? keyboardSteer;
     const rate =
       steerTarget === 0 ? config.steering.returnRatePerSecond : config.steering.ratePerSecond;
     const maxStep = rate * dt;

@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#0d1520" />
     <meta
       name="description"
-      content="Endless Driver — Phase 3: WebGPU-first rendering, a time-of-day clock, a material studio, and a model pipeline. Drive with the keyboard; add ?scene=studio for the look-dev grid or ?scene=props for a derived model at every level of detail."
+      content="Endless Driver — a WebGPU-first open-world driving game you play right in the browser. Keyboard on desktop, on-screen joystick and pedals on mobile (landscape)."
     />
     <title>Endless Driver</title>
   </head>
@@ -18,6 +18,16 @@
         aria-label="Endless Driver 3D viewport"
       ></canvas>
       <div id="diagnostics-overlay" class="pointer-events-none absolute inset-0"></div>
+      <div id="touch-controls" class="pointer-events-none absolute inset-0" hidden></div>
+      <div id="rotate-overlay" class="rotate-overlay" hidden>
+        <div class="rotate-overlay-card">
+          <div class="rotate-overlay-icon" aria-hidden="true">📱↻</div>
+          <p class="rotate-overlay-title">Rotate your device</p>
+          <p class="rotate-overlay-text">
+            Endless Driver is played in landscape — turn your phone sideways to drive.
+          </p>
+        </div>
+      </div>
       <div id="studio-panel" class="studio-panel" hidden></div>
       <div
         id="scene-status"

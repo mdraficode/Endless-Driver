@@ -648,6 +648,15 @@ on real hardware, and "no" is an acceptable outcome that leaves SSGI and probes 
 
 ### Phase 8 — Mobile, HUD, cameras, settings, final quality pass
 
+**Pulled forward (2026-10-15, owner request):** the touch driving controls and
+landscape handling originally scheduled here shipped early, because the game was
+unplayable on phones without them: an analog steering joystick + GAS/BRAKE pedals +
+handbrake (true multi-touch — steer and accelerate simultaneously), camera/reset/
+fullscreen buttons, `screen.orientation` lock attempted on first touch with a
+rotate-to-landscape prompt as the portable fallback, all feeding the Phase 2 input
+seam (`InputManager.setTouchState`). What remains in Phase 8: HUD finalization,
+settings, camera gestures/polish, and the final quality pass.
+
 **Depends on:** Accepted Phase 7 and user authorization.
 
 **Deliverables**

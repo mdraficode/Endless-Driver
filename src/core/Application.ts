@@ -14,6 +14,7 @@ import { CarVisual } from '../vehicles/CarVisual';
 import type { VehiclePose, VehicleTelemetry } from '../vehicles/types';
 import { ChaseCamera } from '../cameras/ChaseCamera';
 import { InputManager } from '../input/InputManager';
+import { TouchControls } from '../input/TouchControls';
 import type { PerspectiveCamera } from 'three';
 import { DaylightController } from '../environment/DaylightController';
 import {
@@ -75,6 +76,10 @@ export class Application {
   readonly #terrainSampler: TerrainSampler;
   readonly #carVisual: CarVisual;
   readonly #input: InputManager;
+
+  #touchControls: TouchControls | null = null;
+
+  #touchActive = false;
   readonly #chaseCamera: ChaseCamera;
   readonly #monitor: PerformanceMonitor;
   readonly #overlay: DiagnosticsOverlay | null;
@@ -242,7 +247,11 @@ export class Application {
     this.#engine.start();
 
     if (!this.#firstFrameRendered) {
-      this.#setStatus('Loading complete — drive with W A S D, Space handbrake, R reset, C camera.');
+      this.#setStatus(
+        this.#touchActive
+          ? 'Loading complete — steer with the left joystick, GAS/BRAKE on the right. Landscape works best.'
+          : 'Loading complete — drive with W A S D, Space handbrake, R reset, C camera.',
+      );
     }
   }
 
@@ -281,6 +290,33 @@ export class Application {
     const pose = this.#car.getInterpolatedPose(0);
     this.#chaseCamera.snapTo(pose);
     this.#syncDebugCamera(pose, true);
+  }
+
+  /**
+   * Attaches the on-screen touch driving surface (mobile) to a DOM root. The surface
+   * decides for itself whether the device wants it (coarse pointer, or forced for
+   * captures); when active it also reveals the rotate-to-landscape prompt. Desktop
+   * sessions are untouched.
+   */
+  attachTouchControls(root: HTMLElement, options: { force?: boolean } = {}): void {
+    this.#touchControls?.dispose();
+    this.#touchControls = new TouchControls(root, {
+      force: options.force ?? false,
+      onState: (state) => {
+        this.#input.setTouchState(state);
+      },
+      onCommand: (command) => {
+        if (command === 'reset') {
+          this.#input.requestReset();
+        } else {
+          this.#input.requestToggleCamera();
+        }
+      },
+    });
+    this.#touchActive = !root.hidden;
+    if (this.#touchActive) {
+      document.querySelector('#rotate-overlay')?.removeAttribute('hidden');
+    }
   }
 
   toggleCameraMode(): void {
@@ -363,6 +399,8 @@ export class Application {
     for (const unsubscribe of this.#unsubscribers) {
       unsubscribe();
     }
+    this.#touchControls?.dispose();
+    this.#touchControls = null;
     this.#input.detach();
     this.#car.dispose();
     this.#scene.removeObject(this.#carVisual.root);

@@ -938,3 +938,27 @@ far chunk windows still build in at 2/frame after a teleport (on hardware this i
 are no water crossings yet. Remaining Phase 4: worker-side generation, floating
 origin, district build-out. Phase 3's only remainder is still the owner's
 named-hardware frame-budget run.
+
+## 24. Mobile playability — touch controls + landscape (2026-10-15, owner request)
+
+Pulled forward from Phase 8: without touch input the game literally could not be
+driven on a phone. **Delivered:** `src/input/touch-state.ts` (pure logic —
+dead-zoned joystick deflection → analog steer; `TouchStateTracker` aggregating
+independent pointer ids per control) and `src/input/TouchControls.ts` (DOM:
+steering joystick bottom-left, GAS/BRAKE pedals bottom-right, handbrake,
+camera/reset/fullscreen buttons top-right, safe-area insets, release safety net on
+window pointerup + visibilitychange so no pedal can stick). `InputManager` merges
+touch with keyboard in the existing smoothing pipeline (`setTouchState`,
+`requestReset`/`requestToggleCamera`) — the car cannot tell thumbs from keys.
+Surface auto-shows on coarse pointers; `?touch=1` forces, `?touch=0` hides.
+Landscape: fullscreen + `screen.orientation.lock('landscape')` attempted on first
+touch and from the ⛶ button (all failures swallowed — iOS), CSS rotate prompt in
+portrait for touch sessions. Help text in the status line adapts to the device.
+
+**Proof:** 373 tests green (joystick mapping, multi-pointer aggregation, merge,
+stuck-state reset). Emulated-phone captures (`scripts/capture-touch.mjs`,
+`/home/user/phase4-evidence/touch/`): GAS+joystick held simultaneously →
+throttle 1.00, steering 26.7°, 14.9 km/h, 4 contacts; after touchEnd, throttle
+decays to 0.017 and the wheel re-centres; portrait shows the rotate prompt;
+zero console errors throughout. Remaining mobile work stays in Phase 8 (HUD,
+settings, camera gestures).

@@ -1,6 +1,8 @@
 # Platform input
 
-**Status:** Phase 2 implemented for keyboard. Touch (multi-contact) arrives in Phase 8.
+**Status:** Keyboard (Phase 2) and multi-touch driving controls (pulled forward from
+Phase 8 at the owner's request, 2026-10-15 — the game was unplayable on phones without
+them).
 
 ## Responsibility
 
@@ -9,9 +11,11 @@ mutates vehicle transforms.
 
 ## Implemented
 
-| File              | Responsibility                                                                                                                                                                                                                                                                                                                     |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `InputManager.ts` | Keyboard state → `VehicleActions`. Asymmetric attack/release smoothing on throttle and brake with a response curve, a steering rate limiter plus exponential smoothing so a key press interpolates instead of snapping, a smoothed handbrake, one-shot reset/camera commands with a lifetime, and full clearing on blur or detach. |
+| File               | Responsibility                                                                                                                                                                                                                                                                                                                     |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `InputManager.ts`  | Keyboard state → `VehicleActions`. Asymmetric attack/release smoothing on throttle and brake with a response curve, a steering rate limiter plus exponential smoothing so a key press interpolates instead of snapping, a smoothed handbrake, one-shot reset/camera commands with a lifetime, and full clearing on blur or detach. |
+| `touch-state.ts`   | Pure touch logic: joystick deflection → analog steer (dead-zoned, rim-clamped), and the multi-pointer `TouchStateTracker` that lets independent thumbs steer and pedal simultaneously.                                                                                                                                             |
+| `TouchControls.ts` | The DOM surface: left steering joystick, BRAKE/GAS pedals, handbrake, camera/reset/fullscreen buttons — each tracking its own pointer ids, publishing into `InputManager.setTouchState`. Attempts fullscreen + landscape lock on first touch; the portrait rotate prompt is CSS.                                                   |
 
 ## Design notes
 

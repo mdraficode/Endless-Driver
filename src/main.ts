@@ -198,6 +198,15 @@ async function startDrivingScene(): Promise<void> {
     };
 
     application = new Application(options);
+    // Mobile driving surface: shows itself on touch devices; `?touch=1` forces it
+    // (captures, desktop testing), `?touch=0` hides it everywhere.
+    const touchRoot = document.querySelector<HTMLElement>('#touch-controls');
+    if (touchRoot !== null) {
+      const touchParam = new URLSearchParams(window.location.search).get('touch');
+      if (touchParam !== '0') {
+        application.attachTouchControls(touchRoot, { force: touchParam === '1' });
+      }
+    }
     await application.start();
   } catch (error) {
     reportStartupFailure(error);
