@@ -553,6 +553,18 @@ the mountain road with 4/4 contacts, zero console errors, roads reporting 6,010 
 floating-origin rebasing, the §5 district build-out, and bridges/tunnels (the current
 generator carves at grade; no water crossings exist yet to bridge).
 
+**Progress (2026-10-15, increment 3 — worker-side generation):** chunk geometry
+construction now runs in a two-worker pool (`src/world/chunk-generator.ts`,
+`terrain-generation.ts`, `terrain-worker.ts`). The pure builder was split into
+transferable array data (`buildChunkGeometryData`) + a main-thread wrap; workers
+rebuild the identical sampler from configs, so chunks are bit-identical on either
+thread (pinned by test), messages carry raw buffers zero-copy, stale/LOD-mismatched
+results are dropped, and any worker failure permanently degrades to the previous
+synchronous path. TerrainWorld's per-frame budget now caps mesh creation/GPU
+uploads. Browser proof: `terrainGeneratorMode: 1`, all 121 spawn-window chunks
+worker-built, backlog 0, zero errors. Remaining in this phase: floating-origin
+rebasing and the §5 district build-out (bridges/tunnels still deferred).
+
 **Stop:** Request authorization before Phase 5.
 
 ### Phase 5 — Environment detail: vegetation, props, atmosphere

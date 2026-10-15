@@ -20,7 +20,12 @@ import type { TerrainConfig } from '../config/terrain';
 import { loadMaterialTextureSet, type MaterialTextureSet } from '../assets/AssetManifest';
 import type { TerrainSampler } from './terrain-height';
 import type { SceneContent } from './WorldContent';
-import { buildChunkGeometry } from './terrain-geometry';
+import { ChunkGenerator } from './chunk-generator';
+import {
+  buildChunkGeometryData,
+  chunkGeometryFromData,
+  type ChunkGeometryData,
+} from './terrain-geometry';
 import { chunkKey, planChunksAround, resolveWindowCenter, type ChunkCoord } from './terrain-chunks';
 
 interface LoadedChunk {
@@ -42,10 +47,12 @@ const SURFACE_ASSETS = [
  *
  * A square of chunks (config: (2·viewRadius+1)² = 11×11 chunks of 128 m at three LODs)
  * follows the car. The plan comes from the pure planner in `terrain-chunks.ts`; this class
- * is only the stateful executor — it builds at most `maxBuildsPerFrame` chunks per frame
- * (the recorded upload budget: geometry construction is CPU work today and moves to the
- * generation worker next increment; either way the *budget* is what the acceptance test
- * measures), swaps LODs in place, and disposes what falls out of the square.
+ * is only the stateful executor — it applies at most `maxBuildsPerFrame` chunks per
+ * frame (the recorded upload budget). Geometry construction itself runs in the
+ * generation worker pool (`chunk-generator.ts`) whenever the platform allows, with a
+ * synchronous main-thread fallback that produces bit-identical chunks; the budget
+ * bounds mesh/upload work per frame either way. It swaps LODs in place and disposes
+ * what falls out of the square.
  *
  * One material for every chunk. Per-vertex data carries the splat weights and a macro
  * tint (hundred-metre variation + curvature occlusion); the scanned CC0 sets supply the
@@ -61,6 +68,7 @@ export class TerrainWorld implements SceneContent {
 
   readonly #sampler: TerrainSampler;
   readonly #config: TerrainConfig;
+  readonly #generator: ChunkGenerator;
   readonly #material: MeshStandardNodeMaterial;
   readonly #chunks = new Map<string, LoadedChunk>();
   #surfaceSets: readonly MaterialTextureSet[] = [];
@@ -74,6 +82,14 @@ export class TerrainWorld implements SceneContent {
   constructor(sampler: TerrainSampler) {
     this.#sampler = sampler;
     this.#config = sampler.config;
+    // Generation runs in a worker pool when the platform allows it and falls back to
+    // this same sampler on the main thread otherwise; either way chunks are
+    // bit-identical (one height function, two hosts).
+    this.#generator = new ChunkGenerator(
+      sampler,
+      sampler.config,
+      sampler.roadNetwork?.config ?? null,
+    );
     this.root.name = 'TerrainWorld';
 
     const material = new MeshStandardNodeMaterial();
@@ -237,16 +253,25 @@ export class TerrainWorld implements SceneContent {
     });
     this.#pendingBuilds = queue.length;
     this.#buildsLastFrame = 0;
-    for (const chunk of queue.slice(0, this.#config.maxBuildsPerFrame)) {
-      const key = chunkKey(chunk.cx, chunk.cz);
-      const geometry = buildChunkGeometry(this.#sampler, chunk.cx, chunk.cz, chunk.segments);
+
+    // Applies one generated chunk (from either thread) within the per-frame budget:
+    // mesh creation and GPU upload stay capped even though generation itself moved
+    // off-thread — the budget now bounds uploads, not CPU construction.
+    const applyChunk = (
+      cx: number,
+      cz: number,
+      segments: number,
+      data: ChunkGeometryData,
+    ): void => {
+      const key = chunkKey(cx, cz);
+      const geometry = chunkGeometryFromData(data);
       const triangles = (geometry.index?.count ?? 0) / 3;
       const existing = this.#chunks.get(key);
       if (existing !== undefined) {
         this.#triangles -= existing.triangles;
         existing.mesh.geometry.dispose();
         existing.mesh.geometry = geometry;
-        existing.segments = chunk.segments;
+        existing.segments = segments;
         existing.triangles = triangles;
       } else {
         const mesh = new Mesh(geometry, this.#material);
@@ -254,11 +279,37 @@ export class TerrainWorld implements SceneContent {
         mesh.receiveShadow = true;
         mesh.matrixAutoUpdate = false;
         this.root.add(mesh);
-        this.#chunks.set(key, { mesh, segments: chunk.segments, triangles });
+        this.#chunks.set(key, { mesh, segments, triangles });
       }
       this.#triangles += triangles;
       this.#buildsLastFrame += 1;
       this.#totalBuilds += 1;
+    };
+
+    if (this.#generator.mode === 'worker') {
+      this.#generator.syncQueue(
+        queue.map((chunk) => ({
+          key: chunkKey(chunk.cx, chunk.cz),
+          cx: chunk.cx,
+          cz: chunk.cz,
+          segments: chunk.segments,
+        })),
+      );
+      for (const result of this.#generator.takeCompleted(this.#config.maxBuildsPerFrame)) {
+        const want = desired.get(chunkKey(result.chunkX, result.chunkZ));
+        if (want !== undefined && want.segments === result.segments) {
+          applyChunk(result.chunkX, result.chunkZ, result.segments, result.data);
+        }
+      }
+    } else {
+      for (const chunk of queue.slice(0, this.#config.maxBuildsPerFrame)) {
+        applyChunk(
+          chunk.cx,
+          chunk.cz,
+          chunk.segments,
+          buildChunkGeometryData(this.#sampler, chunk.cx, chunk.cz, chunk.segments),
+        );
+      }
     }
     if (this.#buildsLastFrame > 0) {
       this.#pendingBuilds -= this.#buildsLastFrame;
@@ -274,10 +325,14 @@ export class TerrainWorld implements SceneContent {
       terrainBuildsTotal: this.#totalBuilds,
       terrainTriangles: this.#triangles,
       terrainSurfacesLoaded: this.#surfaceSets.length > 0 ? 1 : 0,
+      terrainGeneratorMode: this.#generator.mode === 'worker' ? 1 : 0,
+      terrainWorkerBacklog: this.#generator.backlog,
+      terrainWorkerBuilds: this.#generator.workerBuilds,
     };
   }
 
   dispose(): void {
+    this.#generator.dispose();
     for (const loaded of this.#chunks.values()) {
       loaded.mesh.geometry.dispose();
     }

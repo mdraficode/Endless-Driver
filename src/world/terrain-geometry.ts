@@ -25,12 +25,27 @@ import {
  * bit-identical border heights from the shared sampler, the seam is invisible; the tests
  * pin both properties.
  */
-export function buildChunkGeometry(
+/**
+ * Raw chunk geometry as transferable arrays. This is the form the generation worker
+ * produces (buffers cross the thread boundary zero-copy); the main thread only wraps
+ * them into a `BufferGeometry`.
+ */
+export interface ChunkGeometryData {
+  readonly positions: Float32Array;
+  readonly normals: Float32Array;
+  readonly colors: Float32Array;
+  readonly splats: Float32Array;
+  readonly tints: Float32Array;
+  readonly indices: Uint32Array;
+}
+
+/** Pure chunk construction: sampler in, arrays out. No three.js, so it can run in a worker. */
+export function buildChunkGeometryData(
   sampler: TerrainSampler,
   chunkX: number,
   chunkZ: number,
   segments: number,
-): BufferGeometry {
+): ChunkGeometryData {
   const { config } = sampler;
   const size = config.chunkSizeMeters;
   const originX = chunkX * size;
@@ -125,14 +140,14 @@ export function buildChunkGeometry(
     writeVertex(gridCount + borderIndex, i, j, heightAtCell(i, j) - config.skirtDepthMeters);
   });
 
-  const indices: number[] = [];
+  const indexList: number[] = [];
   for (let j = 0; j < segments; j += 1) {
     for (let i = 0; i < segments; i += 1) {
       const a = j * vertsPerEdge + i;
       const b = a + 1;
       const c = a + vertsPerEdge;
       const d = c + 1;
-      indices.push(a, c, b, b, c, d);
+      indexList.push(a, c, b, b, c, d);
     }
   }
   for (let b = 0; b < borderCount; b += 1) {
@@ -143,16 +158,37 @@ export function buildChunkGeometry(
     const topB = bj * vertsPerEdge + bi;
     const skirtA = gridCount + b;
     const skirtB = gridCount + next;
-    indices.push(topA, skirtA, topB, topB, skirtA, skirtB);
+    indexList.push(topA, skirtA, topB, topB, skirtA, skirtB);
   }
 
+  return {
+    positions,
+    normals,
+    colors,
+    splats,
+    tints,
+    indices: Uint32Array.from(indexList),
+  };
+}
+
+/** Wraps raw chunk data (main-thread or worker-produced) into a renderable geometry. */
+export function chunkGeometryFromData(data: ChunkGeometryData): BufferGeometry {
   const geometry = new BufferGeometry();
-  geometry.setAttribute('position', new BufferAttribute(positions, 3));
-  geometry.setAttribute('normal', new BufferAttribute(normals, 3));
-  geometry.setAttribute('color', new BufferAttribute(colors, 3));
-  geometry.setAttribute('splat', new BufferAttribute(splats, 4));
-  geometry.setAttribute('tint', new BufferAttribute(tints, 1));
-  geometry.setIndex(indices);
+  geometry.setAttribute('position', new BufferAttribute(data.positions, 3));
+  geometry.setAttribute('normal', new BufferAttribute(data.normals, 3));
+  geometry.setAttribute('color', new BufferAttribute(data.colors, 3));
+  geometry.setAttribute('splat', new BufferAttribute(data.splats, 4));
+  geometry.setAttribute('tint', new BufferAttribute(data.tints, 1));
+  geometry.setIndex(new BufferAttribute(data.indices, 1));
   geometry.computeBoundingSphere();
   return geometry;
+}
+
+export function buildChunkGeometry(
+  sampler: TerrainSampler,
+  chunkX: number,
+  chunkZ: number,
+  segments: number,
+): BufferGeometry {
+  return chunkGeometryFromData(buildChunkGeometryData(sampler, chunkX, chunkZ, segments));
 }

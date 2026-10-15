@@ -1016,3 +1016,19 @@ green. Browser capture on the mountain road re-verified (4/4 contacts, 0.3° sli
 zero errors). Adversarial note: a random-walk input holding full lock for seconds
 at 170 km/h can still step the tail out transiently — beyond any human input the
 driver-model represents; it recovers and drives on.
+
+## 27. Phase 4 Increment 3 — worker-side terrain generation (2026-10-15)
+
+Chunk geometry construction moved off the main thread. `buildChunkGeometry` split
+into pure `buildChunkGeometryData` (transferable arrays) + `chunkGeometryFromData`;
+`terrain-generation.ts` defines the protocol — workers rebuild the identical sampler
+from configs (`createGenerationSampler`), so output is bit-identical on either thread
+(unit-pinned, including across the road carve). `chunk-generator.ts` runs the pool
+(2 workers; 1 on small core counts), reconstructs the desired queue each frame in
+planner order, rejects stale/LOD-mismatched results, watchdogs stuck jobs (20 s),
+and permanently degrades to the previous synchronous path on any worker failure —
+the game never depends on the pool. TerrainWorld's 2-per-frame budget now caps mesh
+creation/GPU uploads rather than CPU construction. Browser proof: diagnostics report
+`terrainGeneratorMode: 1` and `terrainWorkerBuilds: 121` (every spawn-window chunk
+worker-built), backlog 0, zero errors; 382 tests green. Phase 4 remaining:
+floating-origin rebasing, district build-out (bridges/tunnels deferred).
