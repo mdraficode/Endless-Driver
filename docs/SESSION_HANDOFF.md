@@ -857,3 +857,19 @@ not a regression (route SSIM 0.9996 in the same session). Known refinements queu
 chunk-plan oscillation when the car straddles a chunk boundary (budget absorbs it;
 hysteresis later), LOD colour steps at distance (detail textures + fog will mask), and
 the splat is vertex-colour only until the scanned CC0 sets land next increment.
+
+## 21. Workspace cleanup (2026-10-15)
+
+At the owner's request the local workspace was reduced to what GitHub cannot give back.
+Everything project-related lives in this repository at `91b4fe8` (verified: local HEAD ==
+remote main, tree clean): source, tests, docs, the route baseline, capture scripts, and
+the public assets. The local checkout, `node_modules`, `dist`, and the capture caches
+were deleted — all regenerate (`git clone` + `npm ci` + `npm run build`).
+
+The screenshot/JSON evidence folders that used to sit beside the checkout
+(`phase2-evidence/`, `phase3-evidence/`, `phase4-evidence/`, ~29 MB, 203 files) were
+deleted in this pass. Their measured findings are recorded in §§17–20 of this document
+and the images regenerate with `scripts/capture-route.mjs` and
+`scripts/capture-drive.mjs` as needed. Kept locally, deliberately outside the repo: the
+GitHub credential helper directory (`~/.github-auth/`) and `~/preview-prepare.sh` —
+the keys that make the clean checkout one `git clone` away.
