@@ -106,6 +106,10 @@ export interface DiagnosticsSnapshot {
 export interface DiagnosticsOverlayOptions {
   readonly root: HTMLElement;
   readonly subtitle?: string;
+  /** Start hidden (player sessions); toggled later via `setVisible` / F2 / the 📊 button. */
+  readonly initiallyVisible?: boolean;
+  /** Called when the player dismisses the panel with its close button. */
+  readonly onClose?: () => void;
 }
 
 interface RowDefinition {
@@ -277,6 +281,11 @@ const PANEL_CLASSES = [
   'text-slate-200',
   'shadow-lg',
   'backdrop-blur-sm',
+  // Player-dismissible instrumentation must never eat a phone screen again: cap the
+  // footprint and scroll internally instead of covering the world.
+  'max-w-[min(80vw,22rem)]',
+  'max-h-[70dvh]',
+  'overflow-y-auto',
 ].join(' ');
 
 const LABEL_CLASSES = 'text-slate-400';
@@ -286,17 +295,33 @@ export class DiagnosticsOverlay {
   readonly #panel: HTMLElement;
   readonly #valueNodes: readonly HTMLElement[];
   #disposed = false;
+  #visible: boolean;
 
   constructor(options: DiagnosticsOverlayOptions) {
     this.#panel = document.createElement('section');
     this.#panel.className = PANEL_CLASSES;
     this.#panel.setAttribute('aria-hidden', 'true');
+    this.#visible = options.initiallyVisible ?? true;
+    this.#panel.hidden = !this.#visible;
 
+    const header = document.createElement('div');
+    header.className = 'mb-1 flex items-start justify-between gap-3';
     const heading = document.createElement('p');
-    heading.className = 'mb-1 font-sans text-[10px] font-semibold tracking-[0.18em] uppercase';
+    heading.className = 'font-sans text-[10px] font-semibold tracking-[0.18em] uppercase';
     heading.textContent = options.subtitle ?? 'Phase 3 · renderer & lighting';
     heading.classList.add('text-teal-300');
-    this.#panel.append(heading);
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.textContent = '×';
+    closeButton.setAttribute('aria-label', 'Hide diagnostics');
+    closeButton.className =
+      'pointer-events-auto -mt-1 -mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/10 font-sans text-sm leading-none text-slate-200';
+    closeButton.addEventListener('click', () => {
+      this.setVisible(false);
+      options.onClose?.();
+    });
+    header.append(heading, closeButton);
+    this.#panel.append(header);
 
     const list = document.createElement('dl');
     list.className = 'grid grid-cols-[auto_auto] gap-x-4';
@@ -324,8 +349,17 @@ export class DiagnosticsOverlay {
     return this.#panel;
   }
 
+  get isVisible(): boolean {
+    return this.#visible;
+  }
+
+  setVisible(visible: boolean): void {
+    this.#visible = visible;
+    this.#panel.hidden = !visible;
+  }
+
   update(snapshot: DiagnosticsSnapshot): void {
-    if (this.#disposed) {
+    if (this.#disposed || !this.#visible) {
       return;
     }
     ROW_DEFINITIONS.forEach((row, index) => {

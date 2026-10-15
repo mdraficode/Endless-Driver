@@ -962,3 +962,21 @@ throttle 1.00, steering 26.7°, 14.9 km/h, 4 contacts; after touchEnd, throttle
 decays to 0.017 and the wheel re-centres; portrait shows the rotate prompt;
 zero console errors throughout. Remaining mobile work stays in Phase 8 (HUD,
 settings, camera gestures).
+
+## 25. Diagnostics overlay is no longer player-facing (2026-10-15, owner report)
+
+The FPS/render panel was on for _every_ visitor (`overlayEnabled: true` default) and
+covered most of a phone screen with no way to dismiss it. Fixed properly:
+`applyRenderSwitches` now treats the overlay as debug instrumentation — shown only
+when the URL opts in (`?debug`, or `?overlay=1`; `?overlay=0` always wins), so plain
+player sessions get a clean screen while every existing capture workflow
+(`debug=1`) keeps its instrumentation and route baselines are unchanged. The panel
+also became dismissible: a × button in its header, **F2** on desktop, and a new 📊
+button in the touch utilities — all driving `Application.setDiagnosticsVisible` /
+`toggleDiagnostics`. Panel footprint capped (`max-w-[min(80vw,22rem)]`,
+`max-h-[70dvh]`, internal scroll) so even when summoned it cannot eat a phone
+screen; hidden panels skip DOM updates entirely. Unit test pins the URL gating;
+`capture-touch.mjs` now proves all of it in an emulated phone: panel hidden in the
+plain player view, opens under `?debug=1`, closes via ×, reopens via F2, closes
+via 📊 — then drives with simultaneous GAS + joystick and releases cleanly, zero
+errors. The owner-facing screenshots are now the `landscape-player.png` clean view.

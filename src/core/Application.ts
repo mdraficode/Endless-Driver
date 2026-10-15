@@ -83,6 +83,13 @@ export class Application {
   readonly #chaseCamera: ChaseCamera;
   readonly #monitor: PerformanceMonitor;
   readonly #overlay: DiagnosticsOverlay | null;
+
+  readonly #handleKeyDown = (event: KeyboardEvent): void => {
+    if (event.code === 'F2') {
+      event.preventDefault();
+      this.toggleDiagnostics();
+    }
+  };
   readonly #statusElement: HTMLElement | null;
   readonly #tier: TierResolution;
   readonly #clock: EnvironmentClock;
@@ -139,10 +146,15 @@ export class Application {
     this.#input.attach();
 
     this.#monitor = new PerformanceMonitor(this.#config.diagnostics.sampleWindow);
-    this.#overlay =
-      options.overlayRoot && this.#config.diagnostics.overlayEnabled
-        ? new DiagnosticsOverlay({ root: options.overlayRoot })
-        : null;
+    // The overlay always exists when a root is offered (so it can be summoned with
+    // F2 / the touch 📊 button), but it only STARTS visible when the URL asks for
+    // diagnostics — a plain player session never sees it.
+    this.#overlay = options.overlayRoot
+      ? new DiagnosticsOverlay({
+          root: options.overlayRoot,
+          initiallyVisible: this.#config.diagnostics.overlayEnabled,
+        })
+      : null;
     this.#statusElement = options.statusElement ?? null;
     this.#tier = options.tier ?? { id: 'B', reason: 'unresolved' };
     this.#clock = new EnvironmentClock(options.clock);
@@ -151,6 +163,11 @@ export class Application {
     // Lighting is resolved before the first frame so the scene never renders with the baseline sun
     // while the clock says something else.
     this.#applyDaylight();
+
+    // F2 summons/dismisses the diagnostics panel on desktop (touch uses its 📊 button).
+    if (typeof window !== 'undefined') {
+      window.addEventListener('keydown', this.#handleKeyDown);
+    }
 
     const initialPose = this.#car.getInterpolatedPose(0);
     this.#physics.syncTerrain(initialPose.position);
@@ -292,6 +309,21 @@ export class Application {
     this.#syncDebugCamera(pose, true);
   }
 
+  /** Shows/hides the diagnostics panel (F2, the touch 📊 button, the panel's × ). */
+  setDiagnosticsVisible(visible: boolean): void {
+    this.#overlay?.setVisible(visible);
+  }
+
+  toggleDiagnostics(): void {
+    if (this.#overlay) {
+      this.#overlay.setVisible(!this.#overlay.isVisible);
+    }
+  }
+
+  get diagnosticsVisible(): boolean {
+    return this.#overlay?.isVisible ?? false;
+  }
+
   /**
    * Attaches the on-screen touch driving surface (mobile) to a DOM root. The surface
    * decides for itself whether the device wants it (coarse pointer, or forced for
@@ -308,6 +340,8 @@ export class Application {
       onCommand: (command) => {
         if (command === 'reset') {
           this.#input.requestReset();
+        } else if (command === 'toggleDiagnostics') {
+          this.toggleDiagnostics();
         } else {
           this.#input.requestToggleCamera();
         }
@@ -398,6 +432,9 @@ export class Application {
     this.#disposed = true;
     for (const unsubscribe of this.#unsubscribers) {
       unsubscribe();
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('keydown', this.#handleKeyDown);
     }
     this.#touchControls?.dispose();
     this.#touchControls = null;

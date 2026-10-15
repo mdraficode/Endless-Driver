@@ -944,6 +944,20 @@ export function applyRenderSwitches(config: RenderConfig, search: string): Rende
    * linear band. Both exist so the height-aware term can be A/B'd against exactly what it
    * replaced, from the same URL pattern as every other effect in the stack.
    */
+  /**
+   * The diagnostics overlay is developer instrumentation, not a player HUD: it is only
+   * shown when the URL asks for it (`?debug`, or explicitly `?overlay=1`) and
+   * `?overlay=0` always hides it. A plain player visit gets a clean screen.
+   */
+  const overlaySwitch = params.get('overlay');
+  const diagnostics = {
+    ...config.diagnostics,
+    overlayEnabled:
+      overlaySwitch !== null && overlaySwitch !== ''
+        ? overlaySwitch !== '0' && overlaySwitch !== 'false'
+        : params.has('debug'),
+  };
+
   const sky = {
     ...config.sky,
     ...(fogSwitch === 'off' || fogSwitch === '0' || fogSwitch === 'false'
@@ -957,6 +971,7 @@ export function applyRenderSwitches(config: RenderConfig, search: string): Rende
 
   return {
     ...config,
+    diagnostics,
     renderer,
     sky,
     atmosphere: {

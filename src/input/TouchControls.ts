@@ -1,7 +1,7 @@
 import { TOUCH_CONTROL_CONFIG } from '../config/input';
 import { joystickSteer, TouchStateTracker, type TouchDriveState } from './touch-state';
 
-export type TouchCommand = 'reset' | 'toggleCamera';
+export type TouchCommand = 'reset' | 'toggleCamera' | 'toggleDiagnostics';
 
 export interface TouchControlsOptions {
   /** Called with the aggregated driving state whenever any thumb moves. */
@@ -212,6 +212,11 @@ export class TouchControls {
     // --- Utility buttons (top-right) ---
     const utilities = document.createElement('div');
     utilities.className = 'touch-utilities';
+    const diagnosticsButton = make('touch-utility', '📊', 'Toggle diagnostics');
+    diagnosticsButton.addEventListener('click', () => {
+      diagnosticsButton.blur();
+      this.#options.onCommand('toggleDiagnostics');
+    });
     const cameraButton = make('touch-utility', '📷', 'Toggle camera');
     cameraButton.addEventListener('click', () => {
       cameraButton.blur();
@@ -227,7 +232,7 @@ export class TouchControls {
       fullscreenButton.blur();
       void TouchControls.requestLandscape();
     });
-    utilities.append(cameraButton, resetButton, fullscreenButton);
+    utilities.append(diagnosticsButton, cameraButton, resetButton, fullscreenButton);
 
     this.#root.append(joystick, handbrake, pedals, utilities);
 

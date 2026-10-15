@@ -187,3 +187,18 @@ describe('height-aware fog and god rays configuration', () => {
     expect(godrays.shadowMapSize).toBeGreaterThanOrEqual(256);
   });
 });
+
+describe('diagnostics overlay visibility (player default)', () => {
+  it('stays hidden for plain player visits and debug tooling opts in', () => {
+    // No params: a player opening the game gets a clean screen.
+    expect(applyRenderSwitches(RENDER_CONFIG, '').diagnostics.overlayEnabled).toBe(false);
+    expect(applyRenderSwitches(RENDER_CONFIG, '?tier=C').diagnostics.overlayEnabled).toBe(false);
+    // Debug tooling keeps its instrumentation.
+    expect(applyRenderSwitches(RENDER_CONFIG, '?debug=1').diagnostics.overlayEnabled).toBe(true);
+    expect(applyRenderSwitches(RENDER_CONFIG, '?overlay=1').diagnostics.overlayEnabled).toBe(true);
+    // An explicit hide wins over everything, including debug.
+    expect(
+      applyRenderSwitches(RENDER_CONFIG, '?debug=1&overlay=0').diagnostics.overlayEnabled,
+    ).toBe(false);
+  });
+});

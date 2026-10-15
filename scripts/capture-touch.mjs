@@ -63,8 +63,58 @@ async function boot(width, height) {
   return { context, page };
 }
 
+// --- Player view (no debug params): the diagnostics panel must NOT cover the game ---
+{
+  const playerContext = await browser.newContext({
+    viewport: { width: 844, height: 390 },
+    hasTouch: true,
+    isMobile: true,
+    deviceScaleFactor: 2,
+  });
+  const playerPage = await playerContext.newPage();
+  watch(playerPage);
+  await playerPage.goto(`${baseUrl}?tier=C&touch=1`, {
+    waitUntil: 'domcontentloaded',
+    timeout: 120_000,
+  });
+  await playerPage.waitForSelector('.touch-joystick', { timeout: 120_000 });
+  await playerPage.waitForTimeout(45_000); // let the world stream in
+  const panelHidden = await playerPage.evaluate(() => {
+    const panel = document.querySelector('#diagnostics-overlay section');
+    return panel === null || panel.hidden || getComputedStyle(panel).display === 'none';
+  });
+  await playerPage.screenshot({
+    path: join(outdir, 'landscape-player.png'),
+    timeout: 280_000,
+  });
+  await writeFile(join(outdir, 'player.json'), JSON.stringify({ panelHidden, errors }, null, 2));
+  console.log(JSON.stringify({ phase: 'player', panelHidden, errors: errors.length }));
+  if (!panelHidden) {
+    throw new Error('diagnostics panel is visible in the plain player view');
+  }
+  await playerContext.close();
+}
+
 // --- Landscape: controls visible, multi-touch drive ---
 const { context, page } = await boot(844, 390);
+
+// The debug overlay starts visible here (debug=1); prove it can be dismissed three
+// ways: its × button, F2, and the touch 📊 button. Leave it hidden for the drive shot.
+const overlayVisible = () =>
+  page.evaluate(() => {
+    const panel = document.querySelector('#diagnostics-overlay section');
+    return panel !== null && !panel.hidden && getComputedStyle(panel).display !== 'none';
+  });
+if (!(await overlayVisible())) {
+  throw new Error('expected the diagnostics panel to start visible under ?debug=1');
+}
+await page.click('#diagnostics-overlay section button[aria-label="Hide diagnostics"]');
+if (await overlayVisible()) throw new Error('overlay did not close via its × button');
+await page.keyboard.press('F2');
+if (!(await overlayVisible())) throw new Error('overlay did not reopen via F2');
+await page.click('.touch-utility[aria-label="Toggle diagnostics"]');
+if (await overlayVisible()) throw new Error('overlay did not close via the 📊 button');
+console.log(JSON.stringify({ phase: 'overlay-toggles', ok: true }));
 const centre = (selector) =>
   page.evaluate((sel) => {
     const rect = document.querySelector(sel)?.getBoundingClientRect();
