@@ -58,6 +58,16 @@ export class PhysicsWorld {
   #groundBody: RapierRigidBody | null = null;
   #terrainSampler: TerrainSampler | null = null;
   readonly #terrainBodies = new Map<string, RapierRigidBody>();
+  /**
+   * Fixed bodies anchored to eternal world coordinates (the spawn-arena obstacles),
+   * remembered by their world translation so a floating-origin slide can move them
+   * without losing where in the world they stand.
+   */
+  readonly #anchoredBodies = new Map<RapierRigidBody, { x: number; y: number; z: number }>();
+  /** Floating-origin slide: physics-space position = world - origin (see origin.ts). */
+  #originX = 0;
+  #originZ = 0;
+  #terrainChunkSize = 0;
   #terrainCenter: ChunkCoord | null = null;
   #accumulator = 0;
   #elapsed = 0;
@@ -232,6 +242,7 @@ export class PhysicsWorld {
       const body = this.#world.createRigidBody(
         new this.#rapier.RigidBodyDesc(this.#rapier.RigidBodyType.Fixed).setTranslation(x, y, z),
       );
+      this.#anchoredBodies.set(body, { x, y, z });
       this.#world.createCollider(
         this.#rapier.ColliderDesc.cuboid(hx / 2, hy / 2, hz / 2)
           .setFriction(friction)
@@ -251,6 +262,7 @@ export class PhysicsWorld {
    * car falls through the not-yet-built ground. `Application` does this in its constructor.
    */
   enableTerrain(sampler: TerrainSampler): void {
+    this.#terrainChunkSize = sampler.config.chunkSizeMeters;
     if (this.#groundBody !== null) {
       this.#world.removeRigidBody(this.#groundBody);
       this.#groundBody = null;
@@ -259,12 +271,45 @@ export class PhysicsWorld {
   }
 
   /**
-   * Maintains heightfield colliders in the physics window around `focus` (the planner in
+   * Maintains heightfield colliders in the physics window around `focus` — a
+   * WORLD-space position, so the window is stable across origin slides (the planner in
    * `terrain-chunks.ts` decides the window; this only executes it). Heights come from the
    * shared sampler at physics resolution, independent of the visual chunk LOD — collision
    * must never get coarser because the camera is far away. Cheap to call every frame: an
    * unchanged window is a map lookup per chunk.
    */
+  /**
+   * Slides every anchored collider by a new floating-origin offset (see
+   * `OriginManager`): chunk colliders recompute their local placement from their
+   * eternal chunk keys, obstacle bodies from their recorded world positions. The
+   * set of *wanted* chunks does not change — `focus` passed to `syncTerrain` is
+   * world-space, so the window is already correct on both sides of the slide.
+   */
+  setOriginOffset(offsetX: number, offsetZ: number): void {
+    this.#originX = offsetX;
+    this.#originZ = offsetZ;
+    const size = this.#terrainChunkSize;
+    if (size > 0) {
+      for (const [key, body] of this.#terrainBodies) {
+        const comma = key.indexOf(',');
+        const cx = Number(key.slice(0, comma));
+        const cz = Number(key.slice(comma + 1));
+        body.setTranslation(
+          { x: cx * size + size / 2 - offsetX, y: 0, z: cz * size + size / 2 - offsetZ },
+          true,
+        );
+      }
+    }
+    for (const [body, world] of this.#anchoredBodies) {
+      body.setTranslation({ x: world.x - offsetX, y: world.y, z: world.z - offsetZ }, true);
+    }
+  }
+
+  /** Current floating-origin offset (physics position = world - offset). */
+  get originOffset(): { readonly x: number; readonly z: number } {
+    return { x: this.#originX, z: this.#originZ };
+  }
+
   syncTerrain(focus: Vec3): void {
     const sampler = this.#terrainSampler;
     if (sampler === null || this.#disposed) {
@@ -307,9 +352,9 @@ export class PhysicsWorld {
       }
       const body = this.#world.createRigidBody(
         this.#rapier.RigidBodyDesc.fixed().setTranslation(
-          originX + size / 2,
+          originX + size / 2 - this.#originX,
           0,
-          originZ + size / 2,
+          originZ + size / 2 - this.#originZ,
         ),
       );
       this.#world.createCollider(
@@ -333,7 +378,11 @@ export class PhysicsWorld {
    * weights the renderer blends — grip follows looks by construction.
    */
   surfaceAt(x: number, z: number): TerrainSurfaceSample | null {
-    return this.#terrainSampler === null ? null : sampleTerrainSurface(this.#terrainSampler, x, z);
+    // Callers pass physics-space coordinates (where the car body actually is); the
+    // sampler answers in eternal world space, hence the slide.
+    return this.#terrainSampler === null
+      ? null
+      : sampleTerrainSurface(this.#terrainSampler, x + this.#originX, z + this.#originZ);
   }
 
   /** Heightfield chunk colliders currently alive (diagnostics and tests). */

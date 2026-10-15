@@ -1,10 +1,13 @@
 import { CHASE_CAMERA_CONFIG, DEBUG_CAMERA_CONFIG, type CameraMode } from '../config/camera';
 import { RENDER_CONFIG, type RenderConfig } from '../config/render';
 import { ROAD_NETWORK_CONFIG } from '../config/roads';
+import { ORIGIN_CONFIG } from '../config/origin';
 import { TERRAIN_CONFIG } from '../config/terrain';
+import { VEHICLE_CONFIG } from '../config/vehicle';
 import { WORLD_CONFIG, type WorldConfig } from '../config/world';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
 import type { TerrainSampler } from '../world/terrain-height';
+import { OriginManager } from '../world/origin';
 import { createWorldTerrainSampler } from '../world/world-terrain';
 import type { RapierModule } from '../physics/RapierModule';
 import { yawFromQuat, type Vec3 } from '../shared/vector';
@@ -104,6 +107,12 @@ export class Application {
   #shadowCamera: PerspectiveCamera | null = null;
   #shadowCameraFieldOfView = 0;
   #disposed = false;
+  /**
+   * Floating origin: world coordinates are eternal, physics/render coordinates are
+   * world - offset. Slides by whole chunks (see `OriginManager`) so nothing ever
+   * computes far from an origin in float32.
+   */
+  readonly #origin = new OriginManager(ORIGIN_CONFIG);
 
   constructor(options: ApplicationOptions) {
     this.#config = options.config ?? RENDER_CONFIG;
@@ -135,14 +144,17 @@ export class Application {
       // The car asks the physics world what it stands on; the answer comes from the same
       // terrain weights the renderer blends, so grip follows looks by construction.
       surfaceProvider: (x, z) => this.#physics.surfaceAt(x, z),
-      groundNormalProvider: (x, z) => terrainSampler.normalAt(x, z),
+      groundNormalProvider: (x, z) =>
+        terrainSampler.normalAt(x + this.#origin.offset.x, z + this.#origin.offset.z),
     });
 
     this.#carVisual = new CarVisual();
     this.#scene.addObject(this.#carVisual.root);
 
     this.#chaseCamera = new ChaseCamera(CHASE_CAMERA_CONFIG, this.#engine.viewport.aspect);
-    this.#chaseCamera.setGroundHeightProvider((x, z) => terrainSampler.heightAt(x, z));
+    this.#chaseCamera.setGroundHeightProvider((x, z) =>
+      terrainSampler.heightAt(x + this.#origin.offset.x, z + this.#origin.offset.z),
+    );
     this.#input = new InputManager();
     this.#input.attach();
 
@@ -303,7 +315,7 @@ export class Application {
    */
   teleportCar(x: number, z: number, yaw = 0): void {
     const y = this.#terrainSampler.heightAt(x, z);
-    this.#car.reset([x, y + 0.7, z], yaw);
+    this.#car.reset([x - this.#origin.offset.x, y + 0.7, z - this.#origin.offset.z], yaw);
     this.#physics.resetAccumulator();
     const pose = this.#car.getInterpolatedPose(0);
     this.#chaseCamera.snapTo(pose);
@@ -395,7 +407,12 @@ export class Application {
       viewport: { width: viewport.width, height: viewport.height },
       cameraPosition: { x: cameraPosition.x, y: cameraPosition.y, z: cameraPosition.z },
       sceneObjects: scene.objectCount,
-      contentStats: scene.contentStats,
+      contentStats: {
+        ...scene.contentStats,
+        worldOriginOffsetX: this.#origin.offset.x,
+        worldOriginOffsetZ: this.#origin.offset.z,
+        worldOriginRebases: this.#origin.rebases,
+      },
       totalFrames: this.#monitor.totalFrames,
       cameraMode: this.#cameraMode,
       cameraFov: activeCamera.fov,
@@ -419,9 +436,9 @@ export class Application {
       wheelSteerDegrees: pose.wheels.map((wheel) => (wheel.steerAngle * 180) / Math.PI),
       wheelSpinRadians: pose.wheels.map((wheel) => wheel.spinAngle),
       carPosition: {
-        x: this.#car.position.x,
+        x: this.#car.position.x + this.#origin.offset.x,
         y: this.#car.position.y,
-        z: this.#car.position.z,
+        z: this.#car.position.z + this.#origin.offset.z,
       },
     };
   }
@@ -462,7 +479,15 @@ export class Application {
       this.toggleCameraMode();
     }
     if (commands.reset) {
-      this.#car.reset();
+      const spawn = VEHICLE_CONFIG.spawn;
+      this.#car.reset(
+        [
+          spawn.position[0] - this.#origin.offset.x,
+          spawn.position[1],
+          spawn.position[2] - this.#origin.offset.z,
+        ],
+        spawn.yaw,
+      );
       this.#physics.resetAccumulator();
       const pose = this.#car.getInterpolatedPose(0);
       this.#chaseCamera.snapTo(pose);
@@ -471,6 +496,19 @@ export class Application {
 
     // 2. Physics advances in whole fixed steps; the car applies its impulses inside each step.
     this.#physics.update(delta);
+
+    // 2a. Floating origin: if the car has strayed past the precision bound, slide
+    // the world under it (body, colliders, content root) in this one frame. World
+    // coordinates do not change; only where the local origin sits beneath them.
+    const shift = this.#origin.update(this.#car.position.x, this.#car.position.z);
+    if (shift !== null) {
+      this.#car.shiftBy(shift.dx, shift.dz);
+      this.#physics.setOriginOffset(this.#origin.offset.x, this.#origin.offset.z);
+      this.#scene.setWorldOffset(this.#origin.offset.x, this.#origin.offset.z);
+      const settled = this.#car.getInterpolatedPose(0);
+      this.#chaseCamera.snapTo(settled);
+      this.#syncDebugCamera(settled, true);
+    }
 
     // 2b. Time advances, and time becomes light for the next frame.
     this.#daylight = this.#daylightController.update(delta, this.#scene, this.#engine);
@@ -483,11 +521,16 @@ export class Application {
     // colliders slide their window with the car, each inside its own budget.
     const yaw = yawFromQuat(pose.rotation);
     const forwardSpeed = this.#car.telemetry.forwardSpeed;
-    this.#scene.streamContent(pose.position, {
+    const worldFocus = {
+      x: pose.position.x + this.#origin.offset.x,
+      y: pose.position.y,
+      z: pose.position.z + this.#origin.offset.z,
+    };
+    this.#scene.streamContent(worldFocus, {
       x: -Math.sin(yaw) * forwardSpeed,
       z: -Math.cos(yaw) * forwardSpeed,
     });
-    this.#physics.syncTerrain(pose.position);
+    this.#physics.syncTerrain(worldFocus);
 
     if (this.#cameraMode === 'chase') {
       this.#chaseCamera.update(delta, pose, this.#car.telemetry);

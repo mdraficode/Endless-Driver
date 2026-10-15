@@ -109,6 +109,8 @@ export class SceneManager {
   readonly #sunTarget = new Vector3();
   readonly #csm: CSMShadowNode | null;
   #content: SceneContent;
+  #worldOffsetX = 0;
+  #worldOffsetZ = 0;
   readonly #fog: Fog | null;
   readonly #heightFog: HeightFog | null;
   readonly #godraysLight: DirectionalLight | null;
@@ -508,11 +510,23 @@ export class SceneManager {
    * the caller rather than here, because the two are usually alive at the same instant during the
    * swap and only the caller knows which one is going away.
    */
+  /**
+   * Slides the whole content root by the floating-origin offset (world content is
+   * authored in eternal world coordinates; the root carries it into the bounded
+   * rendering space). The sky, lights and cameras are camera-anchored and do not move.
+   */
+  setWorldOffset(offsetX: number, offsetZ: number): void {
+    this.#worldOffsetX = offsetX;
+    this.#worldOffsetZ = offsetZ;
+    this.#content.root.position.set(-offsetX, 0, -offsetZ);
+  }
+
   setContent(content: SceneContent): void {
     const previous = this.#content;
     this.scene.remove(previous.root);
     this.#content = content;
     this.scene.add(content.root);
+    content.root.position.set(-this.#worldOffsetX, 0, -this.#worldOffsetZ);
   }
 
   /**

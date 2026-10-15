@@ -48,23 +48,26 @@ await page.waitForFunction(
 );
 await page.evaluate(([x, z]) => window.__ENDLESS_DRIVER__?.teleportCar?.(x, z), at);
 // Streaming must rebuild the chunk window around the teleported car before the shot.
+// The teleport writes the car pose instantly, so the counts alone can pass on the
+// pre-teleport window: require real frames to have run since the teleport (enough
+// for a whole 121-chunk window at the 2-per-frame build budget) AND a settled window.
+const teleportFrames = await framesOf();
 await page.waitForFunction(
-  ([tx, tz]) => {
+  ([tx, tz, minFrames]) => {
     const diagnostics = window.__ENDLESS_DRIVER__?.getDiagnostics();
     const stats = diagnostics?.contentStats;
     const car = diagnostics?.carPosition;
-    // Guard against the pre-teleport window satisfying the counts for one frame: the
-    // car must be at the target AND the window settled around it.
     return (
       stats !== undefined &&
       car !== undefined &&
+      (diagnostics?.totalFrames ?? 0) > minFrames &&
       Math.hypot(car.x - tx, car.z - tz) < 2 &&
       stats.terrainChunksLoaded >= stats.terrainChunksDesired - 4 &&
       stats.terrainBuildsPending === 0 &&
       stats.roadSurfacesLoaded === 1
     );
   },
-  at,
+  [at[0], at[1], teleportFrames + 75],
   { timeout: 900_000 },
 );
 if (driveSeconds > 0) {

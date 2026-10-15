@@ -1041,3 +1041,22 @@ atmospheric fog (aerial perspective), not a defect — but the distance density
 spawn plain. Thinned to 0.00085 (opaque ≈1.2 km); valley-haze term and sun
 forward-scatter unchanged, ridges still pop clear of valleys. A/B spawn
 captures in /home/user/phase4-evidence/fog/; 382 tests green.
+
+## 29. Phase 4 Increment 4 — floating-origin rebasing (2026-10-15)
+
+World coordinates are eternal; physics/render coordinates are world − offset.
+`OriginManager` (src/world/origin.ts, config src/config/origin.ts) slides the
+offset by whole 128 m chunks when the car passes 2048 m from the local origin.
+Application performs the slide in one frame after the physics step: car body +
+interpolation poses (motion preserved), PhysicsWorld collider re-placement
+(chunk bodies recompute from eternal keys; spawn obstacles from recorded world
+positions), SceneManager content-root shift. Streaming windows plan in world
+space on both sides, so nothing rebuilds; surface/normal queries translate
+local→world; diagnostics and teleport speak world coordinates. 388 tests green
+(unit origin invariants; integrated physics test across a slide; raycast proof
+that colliders land locally). Browser proof at the volcano (−1500, −2100):
+rebases 1, offsets (−1536, −2048), 242 total builds (spawn + volcano windows),
+4/4 contacts, zero errors. Note: capture-road's settled-window guard had a hole
+(teleport writes the pose instantly, letting pre-teleport stats pass) — it now
+also requires 75 frames since the teleport. Phase 4 remaining: district
+build-out (bridges/tunnels deferred).

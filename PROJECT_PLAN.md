@@ -562,8 +562,21 @@ thread (pinned by test), messages carry raw buffers zero-copy, stale/LOD-mismatc
 results are dropped, and any worker failure permanently degrades to the previous
 synchronous path. TerrainWorld's per-frame budget now caps mesh creation/GPU
 uploads. Browser proof: `terrainGeneratorMode: 1`, all 121 spawn-window chunks
-worker-built, backlog 0, zero errors. Remaining in this phase: floating-origin
-rebasing and the §5 district build-out (bridges/tunnels still deferred).
+worker-built, backlog 0, zero errors.
+
+**Progress (2026-10-15, increment 4 — floating-origin rebasing):** world
+coordinates are now eternal (sampler, chunk keys, bookmarks, diagnostics), while
+physics and rendering live in a local space slid underneath by whole chunks
+whenever the car passes 2048 m from the local origin (`src/world/origin.ts`,
+`src/config/origin.ts`). The slide moves the car body (motion preserved),
+heightfield/obstacle colliders, and the content root in one frame; streamer
+windows keep planning in world space, so nothing rebuilds and the shift is
+exact in float32 by construction (grid steps of 128 m). Integrated physics test
+drives the real frame sequence across a slide (car stays grounded, world
+position continuous); browser proof at the volcano (world −1500, −2100):
+`worldOriginRebases: 1`, offsets (−1536, −2048), 121 chunks re-streamed around
+the new origin, 4/4 contacts, zero errors. Remaining in this phase: the §5
+district build-out (bridges/tunnels still deferred).
 
 **Stop:** Request authorization before Phase 5.
 

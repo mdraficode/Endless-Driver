@@ -226,6 +226,22 @@ export class Car {
     return { position, rotation, wheels };
   }
 
+  /**
+   * Slides the car by (dx, dz) without changing anything about its motion
+   * (floating-origin rebase): body and interpolation poses move together, velocity
+   * and rotation are untouched, so the step after the slide is indistinguishable
+   * from the step before it — just computed near the origin, where float32 is
+   * precise. Wheel state is all relative (compression, forces), so it carries over.
+   */
+  shiftBy(dx: number, dz: number): void {
+    const t = this.body.translation();
+    this.body.setTranslation({ x: t.x - dx, y: t.y, z: t.z - dz }, true);
+    for (const pose of [this.#previousPose, this.#currentPose]) {
+      pose.position.x -= dx;
+      pose.position.z -= dz;
+    }
+  }
+
   reset(position?: readonly [number, number, number], yaw?: number): void {
     const target = position ?? this.#config.spawn.position;
     const rotation = yaw ?? this.#config.spawn.yaw;
