@@ -22,6 +22,22 @@ export const NEUTRAL_ACTIONS: VehicleActions = {
   toggleCameraRequested: false,
 };
 
+/**
+ * What the ground under a wheel is made of, as the tire model consumes it. Produced by a
+ * generator-side surface query (terrain splat today, road network next) — never read back
+ * from a texture, so looks and grip cannot drift.
+ */
+export interface SurfaceResponse {
+  readonly id: string;
+  /** Multiplier on the tire model's dry-asphalt friction coefficient. */
+  readonly gripModifier: number;
+  /** Rolling-resistance coefficient (force per newton of wheel load). */
+  readonly rollingResistance: number;
+}
+
+/** Resolves the surface at a world (x, z), or `null` for the default asphalt response. */
+export type SurfaceProvider = (x: number, z: number) => SurfaceResponse | null;
+
 /** Per-wheel simulation and presentation state. */
 export interface WheelState {
   readonly index: number;
@@ -51,6 +67,12 @@ export interface WheelState {
   /** 0..1 estimate of how saturated this tire is (1 = sliding). */
   utilization: number;
   surfaceVelocity: Vec3;
+  /** Surface under the contact patch this step ('asphalt' when no provider answered). */
+  surfaceId: string;
+  /** Grip multiplier from the surface query, applied to this wheel's friction limit. */
+  surfaceGripModifier: number;
+  /** Rolling-resistance coefficient from the surface query. */
+  surfaceRollingResistance: number;
 }
 
 export interface VehicleTelemetry {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
 import { createTerrainSampler } from '../../src/world/terrain-height';
 import { buildChunkGeometry } from '../../src/world/terrain-geometry';
+import { sampleTerrainSurface } from '../../src/world/terrain-surface';
 import { planChunks, planPhysicsChunks, segmentsForRing } from '../../src/world/terrain-chunks';
 
 /**
@@ -104,6 +105,42 @@ describe('chunk geometry', () => {
     }
     west.dispose();
     east.dispose();
+  });
+});
+
+describe('surface splat and driving response', () => {
+  it('writes normalised splat weights and a sane tint per vertex', () => {
+    const sampler = createTerrainSampler(TERRAIN_CONFIG);
+    const geometry = buildChunkGeometry(sampler, 3, -2, 8);
+    const splat = geometry.getAttribute('splat');
+    const tint = geometry.getAttribute('tint');
+    expect(splat.itemSize).toBe(4);
+    expect(tint.count).toBe(splat.count);
+    for (let index = 0; index < splat.count; index += 25) {
+      const sum =
+        splat.getComponent(index, 0) +
+        splat.getComponent(index, 1) +
+        splat.getComponent(index, 2) +
+        splat.getComponent(index, 3);
+      expect(sum).toBeCloseTo(1, 4);
+      expect(tint.getComponent(index, 0)).toBeGreaterThan(0.6);
+      expect(tint.getComponent(index, 0)).toBeLessThan(1.1);
+    }
+    geometry.dispose();
+  });
+
+  it('drives like grass on the spawn plateau and like rock/snow on the volcano', () => {
+    const sampler = createTerrainSampler(TERRAIN_CONFIG);
+    const plateau = sampleTerrainSurface(sampler, 10, -10);
+    expect(plateau.id).toBe('grass');
+    expect(plateau.gripModifier).toBeGreaterThan(0.7);
+    expect(plateau.gripModifier).toBeLessThan(0.9);
+    expect(plateau.rollingResistance).toBeGreaterThan(0.025);
+    const [vx, vz] = TERRAIN_CONFIG.volcano.position;
+    const summit = sampleTerrainSurface(sampler, vx, vz);
+    expect(['rock', 'snow']).toContain(summit.id);
+    const flank = sampleTerrainSurface(sampler, vx + 420, vz + 260);
+    expect(flank.gripModifier).not.toBeCloseTo(plateau.gripModifier, 2);
   });
 });
 

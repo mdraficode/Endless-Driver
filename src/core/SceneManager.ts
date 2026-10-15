@@ -524,6 +524,11 @@ export class SceneManager {
     this.#content.updateStreaming?.(focus);
   }
 
+  /** Resolves the content's async surface loading (terrain scans), if it has any. */
+  async loadContentSurfaces(): Promise<void> {
+    await this.#content.loadSurfaces?.();
+  }
+
   getDiagnostics(): SceneDiagnostics {
     const { x, y, z } = this.camera.position;
     return {

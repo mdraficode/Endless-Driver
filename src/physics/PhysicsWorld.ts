@@ -3,6 +3,7 @@ import { WORLD_CONFIG, type WorldConfig } from '../config/world';
 import { clamp } from '../shared/math';
 import { cloneVec3, type Quat, type Vec3 } from '../shared/vector';
 import type { TerrainSampler } from '../world/terrain-height';
+import { sampleTerrainSurface, type TerrainSurfaceSample } from '../world/terrain-surface';
 import { chunkKey, planPhysicsChunks } from '../world/terrain-chunks';
 import type { RapierCollider, RapierModule, RapierRigidBody, RapierWorld } from './RapierModule';
 
@@ -314,6 +315,16 @@ export class PhysicsWorld {
       );
       this.#terrainBodies.set(key, body);
     }
+  }
+
+  /**
+   * The driving surface at (x, z) from the terrain generator, or `null` before terrain is
+   * enabled (the flat-arena default response). This is the Phase 2 surface-query seam:
+   * the car asks the world what it is standing on, the generator answers from the same
+   * weights the renderer blends — grip follows looks by construction.
+   */
+  surfaceAt(x: number, z: number): TerrainSurfaceSample | null {
+    return this.#terrainSampler === null ? null : sampleTerrainSurface(this.#terrainSampler, x, z);
   }
 
   /** Heightfield chunk colliders currently alive (diagnostics and tests). */

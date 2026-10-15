@@ -1,6 +1,11 @@
 import { BufferAttribute, BufferGeometry } from 'three';
 
-import { terrainColorAt, terrainVariationAt, type TerrainSampler } from './terrain-height';
+import {
+  terrainColorAt,
+  terrainSurfaceWeights,
+  terrainVariationAt,
+  type TerrainSampler,
+} from './terrain-height';
 
 /**
  * Chunk mesh construction: a heightfield grid sampled from the world height function, plus
@@ -53,6 +58,12 @@ export function buildChunkGeometry(
   const positions = new Float32Array((gridCount + borderCount) * 3);
   const normals = new Float32Array((gridCount + borderCount) * 3);
   const colors = new Float32Array((gridCount + borderCount) * 3);
+  // [grass, soil, rock, snow] per vertex: the material blends scanned sets by these, and
+  // they are the same weights the physics surface query mixes grip from.
+  const splats = new Float32Array((gridCount + borderCount) * 4);
+  // Macro tint around 1.0 (variation + curvature occlusion): the textured material
+  // multiplies its detail by this, the flat material ignores it.
+  const tints = new Float32Array(gridCount + borderCount);
 
   const writeVertex = (index: number, i: number, j: number, yOverride: number | null): void => {
     const height = heightAtCell(i, j);
@@ -65,7 +76,20 @@ export function buildChunkGeometry(
     const nz = dz * invLength;
     const x = originX + i * step;
     const z = originZ + j * step;
-    const color = terrainColorAt(config, height, 1 - ny, terrainVariationAt(config, x, z));
+    // Curvature occlusion from the halo grid: concave ground (valley floors, gullies)
+    // darkens a little, convex crests lighten — cheap baked AO that survives every LOD
+    // because it is derived from the heights themselves.
+    const laplacian =
+      (heightAtCell(i - 1, j) +
+        heightAtCell(i + 1, j) +
+        heightAtCell(i, j - 1) +
+        heightAtCell(i, j + 1) -
+        4 * height) /
+      (step * step);
+    const occlusion = Math.min(1.05, Math.max(0.84, 1 - laplacian * 1.1));
+    const variation = terrainVariationAt(config, x, z);
+    const color = terrainColorAt(config, height, 1 - ny, variation, occlusion);
+    const weights = terrainSurfaceWeights(config, height, 1 - ny);
     positions[index * 3] = x;
     positions[index * 3 + 1] = yOverride ?? height;
     positions[index * 3 + 2] = z;
@@ -75,6 +99,11 @@ export function buildChunkGeometry(
     colors[index * 3] = color[0];
     colors[index * 3 + 1] = color[1];
     colors[index * 3 + 2] = color[2];
+    splats[index * 4] = weights[0];
+    splats[index * 4 + 1] = weights[1];
+    splats[index * 4 + 2] = weights[2];
+    splats[index * 4 + 3] = weights[3];
+    tints[index] = Math.min(1.06, Math.max(0.72, (0.9 + (variation + 1) * 0.06) * occlusion));
   };
 
   for (let j = 0; j < vertsPerEdge; j += 1) {
@@ -121,6 +150,8 @@ export function buildChunkGeometry(
   geometry.setAttribute('position', new BufferAttribute(positions, 3));
   geometry.setAttribute('normal', new BufferAttribute(normals, 3));
   geometry.setAttribute('color', new BufferAttribute(colors, 3));
+  geometry.setAttribute('splat', new BufferAttribute(splats, 4));
+  geometry.setAttribute('tint', new BufferAttribute(tints, 1));
   geometry.setIndex(indices);
   geometry.computeBoundingSphere();
   return geometry;

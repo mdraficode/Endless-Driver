@@ -126,7 +126,7 @@ describe('applying a tier', () => {
   it('swaps the backdrop on tier C and keeps the procedural sky on the desktop tiers', () => {
     const c = applyTier(RENDER_CONFIG, 'C');
     const b = applyTier(RENDER_CONFIG, 'B');
-    expect(c.environment.useAsBackground).toBe(true);
+    expect(c.environment.useAsBackground).toBe(false);
     expect(c.atmosphere.clouds.enabled).toBe(false);
     expect(b.environment.useAsBackground).toBe(false);
     expect(b.atmosphere.clouds.enabled).toBe(true);

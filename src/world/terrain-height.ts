@@ -83,14 +83,19 @@ export function createTerrainSampler(config: TerrainConfig): TerrainSampler {
       fbm(x + 3917.3, z - 2718.1, config.hillWavelengthMeters * 2.7, seed + 77) *
         config.hillAmplitudeMeters *
         1.6;
-    // Hinode-dake: a broad cone with a softened rim, broken up by the same hills so its
-    // silhouette is a mountain and not a party hat.
+    // Ridged detail: fBm alone reads as dunes. One-minus-absolute noise makes crests and
+    // broken skylines; squared, it stays quiet in the valleys and speaks on the ridges.
+    const ridgeBroad = 1 - Math.abs(valueNoise(x, z, 210, seed + 303));
+    const ridgeFine = 1 - Math.abs(valueNoise(x - 1173.9, z + 941.2, 96, seed + 404));
+    height += ridgeBroad * ridgeBroad * 6.5 + ridgeFine * ridgeFine * 2.1;
+    // Hinode-dake: a broad cone with a softened rim, broken up by the same hills and an
+    // extra share of ridge noise so its silhouette is a mountain and not a party hat.
     const dx = x - vx;
     const dz = z - vz;
     const distance = Math.sqrt(dx * dx + dz * dz);
     const t = Math.min(1, distance / config.volcano.radiusMeters);
     const cone = (1 - t) * (1 - t) * (1 + 2 * t);
-    height += cone * config.volcano.heightMeters;
+    height += cone * (config.volcano.heightMeters + ridgeBroad * 26);
     return height;
   };
 
@@ -129,21 +134,47 @@ export function terrainVariationAt(config: TerrainConfig, x: number, z: number):
   return fbm(x - 811.7, z + 613.9, 260, config.seed + 991);
 }
 
+export type TerrainSplatWeights = readonly [number, number, number, number];
+
+/**
+ * Which surfaces live at a point, as normalised [grass, soil, rock, snow] weights.
+ *
+ * This is the single source the renderer and the physics surface query both read: the
+ * material blends scanned textures by these weights, and grip/rolling resistance are
+ * weighted from the same numbers, so what a slope looks like and how it drives can never
+ * disagree. `slope` is 1 - normal.y (0 flat, ~0.1 at 26°, ~0.23 at 40°, 0.5 at 60°).
+ */
+export function terrainSurfaceWeights(
+  config: TerrainConfig,
+  height: number,
+  slope: number,
+): TerrainSplatWeights {
+  const rock = smoothstep(0.22, 0.42, slope);
+  const soil = smoothstep(0.07, 0.22, slope) * (1 - rock);
+  const snow =
+    smoothstep(config.snowlineMeters, config.snowlineMeters + 40, height) *
+    (1 - smoothstep(0.25, 0.45, slope));
+  const grass = Math.max(0, 1 - rock - soil - snow);
+  const total = grass + soil + rock + snow;
+  return [grass / total, soil / total, rock / total, snow / total];
+}
+
 /**
  * Splat weights → vertex colour. Pure and shared by every chunk, so two chunks meeting at
  * a border colour their shared edge identically (the heights agree there by construction;
  * the colours must too, or the seam shows even when the geometry does not).
  *
- * The palette is the procedural half of the Phase 4 splat: grass lowlands, soil on worked
- * slopes, rock where it is steep, pale snow-rock above the snowline. Scanned CC0 surface
- * sets replace these flat tints with detail textures in the next increment; the *weights*
- * (which surface lives where) are the part that must not change under that swap.
+ * The macro tint half of the Phase 4 splat: grass lowlands, soil on worked slopes, rock
+ * where it is steep, pale snow-rock above the snowline. The scanned CC0 sets supply the
+ * detail (see TerrainWorld); this tint carries the hundred-metre colour story and the
+ * far-field blend, and both read the same weights from `terrainSurfaceWeights`.
  */
 export function terrainColorAt(
   config: TerrainConfig,
   height: number,
   slope: number,
   variation: number,
+  occlusion = 1,
 ): readonly [number, number, number] {
   // variation in [-1, 1]: patches of dry/wet ground at the hundred-metre scale.
   const grass: readonly [number, number, number] = [
@@ -155,22 +186,19 @@ export function terrainColorAt(
   const rock: readonly [number, number, number] = [0.32, 0.31, 0.3];
   const snow: readonly [number, number, number] = [0.85, 0.87, 0.9];
 
-  // `slope` is 1 - normal.y: 0 flat, ~0.1 at 26 degrees, ~0.23 at 40, 0.5 at 60.
-  const rockWeight = smoothstep(0.22, 0.42, slope);
-  const soilWeight = smoothstep(0.07, 0.22, slope) * (1 - rockWeight);
-  const snowWeight =
-    smoothstep(config.snowlineMeters, config.snowlineMeters + 40, height) *
-    (1 - smoothstep(0.25, 0.45, slope));
-  const grassWeight = Math.max(0, 1 - rockWeight - soilWeight - snowWeight);
-
-  const total = grassWeight + soilWeight + rockWeight + snowWeight;
+  const [grassWeight, soilWeight, rockWeight, snowWeight] = terrainSurfaceWeights(
+    config,
+    height,
+    slope,
+  );
+  const shade = Math.min(1.08, Math.max(0.8, occlusion));
   const color = [
-    (grass[0] * grassWeight + soil[0] * soilWeight + rock[0] * rockWeight + snow[0] * snowWeight) /
-      total,
-    (grass[1] * grassWeight + soil[1] * soilWeight + rock[1] * rockWeight + snow[1] * snowWeight) /
-      total,
-    (grass[2] * grassWeight + soil[2] * soilWeight + rock[2] * rockWeight + snow[2] * snowWeight) /
-      total,
+    (grass[0] * grassWeight + soil[0] * soilWeight + rock[0] * rockWeight + snow[0] * snowWeight) *
+      shade,
+    (grass[1] * grassWeight + soil[1] * soilWeight + rock[1] * rockWeight + snow[1] * snowWeight) *
+      shade,
+    (grass[2] * grassWeight + soil[2] * soilWeight + rock[2] * rockWeight + snow[2] * snowWeight) *
+      shade,
   ] as const;
   return color;
 }

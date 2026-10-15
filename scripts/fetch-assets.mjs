@@ -44,6 +44,7 @@ const BASE_URL = 'https://dl.polyhaven.org/file/ph-assets';
  * @property {string} runtimePath   Repository-relative path of the committed file.
  * @property {string} url           Pinned download URL.
  * @property {string} [role]        How the runtime uses it (IBL, PBR surface, ...).
+ * @property {string} [stem]        Published file stem for texture sets.
  */
 
 /** @type {AssetEntry[]} */
@@ -86,6 +87,62 @@ const ENTRIES = [
     runtimePath: 'assets/hdri/cedar_bridge_sunset_1k.hdr',
     url: `${BASE_URL}/HDRIs/hdr/1k/cedar_bridge_sunset_1_1k.hdr`,
     role: 'Third IBL preset (golden hour) — matches the warm grading preset and the Mie Pass look.',
+  },
+  {
+    id: 'tex-leafy-grass-1k',
+    kind: 'texture',
+    name: 'Leafy Grass \u2014 1K PBR set',
+    assetClass: 'material-surface',
+    sourceUrl: 'https://polyhaven.com/a/leafy_grass',
+    creator: 'Charlotte Baglioni',
+    licence: 'CC0-1.0',
+    attribution: '',
+    runtimePath: 'assets/textures/leafy_grass_1k',
+    url: `${BASE_URL}/Textures/jpg/1k/leafy_grass`,
+    stem: 'leafy_grass',
+    role: 'Terrain splat diffuse/normal/roughness/AO for grass lowlands (Phase 4 realism pass).',
+  },
+  {
+    id: 'tex-brown-mud-dry-1k',
+    kind: 'texture',
+    name: 'Brown Mud Dry \u2014 1K PBR set',
+    assetClass: 'material-surface',
+    sourceUrl: 'https://polyhaven.com/a/brown_mud_dry',
+    creator: 'Rob Tuytel',
+    licence: 'CC0-1.0',
+    attribution: '',
+    runtimePath: 'assets/textures/brown_mud_dry_1k',
+    url: `${BASE_URL}/Textures/jpg/1k/brown_mud_dry`,
+    stem: 'brown_mud_dry',
+    role: 'Terrain splat diffuse/normal/roughness/AO for soil slopes and worked ground (Phase 4 realism pass).',
+  },
+  {
+    id: 'tex-rock-face-03-1k',
+    kind: 'texture',
+    name: 'Rock Face 03 \u2014 1K PBR set',
+    assetClass: 'material-surface',
+    sourceUrl: 'https://polyhaven.com/a/rock_face_03',
+    creator: 'Dario Barresi, Rico Cilliers',
+    licence: 'CC0-1.0',
+    attribution: '',
+    runtimePath: 'assets/textures/rock_face_03_1k',
+    url: `${BASE_URL}/Textures/jpg/1k/rock_face_03`,
+    stem: 'rock_face_03',
+    role: 'Terrain splat diffuse/normal/roughness/AO for steep rock and cliffs (Phase 4 realism pass).',
+  },
+  {
+    id: 'tex-snow-01-1k',
+    kind: 'texture',
+    name: 'Snow 01 \u2014 1K PBR set',
+    assetClass: 'material-surface',
+    sourceUrl: 'https://polyhaven.com/a/snow_01',
+    creator: 'Rob Tuytel',
+    licence: 'CC0-1.0',
+    attribution: '',
+    runtimePath: 'assets/textures/snow_01_1k',
+    url: `${BASE_URL}/Textures/jpg/1k/snow_01`,
+    stem: 'snow_01',
+    role: 'Terrain splat diffuse/normal/roughness/AO above the snowline (Phase 4 realism pass).',
   },
   {
     id: 'tex-japanese-cedar-planks-1k',
@@ -149,7 +206,7 @@ async function fetchEntry(entry) {
       format: 'hdr',
     });
   } else {
-    const stem = 'japanese_cedar_planks';
+    const stem = entry.stem ?? 'japanese_cedar_planks';
     for (const [slot, suffix, colourSpace] of TEXTURE_MAPS) {
       const relative = `${entry.runtimePath}_${suffix}_1k.jpg`;
       const url = `${entry.url}/${stem}_${suffix}_1k.jpg`;

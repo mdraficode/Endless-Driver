@@ -112,7 +112,13 @@ export class Application {
     });
     // Terrain owns the ground from here; the spawn window must exist before the first step.
     this.#physics.enableTerrain(terrainSampler);
-    this.#car = new Car({ rapier: options.rapier, physics: this.#physics });
+    this.#car = new Car({
+      rapier: options.rapier,
+      physics: this.#physics,
+      // The car asks the physics world what it stands on; the answer comes from the same
+      // terrain weights the renderer blends, so grip follows looks by construction.
+      surfaceProvider: (x, z) => this.#physics.surfaceAt(x, z),
+    });
 
     this.#carVisual = new CarVisual();
     this.#scene.addObject(this.#carVisual.root);
@@ -219,6 +225,7 @@ export class Application {
     if (!this.#engine.isInitialized) {
       await this.#engine.init();
       await this.#loadEnvironment();
+      await this.#scene.loadContentSurfaces();
       await this.#loadLook();
       this.#shadowCamera = null;
       this.#syncShadowCamera(this.#activeCamera());

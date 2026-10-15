@@ -32,14 +32,19 @@ listed because their work deserves the credit, not because the licence asks for 
   - file: `assets/hdri/cedar_bridge_sunset_1k.hdr`
 - **Ninomaru Teien (Tokyo garden) — 1K HDR** — Greg Zaal — [source](https://polyhaven.com/a/ninomaru_teien) — CC0-1.0
   - file: `assets/hdri/ninomaru_teien_1k.hdr`
+- **Hinode Film** — Endless Driver project (generated) — [source](https://github.com/mdraficode/Endless-Driver/blob/main/scripts/build-lut.mjs) — Project-Generated
+  - file: `assets/luts/hinode-film-17.cube`
 - **Boulder 01 — 1K scanned prop** — James Ray Cock — [source](https://polyhaven.com/a/boulder_01) — CC0-1.0
   - file: `assets/models/boulder-01.glb`
+- **Brown Mud Dry — 1K PBR set** — Rob Tuytel — [source](https://polyhaven.com/a/brown_mud_dry) — CC0-1.0
+  - file: `assets/textures/brown_mud_dry_1k_diff_1k.jpg`, `assets/textures/brown_mud_dry_1k_nor_gl_1k.jpg`, `assets/textures/brown_mud_dry_1k_rough_1k.jpg`, `assets/textures/brown_mud_dry_1k_arm_1k.jpg`
 - **Japanese Cedar Planks — 1K PBR set** — Rob Tuytel — [source](https://polyhaven.com/a/japanese_cedar_planks) — CC0-1.0
   - file: `assets/textures/japanese_cedar_planks_1k_diff_1k.jpg`, `assets/textures/japanese_cedar_planks_1k_nor_gl_1k.jpg`, `assets/textures/japanese_cedar_planks_1k_rough_1k.jpg`, `assets/textures/japanese_cedar_planks_1k_arm_1k.jpg`
-
-- **Hinode Film — 3D LUT (generated)** — Endless Driver project — [generator](https://github.com/mdraficode/Endless-Driver/blob/main/scripts/build-lut.mjs) — Project-Generated
-  - file: `assets/luts/hinode-film-17.cube`
-  - generated, not downloaded: the look is a dozen documented numbers in `scripts/lib/lut.mjs`, and the
-    committed table is checked against them by `tests/unit/lut.test.ts`.
+- **Leafy Grass — 1K PBR set** — Charlotte Baglioni — [source](https://polyhaven.com/a/leafy_grass) — CC0-1.0
+  - file: `assets/textures/leafy_grass_1k_diff_1k.jpg`, `assets/textures/leafy_grass_1k_nor_gl_1k.jpg`, `assets/textures/leafy_grass_1k_rough_1k.jpg`, `assets/textures/leafy_grass_1k_arm_1k.jpg`
+- **Rock Face 03 — 1K PBR set** — Dario Barresi, Rico Cilliers — [source](https://polyhaven.com/a/rock_face_03) — CC0-1.0
+  - file: `assets/textures/rock_face_03_1k_diff_1k.jpg`, `assets/textures/rock_face_03_1k_nor_gl_1k.jpg`, `assets/textures/rock_face_03_1k_rough_1k.jpg`, `assets/textures/rock_face_03_1k_arm_1k.jpg`
+- **Snow 01 — 1K PBR set** — Rob Tuytel — [source](https://polyhaven.com/a/snow_01) — CC0-1.0
+  - file: `assets/textures/snow_01_1k_diff_1k.jpg`, `assets/textures/snow_01_1k_nor_gl_1k.jpg`, `assets/textures/snow_01_1k_rough_1k.jpg`, `assets/textures/snow_01_1k_arm_1k.jpg`
 
 `retrieved` and `sha256` for each file are recorded in `public/assets/manifest.json`.

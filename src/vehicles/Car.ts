@@ -31,6 +31,7 @@ import {
 import {
   NEUTRAL_ACTIONS,
   WHEEL_INDEX,
+  type SurfaceProvider,
   type VehicleActions,
   type VehiclePose,
   type VehicleTelemetry,
@@ -45,6 +46,11 @@ export interface CarOptions {
   /** Overrides the configured spawn (used by reset and by tests). */
   readonly spawnPosition?: readonly [number, number, number];
   readonly spawnYaw?: number;
+  /**
+   * Generator-side surface query (terrain today, roads next). Without one, every contact
+   * uses the default asphalt response the tire model is tuned against.
+   */
+  readonly surfaceProvider?: SurfaceProvider;
 }
 
 interface WheelDefinition {
@@ -83,6 +89,7 @@ export class Car {
   readonly #rapier: RapierModule;
   readonly #physics: PhysicsWorld;
   readonly #drivetrain: Drivetrain;
+  readonly #surfaceProvider: SurfaceProvider | null;
   readonly #ray: RapierRay;
   readonly #unsubscribers: (() => void)[] = [];
   readonly #referenceLoad: number;
@@ -131,6 +138,7 @@ export class Car {
     this.#config = options.config ?? VEHICLE_CONFIG;
     this.#rapier = options.rapier;
     this.#physics = options.physics;
+    this.#surfaceProvider = options.surfaceProvider ?? null;
     this.#ray = new this.#rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
     this.#drivetrain = new Drivetrain(this.#config.drivetrain, this.#config.wheels.radius);
     this.#referenceLoad = (this.#config.chassis.mass * 9.81) / 4;
@@ -282,6 +290,9 @@ export class Car {
       spinAngle: 0,
       utilization: 0,
       surfaceVelocity: vec3(),
+      surfaceId: 'asphalt',
+      surfaceGripModifier: 1,
+      surfaceRollingResistance: this.#config.tires.rollingResistance,
     };
   }
 
@@ -448,6 +459,9 @@ export class Car {
         wheel.longitudinalForce = 0;
         wheel.lateralForce = 0;
         wheel.utilization = 0;
+        wheel.surfaceId = 'air';
+        wheel.surfaceGripModifier = 1;
+        wheel.surfaceRollingResistance = this.#config.tires.rollingResistance;
         setVec3(wheel.contactNormal, scratch.up.x, scratch.up.y, scratch.up.z);
         setVec3(wheel.surfaceVelocity, 0, 0, 0);
         continue;
@@ -469,6 +483,19 @@ export class Car {
 
       addScaledVec3(scratch.contactPoint, anchorWorld, this.#ray.dir as Vec3, distanceToContact);
       copyVec3(wheel.contactPoint, scratch.contactPoint);
+
+      // What is under this wheel, per the generator. Asked once per contact per step at
+      // the patch, so a car straddling a grass/soil boundary loads each tire honestly.
+      const surface = this.#surfaceProvider?.(scratch.contactPoint.x, scratch.contactPoint.z);
+      if (surface) {
+        wheel.surfaceId = surface.id;
+        wheel.surfaceGripModifier = surface.gripModifier;
+        wheel.surfaceRollingResistance = surface.rollingResistance;
+      } else {
+        wheel.surfaceId = 'asphalt';
+        wheel.surfaceGripModifier = 1;
+        wheel.surfaceRollingResistance = this.#config.tires.rollingResistance;
+      }
 
       // Velocity of the contact patch: v + omega x r.
       subtractVec3(scratch.radiusVector, scratch.contactPoint, centerOfMass);
@@ -579,15 +606,19 @@ export class Car {
       if (handbrake && !definition.isFront) {
         longitudinalForce -= config.brakes.handbrakeForce * motionSign;
       }
-      longitudinalForce -= tires.rollingResistance * normalLoad * motionSign;
+      longitudinalForce -= wheel.surfaceRollingResistance * normalLoad * motionSign;
 
-      const frictionLimit = effectiveFriction(normalLoad, this.#referenceLoad, tires) * normalLoad;
+      const frictionLimit =
+        effectiveFriction(normalLoad, this.#referenceLoad, tires) *
+        normalLoad *
+        wheel.surfaceGripModifier;
       const gripLimit = frictionLimit * tires.longitudinalSaturation;
       const clampedLongitudinal = clamp(longitudinalForce, -gripLimit, gripLimit);
 
       const handbrakeScale = handbrake && !definition.isFront ? tires.handbrakeGripScale : 1;
       const lateralForce =
         -lateralForceMagnitude(normalLoad, slipAngle, this.#referenceLoad, tires) *
+        wheel.surfaceGripModifier *
         handbrakeScale *
         frictionCircleScale(clampedLongitudinal, gripLimit);
 

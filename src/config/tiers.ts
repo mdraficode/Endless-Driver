@@ -119,7 +119,8 @@ export interface TierDefinition {
 const TIER_C: TierDefinition = {
   id: 'C',
   name: 'Mobile / low',
-  summary: 'Phones and low-end laptops: WebGL2 backend, short shadow range, HDRI backdrop.',
+  summary:
+    'Phones and low-end laptops: WebGL2 backend, short shadow range, HDRI light with a procedural sky backdrop.',
   render: {
     maxPixelRatio: 1,
     renderer: {
@@ -146,7 +147,10 @@ const TIER_C: TierDefinition = {
       heightFog: { enabled: false },
     },
     environment: {
-      useAsBackground: true,
+      // The HDRI lights and reflects; it is never the visible backdrop. A garden photo
+      // behind open terrain reads as a diorama at every tier, and the procedural sky is
+      // one dome shader — the honest backdrop costs no more than the dishonest one.
+      useAsBackground: false,
     },
     postProcessing: {
       // No MSAA on this tier; the edges are handled by FXAA, which is the tier's contract.

@@ -29,6 +29,11 @@ export interface SceneContent {
    * ground under the car and the light that falls on it follow the same point.
    */
   updateStreaming?(focus: { x: number; y: number; z: number }): void;
+  /**
+   * Async surface/texture loading, resolved once at startup (the terrain's scanned sets).
+   * Content renders acceptably before it resolves; failure keeps the fallback material.
+   */
+  loadSurfaces?(): Promise<void>;
   /** Flat numeric stats merged into scene diagnostics (chunk counts, triangles, budget). */
   getContentStats?(): Readonly<Record<string, number>>;
   /** Releases geometries, materials, and textures the content created. */

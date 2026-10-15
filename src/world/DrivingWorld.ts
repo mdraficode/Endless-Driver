@@ -33,6 +33,7 @@ export function createDrivingWorld({
     updateStreaming: (focus) => {
       terrain.updateStreaming(focus);
     },
+    loadSurfaces: () => terrain.loadSurfaces(),
     getContentStats: () => terrain.getContentStats(),
     dispose(): void {
       terrain.dispose();

@@ -1,0 +1,53 @@
+import { terrainSurfaceWeights, type TerrainSampler } from './terrain-height';
+
+/**
+ * The driving surface at a point: what the ground is made of, for the tire model.
+ *
+ * This is the Phase 2 surface-query contract finally fed by a generator: the visual splat
+ * and the physics response read the same weights (`terrainSurfaceWeights`), and the
+ * response numbers below are weighted from them — never sampled from a texture. A slope
+ * that looks like grass grips like grass because both systems asked the same question,
+ * not because one of them looked at a picture of the other.
+ */
+export type TerrainSurfaceId = 'grass' | 'soil' | 'rock' | 'snow';
+
+export interface TerrainSurfaceSample {
+  readonly id: TerrainSurfaceId;
+  /** Normalised [grass, soil, rock, snow] weights the response was mixed from. */
+  readonly weights: readonly [number, number, number, number];
+  /** Multiplier on the tire model's dry-asphalt friction coefficient. */
+  readonly gripModifier: number;
+  /** Rolling-resistance coefficient (force per newton of wheel load). */
+  readonly rollingResistance: number;
+}
+
+const SURFACE_IDS: readonly TerrainSurfaceId[] = ['grass', 'soil', 'rock', 'snow'];
+/** Relative grip by surface: grass holds less than the asphalt the tire model is tuned on. */
+const GRIP: readonly [number, number, number, number] = [0.8, 0.64, 0.95, 0.4];
+/** Rolling resistance by surface: soft ground drinks momentum; rock barely resists. */
+const ROLLING: readonly [number, number, number, number] = [0.035, 0.05, 0.02, 0.08];
+
+export function sampleTerrainSurface(
+  sampler: TerrainSampler,
+  x: number,
+  z: number,
+): TerrainSurfaceSample {
+  const { config } = sampler;
+  const height = sampler.heightAt(x, z);
+  const normal = sampler.normalAt(x, z);
+  const weights = terrainSurfaceWeights(config, height, 1 - normal.y);
+  let dominant = 0;
+  for (let index = 1; index < 4; index += 1) {
+    if ((weights[index] ?? 0) > (weights[dominant] ?? 0)) {
+      dominant = index;
+    }
+  }
+  const mix = (table: readonly [number, number, number, number]): number =>
+    table[0] * weights[0] + table[1] * weights[1] + table[2] * weights[2] + table[3] * weights[3];
+  return {
+    id: SURFACE_IDS[dominant] ?? 'grass',
+    weights,
+    gripModifier: mix(GRIP),
+    rollingResistance: mix(ROLLING),
+  };
+}
