@@ -980,3 +980,7 @@ screen; hidden panels skip DOM updates entirely. Unit test pins the URL gating;
 plain player view, opens under `?debug=1`, closes via ×, reopens via F2, closes
 via 📊 — then drives with simultaneous GAS + joystick and releases cleanly, zero
 errors. The owner-facing screenshots are now the `landscape-player.png` clean view.
+
+**Workspace note:** `.git/config` is excluded from environment snapshots — after a
+rotation, `git remote add origin https://github.com/mdraficode/Endless-Driver.git`
+and `chmod +x /home/user/.github-auth/*.sh` may be needed before pushing.
