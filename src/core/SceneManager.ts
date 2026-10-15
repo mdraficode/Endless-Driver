@@ -30,6 +30,7 @@ import { createAtmosphereSky } from '../shaders/atmosphere-sky';
 import type { Viewport } from './Engine';
 import { createDrivingWorld } from '../world/DrivingWorld';
 import type { SceneContent, SceneContentFactory } from '../world/WorldContent';
+import type { TerrainSampler } from '../world/terrain-height';
 
 export interface SceneManagerOptions {
   readonly canvas: HTMLCanvasElement;
@@ -42,6 +43,12 @@ export interface SceneManagerOptions {
    * not the content's business.
    */
   readonly content?: SceneContentFactory;
+  /**
+   * The shared terrain sampler (Phase 4), forwarded to the content factory. One instance
+   * is created by `Application` so the visual chunks and the physics heightfields sample
+   * the identical height function.
+   */
+  readonly terrainSampler?: TerrainSampler;
 }
 
 export interface SceneDiagnostics {
@@ -52,6 +59,8 @@ export interface SceneDiagnostics {
   /** Manifest id of the HDRI lighting the scene, or `null` while only the sun lights it. */
   readonly environmentId: string | null;
   readonly contentKind: string;
+  /** Flat numeric content stats (terrain chunk counts, triangles, build budget usage). */
+  readonly contentStats: Readonly<Record<string, number>>;
   /** Which distance-cueing model the frame used: height-aware, the linear band, or none. */
   readonly fogMode: 'height' | 'linear' | 'off';
   /** Sun elevation in degrees, or `null` before the first daylight update. */
@@ -178,7 +187,11 @@ export class SceneManager {
      */
     this.#godraysLight = config.postProcessing.godrays.enabled ? createGodraysLight(config) : null;
 
-    this.#content = (options.content ?? createDrivingWorld)({ config, worldConfig });
+    this.#content = (options.content ?? createDrivingWorld)({
+      config,
+      worldConfig,
+      ...(options.terrainSampler !== undefined ? { terrainSampler: options.terrainSampler } : {}),
+    });
 
     this.scene.add(this.#sky, ambient, this.#sun, this.#sun.target, this.#content.root);
     if (this.#godraysLight !== null) {
@@ -502,12 +515,22 @@ export class SceneManager {
     this.scene.add(content.root);
   }
 
+  /**
+   * Drives the content's streaming hook (Phase 4 terrain). Called once per frame with the
+   * vehicle position by `Application`, beside the sun focus: ground and light follow the
+   * same point. Content without streaming pays one optional-call check.
+   */
+  streamContent(focus: Vec3): void {
+    this.#content.updateStreaming?.(focus);
+  }
+
   getDiagnostics(): SceneDiagnostics {
     const { x, y, z } = this.camera.position;
     return {
       objectCount: this.getObjectCount(),
       skyMode: this.skyMode,
       contentKind: this.#content.kind,
+      contentStats: this.#content.getContentStats?.() ?? {},
       fogMode: this.fogMode,
       environmentId: this.#environment?.id ?? null,
       sunElevationDegrees: this.#daylight?.sunElevationDegrees ?? null,

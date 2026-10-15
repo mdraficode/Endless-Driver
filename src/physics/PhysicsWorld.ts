@@ -2,6 +2,8 @@ import { PHYSICS_CONFIG, type PhysicsConfig } from '../config/physics';
 import { WORLD_CONFIG, type WorldConfig } from '../config/world';
 import { clamp } from '../shared/math';
 import { cloneVec3, type Quat, type Vec3 } from '../shared/vector';
+import type { TerrainSampler } from '../world/terrain-height';
+import { chunkKey, planPhysicsChunks } from '../world/terrain-chunks';
 import type { RapierCollider, RapierModule, RapierRigidBody, RapierWorld } from './RapierModule';
 
 export interface PhysicsWorldOptions {
@@ -47,6 +49,9 @@ export class PhysicsWorld {
   readonly #worldConfig: WorldConfig;
   readonly #preStepHandlers = new Set<PhysicsStepHandler>();
   readonly #postStepHandlers = new Set<PhysicsStepHandler>();
+  #groundBody: RapierRigidBody | null = null;
+  #terrainSampler: TerrainSampler | null = null;
+  readonly #terrainBodies = new Map<string, RapierRigidBody>();
   #accumulator = 0;
   #elapsed = 0;
   #stepsLastUpdate = 0;
@@ -206,6 +211,7 @@ export class PhysicsWorld {
     const groundBody = this.#world.createRigidBody(
       this.#rapier.RigidBodyDesc.fixed().setTranslation(0, -halfThickness, 0),
     );
+    this.#groundBody = groundBody;
     this.#world.createCollider(
       this.#rapier.ColliderDesc.cuboid(ground.size / 2, halfThickness, ground.size / 2)
         .setFriction(friction)
@@ -226,6 +232,93 @@ export class PhysicsWorld {
         body,
       );
     }
+  }
+
+  /**
+   * Switches ground collision from the flat arena slab to streamed terrain heightfields
+   * (Phase 4). The slab is removed the moment terrain takes over — two grounds at once
+   * would fight at every slope — while the static obstacle colliders stay: they stand on
+   * the spawn plateau, where the terrain is exactly y=0.
+   *
+   * Callers must `syncTerrain` for the spawn area before the first physics step, or the
+   * car falls through the not-yet-built ground. `Application` does this in its constructor.
+   */
+  enableTerrain(sampler: TerrainSampler): void {
+    if (this.#groundBody !== null) {
+      this.#world.removeRigidBody(this.#groundBody);
+      this.#groundBody = null;
+    }
+    this.#terrainSampler = sampler;
+  }
+
+  /**
+   * Maintains heightfield colliders in the physics window around `focus` (the planner in
+   * `terrain-chunks.ts` decides the window; this only executes it). Heights come from the
+   * shared sampler at physics resolution, independent of the visual chunk LOD — collision
+   * must never get coarser because the camera is far away. Cheap to call every frame: an
+   * unchanged window is a map lookup per chunk.
+   */
+  syncTerrain(focus: Vec3): void {
+    const sampler = this.#terrainSampler;
+    if (sampler === null || this.#disposed) {
+      return;
+    }
+    const { config } = sampler;
+    const planned = planPhysicsChunks(config, focus.x, focus.z);
+    const wanted = new Set(planned.map((chunk) => chunkKey(chunk.cx, chunk.cz)));
+    for (const [key, body] of this.#terrainBodies) {
+      if (!wanted.has(key)) {
+        this.#world.removeRigidBody(body);
+        this.#terrainBodies.delete(key);
+      }
+    }
+    const segments = config.physicsSegmentsPerChunk;
+    const size = config.chunkSizeMeters;
+    const step = size / segments;
+    for (const chunk of planned) {
+      const key = chunkKey(chunk.cx, chunk.cz);
+      if (this.#terrainBodies.has(key)) {
+        continue;
+      }
+      const originX = chunk.cx * size;
+      const originZ = chunk.cz * size;
+      const heights = new Float32Array((segments + 1) * (segments + 1));
+      // Rapier's heightfield array is x-major: heights[ix * (n + 1) + iz]. The axis
+      // convention is pinned empirically by tests/physics/terrain-colliders.test.ts — a
+      // transposed field still collides, just with the world rotated 90 degrees, so only
+      // a raycast against known slopes can catch it.
+      for (let j = 0; j <= segments; j += 1) {
+        for (let i = 0; i <= segments; i += 1) {
+          heights[i * (segments + 1) + j] = sampler.heightAt(
+            originX + i * step,
+            originZ + j * step,
+          );
+        }
+      }
+      const body = this.#world.createRigidBody(
+        this.#rapier.RigidBodyDesc.fixed().setTranslation(
+          originX + size / 2,
+          0,
+          originZ + size / 2,
+        ),
+      );
+      this.#world.createCollider(
+        this.#rapier.ColliderDesc.heightfield(segments, segments, heights, {
+          x: size,
+          y: 1,
+          z: size,
+        })
+          .setFriction(this.#worldConfig.friction)
+          .setRestitution(this.#worldConfig.restitution),
+        body,
+      );
+      this.#terrainBodies.set(key, body);
+    }
+  }
+
+  /** Heightfield chunk colliders currently alive (diagnostics and tests). */
+  get terrainColliderChunks(): number {
+    return this.#terrainBodies.size;
   }
 }
 

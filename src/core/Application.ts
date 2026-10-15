@@ -1,7 +1,9 @@
 import { CHASE_CAMERA_CONFIG, DEBUG_CAMERA_CONFIG, type CameraMode } from '../config/camera';
 import { RENDER_CONFIG, type RenderConfig } from '../config/render';
+import { TERRAIN_CONFIG } from '../config/terrain';
 import { WORLD_CONFIG, type WorldConfig } from '../config/world';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
+import { createTerrainSampler } from '../world/terrain-height';
 import type { RapierModule } from '../physics/RapierModule';
 import { yawFromQuat, type Vec3 } from '../shared/vector';
 import { DiagnosticsOverlay, type DiagnosticsSnapshot } from '../ui/DiagnosticsOverlay';
@@ -91,12 +93,16 @@ export class Application {
     this.#config = options.config ?? RENDER_CONFIG;
     this.#worldConfig = options.worldConfig ?? WORLD_CONFIG;
 
+    // One terrain sampler feeds the visual chunks (via SceneManager's content) and the
+    // physics heightfields: ground you see and ground you drive on are the same function.
+    const terrainSampler = createTerrainSampler(TERRAIN_CONFIG);
     this.#engine = new Engine({ canvas: options.canvas, config: this.#config });
     this.#scene = new SceneManager({
       canvas: options.canvas,
       config: this.#config,
       worldConfig: this.#worldConfig,
       aspect: this.#engine.viewport.aspect,
+      terrainSampler,
     });
     this.#engine.setGodraysLight(this.#scene.godraysLight);
 
@@ -104,6 +110,8 @@ export class Application {
       rapier: options.rapier,
       worldConfig: this.#worldConfig,
     });
+    // Terrain owns the ground from here; the spawn window must exist before the first step.
+    this.#physics.enableTerrain(terrainSampler);
     this.#car = new Car({ rapier: options.rapier, physics: this.#physics });
 
     this.#carVisual = new CarVisual();
@@ -128,6 +136,13 @@ export class Application {
     this.#applyDaylight();
 
     const initialPose = this.#car.getInterpolatedPose(0);
+    this.#physics.syncTerrain(initialPose.position);
+    // Pre-build the chunks under and around the car (the first budgeted calls happen here,
+    // before the loading veil lifts); the rest of the square streams in over the first
+    // seconds of driving, nearest first.
+    for (let i = 0; i < 6; i += 1) {
+      this.#scene.streamContent(initialPose.position);
+    }
     this.#carVisual.sync(initialPose);
     this.#chaseCamera.snapTo(initialPose);
     this.#scene.focusSun(initialPose.position);
@@ -281,6 +296,7 @@ export class Application {
       viewport: { width: viewport.width, height: viewport.height },
       cameraPosition: { x: cameraPosition.x, y: cameraPosition.y, z: cameraPosition.z },
       sceneObjects: scene.objectCount,
+      contentStats: scene.contentStats,
       totalFrames: this.#monitor.totalFrames,
       cameraMode: this.#cameraMode,
       cameraFov: activeCamera.fov,
@@ -359,6 +375,10 @@ export class Application {
     const pose = this.#car.getInterpolatedPose(this.#physics.interpolationAlpha);
     this.#carVisual.sync(pose);
     this.#scene.focusSun(pose.position);
+    // Ground follows the same point as the light: terrain chunks stream and heightfield
+    // colliders slide their window with the car, each inside its own budget.
+    this.#scene.streamContent(pose.position);
+    this.#physics.syncTerrain(pose.position);
 
     if (this.#cameraMode === 'chase') {
       this.#chaseCamera.update(delta, pose, this.#car.telemetry);

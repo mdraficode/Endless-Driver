@@ -1,35 +1,41 @@
-import {
-  BoxGeometry,
-  Color,
-  Group,
-  Mesh,
-  PlaneGeometry,
-  type BufferGeometry,
-  type Material,
-} from 'three';
+import { BoxGeometry, Color, Group, Mesh, type BufferGeometry, type Material } from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
-import { uniform } from 'three/tsl';
 import type { WorldConfig } from '../config/world';
-import { createGroundGridColorNode, linearColor } from '../shaders/ground-grid';
+import { TerrainWorld } from './TerrainWorld';
 import type { SceneContent, SceneContentContext } from './WorldContent';
 
 /**
- * The driving world's static content: the ground the car drives on, and the reference obstacles.
+ * The driving world: streamed procedural terrain plus the reference obstacles.
  *
- * This is deliberately the thinnest possible thing that can be driven on. Phase 4 replaces it with
- * seeded terrain and roads, which is why it is already behind the `SceneContent` interface rather
- * than built inside `SceneManager`.
+ * Phase 4 replaced the flat Phase 1/2 ground plane with `TerrainWorld` behind this same
+ * factory — the seam held, exactly as it was drawn in Phase 3. The obstacles remain the
+ * Phase 2 physics reference blocks for now (their colliders come from the same config, so
+ * visuals and physics cannot drift); they stand on the spawn plateau, where the terrain is
+ * exactly y=0, so their placement did not move a millimetre in the swap.
  */
-export function createDrivingWorld({ worldConfig }: SceneContentContext): SceneContent {
+export function createDrivingWorld({
+  worldConfig,
+  terrainSampler,
+}: SceneContentContext): SceneContent {
+  if (terrainSampler === undefined) {
+    throw new Error(
+      'createDrivingWorld requires a terrain sampler: Application creates one and shares it with physics.',
+    );
+  }
   const root = new Group();
   root.name = 'driving-world';
-  const ground = createGround(worldConfig);
-  root.add(ground, ...createObstacles(worldConfig));
+  const terrain = new TerrainWorld(terrainSampler);
+  root.add(terrain.root, ...createObstacles(worldConfig));
 
   return {
     root,
     kind: 'driving',
+    updateStreaming: (focus) => {
+      terrain.updateStreaming(focus);
+    },
+    getContentStats: () => terrain.getContentStats(),
     dispose(): void {
+      terrain.dispose();
       const geometries = new Set<BufferGeometry>();
       const materials = new Set<Material>();
       root.traverse((object) => {
@@ -73,22 +79,4 @@ function createObstacles(worldConfig: WorldConfig): Mesh[] {
     mesh.receiveShadow = true;
     return mesh;
   });
-}
-
-function createGround(worldConfig: WorldConfig): Mesh {
-  const { ground } = worldConfig;
-  const material = new MeshStandardNodeMaterial({
-    name: 'ground',
-    roughness: ground.roughness,
-    metalness: ground.metalness,
-  });
-  material.colorNode = ground.grid.enabled
-    ? createGroundGridColorNode(ground)
-    : uniform(linearColor(ground.color));
-
-  const mesh = new Mesh(new PlaneGeometry(ground.size, ground.size), material);
-  mesh.name = 'ground-plane';
-  mesh.rotation.x = -Math.PI / 2;
-  mesh.receiveShadow = true;
-  return mesh;
 }

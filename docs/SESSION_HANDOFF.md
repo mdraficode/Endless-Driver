@@ -817,3 +817,43 @@ no GLSL-era material code (guard in `npm run check`) ✓. **Phase 3 is code-comp
 acceptance item no sandbox can close is frame budgets on named hardware: open the Pages build,
 force `?tier=a`, and read the HUD on a real machine — that measurement belongs to the owner, and
 tiers should be adjusted to it, never to a claim. **Phase 4 remains gated on owner instruction.**
+
+## 20. Phase 4 opens: the terrain foundation (2026-10-15)
+
+Phase 4 was authorized on 2026-10-15 ("Ok you may proceed"). This increment builds the
+ground everything else in the phase stands on; roads, the generation worker, origin
+rebasing, and the district build-out follow in later increments.
+
+**One height function for eyes and wheels.** `src/world/terrain-height.ts` is a pure,
+integer-hash-deterministic sampler (value-noise fBm hills + the Hinode-dake cone at
+(−1500, −2100) + a spawn plateau that is exactly y=0 inside 45 m, so the car, the Phase 2
+obstacle blocks, and the y=0 spawn convention did not move a millimetre). `Application`
+creates ONE sampler; the visual chunks and the Rapier heightfields both sample it, so the
+ground drawn and the ground driven cannot drift apart. Determinism (same seed →
+bit-identical heights), plateau flatness, and sampler continuity are unit tests.
+
+**Streaming.** `TerrainWorld` (behind the `SceneContent` seam, which gained optional
+`updateStreaming`/`getContentStats` hooks) maintains an 11×11 square of 128 m chunks at
+64/32/16 segments by ring distance, nearest-first, at most **2 builds per frame** — the
+recorded upload budget, visible live in the HUD ("Terrain 110/121 chunks · 23 queued ·
+213k tris") and in diagnostics as `contentStats`. Chunks carry skirts against LOD
+T-junction cracks; border heights AND normals are bit-identical between same-LOD
+neighbours (grid normals with a one-cell halo), pinned by a geometry unit test.
+`PhysicsWorld.enableTerrain` removes the flat slab and `syncTerrain` slides a 3×3
+heightfield window (65×65 samples per chunk, independent of visual LOD). **Rapier's
+heightfield array is x-major (`heights[ix·(n+1)+iz]`)** and queries only see colliders
+after a step — both facts pinned empirically by `tests/physics/terrain-colliders.test.ts`,
+which raycasts known slopes; a transposed field collides fine and only that test catches
+it. 349 tests green (was 336).
+
+**In-browser proof (SwiftShader, tier C, `scripts/capture-drive.mjs`).** The car settles
+on the plateau (4 contacts, y=0.628), accelerates to ~95 km/h down the blend slope
+(y=−2.3 at −67 m), all wheels grounded, window at 121/121 with 0 queued. Evidence:
+`/home/user/phase4-evidence/terrain-foundation/`. Two sandbox notes: the drive scene at
+tier B presents at seconds-per-frame here (the route harness's minute-scale patience is
+the norm; tier C is the practical capture tier), and a stuck 10-minute capture earlier
+left the box memory-pressured enough to lose GL contexts until it settled — environmental,
+not a regression (route SSIM 0.9996 in the same session). Known refinements queued:
+chunk-plan oscillation when the car straddles a chunk boundary (budget absorbs it;
+hysteresis later), LOD colour steps at distance (detail textures + fog will mask), and
+the splat is vertex-colour only until the scanned CC0 sets land next increment.

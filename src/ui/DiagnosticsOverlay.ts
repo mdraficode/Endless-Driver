@@ -63,6 +63,8 @@ export interface DiagnosticsSnapshot {
   readonly viewport: { readonly width: number; readonly height: number };
   readonly cameraPosition: { readonly x: number; readonly y: number; readonly z: number };
   readonly sceneObjects: number;
+  /** Streamed-content stats (terrain chunks loaded/desired/pending, build budget, triangles). */
+  readonly contentStats: Readonly<Record<string, number>>;
   readonly totalFrames: number;
   /** Active render camera. */
   readonly cameraMode: CameraMode;
@@ -219,6 +221,17 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
   { label: 'Draw calls', format: (snapshot) => String(snapshot.drawCalls) },
   { label: 'Triangles', format: (snapshot) => snapshot.triangles.toLocaleString('en-US') },
   { label: 'Scene objects', format: (snapshot) => String(snapshot.sceneObjects) },
+  {
+    label: 'Terrain',
+    format: (snapshot) => {
+      const stats = snapshot.contentStats;
+      const loaded = stats.terrainChunksLoaded;
+      if (loaded === undefined) {
+        return '—';
+      }
+      return `${loaded}/${stats.terrainChunksDesired ?? 0} chunks · ${stats.terrainBuildsPending ?? 0} queued · ${((stats.terrainTriangles ?? 0) / 1000).toFixed(0)}k tris`;
+    },
+  },
   {
     label: 'Camera',
     format: (snapshot) =>

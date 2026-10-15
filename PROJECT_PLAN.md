@@ -509,6 +509,21 @@ route bookmarks were captured on tiers A and C as well as B for the record. **Ph
   upload budget; origin rebasing is invisible.
 - Tier C/B/A terrains hold their draw-call and triangle budgets with the terrain in view.
 
+**Progress (2026-10-15, increment 1 — terrain foundation; phase in progress):** Authorized
+2026-10-15. Landed: the single seeded height function (`src/world/terrain-height.ts`,
+integer-hash value-noise fBm + Hinode-dake cone + exactly-flat spawn plateau) shared by the
+visual chunks and the physics heightfields; chunked LOD streaming (`TerrainWorld`,
+11×11 chunks of 128 m at 64/32/16 segments by ring, skirts, ≤2 builds/frame budget,
+nearest-first) behind the unchanged `SceneContent` seam; Rapier heightfield colliders in a
+3×3 window slid by `PhysicsWorld.syncTerrain`, with the heightfield axis convention pinned
+by raycast tests; procedural vertex-colour splat (grass/soil/rock/snow by height/slope)
+with shader grain. Determinism, seam-exactness (bit-identical shared borders), planner,
+and collider-window properties are unit/integration tested (349 tests green); the car
+drives the terrain in-browser at ~95 km/h with all wheels grounded. Remaining in this
+phase: worker-side generation, scanned CC0 splat detail (triplanar/POM), the spline road
+network with junctions/bridges/tunnels, velocity-aware prefetch, floating-origin rebasing,
+surface-state traction plumbing, and the §5 district build-out.
+
 **Stop:** Request authorization before Phase 5.
 
 ### Phase 5 — Environment detail: vegetation, props, atmosphere
