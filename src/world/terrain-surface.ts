@@ -1,3 +1,4 @@
+import { ROAD_NETWORK_CONFIG } from '../config/roads';
 import { terrainSurfaceWeights, type TerrainSampler } from './terrain-height';
 
 /**
@@ -9,7 +10,7 @@ import { terrainSurfaceWeights, type TerrainSampler } from './terrain-height';
  * that looks like grass grips like grass because both systems asked the same question,
  * not because one of them looked at a picture of the other.
  */
-export type TerrainSurfaceId = 'grass' | 'soil' | 'rock' | 'snow';
+export type TerrainSurfaceId = 'grass' | 'soil' | 'rock' | 'snow' | 'asphalt' | 'gravel';
 
 export interface TerrainSurfaceSample {
   readonly id: TerrainSurfaceId;
@@ -32,6 +33,27 @@ export function sampleTerrainSurface(
   x: number,
   z: number,
 ): TerrainSurfaceSample {
+  // The road corridor outranks the natural splat: pavement grips like the asphalt the
+  // tire model is tuned on, the gravel shoulder is looser and draggier than grass.
+  const road = sampler.roadAt?.(x, z);
+  if (road) {
+    if (road.distance <= ROAD_NETWORK_CONFIG.halfWidthMeters) {
+      return {
+        id: 'asphalt',
+        weights: [0, 0, 0, 0],
+        gripModifier: 1,
+        rollingResistance: 0.015,
+      };
+    }
+    if (road.distance <= ROAD_NETWORK_CONFIG.halfWidthMeters + ROAD_NETWORK_CONFIG.shoulderMeters) {
+      return {
+        id: 'gravel',
+        weights: [0, 1, 0, 0],
+        gripModifier: 0.72,
+        rollingResistance: 0.045,
+      };
+    }
+  }
   const { config } = sampler;
   const height = sampler.heightAt(x, z);
   const normal = sampler.normalAt(x, z);

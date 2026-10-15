@@ -1,4 +1,5 @@
 import type { TerrainConfig } from '../config/terrain';
+import type { RoadNetwork, RoadSample } from './road-network';
 
 /**
  * The one height function of the world.
@@ -20,6 +21,31 @@ export interface TerrainSampler {
   /** Unit surface normal at (x, z), from central differences of `heightAt`. */
   normalAt(x: number, z: number): { x: number; y: number; z: number };
   readonly config: TerrainConfig;
+  /**
+   * Road influence at (x, z) when this sampler has the road network carved in
+   * (`world-terrain.ts`): the surface query turns it into asphalt/gravel responses.
+   */
+  roadAt?(x: number, z: number): RoadSample | null;
+  /** The carved road network, when present (road ribbon meshes are built from it). */
+  readonly roadNetwork?: RoadNetwork;
+}
+
+/** Unit surface normal of any height function, by central differences. */
+export function terrainNormalAt(
+  heightAt: (x: number, z: number) => number,
+  x: number,
+  z: number,
+): { x: number; y: number; z: number } {
+  const eps = 1.5;
+  const left = heightAt(x - eps, z);
+  const right = heightAt(x + eps, z);
+  const back = heightAt(x, z - eps);
+  const front = heightAt(x, z + eps);
+  const nx = left - right;
+  const nz = back - front;
+  const ny = 2 * eps;
+  const length = Math.sqrt(nx * nx + ny * ny + nz * nz);
+  return { x: nx / length, y: ny / length, z: nz / length };
 }
 
 /** 32-bit integer hash of a lattice point and the world seed → [0, 1). Deterministic. */
@@ -113,18 +139,8 @@ export function createTerrainSampler(config: TerrainConfig): TerrainSampler {
     return height === 0 ? 0 : height;
   };
 
-  const normalAt = (x: number, z: number): { x: number; y: number; z: number } => {
-    const eps = 1.5;
-    const left = heightAt(x - eps, z);
-    const right = heightAt(x + eps, z);
-    const back = heightAt(x, z - eps);
-    const front = heightAt(x, z + eps);
-    const nx = left - right;
-    const nz = back - front;
-    const ny = 2 * eps;
-    const length = Math.sqrt(nx * nx + ny * ny + nz * nz);
-    return { x: nx / length, y: ny / length, z: nz / length };
-  };
+  const normalAt = (x: number, z: number): { x: number; y: number; z: number } =>
+    terrainNormalAt(heightAt, x, z);
 
   return { heightAt, normalAt, config };
 }

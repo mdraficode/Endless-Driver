@@ -226,6 +226,59 @@
       }
     },
     {
+      "id": "tex-asphalt-03-1k",
+      "kind": "texture",
+      "name": "Asphalt 03 — 1K PBR set",
+      "assetClass": "material-surface",
+      "source": {
+        "url": "https://polyhaven.com/a/asphalt_03",
+        "creator": "Dario Barresi, Charlotte Baglioni",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-15",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/asphalt_03"
+      },
+      "role": "Road surface diffuse/normal/roughness/AO for the Phase 4 spline road network.",
+      "pipeline": {
+        "resolution": "1024",
+        "notes": "Runtime variant selected at fetch time; KTX2/Basis transcoding is applied when the KTX-Software toolchain is available in the build environment (recorded per asset when it happens)."
+      },
+      "files": [
+        {
+          "slot": "diffuse",
+          "path": "assets/textures/asphalt_03_1k_diff_1k.jpg",
+          "bytes": 788840,
+          "sha256": "95ad02e2631c41cf9fdd6a37596cf75adb4fb8a8b6880567cc78ed1c41dc5681",
+          "colourSpace": "srgb",
+          "format": "jpg"
+        },
+        {
+          "slot": "normal",
+          "path": "assets/textures/asphalt_03_1k_nor_gl_1k.jpg",
+          "bytes": 974676,
+          "sha256": "978de8349ce2e9989325099a6fd1f5ea6b2826528e1264606a5c51296b1e2888",
+          "colourSpace": "linear",
+          "format": "jpg"
+        },
+        {
+          "slot": "roughness",
+          "path": "assets/textures/asphalt_03_1k_rough_1k.jpg",
+          "bytes": 590105,
+          "sha256": "069b6ea342aaad04fd1582f59c16fbbe5c7a6f0f3a87bc9d57648ed53336fb3a",
+          "colourSpace": "linear",
+          "format": "jpg"
+        },
+        {
+          "slot": "arm",
+          "path": "assets/textures/asphalt_03_1k_arm_1k.jpg",
+          "bytes": 1053867,
+          "sha256": "36e898a43fd828e71f5bc08fa0f86dc2c7338194c87eb6a2b30d7216318b9f31",
+          "colourSpace": "linear",
+          "format": "jpg"
+        }
+      ]
+    },
+    {
       "id": "tex-brown-mud-dry-1k",
       "kind": "texture",
       "name": "Brown Mud Dry — 1K PBR set",
@@ -432,6 +485,59 @@
           "path": "assets/textures/rock_face_03_1k_arm_1k.jpg",
           "bytes": 793241,
           "sha256": "a1f8e60eaf4f119071840e36e165d3a9185be62bd3ac7068ab6d886aa639d29f",
+          "colourSpace": "linear",
+          "format": "jpg"
+        }
+      ]
+    },
+    {
+      "id": "tex-sandy-gravel-1k",
+      "kind": "texture",
+      "name": "Sandy Gravel — 1K PBR set",
+      "assetClass": "material-surface",
+      "source": {
+        "url": "https://polyhaven.com/a/sandy_gravel",
+        "creator": "Charlotte Baglioni",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-15",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/sandy_gravel"
+      },
+      "role": "Road shoulder diffuse/normal/roughness/AO for the Phase 4 spline road network.",
+      "pipeline": {
+        "resolution": "1024",
+        "notes": "Runtime variant selected at fetch time; KTX2/Basis transcoding is applied when the KTX-Software toolchain is available in the build environment (recorded per asset when it happens)."
+      },
+      "files": [
+        {
+          "slot": "diffuse",
+          "path": "assets/textures/sandy_gravel_1k_diff_1k.jpg",
+          "bytes": 795227,
+          "sha256": "38829e669dc246e86b7ce94c4141485709988450b13f82cfc4bc6067dd69ed48",
+          "colourSpace": "srgb",
+          "format": "jpg"
+        },
+        {
+          "slot": "normal",
+          "path": "assets/textures/sandy_gravel_1k_nor_gl_1k.jpg",
+          "bytes": 1159620,
+          "sha256": "f2a4c48f31cd5ad5e2b0488e89c94d284c5a2acd4367bec49a5f48f832b7e3da",
+          "colourSpace": "linear",
+          "format": "jpg"
+        },
+        {
+          "slot": "roughness",
+          "path": "assets/textures/sandy_gravel_1k_rough_1k.jpg",
+          "bytes": 396818,
+          "sha256": "dce2344c2a2be905f88b18497911e3e324b741c0fced19623659b44fb76b3d22",
+          "colourSpace": "linear",
+          "format": "jpg"
+        },
+        {
+          "slot": "arm",
+          "path": "assets/textures/sandy_gravel_1k_arm_1k.jpg",
+          "bytes": 765219,
+          "sha256": "ae13c0de981ab78abc39e3bec6147a06448e0865f4162cd57d54ada411df0de7",
           "colourSpace": "linear",
           "format": "jpg"
         }

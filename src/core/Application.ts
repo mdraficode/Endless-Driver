@@ -1,9 +1,11 @@
 import { CHASE_CAMERA_CONFIG, DEBUG_CAMERA_CONFIG, type CameraMode } from '../config/camera';
 import { RENDER_CONFIG, type RenderConfig } from '../config/render';
+import { ROAD_NETWORK_CONFIG } from '../config/roads';
 import { TERRAIN_CONFIG } from '../config/terrain';
 import { WORLD_CONFIG, type WorldConfig } from '../config/world';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
-import { createTerrainSampler } from '../world/terrain-height';
+import type { TerrainSampler } from '../world/terrain-height';
+import { createWorldTerrainSampler } from '../world/world-terrain';
 import type { RapierModule } from '../physics/RapierModule';
 import { yawFromQuat, type Vec3 } from '../shared/vector';
 import { DiagnosticsOverlay, type DiagnosticsSnapshot } from '../ui/DiagnosticsOverlay';
@@ -69,6 +71,8 @@ export class Application {
   readonly #scene: SceneManager;
   readonly #physics: PhysicsWorld;
   readonly #car: Car;
+
+  readonly #terrainSampler: TerrainSampler;
   readonly #carVisual: CarVisual;
   readonly #input: InputManager;
   readonly #chaseCamera: ChaseCamera;
@@ -95,7 +99,8 @@ export class Application {
 
     // One terrain sampler feeds the visual chunks (via SceneManager's content) and the
     // physics heightfields: ground you see and ground you drive on are the same function.
-    const terrainSampler = createTerrainSampler(TERRAIN_CONFIG);
+    const terrainSampler = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
+    this.#terrainSampler = terrainSampler;
     this.#engine = new Engine({ canvas: options.canvas, config: this.#config });
     this.#scene = new SceneManager({
       canvas: options.canvas,
@@ -261,6 +266,21 @@ export class Application {
     } else {
       this.#chaseCamera.snapTo(pose);
     }
+  }
+
+  /**
+   * Places the car at a world position instantly (capture/debug tooling exposed through
+   * the `?debug=1` handle): the height comes from the shared sampler, so the car lands
+   * exactly on the ground it would have driven to. Streaming recentres on the next
+   * frames just as it does when driving.
+   */
+  teleportCar(x: number, z: number, yaw = 0): void {
+    const y = this.#terrainSampler.heightAt(x, z);
+    this.#car.reset([x, y + 0.7, z], yaw);
+    this.#physics.resetAccumulator();
+    const pose = this.#car.getInterpolatedPose(0);
+    this.#chaseCamera.snapTo(pose);
+    this.#syncDebugCamera(pose, true);
   }
 
   toggleCameraMode(): void {

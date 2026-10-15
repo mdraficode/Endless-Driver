@@ -36,6 +36,8 @@ listed because their work deserves the credit, not because the licence asks for 
   - file: `assets/luts/hinode-film-17.cube`
 - **Boulder 01 — 1K scanned prop** — James Ray Cock — [source](https://polyhaven.com/a/boulder_01) — CC0-1.0
   - file: `assets/models/boulder-01.glb`
+- **Asphalt 03 — 1K PBR set** — Dario Barresi, Charlotte Baglioni — [source](https://polyhaven.com/a/asphalt_03) — CC0-1.0
+  - file: `assets/textures/asphalt_03_1k_diff_1k.jpg`, `assets/textures/asphalt_03_1k_nor_gl_1k.jpg`, `assets/textures/asphalt_03_1k_rough_1k.jpg`, `assets/textures/asphalt_03_1k_arm_1k.jpg`
 - **Brown Mud Dry — 1K PBR set** — Rob Tuytel — [source](https://polyhaven.com/a/brown_mud_dry) — CC0-1.0
   - file: `assets/textures/brown_mud_dry_1k_diff_1k.jpg`, `assets/textures/brown_mud_dry_1k_nor_gl_1k.jpg`, `assets/textures/brown_mud_dry_1k_rough_1k.jpg`, `assets/textures/brown_mud_dry_1k_arm_1k.jpg`
 - **Japanese Cedar Planks — 1K PBR set** — Rob Tuytel — [source](https://polyhaven.com/a/japanese_cedar_planks) — CC0-1.0
@@ -44,6 +46,8 @@ listed because their work deserves the credit, not because the licence asks for 
   - file: `assets/textures/leafy_grass_1k_diff_1k.jpg`, `assets/textures/leafy_grass_1k_nor_gl_1k.jpg`, `assets/textures/leafy_grass_1k_rough_1k.jpg`, `assets/textures/leafy_grass_1k_arm_1k.jpg`
 - **Rock Face 03 — 1K PBR set** — Dario Barresi, Rico Cilliers — [source](https://polyhaven.com/a/rock_face_03) — CC0-1.0
   - file: `assets/textures/rock_face_03_1k_diff_1k.jpg`, `assets/textures/rock_face_03_1k_nor_gl_1k.jpg`, `assets/textures/rock_face_03_1k_rough_1k.jpg`, `assets/textures/rock_face_03_1k_arm_1k.jpg`
+- **Sandy Gravel — 1K PBR set** — Charlotte Baglioni — [source](https://polyhaven.com/a/sandy_gravel) — CC0-1.0
+  - file: `assets/textures/sandy_gravel_1k_diff_1k.jpg`, `assets/textures/sandy_gravel_1k_nor_gl_1k.jpg`, `assets/textures/sandy_gravel_1k_rough_1k.jpg`, `assets/textures/sandy_gravel_1k_arm_1k.jpg`
 - **Snow 01 — 1K PBR set** — Rob Tuytel — [source](https://polyhaven.com/a/snow_01) — CC0-1.0
   - file: `assets/textures/snow_01_1k_diff_1k.jpg`, `assets/textures/snow_01_1k_nor_gl_1k.jpg`, `assets/textures/snow_01_1k_rough_1k.jpg`, `assets/textures/snow_01_1k_arm_1k.jpg`
 

@@ -1,6 +1,7 @@
 import { BoxGeometry, Color, Group, Mesh, type BufferGeometry, type Material } from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import type { WorldConfig } from '../config/world';
+import { RoadWorld } from './RoadWorld';
 import { TerrainWorld } from './TerrainWorld';
 import type { SceneContent, SceneContentContext } from './WorldContent';
 
@@ -26,6 +27,13 @@ export function createDrivingWorld({
   root.name = 'driving-world';
   const terrain = new TerrainWorld(terrainSampler);
   root.add(terrain.root, ...createObstacles(worldConfig));
+  // Road ribbons exist only when the shared sampler carries the carved network; the
+  // mesh-less samplers used by unit fixtures simply stay roadless.
+  const roads =
+    terrainSampler.roadNetwork !== undefined ? new RoadWorld(terrainSampler.roadNetwork) : null;
+  if (roads !== null) {
+    root.add(roads.object);
+  }
 
   return {
     root,
@@ -33,10 +41,19 @@ export function createDrivingWorld({
     updateStreaming: (focus, velocity) => {
       terrain.updateStreaming(focus, velocity);
     },
-    loadSurfaces: () => terrain.loadSurfaces(),
-    getContentStats: () => terrain.getContentStats(),
+    loadSurfaces: async () => {
+      await Promise.all([
+        terrain.loadSurfaces(),
+        roads === null ? Promise.resolve() : roads.loadSurfaces(),
+      ]);
+    },
+    getContentStats: () => ({
+      ...terrain.getContentStats(),
+      ...(roads === null ? {} : roads.getStats()),
+    }),
     dispose(): void {
       terrain.dispose();
+      roads?.dispose();
       const geometries = new Set<BufferGeometry>();
       const materials = new Set<Material>();
       root.traverse((object) => {

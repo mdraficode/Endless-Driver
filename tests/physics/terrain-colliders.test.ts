@@ -2,7 +2,9 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
 import { PhysicsWorld } from '../../src/physics/PhysicsWorld';
 import { loadRapier, type RapierModule } from '../../src/physics/RapierModule';
+import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
 import { createTerrainSampler } from '../../src/world/terrain-height';
+import { createWorldTerrainSampler } from '../../src/world/world-terrain';
 
 /**
  * Physics heightfield contracts: the collider window exists where the planner says, and
@@ -75,6 +77,28 @@ describe('terrain heightfield colliders', () => {
     syncAndStep(physics, 0, 0);
     expect(raycastGroundHeight(physics, 0, 0)).toBeCloseTo(0, 3);
     expect(raycastGroundHeight(physics, 25, -18)).toBeCloseTo(0, 3);
+    physics.dispose();
+  });
+});
+
+describe('road corridor colliders (Phase 4 Increment 2)', () => {
+  it('meets rays at the carved profile and reports asphalt under the tyres', () => {
+    const sampler = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
+    const physics = new PhysicsWorld({ rapier });
+    physics.enableTerrain(sampler);
+    // On the mountain road's via point: spline, carve, and collider must agree.
+    syncAndStep(physics, -30, -360);
+    const road = sampler.roadAt?.(-30, -360);
+    if (!road) {
+      throw new Error('expected road influence on the mountain road');
+    }
+    expect(Math.abs((raycastGroundHeight(physics, -30, -360) ?? 0) - road.elevation)).toBeLessThan(
+      0.6,
+    );
+    const surface = physics.surfaceAt(-30, -360);
+    expect(surface?.id).toBe('asphalt');
+    expect(surface?.gripModifier).toBe(1);
+    expect(physics.surfaceAt(0, 0)?.id).toBe('grass');
     physics.dispose();
   });
 });

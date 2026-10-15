@@ -1,0 +1,158 @@
+import { describe, expect, it } from 'vitest';
+
+import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
+import { TERRAIN_CONFIG } from '../../src/config/terrain';
+import { buildRoadNetwork, roadInfluence, type RoadNetwork } from '../../src/world/road-network';
+import { createTerrainSampler } from '../../src/world/terrain-height';
+import { sampleTerrainSurface } from '../../src/world/terrain-surface';
+import { createWorldTerrainSampler } from '../../src/world/world-terrain';
+
+/**
+ * Phase 4 Increment 2 — the spline road network pinned against its contract:
+ * one deterministic solved profile feeds the terrain carve, the physics sampler, and the
+ * surface query, so the three can never disagree about where the road is or how it lies.
+ */
+
+const base = createTerrainSampler(TERRAIN_CONFIG);
+const network: RoadNetwork = buildRoadNetwork(ROAD_NETWORK_CONFIG, (x, z) => base.heightAt(x, z));
+const world = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
+
+function centreOf(edgeId: string): { x: number; z: number; y: number } {
+  const edge = network.edges.find((candidate) => candidate.id === edgeId);
+  if (edge === undefined) {
+    throw new Error(`missing edge ${edgeId}`);
+  }
+  const point = edge.points[Math.floor(edge.points.length / 2)] as (typeof edge.points)[number];
+  return point;
+}
+
+describe('road network graph', () => {
+  it('connects every node into one graph reachable from the spawn junction', () => {
+    const visited = new Set<string>(['spawn-junction']);
+    const queue = ['spawn-junction'];
+    while (queue.length > 0) {
+      const nodeId = queue.shift() as string;
+      for (const next of network.neighboursOf(nodeId)) {
+        if (!visited.has(next)) {
+          visited.add(next);
+          queue.push(next);
+        }
+      }
+    }
+    expect(visited.size).toBe(ROAD_NETWORK_CONFIG.nodes.length);
+    expect(network.edges.length).toBe(ROAD_NETWORK_CONFIG.edges.length);
+    for (const edge of network.edges) {
+      expect(edge.lengthMeters).toBeGreaterThan(50);
+      expect(edge.points.length).toBeGreaterThan(10);
+    }
+  });
+
+  it('is deterministic: rebuilding yields the identical profile', () => {
+    const again = buildRoadNetwork(ROAD_NETWORK_CONFIG, (x, z) => base.heightAt(x, z));
+    expect(again.edges[0]?.points).toEqual(network.edges[0]?.points);
+    expect([...again.nodes.values()]).toEqual([...network.nodes.values()]);
+  });
+
+  it('pins every junction: edges meeting at a node share its elevation exactly', () => {
+    for (const edge of network.edges) {
+      const from = network.nodeById(edge.from);
+      const to = network.nodeById(edge.to);
+      const first = edge.points[0];
+      const last = edge.points[edge.points.length - 1];
+      if (from === null || to === null || first === undefined || last === undefined) {
+        throw new Error('incomplete network');
+      }
+      expect(first.y).toBeCloseTo(from.y, 9);
+      expect(last.y).toBeCloseTo(to.y, 9);
+    }
+  });
+
+  it('caps the grade everywhere at the authored maximum', () => {
+    const maxGrade = ROAD_NETWORK_CONFIG.maxGrade;
+    for (const edge of network.edges) {
+      for (let index = 1; index < edge.points.length; index += 1) {
+        const previous = edge.points[index - 1] as (typeof edge.points)[number];
+        const point = edge.points[index] as (typeof edge.points)[number];
+        const run = Math.hypot(point.x - previous.x, point.z - previous.z);
+        const grade = Math.abs(point.y - previous.y) / Math.max(run, 0.001);
+        expect(grade).toBeLessThanOrEqual(maxGrade + 1e-9);
+      }
+    }
+  });
+});
+
+describe('terrain carve', () => {
+  it('makes the world sampler agree with the road profile on the centreline', () => {
+    for (const edge of network.edges) {
+      for (let index = 4; index < edge.points.length - 4; index += 7) {
+        const point = edge.points[index] as (typeof edge.points)[number];
+        expect(world.heightAt(point.x, point.z)).toBeCloseTo(point.y, 6);
+      }
+    }
+  });
+
+  it('flattens the full pavement width to the profile elevation', () => {
+    // Mid-edge on the south run, well away from junctions and bends.
+    const point = centreOf('spawn-junction->north-bend');
+    for (const [dx, dz] of [
+      [4, 0],
+      [-4, 0],
+      [0, 4],
+      [0, -4],
+    ] as const) {
+      const road = world.roadAt?.(point.x + dx, point.z + dz);
+      if (!road) {
+        throw new Error('expected road influence across the pavement');
+      }
+      expect(road.distance).toBeLessThanOrEqual(ROAD_NETWORK_CONFIG.halfWidthMeters);
+      expect(world.heightAt(point.x + dx, point.z + dz)).toBeCloseTo(road.elevation, 6);
+    }
+  });
+
+  it('blends out smoothly and leaves distant terrain untouched', () => {
+    expect(roadInfluence(ROAD_NETWORK_CONFIG, 0)).toBe(1);
+    expect(roadInfluence(ROAD_NETWORK_CONFIG, ROAD_NETWORK_CONFIG.halfWidthMeters)).toBe(1);
+    expect(roadInfluence(ROAD_NETWORK_CONFIG, ROAD_NETWORK_CONFIG.blendWidthMeters)).toBe(0);
+    const midBlend = roadInfluence(ROAD_NETWORK_CONFIG, 20);
+    expect(midBlend).toBeGreaterThan(0);
+    expect(midBlend).toBeLessThan(1);
+    // 200 m from the nearest road the world sampler is the base terrain exactly.
+    const x = 900;
+    const z = 900;
+    expect(world.roadAt?.(x, z)).toBeNull();
+    expect(world.heightAt(x, z)).toBe(base.heightAt(x, z));
+  });
+
+  it('never disturbs the spawn pad: the plateau stays exactly flat', () => {
+    for (const [x, z] of [
+      [0, 0],
+      [20, 20],
+      [-30, 10],
+      [0, -40],
+    ] as const) {
+      expect(world.heightAt(x, z)).toBe(0);
+    }
+    // The junction is reachable ~170 m south: the road exists there.
+    expect(world.roadAt?.(0, -170)).not.toBeNull();
+  });
+});
+
+describe('road surfaces', () => {
+  it('reports asphalt on the pavement, gravel on the shoulder, nature beyond', () => {
+    const point = centreOf('spawn-junction->north-bend');
+    expect(sampleTerrainSurface(world, point.x, point.z).id).toBe('asphalt');
+    expect(sampleTerrainSurface(world, point.x, point.z).gripModifier).toBe(1);
+    expect(
+      sampleTerrainSurface(world, point.x + ROAD_NETWORK_CONFIG.halfWidthMeters + 1, point.z).id,
+    ).toBe('gravel');
+    const beyond = ROAD_NETWORK_CONFIG.halfWidthMeters + ROAD_NETWORK_CONFIG.shoulderMeters + 2;
+    expect(sampleTerrainSurface(world, point.x + beyond, point.z).id).not.toBe('asphalt');
+    expect(sampleTerrainSurface(world, point.x + beyond, point.z).id).not.toBe('gravel');
+  });
+
+  it('keeps the sample under the tyres on the plateau: spawn still reads grass', () => {
+    const surface = sampleTerrainSurface(world, 0, 0);
+    expect(surface.id).toBe('grass');
+    expect(surface.gripModifier).toBeLessThan(1);
+  });
+});

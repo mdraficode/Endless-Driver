@@ -905,3 +905,36 @@ every tier; quality-tier test updated deliberately.
 re-plans are gone (test). ChaseCamera finally uses `headingLagSeconds` (yaw-only smoothed
 heading — the camera no longer pitches over every crest) and clamps above the real
 terrain height via a provider wired to the sampler. 356 tests green at the pass commit.
+
+## 23. Phase 4 Increment 2 — the spline road network (2026-10-15)
+
+**Delivered.** An authored road network now runs through the prefecture: 8 nodes
+(spawn junction 170 m north of spawn, north-bend, cedar-pass, volcano-view, east-plain,
+town-site, south-fields, west-fields), 9 spline edges, ~6.0 km total. Design rule
+recorded: **one solved profile, three consumers** — the profile is carved into the
+shared height function (`createWorldTerrainSampler` in `src/world/world-terrain.ts`),
+so chunk meshes, Rapier heightfields, and the surface query cannot disagree.
+`src/world/road-network.ts` (pure, deterministic) solves profiles by moving-average
+smoothing → junction pinning (all edges at a node share its elevation exactly) →
+grade clamping to 9 % **on true segment runs** (a fixed per-step delta silently
+allowed 17 % where the spline bunched; pinned by test). The southern loop was
+rerouted around the spawn plateau (via (175, 150)) so the pad stays exactly y=0.
+`RoadWorld.ts` draws whole-network ribbons from the same points: scanned CC0 asphalt
+(`asphalt_03`) + sandy-gravel shoulders (`sandy_gravel`; manifest now 12 assets),
+edge lines, centre dashes, junction discs — 53 meshes, built once (roads are sparse;
+no per-chunk streaming needed). Surface query: asphalt grip 1.0 / rolling 0.015 on
+the pavement, gravel 0.72 / 0.045 on the shoulder.
+
+**Proof.** 367 tests green (`npm run check`): graph connectivity BFS, determinism,
+junction agreement, grade cap on true runs, centreline carve == profile to 1e-6,
+full-width flattening, spawn pad untouched, surface zones, plus a Rapier raycast that
+meets the collider at the carved profile and reports asphalt. Browser captures
+(`/home/user/phase4-evidence/roads/`, via the new debug `teleportCar` handle and
+`scripts/capture-road.mjs`): car on the junction and rolling on the mountain road,
+4/4 contacts, zero errors, diagnostics reporting 6,010 m of road and both road
+surfaces loaded. Honest limits: tier-C SwiftShader washes the asphalt normal detail;
+far chunk windows still build in at 2/frame after a teleport (on hardware this is
+~1 s); **bridges/tunnels are not built** — the generator carves at grade and there
+are no water crossings yet. Remaining Phase 4: worker-side generation, floating
+origin, district build-out. Phase 3's only remainder is still the owner's
+named-hardware frame-budget run.

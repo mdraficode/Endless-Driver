@@ -1,0 +1,66 @@
+/**
+ * Phase 4 road network definition: nodes and spline edges over the terrain.
+ *
+ * The layout is authored topology with deterministic placement — a junction south of the
+ * spawn plateau, a mountain road climbing toward Hinode-dake, an eastern road to the town
+ * site, and a southern loop — because a road network is a designed thing: pure noise
+ * makes spaghetti, and the districts in `docs/VISUAL_TARGET.md` §5 need specific places
+ * connected. The generator (road-network.ts) turns this into smoothed, grade-limited
+ * profiles; the seed still owns the terrain the roads are carved into.
+ */
+export interface RoadNodeConfig {
+  readonly id: string;
+  readonly x: number;
+  readonly z: number;
+}
+
+export interface RoadEdgeConfig {
+  readonly from: string;
+  readonly to: string;
+  /** Intermediate spline control points (world x, z), in travel order. */
+  readonly via?: readonly (readonly [number, number])[];
+}
+
+export interface RoadNetworkConfig {
+  /** Half the paved width, metres (two lanes at ~2.75 m each). */
+  readonly halfWidthMeters: number;
+  /** Gravel shoulder width beyond the pavement, metres. */
+  readonly shoulderMeters: number;
+  /** Terrain blends back to natural height across this distance from the centreline. */
+  readonly blendWidthMeters: number;
+  /** Dense profile sample spacing along each spline, metres. */
+  readonly sampleSpacingMeters: number;
+  /** Longitudinal grade cap (rise per metre): roads are smoothed until they obey it. */
+  readonly maxGrade: number;
+  readonly nodes: readonly RoadNodeConfig[];
+  readonly edges: readonly RoadEdgeConfig[];
+}
+
+export const ROAD_NETWORK_CONFIG: RoadNetworkConfig = {
+  halfWidthMeters: 5.5,
+  shoulderMeters: 2.2,
+  blendWidthMeters: 30,
+  sampleSpacingMeters: 8,
+  maxGrade: 0.09,
+  nodes: [
+    { id: 'spawn-junction', x: 0, z: -170 },
+    { id: 'north-bend', x: -90, z: -560 },
+    { id: 'cedar-pass', x: -430, z: -1010 },
+    { id: 'volcano-view', x: -880, z: -1420 },
+    { id: 'east-plain', x: 620, z: -430 },
+    { id: 'town-site', x: 540, z: 300 },
+    { id: 'south-fields', x: 60, z: 620 },
+    { id: 'west-fields', x: -620, z: 330 },
+  ],
+  edges: [
+    { from: 'spawn-junction', to: 'north-bend', via: [[-30, -360]] },
+    { from: 'north-bend', to: 'cedar-pass', via: [[-240, -800]] },
+    { from: 'cedar-pass', to: 'volcano-view', via: [[-660, -1240]] },
+    { from: 'spawn-junction', to: 'east-plain', via: [[300, -330]] },
+    { from: 'east-plain', to: 'town-site', via: [[640, -40]] },
+    { from: 'spawn-junction', to: 'south-fields', via: [[175, 150]] },
+    { from: 'south-fields', to: 'town-site', via: [[330, 540]] },
+    { from: 'spawn-junction', to: 'west-fields', via: [[-330, 60]] },
+    { from: 'west-fields', to: 'south-fields', via: [[-300, 540]] },
+  ],
+};

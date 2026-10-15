@@ -21,6 +21,8 @@ export interface EndlessDriverDebugHandle {
   getDiagnostics(): DiagnosticsSnapshot | StudioDiagnostics | PropLabDiagnostics | RouteDiagnostics;
   pause(): void;
   resume(): void;
+  /** Driving scene only: instantly place the car at a world (x, z) for captures. */
+  teleportCar?(x: number, z: number, yaw?: number): void;
 }
 
 /**
@@ -210,6 +212,9 @@ async function startDrivingScene(): Promise<void> {
       },
       resume: () => {
         void application.start();
+      },
+      teleportCar: (x, z, yaw) => {
+        application.teleportCar(x, z, yaw);
       },
     };
   }

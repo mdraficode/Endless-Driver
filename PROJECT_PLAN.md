@@ -535,6 +535,24 @@ and velocity-aware visual prefetch (physics stays centred on the car); Tier C dr
 the HDRI backdrop (IBL only at all tiers); the chase camera wired its heading-lag
 constant and clamps above real terrain height instead of y=0.
 
+**Progress (2026-10-15, increment 2 — the spline road network):** an authored 8-node /
+9-edge network (~6.0 km: spawn junction, mountain road to a volcano viewpoint, eastern
+road to the town site, southern loop) is solved once into smoothed, grade-capped
+(≤9 %) profiles with junction elevations pinned across every meeting edge
+(`src/config/roads.ts`, `src/world/road-network.ts`). The solved profile is carved into
+the shared height function itself (`createWorldTerrainSampler`), so chunk meshes,
+Rapier heightfields, and the surface query all see the same flattened corridor —
+centreline agreement is unit-tested to 1e-6, and a raycast physics test meets the
+collider at the carved profile. Ribbon meshes (scanned CC0 asphalt + sandy-gravel
+shoulders, edge lines, centre dashes, junction discs; 12 verified assets) are built
+from the same profiles in `RoadWorld.ts`; the surface query answers `asphalt`
+(grip 1.0) on the pavement and `gravel` (0.72) on the shoulder. Browser proof
+(teleport-assisted captures, `scripts/capture-road.mjs`): the car sits and rolls on
+the mountain road with 4/4 contacts, zero console errors, roads reporting 6,010 m /
+53 meshes in diagnostics. Still remaining in this phase: worker-side generation,
+floating-origin rebasing, the §5 district build-out, and bridges/tunnels (the current
+generator carves at grade; no water crossings exist yet to bridge).
+
 **Stop:** Request authorization before Phase 5.
 
 ### Phase 5 — Environment detail: vegetation, props, atmosphere
