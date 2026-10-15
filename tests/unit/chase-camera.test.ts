@@ -257,3 +257,21 @@ describe('chase camera distance views', () => {
     expect(Math.hypot(camera.camera.position.x, camera.camera.position.z)).toBeCloseTo(10.2, 1);
   });
 });
+
+describe('chase camera at speed', () => {
+  it('holds the view distance at speed instead of trailing behind', () => {
+    const camera = new ChaseCamera(CHASE_CAMERA_CONFIG, 16 / 9);
+    // Drive the pose north (-Z) at a steady 40 m/s (144 km/h) for four seconds.
+    const step = 1 / 60;
+    let z = 0;
+    camera.snapTo(pose(0, 0.6, z));
+    for (let index = 0; index < 240; index += 1) {
+      z -= 40 * step;
+      camera.update(step, pose(0, 0.6, z), telemetry({ speedMps: 40, forwardSpeed: -40 }));
+    }
+    const distance = Math.hypot(camera.camera.position.x - 0, camera.camera.position.z - z);
+    // Without velocity feed-forward the lag trail alone would add 40 x 0.18 = 7.2 m.
+    expect(distance).toBeCloseTo(6.2, 0);
+    expect(distance).toBeLessThan(7);
+  });
+});

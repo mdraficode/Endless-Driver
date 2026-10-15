@@ -11,6 +11,7 @@ import {
   copyVec3,
   lerpVec3,
   rotateVec3ByQuat,
+  setVec3,
   smoothingFactor,
   vec3,
   yawFromQuat,
@@ -41,6 +42,15 @@ export class ChaseCamera {
   readonly #currentOffset = vec3();
   readonly #currentLookOffset = vec3();
   #currentFovDelta = 0;
+  /**
+   * Smoothed car velocity estimated from pose deltas. The position follow is an
+   * exponential lag, whose steady-state trail grows with speed (speed x lag); aiming
+   * the desired point one lag-interval ahead of the car cancels that trail, so the
+   * framing distance is the same at 30 km/h and at 200 km/h.
+   */
+  readonly #velocity = vec3();
+  readonly #lastPosePosition = vec3();
+  #hasPoseSample = false;
   #initialized = false;
   /** Smoothed heading: the camera's yaw chases the car's yaw on its own time constant. */
   #yaw = 0;
@@ -123,6 +133,9 @@ export class ChaseCamera {
 
   /** Places the camera immediately at the ideal pose (spawn, reset, teleports). */
   snapTo(pose: VehiclePose): void {
+    copyVec3(this.#lastPosePosition, pose.position);
+    setVec3(this.#velocity, 0, 0, 0);
+    this.#hasPoseSample = true;
     const view = this.view;
     copyVec3(this.#currentOffset, {
       x: view.offset[0],
@@ -154,6 +167,34 @@ export class ChaseCamera {
 
     // Heading lag: yaw follows on the heading time constant (the config's
     // `headingLagSeconds`, finally wired), turning with the shortest arc.
+    // Velocity from the pose stream itself (interpolated poses are smooth, so the
+    // finite difference is stable), low-passed so a teleport or a physics hitch
+    // cannot yank the aim point.
+    if (dt > 0 && this.#hasPoseSample) {
+      const dx = pose.position.x - this.#lastPosePosition.x;
+      const dy = pose.position.y - this.#lastPosePosition.y;
+      const dz = pose.position.z - this.#lastPosePosition.z;
+      if (dx * dx + dy * dy + dz * dz > 25 * 25) {
+        // A pose jump is a teleport, not motion: no velocity to feed forward.
+        setVec3(this.#velocity, 0, 0, 0);
+      } else {
+        const blend = smoothingFactor(dt, 0.12);
+        this.#velocity.x += (dx / dt - this.#velocity.x) * blend;
+        this.#velocity.y += (dy / dt - this.#velocity.y) * blend;
+        this.#velocity.z += (dz / dt - this.#velocity.z) * blend;
+        // Clamp to a plausible car speed so one odd sample cannot throw the aim.
+        const speed = Math.hypot(this.#velocity.x, this.#velocity.y, this.#velocity.z);
+        if (speed > 90) {
+          const scale = 90 / speed;
+          this.#velocity.x *= scale;
+          this.#velocity.y *= scale;
+          this.#velocity.z *= scale;
+        }
+      }
+    }
+    copyVec3(this.#lastPosePosition, pose.position);
+    this.#hasPoseSample = true;
+
     const targetYaw = yawFromQuat(pose.rotation);
     let delta = targetYaw - this.#yaw;
     while (delta > Math.PI) delta -= Math.PI * 2;
@@ -214,6 +255,13 @@ export class ChaseCamera {
     const worldLookOffset = rotateVec3ByQuat(this.#lookOffset, this.#lookOffset, heading);
     addVec3(this.#desiredPosition, pose.position, worldOffset);
     addVec3(this.#desiredLook, pose.position, worldLookOffset);
+
+    // Feed-forward (see #velocity): with the desired point one lag-interval ahead,
+    // the exponential follow settles exactly on the view's offset at any speed.
+    const lead = this.#config.positionLagSeconds;
+    this.#desiredPosition.x += this.#velocity.x * lead;
+    this.#desiredPosition.y += this.#velocity.y * lead;
+    this.#desiredPosition.z += this.#velocity.z * lead;
 
     // Never dip below the ground: the terrain height where the camera wants to be, when
     // a provider is wired, else the flat y=0 convention.

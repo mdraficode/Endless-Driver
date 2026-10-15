@@ -1072,3 +1072,15 @@ choice persists in localStorage. Diagnostics name the active view; the overlay
 Camera row shows it. Browser proof (scripts/capture-camera.mjs, new): measured
 camera-car distances 3.79/6.20/10.18 m from the page's own diagnostics, zero
 errors; 391 tests green. Cockpit/hood camera remains Phase 6 with the real car.
+
+## 31. Chase camera distance-at-speed fix (2026-10-15)
+
+Owner: "with increasing speed the car gets far and far away from the camera."
+Cause: the exponential position follow trails its aim point by speed x lag
+(0.18 s), so framing distance grew linearly with speed (~+7 m at 144 km/h). Fix:
+velocity feed-forward in ChaseCamera — the car's velocity is estimated from the
+pose stream (low-passed, teleport-jump-proof, clamped to 90 m/s) and the aim
+point is led by one lag interval, cancelling the trail at any speed. Unit test
+drives a pose at 40 m/s and holds 6.2 m; browser proof
+(scripts/capture-speedcam.mjs): 6.20 m standing, 5.83 m at 74 km/h, zero
+errors. 392 tests green.
