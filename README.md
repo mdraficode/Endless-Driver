@@ -75,7 +75,7 @@ Vite binds to `0.0.0.0` and accepts the Arena `.e2b.app` preview domain. Browser
 | `A` / `←`, `D` / `→` | Rate-limited steering (no snapping); grip falls away as the car is pushed harder |
 | `Space`              | Handbrake — cuts rear lateral grip for handbrake turns and slides                |
 | `R`                  | Reset the car to the spawn pose                                                  |
-| `C`                  | Toggle between the chase camera and the Phase 1 debug orbit camera               |
+| `C`                  | Cycle camera views: Close → Normal → Far chase distances → debug orbit → Close   |
 
 **Debug camera** (when the orbit camera is active)
 

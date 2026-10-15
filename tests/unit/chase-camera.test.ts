@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
-import { CHASE_CAMERA_CONFIG } from '../../src/config/camera';
+import { CHASE_CAMERA_CONFIG, CHASE_CAMERA_VIEWS } from '../../src/config/camera';
 import { ChaseCamera } from '../../src/cameras/ChaseCamera';
 import { identityQuat, quatFromYaw } from '../../src/shared/vector';
 import type { VehiclePose, VehicleTelemetry } from '../../src/vehicles/types';
@@ -64,8 +64,14 @@ describe('chase camera', () => {
 
     expect(camera.camera.fov).toBe(CHASE_CAMERA_CONFIG.baseFov);
     // Behind and above: forward is -Z, so the camera sits at positive Z.
-    expect(camera.camera.position.z).toBeCloseTo(CHASE_CAMERA_CONFIG.offset[2], 6);
-    expect(camera.camera.position.y).toBeCloseTo(0.6 + CHASE_CAMERA_CONFIG.offset[1], 6);
+    expect(camera.camera.position.z).toBeCloseTo(
+      CHASE_CAMERA_VIEWS.find((view) => view.id === 'normal')!.offset[2],
+      6,
+    );
+    expect(camera.camera.position.y).toBeCloseTo(
+      0.6 + CHASE_CAMERA_VIEWS.find((view) => view.id === 'normal')!.offset[1],
+      6,
+    );
     expect(camera.camera.aspect).toBeCloseTo(16 / 9, 6);
   });
 
@@ -74,7 +80,10 @@ describe('chase camera', () => {
     camera.snapTo(pose(0, 0.6, 0, Math.PI / 2));
 
     // Quarter turn to the left: forward becomes -X, so the camera trails at +X.
-    expect(camera.camera.position.x).toBeCloseTo(CHASE_CAMERA_CONFIG.offset[2], 5);
+    expect(camera.camera.position.x).toBeCloseTo(
+      CHASE_CAMERA_VIEWS.find((view) => view.id === 'normal')!.offset[2],
+      5,
+    );
     expect(Math.abs(camera.camera.position.z)).toBeLessThan(1e-6);
   });
 
@@ -94,7 +103,10 @@ describe('chase camera', () => {
 
     advance(camera, 2, moved);
     // Steady state: the camera settles at its offset from the car.
-    expect(camera.camera.position.z).toBeCloseTo(-20 + CHASE_CAMERA_CONFIG.offset[2], 1);
+    expect(camera.camera.position.z).toBeCloseTo(
+      -20 + CHASE_CAMERA_VIEWS.find((view) => view.id === 'normal')!.offset[2],
+      1,
+    );
   });
 
   it('damping is frame-rate independent', () => {
@@ -181,7 +193,10 @@ describe('chase camera', () => {
     // its position is dominated by +Z (old behind), not yet by +X (new behind).
     expect(camera.camera.position.z).toBeGreaterThan(camera.camera.position.x);
     advance(camera, 3, turned);
-    expect(camera.camera.position.x).toBeCloseTo(CHASE_CAMERA_CONFIG.offset[2], 0);
+    expect(camera.camera.position.x).toBeCloseTo(
+      CHASE_CAMERA_VIEWS.find((view) => view.id === 'normal')!.offset[2],
+      0,
+    );
     expect(Math.abs(camera.camera.position.z)).toBeLessThan(0.5);
   });
 
@@ -204,5 +219,41 @@ describe('chase camera', () => {
     expect(Number.isFinite(position.x)).toBe(true);
     expect(Number.isFinite(position.y)).toBe(true);
     expect(Number.isFinite(camera.fov)).toBe(true);
+  });
+});
+
+describe('chase camera distance views', () => {
+  it('starts on Normal and cycles Close → Normal → Far → Close', () => {
+    const camera = new ChaseCamera(CHASE_CAMERA_CONFIG, 16 / 9);
+    expect(camera.view.id).toBe('normal');
+    expect(camera.cycleView().id).toBe('far');
+    expect(camera.cycleView().id).toBe('close');
+    expect(camera.cycleView().id).toBe('normal');
+    expect(camera.setView('nope')).toBe(false);
+    expect(camera.view.id).toBe('normal');
+  });
+
+  it('frames the car closer on Close and farther on Far', () => {
+    const distanceFor = (id: string): number => {
+      const camera = new ChaseCamera(CHASE_CAMERA_CONFIG, 16 / 9);
+      camera.setView(id);
+      camera.snapTo(pose());
+      return Math.hypot(camera.camera.position.x, camera.camera.position.z);
+    };
+    expect(distanceFor('close')).toBeCloseTo(3.8, 5);
+    expect(distanceFor('normal')).toBeCloseTo(6.2, 5);
+    expect(distanceFor('far')).toBeCloseTo(10.2, 5);
+  });
+
+  it('glides to the new distance instead of cutting', () => {
+    const camera = new ChaseCamera(CHASE_CAMERA_CONFIG, 16 / 9);
+    camera.snapTo(pose());
+    camera.cycleView(); // normal → far
+    advance(camera, 0.1, pose());
+    const midway = Math.hypot(camera.camera.position.x, camera.camera.position.z);
+    expect(midway).toBeGreaterThan(6.2);
+    expect(midway).toBeLessThan(10.2);
+    advance(camera, 3, pose());
+    expect(Math.hypot(camera.camera.position.x, camera.camera.position.z)).toBeCloseTo(10.2, 1);
   });
 });

@@ -1,4 +1,9 @@
-import { CHASE_CAMERA_CONFIG, DEBUG_CAMERA_CONFIG, type CameraMode } from '../config/camera';
+import {
+  CHASE_CAMERA_CONFIG,
+  CHASE_CAMERA_VIEWS,
+  DEBUG_CAMERA_CONFIG,
+  type CameraMode,
+} from '../config/camera';
 import { RENDER_CONFIG, type RenderConfig } from '../config/render';
 import { ROAD_NETWORK_CONFIG } from '../config/roads';
 import { ORIGIN_CONFIG } from '../config/origin';
@@ -68,6 +73,9 @@ type StatusTone = 'info' | 'error';
  * Ownership flows one way: Application owns everything below it; the systems never reach back up.
  * The vehicle never touches the renderer, and the renderer never touches physics.
  */
+/** localStorage key for the player's chosen chase distance view. */
+const CAMERA_VIEW_STORAGE_KEY = 'endless-driver:camera-view';
+
 export class Application {
   readonly #config: RenderConfig;
   readonly #worldConfig: WorldConfig;
@@ -101,6 +109,7 @@ export class Application {
   readonly #unsubscribers: readonly (() => void)[] = [];
   readonly #lastCameraTarget: Vec3 = { x: 0, y: 0, z: 0 };
   #cameraMode: CameraMode = 'chase';
+
   #hudTimer = 0;
   #firstFrameRendered = false;
   #environmentLoaded = false;
@@ -152,6 +161,7 @@ export class Application {
     this.#scene.addObject(this.#carVisual.root);
 
     this.#chaseCamera = new ChaseCamera(CHASE_CAMERA_CONFIG, this.#engine.viewport.aspect);
+    this.#restoreCameraView();
     this.#chaseCamera.setGroundHeightProvider((x, z) =>
       terrainSampler.heightAt(x + this.#origin.offset.x, z + this.#origin.offset.z),
     );
@@ -366,8 +376,43 @@ export class Application {
     }
   }
 
+  /**
+   * One press of the camera control (C / 📷), cycling the framings the player can
+   * actually use: Close → Normal → Far chase distances, then the debug orbit, then
+   * back to Close. The chase camera glides between distances; the choice persists.
+   */
   toggleCameraMode(): void {
-    this.setCameraMode(this.#cameraMode === 'chase' ? 'orbit' : 'chase');
+    if (this.#cameraMode === 'orbit') {
+      this.#chaseCamera.setView(CHASE_CAMERA_VIEWS[0]!.id);
+      this.setCameraMode('chase');
+    } else if (
+      this.#chaseCamera.view.id === CHASE_CAMERA_VIEWS[CHASE_CAMERA_VIEWS.length - 1]!.id
+    ) {
+      this.setCameraMode('orbit');
+    } else {
+      this.#chaseCamera.cycleView();
+    }
+    this.#rememberCameraView();
+  }
+
+  /** Restores/persists the player's distance view (never the debug orbit). */
+  #rememberCameraView(): void {
+    try {
+      globalThis.localStorage?.setItem(CAMERA_VIEW_STORAGE_KEY, this.#chaseCamera.view.id);
+    } catch {
+      // Private-mode storage failures must never break the camera.
+    }
+  }
+
+  #restoreCameraView(): void {
+    try {
+      const saved = globalThis.localStorage?.getItem(CAMERA_VIEW_STORAGE_KEY);
+      if (saved !== null && saved !== undefined) {
+        this.#chaseCamera.setView(saved);
+      }
+    } catch {
+      // Same reasoning as above.
+    }
   }
 
   getDiagnostics(): DiagnosticsSnapshot {
@@ -415,6 +460,7 @@ export class Application {
       },
       totalFrames: this.#monitor.totalFrames,
       cameraMode: this.#cameraMode,
+      cameraView: this.#cameraMode === 'orbit' ? 'Orbit' : this.#chaseCamera.view.label,
       cameraFov: activeCamera.fov,
       speedKph: telemetry.speedKph,
       forwardSpeed: telemetry.forwardSpeed,

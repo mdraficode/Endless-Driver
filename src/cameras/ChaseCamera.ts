@@ -1,5 +1,9 @@
 import { PerspectiveCamera } from 'three';
-import { CHASE_CAMERA_CONFIG, type ChaseCameraConfig } from '../config/camera';
+import {
+  CHASE_CAMERA_CONFIG,
+  type ChaseCameraConfig,
+  type ChaseCameraView,
+} from '../config/camera';
 import { clamp } from '../shared/math';
 import {
   addVec3,
@@ -32,6 +36,11 @@ export class ChaseCamera {
   readonly #position = vec3();
   readonly #lookAt = vec3();
   #fov: number;
+  /** Active distance view; offsets/FOV glide toward it on `viewTransitionSeconds`. */
+  #viewIndex: number;
+  readonly #currentOffset = vec3();
+  readonly #currentLookOffset = vec3();
+  #currentFovDelta = 0;
   #initialized = false;
   /** Smoothed heading: the camera's yaw chases the car's yaw on its own time constant. */
   #yaw = 0;
@@ -51,6 +60,43 @@ export class ChaseCamera {
     this.#fov = config.baseFov;
     this.camera = new PerspectiveCamera(config.baseFov, aspect, 0.1, 2000);
     this.camera.position.set(0, 3, 8);
+    this.#viewIndex = Math.max(
+      0,
+      config.views.findIndex((view) => view.id === config.defaultViewId),
+    );
+    const view = this.view;
+    copyVec3(this.#currentOffset, {
+      x: view.offset[0],
+      y: view.offset[1],
+      z: view.offset[2],
+    });
+    copyVec3(this.#currentLookOffset, {
+      x: view.lookOffset[0],
+      y: view.lookOffset[1],
+      z: view.lookOffset[2],
+    });
+    this.#currentFovDelta = view.fovDelta;
+  }
+
+  /** The distance view currently being framed (or glided toward). */
+  get view(): ChaseCameraView {
+    return this.#config.views[this.#viewIndex] ?? this.#config.views[0]!;
+  }
+
+  /** Advances to the next distance view, wrapping around. Returns the new view. */
+  cycleView(): ChaseCameraView {
+    this.#viewIndex = (this.#viewIndex + 1) % this.#config.views.length;
+    return this.view;
+  }
+
+  /** Jumps the view selection (glide still applies). False for an unknown id. */
+  setView(id: string): boolean {
+    const index = this.#config.views.findIndex((view) => view.id === id);
+    if (index < 0) {
+      return false;
+    }
+    this.#viewIndex = index;
+    return true;
   }
 
   get fov(): number {
@@ -77,6 +123,18 @@ export class ChaseCamera {
 
   /** Places the camera immediately at the ideal pose (spawn, reset, teleports). */
   snapTo(pose: VehiclePose): void {
+    const view = this.view;
+    copyVec3(this.#currentOffset, {
+      x: view.offset[0],
+      y: view.offset[1],
+      z: view.offset[2],
+    });
+    copyVec3(this.#currentLookOffset, {
+      x: view.lookOffset[0],
+      y: view.lookOffset[1],
+      z: view.lookOffset[2],
+    });
+    this.#currentFovDelta = view.fovDelta;
     this.#yaw = yawFromQuat(pose.rotation);
     this.#computeDesired(pose);
     copyVec3(this.#position, this.#desiredPosition);
@@ -102,6 +160,20 @@ export class ChaseCamera {
     while (delta < -Math.PI) delta += Math.PI * 2;
     this.#yaw += delta * smoothingFactor(dt, config.headingLagSeconds);
 
+    // Distance-view glide: the framing eases to the newly selected view instead of
+    // cutting, on its own (slower) constant so it reads as a deliberate dolly move.
+    const view = this.view;
+    const viewFactor = smoothingFactor(dt, config.viewTransitionSeconds);
+    copyVec3(this.#offset, { x: view.offset[0], y: view.offset[1], z: view.offset[2] });
+    copyVec3(this.#lookOffset, {
+      x: view.lookOffset[0],
+      y: view.lookOffset[1],
+      z: view.lookOffset[2],
+    });
+    lerpVec3(this.#currentOffset, this.#currentOffset, this.#offset, viewFactor);
+    lerpVec3(this.#currentLookOffset, this.#currentLookOffset, this.#lookOffset, viewFactor);
+    this.#currentFovDelta += (view.fovDelta - this.#currentFovDelta) * viewFactor;
+
     this.#computeDesired(pose);
 
     // Position lag produces the spring-arm feel; look-at lags less so the car stays centered.
@@ -118,7 +190,8 @@ export class ChaseCamera {
     // Speed-scaled FOV: smoothstep so the widening is gentle at low speed and assertive at pace.
     const speedRatio = clamp(Math.abs(telemetry.speedMps) / Math.max(config.fovMaxSpeed, 1), 0, 1);
     const smoothRatio = speedRatio * speedRatio * (3 - 2 * speedRatio);
-    const targetFov = config.baseFov + (config.maxFov - config.baseFov) * smoothRatio;
+    const targetFov =
+      config.baseFov + this.#currentFovDelta + (config.maxFov - config.baseFov) * smoothRatio;
     this.#fov += (targetFov - this.#fov) * smoothingFactor(dt, config.fovLagSeconds);
 
     this.#apply(telemetry, dt);
@@ -129,13 +202,8 @@ export class ChaseCamera {
   }
 
   #computeDesired(pose: VehiclePose): void {
-    const config = this.#config;
-    copyVec3(this.#offset, { x: config.offset[0], y: config.offset[1], z: config.offset[2] });
-    copyVec3(this.#lookOffset, {
-      x: config.lookOffset[0],
-      y: config.lookOffset[1],
-      z: config.lookOffset[2],
-    });
+    copyVec3(this.#offset, this.#currentOffset);
+    copyVec3(this.#lookOffset, this.#currentLookOffset);
 
     // Offsets rotate by the smoothed heading only: the camera does not pitch and roll
     // with every crest the chassis crosses, which is what makes a chase view feel stable

@@ -68,6 +68,8 @@ export interface DiagnosticsSnapshot {
   readonly totalFrames: number;
   /** Active render camera. */
   readonly cameraMode: CameraMode;
+  /** Player-facing framing name (Close / Normal / Far / Orbit). */
+  readonly cameraView: string;
   readonly cameraFov: number;
   readonly speedKph: number;
   /** Signed speed along the chassis forward axis, m/s (negative when reversing). */
@@ -239,7 +241,7 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
   {
     label: 'Camera',
     format: (snapshot) =>
-      `${snapshot.cameraMode} · ${snapshot.cameraFov.toFixed(1)}° fov · ${snapshot.cameraPosition.x.toFixed(0)}, ${snapshot.cameraPosition.y.toFixed(0)}, ${snapshot.cameraPosition.z.toFixed(0)}`,
+      `${snapshot.cameraView} · ${snapshot.cameraFov.toFixed(1)}° fov · ${snapshot.cameraPosition.x.toFixed(0)}, ${snapshot.cameraPosition.y.toFixed(0)}, ${snapshot.cameraPosition.z.toFixed(0)}`,
   },
   { label: 'Frames', format: (snapshot) => snapshot.totalFrames.toLocaleString('en-US') },
 ];

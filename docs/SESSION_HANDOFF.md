@@ -1060,3 +1060,15 @@ rebases 1, offsets (−1536, −2048), 242 total builds (spawn + volcano windows
 (teleport writes the pose instantly, letting pre-teleport stats pass) — it now
 also requires 75 frames since the teleport. Phase 4 remaining: district
 build-out (bridges/tunnels deferred).
+
+## 30. Camera distance views (2026-10-15)
+
+Owner: "the car is too far away." The chase camera now has distance views —
+Close (3.8 m), Normal (6.2 m, the previous framing), Far (10.2 m) — each with its
+own height/look/FOV trim (config/camera.ts CHASE_CAMERA_VIEWS). C (keyboard) and
+📷 (touch) cycle Close → Normal → Far → debug orbit → Close; switching glides
+(0.45 s dolly) instead of cutting, teleports snap to the active view, and the
+choice persists in localStorage. Diagnostics name the active view; the overlay
+Camera row shows it. Browser proof (scripts/capture-camera.mjs, new): measured
+camera-car distances 3.79/6.20/10.18 m from the page's own diagnostics, zero
+errors; 391 tests green. Cockpit/hood camera remains Phase 6 with the real car.

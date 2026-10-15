@@ -9,11 +9,56 @@
 /** Which camera the application renders through. */
 export type CameraMode = 'chase' | 'orbit';
 
-export interface ChaseCameraConfig {
+/**
+ * One chase framing (PROJECT_PLAN Phase 2 camera, distance views added on owner
+ * request 2026-10-15: "the car is too far away"). Players cycle views with C / 📷;
+ * the camera glides between them rather than cutting.
+ */
+export interface ChaseCameraView {
+  readonly id: string;
+  /** Short name shown in diagnostics (Close / Normal / Far). */
+  readonly label: string;
   /** Camera position offset from the car in car space (behind and above; forward is -Z). */
   readonly offset: readonly [number, number, number];
   /** Look-at point offset from the car in car space. */
   readonly lookOffset: readonly [number, number, number];
+  /**
+   * Added to the whole speed-scaled FOV band: closer views run a little wider so the
+   * car feels big without feeling tunnelled, far views a little tighter.
+   */
+  readonly fovDelta: number;
+}
+
+export const CHASE_CAMERA_VIEWS: readonly ChaseCameraView[] = [
+  {
+    id: 'close',
+    label: 'Close',
+    offset: [0, 1.5, 3.8],
+    lookOffset: [0, 0.9, -6],
+    fovDelta: 5,
+  },
+  {
+    id: 'normal',
+    label: 'Normal',
+    offset: [0, 2.15, 6.2],
+    lookOffset: [0, 1.05, -6],
+    fovDelta: 0,
+  },
+  {
+    id: 'far',
+    label: 'Far',
+    offset: [0, 3.2, 10.2],
+    lookOffset: [0, 1.25, -8],
+    fovDelta: -5,
+  },
+];
+
+export interface ChaseCameraConfig {
+  /** Selectable distance views, cycled in order; starts at `defaultViewId`. */
+  readonly views: readonly ChaseCameraView[];
+  readonly defaultViewId: string;
+  /** Time constant for gliding between views when the player cycles, seconds. */
+  readonly viewTransitionSeconds: number;
   /** Time constant for position following; larger = lazier camera. */
   readonly positionLagSeconds: number;
   /** Time constant for look-at following. */
@@ -34,8 +79,9 @@ export interface ChaseCameraConfig {
 }
 
 export const CHASE_CAMERA_CONFIG: ChaseCameraConfig = {
-  offset: [0, 2.15, 6.2],
-  lookOffset: [0, 1.05, -6],
+  views: CHASE_CAMERA_VIEWS,
+  defaultViewId: 'normal',
+  viewTransitionSeconds: 0.45,
   positionLagSeconds: 0.18,
   lookLagSeconds: 0.1,
   headingLagSeconds: 0.28,
