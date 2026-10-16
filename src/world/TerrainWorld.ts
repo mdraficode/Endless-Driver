@@ -2,8 +2,12 @@ import { Group, Mesh, RepeatWrapping } from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import {
   attribute,
+  Break,
   cameraPosition,
+  clamp,
   float,
+  If,
+  Loop,
   fract,
   mix,
   normalWorld,
@@ -32,6 +36,8 @@ interface LoadedChunk {
   readonly mesh: Mesh;
   segments: number;
   triangles: number;
+  /** True while the mesh wears the near (POM) material. */
+  pom: boolean;
 }
 
 /** Manifest ids of the scanned CC0 sets, in splat order [grass, soil, rock, snow]. */
@@ -54,7 +60,9 @@ const SURFACE_ASSETS = [
  * bounds mesh/upload work per frame either way. It swaps LODs in place and disposes
  * what falls out of the square.
  *
- * One material for every chunk. Per-vertex data carries the splat weights and a macro
+ * Two materials share one splat graph: the plain material for every chunk but
+ * the closest LOD ring, which wears the near material whose sampling position is
+ * raymarched through the blended scanned displacement (POM). Per-vertex data carries the splat weights and a macro
  * tint (hundred-metre variation + curvature occlusion); the scanned CC0 sets supply the
  * detail — grass/soil/rock/snow albedos with normal and packed AO/roughness maps, tiled
  * by world position, rock triplanar so cliffs do not stretch, all fading back to the
@@ -70,7 +78,9 @@ export class TerrainWorld implements SceneContent {
   readonly #config: TerrainConfig;
   readonly #generator: ChunkGenerator;
   readonly #material: MeshStandardNodeMaterial;
+  readonly #nearMaterial: MeshStandardNodeMaterial;
   readonly #chunks = new Map<string, LoadedChunk>();
+  #pomActive = false;
   #surfaceSets: readonly MaterialTextureSet[] = [];
   #center: ChunkCoord | null = null;
   #desiredCount = 0;
@@ -97,6 +107,12 @@ export class TerrainWorld implements SceneContent {
     material.roughnessNode = float(0.96);
     material.metalnessNode = float(0);
     this.#material = material;
+
+    const nearMaterial = new MeshStandardNodeMaterial();
+    this.#applyFlatNodes(nearMaterial);
+    nearMaterial.roughnessNode = float(0.96);
+    nearMaterial.metalnessNode = float(0);
+    this.#nearMaterial = nearMaterial;
   }
 
   /**
@@ -129,7 +145,7 @@ export class TerrainWorld implements SceneContent {
     }
     const loaded = sets as MaterialTextureSet[];
     for (const set of loaded) {
-      for (const map of [set.diffuse, set.normal, set.arm]) {
+      for (const map of [set.diffuse, set.normal, set.arm, set.height]) {
         if (map !== null) {
           map.wrapS = RepeatWrapping;
           map.wrapT = RepeatWrapping;
@@ -138,11 +154,27 @@ export class TerrainWorld implements SceneContent {
       }
     }
     this.#surfaceSets = loaded;
-    this.#applySurfaceNodes(loaded);
+    // POM is only honest with all four displacement maps; without them the near
+    // material is the same splat, just on its own instance.
+    this.#pomActive = loaded.every((set) => set.height !== null);
+    this.#applySurfaceNodes(loaded, this.#material, false);
+    this.#applySurfaceNodes(loaded, this.#nearMaterial, this.#pomActive);
   }
 
-  /** The textured splat: world-space tiling, triplanar rock, distance fade to macro tint. */
-  #applySurfaceNodes(sets: readonly MaterialTextureSet[]): void {
+  /**
+   * The textured splat: world-space tiling, triplanar rock, distance fade to macro tint.
+   * With `pom` (near tier only, all four displacement maps present) the sampling
+   * position is first raymarched through the splat-blended scanned displacement:
+   * the ray starts on the relief's top plane and steps down until it meets the
+   * heightfield, with one secant refinement across the crossing layer. The
+   * offset fades out by the configured distance, so beyond it the near material
+   * samples exactly where the far material does and the two cannot seam.
+   */
+  #applySurfaceNodes(
+    sets: readonly MaterialTextureSet[],
+    material: MeshStandardNodeMaterial,
+    pom: boolean,
+  ): void {
     const [grass, soil, rock, snow] = sets as [
       MaterialTextureSet,
       MaterialTextureSet,
@@ -151,7 +183,55 @@ export class TerrainWorld implements SceneContent {
     ];
     const splat = attribute('splat', 'vec4');
     const tint = attribute('tint', 'float');
-    const wxz = positionWorld.xz;
+    let wxz = positionWorld.xz;
+
+    if (pom) {
+      const pomConfig = this.#config.pom;
+      const toCamera = cameraPosition.sub(positionWorld);
+      const cameraDistance = toCamera.length();
+      const viewDir = toCamera.normalize();
+      const pomFade = float(1).sub(
+        smoothstep(
+          float(pomConfig.fadeStartMeters),
+          float(pomConfig.fadeEndMeters),
+          cameraDistance,
+        ),
+      );
+      // World-planar tangent frame: X/Z is the map plane, Y is up. Grazing views
+      // would stretch the march without bound, so the divisor is clamped.
+      const slope = viewDir.xz.div(clamp(viewDir.y, 0.22, 1));
+      const heightAt = (xz: typeof wxz) =>
+        texture(grass.height!, xz.mul(0.85))
+          .r.mul(splat.x)
+          .add(texture(soil.height!, xz.mul(0.65)).r.mul(splat.y))
+          .add(texture(rock.height!, xz.mul(0.22)).r.mul(splat.z))
+          .add(texture(snow.height!, xz.mul(0.5)).r.mul(splat.w));
+      const stepDepth = float(1).div(float(pomConfig.steps));
+      const depthNow = float(0).toVar();
+      const heightNow = heightAt(wxz).toVar();
+      If(pomFade.greaterThan(0), () => {
+        Loop(pomConfig.steps, () => {
+          depthNow.assign(depthNow.add(stepDepth));
+          const sampleXz = wxz.sub(slope.mul(depthNow.mul(pomConfig.depthMeters)));
+          heightNow.assign(heightAt(sampleXz));
+          If(float(1).sub(depthNow).lessThanEqual(heightNow), () => {
+            Break();
+          });
+        });
+      });
+      // Secant refinement: interpolate the crossing between the last two layers
+      // instead of snapping to a step boundary (which bands at grazing angles).
+      const prevDepth = depthNow.sub(stepDepth);
+      const prevXz = wxz.sub(slope.mul(prevDepth.mul(pomConfig.depthMeters)));
+      const above = heightAt(prevXz).sub(float(1).sub(prevDepth));
+      const below = heightNow.sub(float(1).sub(depthNow));
+      const fraction = above.div(above.sub(below).max(0.00001)).clamp(0, 1);
+      const hitDepth = prevDepth.add(stepDepth.mul(fraction));
+      const hitXz = wxz.sub(slope.mul(hitDepth.mul(pomConfig.depthMeters)));
+      wxz = mix(wxz, hitXz, pomFade);
+    }
+    const wpos = vec3(wxz.x, positionWorld.y, wxz.y);
+
     // Detail fades out between 90 m and 260 m: beyond that the macro tint (which every
     // LOD shares) carries the colour, so chunk resolution changes stop changing the
     // average colour of the ground and texture shimmer dies with distance.
@@ -174,8 +254,8 @@ export class TerrainWorld implements SceneContent {
     const axisTotal = axisWeights.x.add(axisWeights.y).add(axisWeights.z);
     const rockAlbedo = texture(rock.diffuse, wxz.mul(0.22))
       .rgb.mul(axisWeights.y)
-      .add(texture(rock.diffuse, positionWorld.zy.mul(0.22)).rgb.mul(axisWeights.x))
-      .add(texture(rock.diffuse, positionWorld.xy.mul(0.22)).rgb.mul(axisWeights.z))
+      .add(texture(rock.diffuse, wpos.zy.mul(0.22)).rgb.mul(axisWeights.x))
+      .add(texture(rock.diffuse, wpos.xy.mul(0.22)).rgb.mul(axisWeights.z))
       .div(axisTotal);
 
     const detailAlbedo = grassAlbedo
@@ -202,9 +282,9 @@ export class TerrainWorld implements SceneContent {
     };
 
     const macro = vertexColor();
-    this.#material.colorNode = mix(macro, detailAlbedo.mul(tint), detailFade);
-    this.#material.roughnessNode = mix(float(0.96), mixArm('g', 0.95), detailFade);
-    this.#material.aoNode = mix(float(1), mixArm('r', 1), detailFade);
+    material.colorNode = mix(macro, detailAlbedo.mul(tint), detailFade);
+    material.roughnessNode = mix(float(0.96), mixArm('g', 0.95), detailFade);
+    material.aoNode = mix(float(1), mixArm('r', 1), detailFade);
 
     // Normal detail, blended like the albedo and faded with it: the far field keeps the
     // geometry normals, which is what makes distant LOD steps stop crawling.
@@ -214,7 +294,7 @@ export class TerrainWorld implements SceneContent {
       .add(texture(soil.normal, wxz.mul(0.65)).rgb.mul(splat.y))
       .add(texture(rock.normal, wxz.mul(0.22)).rgb.mul(splat.z))
       .add(texture(snow.normal, wxz.mul(0.5)).rgb.mul(splat.w));
-    this.#material.normalNode = mix(flatNormal, detailNormal, detailFade.mul(0.85));
+    material.normalNode = mix(flatNormal, detailNormal, detailFade.mul(0.85));
   }
 
   updateStreaming(
@@ -267,19 +347,25 @@ export class TerrainWorld implements SceneContent {
       const geometry = chunkGeometryFromData(data);
       const triangles = (geometry.index?.count ?? 0) / 3;
       const existing = this.#chunks.get(key);
+      // The closest LOD ring wears the POM material; every other ring the plain
+      // splat. Geometry swaps re-evaluate this, so a chunk crossing rings in
+      // either direction changes material with its resolution.
+      const pom = segments === this.#config.lodSegments[0];
       if (existing !== undefined) {
         this.#triangles -= existing.triangles;
         existing.mesh.geometry.dispose();
         existing.mesh.geometry = geometry;
+        existing.mesh.material = pom ? this.#nearMaterial : this.#material;
         existing.segments = segments;
         existing.triangles = triangles;
+        existing.pom = pom;
       } else {
-        const mesh = new Mesh(geometry, this.#material);
+        const mesh = new Mesh(geometry, pom ? this.#nearMaterial : this.#material);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         mesh.matrixAutoUpdate = false;
         this.root.add(mesh);
-        this.#chunks.set(key, { mesh, segments, triangles });
+        this.#chunks.set(key, { mesh, segments, triangles, pom });
       }
       this.#triangles += triangles;
       this.#buildsLastFrame += 1;
@@ -325,6 +411,9 @@ export class TerrainWorld implements SceneContent {
       terrainBuildsTotal: this.#totalBuilds,
       terrainTriangles: this.#triangles,
       terrainSurfacesLoaded: this.#surfaceSets.length > 0 ? 1 : 0,
+      terrainPomActive: this.#pomActive ? 1 : 0,
+      terrainPomSteps: this.#config.pom.steps,
+      terrainPomChunks: [...this.#chunks.values()].filter((chunk) => chunk.pom).length,
       terrainGeneratorMode: this.#generator.mode === 'worker' ? 1 : 0,
       terrainWorkerBacklog: this.#generator.backlog,
       terrainWorkerBuilds: this.#generator.workerBuilds,
@@ -342,6 +431,7 @@ export class TerrainWorld implements SceneContent {
     }
     this.#surfaceSets = [];
     this.#material.dispose();
+    this.#nearMaterial.dispose();
     this.root.clear();
   }
 }
