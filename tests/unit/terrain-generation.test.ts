@@ -62,7 +62,7 @@ describe('generation sampler determinism', () => {
     expect(result.id).toBe(42);
     expect(result.chunkX).toBe(-1);
     expect(result.segments).toBe(8);
-    expect(resultTransferables(result)).toHaveLength(6);
+    expect(resultTransferables(result)).toHaveLength(7); // + district tint attribute
     for (const buffer of resultTransferables(result)) {
       expect(buffer.byteLength).toBeGreaterThan(0);
     }
