@@ -19,6 +19,15 @@ import { generateChunkVegetation, type VegetationPlacement } from './vegetation-
  * once per frame before the physics step — the response is an impulse on the
  * car body, so Rapier still owns the car's motion; no per-tree colliders to
  * stream, and tunnelling is impossible at car speeds vs the OBB size.
+ *
+ * The impulse is a momentum exchange, stated once and used by both sides:
+ * the car's normal velocity change times its mass is the reaction impulse
+ * (newton-seconds). A tree that stays standing is rooted, so that impulse is
+ * delivered into the tree-plus-ground system and the car loses its closing
+ * speed; a tree that fails converts the configured share of the same impulse
+ * into crown/shard motion (`reactionSpeed`), with the rest dissipated in the
+ * fracture. Standing trees keep resisting on contact frames between damage
+ * hits — the damage cooldown never opens a hole the car can push through.
  */
 
 export type TreeCondition = 'intact' | 'bent' | 'snapped' | 'shattered';
@@ -55,6 +64,18 @@ export interface TreeHitEvent {
   readonly dirX: number;
   readonly dirZ: number;
   readonly leanAngleRad: number;
+  /** Normal speed (m/s) this hit takes out of the car — the impulse per kilogram of car. */
+  readonly absorbedSpeed: number;
+  /**
+   * Equal-and-opposite impulse (N·s) delivered to the tree/ground system:
+   * exactly the car's mass times `absorbedSpeed`, in the opposite direction.
+   */
+  readonly reactionImpulseNs: number;
+  /**
+   * Speed (m/s) the failed trunk/crown carries away from that impulse, after
+   * the fracture's dissipation share. Zero for rocks (the ground takes it).
+   */
+  readonly reactionSpeed: number;
 }
 
 export interface TreeHit extends TreeHitEvent {
@@ -62,13 +83,17 @@ export interface TreeHit extends TreeHitEvent {
   readonly normalX: number;
   readonly normalZ: number;
   readonly penetration: number;
-  /** Velocity (m/s along the normal) this hit removes from the car. */
-  readonly absorbedSpeed: number;
   readonly solid: boolean;
+  /** True when the tree is still rooted and resists as an anchored obstacle. */
+  readonly rooted: boolean;
   /** True when this hit spent hit points (renderer reacts); false for brushes/solids. */
   readonly impact: boolean;
   /** Lateral offset of the contact from the car's centre (for yaw kick). */
   readonly lateralOffset: number;
+  /** Signed lever arm (m) of the contact about the car's yaw axis. */
+  readonly yawLeverArmMeters: number;
+  /** Share of that lever arm converted into angular impulse. */
+  readonly yawImpulseFraction: number;
 }
 
 export interface CollisionBody {
@@ -82,6 +107,20 @@ type BodyLike = CollisionBody;
 
 const CAR_HALF_WIDTH = 0.9;
 const CAR_HALF_LENGTH = 2.05;
+/** Fallback car mass (kg) when a caller cannot report the body's real mass. */
+const REFERENCE_CAR_MASS_KG = 1200;
+
+/**
+ * Speed a failed trunk/crown carries away from a reaction impulse: the
+ * configured momentum share divided by the participating mass. Capped so a
+ * featherweight bamboo clump cannot leave at ballistic-fiction speeds.
+ */
+function reactionSpeedFor(impulseNs: number, impactMassKg: number): number {
+  if (!Number.isFinite(impactMassKg) || impactMassKg <= 0) {
+    return 0;
+  }
+  return Math.min(13, (impulseNs * TREE_COLLISION.momentumTransferFraction) / impactMassKg);
+}
 
 export class TreeCollisionField {
   readonly #sampler: TerrainSampler;
@@ -162,6 +201,8 @@ export class TreeCollisionField {
       readonly yaw: number;
       readonly velocityX: number;
       readonly velocityZ: number;
+      /** Real body mass (kg); the reaction impulse is computed against it. */
+      readonly massKg?: number;
     },
     deltaSeconds: number,
   ): TreeHit[] {
@@ -172,6 +213,10 @@ export class TreeCollisionField {
     const speed = Math.hypot(car.velocityX, car.velocityZ);
     const travelX = speed > 0.01 ? car.velocityX / speed : -sin;
     const travelZ = speed > 0.01 ? car.velocityZ / speed : -cos;
+    const carMassKg =
+      car.massKg !== undefined && Number.isFinite(car.massKg) && car.massKg > 0
+        ? car.massKg
+        : REFERENCE_CAR_MASS_KG;
 
     for (const placements of this.#chunks.values()) {
       for (const placement of placements) {
@@ -224,10 +269,19 @@ export class TreeCollisionField {
           record !== undefined &&
           this.#time - record.lastHitTime < TREE_COLLISION.hitCooldownSeconds;
         const solid = placement.species === 'rock';
+        // Participating trunk/crown mass grows with the cube of the drawn scale.
+        const impactMassKg = damage.impactMassKg * placement.scale ** 3;
+        // r x n in plan view: how much of the normal impulse turns into yaw.
+        const yawLeverArmMeters = lz * normalLocalX - lx * normalLocalZ;
 
         if (solid || closing <= TREE_COLLISION.minImpactSpeed || onCooldown) {
-          // Solid contact (or a brush): positional resistance only, no event.
+          // Contact without a damage event. This is not a hole: a standing
+          // tree is rooted, so it still takes the car's whole closing speed
+          // out along the normal (and the response below pushes the overlap
+          // apart). Only the *damage* is on cooldown, never the obstacle.
           if (penetration > 0.01) {
+            const absorbedSpeed = Math.max(0, closing);
+            const reactionImpulseNs = carMassKg * absorbedSpeed;
             hits.push({
               key: placement.key,
               species: placement.species,
@@ -242,13 +296,18 @@ export class TreeCollisionField {
               dirX: travelX,
               dirZ: travelZ,
               leanAngleRad: 0,
+              absorbedSpeed,
+              reactionImpulseNs,
+              reactionSpeed: reactionSpeedFor(reactionImpulseNs, impactMassKg),
               normalX,
               normalZ,
               penetration,
-              absorbedSpeed: solid ? Math.max(0, closing) : 0,
               solid,
+              rooted: !solid,
               impact: false,
               lateralOffset: lx,
+              yawLeverArmMeters,
+              yawImpulseFraction: TREE_COLLISION.yawImpulseFraction,
             });
           }
           continue;
@@ -280,6 +339,17 @@ export class TreeCollisionField {
           existing.leanAngleRad = Math.min(0.8, 0.14 + (existing.damage / damage.hitPoints) * 0.66);
         }
         this.#records.set(placement.key, existing);
+        // One momentum statement for both sides of the impact: the car loses
+        // `absorbedSpeed` along the normal; the tree/ground system receives
+        // carMass x absorbedSpeed in the opposite direction. A tree that
+        // holds is rooted (full stop + dull rebound); a tree that fails
+        // takes its species' fracture share out of the car on the way down.
+        const absorbedSpeed =
+          outcome === 'bend'
+            ? closing * (1 + TREE_COLLISION.standingRestitution)
+            : closing *
+              (outcome === 'snap' ? damage.snapSpeedLossFraction : damage.shatterSpeedLossFraction);
+        const reactionImpulseNs = carMassKg * absorbedSpeed;
         hits.push({
           key: placement.key,
           species: placement.species,
@@ -294,30 +364,43 @@ export class TreeCollisionField {
           dirX: travelX,
           dirZ: travelZ,
           leanAngleRad: existing.leanAngleRad,
+          absorbedSpeed,
+          reactionImpulseNs,
+          reactionSpeed: reactionSpeedFor(reactionImpulseNs, impactMassKg),
           normalX,
           normalZ,
           penetration,
-          absorbedSpeed: Math.min(closing, damage.stopSpeed * (outcome === 'bend' ? 0.45 : 1)),
           solid: false,
+          rooted: outcome === 'bend',
           impact: true,
           lateralOffset: lx,
+          yawLeverArmMeters,
+          yawImpulseFraction: TREE_COLLISION.yawImpulseFraction,
         });
       }
     }
     return hits;
   }
 
-  /** Applies one hit's velocity change (and a whisper of yaw) to the car body. */
-  respond(body: BodyLike, hit: TreeHit): void {
-    applyCollisionResponse(body, hit);
+  /**
+   * Applies one hit's velocity change to the car body and returns the linear
+   * impulse magnitude (N·s) actually delivered — the equal-and-opposite
+   * partner of the `reactionImpulseNs` the tree side recorded.
+   */
+  respond(body: BodyLike, hit: TreeHit): number {
+    return applyCollisionResponse(body, hit);
   }
 }
 
 /**
  * The shared collision response: removes the hit's absorbed velocity along the
  * contact normal (guaranteeing separation when nothing broke, a small bounce
- * off solids), plus a whisper of yaw on off-centre hits. Trees, rocks,
- * buildings and poles all answer the car through this one contract.
+ * off solids), plus yaw from the contact's lever arm on off-centre hits. The
+ * impulse applied here is along the tree→car normal with magnitude
+ * mass x velocity-change; the obstacle received the same magnitude along the
+ * opposite normal when the contact was evaluated. Trees, rocks, buildings
+ * and poles all answer the car through this one contract. Returns the linear
+ * impulse magnitude (N·s) actually applied.
  */
 export function applyCollisionResponse(
   body: CollisionBody,
@@ -327,28 +410,48 @@ export function applyCollisionResponse(
     readonly penetration: number;
     readonly absorbedSpeed: number;
     readonly solid: boolean;
+    readonly rooted?: boolean;
     readonly impact: boolean;
     readonly impactSpeed: number;
     readonly lateralOffset: number;
+    readonly yawLeverArmMeters?: number;
+    readonly yawImpulseFraction?: number;
   },
-): void {
+): number {
   const velocity = body.linvel();
   const vn = velocity.x * hit.normalX + velocity.z * hit.normalZ;
   let target = vn + hit.absorbedSpeed;
   if (!hit.impact) {
-    target = Math.max(target, Math.min(2.5, hit.penetration * 5));
+    // Standing contact still has to separate the overlap. A rooted tree gets
+    // a firmer push-out than a folding pole: it is not going anywhere.
+    const separation =
+      hit.rooted === true
+        ? Math.min(3.2, 0.35 + hit.penetration * 7)
+        : Math.min(2.5, hit.penetration * 5);
+    target = Math.max(target, separation);
   }
   if (hit.solid && hit.impactSpeed > 1) {
     target = Math.max(target, hit.impactSpeed * 0.12);
   }
   const dv = target - vn;
   if (dv <= 0) {
-    return;
+    return 0;
   }
   const mass = body.mass();
-  body.applyImpulse({ x: hit.normalX * dv * mass, y: 0, z: hit.normalZ * dv * mass }, true);
-  const torque = -hit.lateralOffset * dv * mass * 0.06;
+  const impulseNs = dv * mass;
+  body.applyImpulse({ x: hit.normalX * impulseNs, y: 0, z: hit.normalZ * impulseNs }, true);
+  // Angular half of the same exchange: lever arm x linear impulse, scaled to
+  // the authored fraction and capped so a corner hit kicks the nose around
+  // instead of spinning the car like a top.
+  const leverArm = hit.yawLeverArmMeters ?? -hit.lateralOffset;
+  const fraction = hit.yawImpulseFraction ?? 0.06;
+  const maxTorqueImpulse = mass * 1.6;
+  const torque = Math.max(
+    -maxTorqueImpulse,
+    Math.min(maxTorqueImpulse, leverArm * impulseNs * fraction),
+  );
   if (Math.abs(torque) > 1) {
     body.applyTorqueImpulse({ x: 0, y: torque, z: 0 }, true);
   }
+  return impulseNs;
 }

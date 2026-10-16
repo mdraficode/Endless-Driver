@@ -567,6 +567,7 @@ export class Application {
           yaw: yawFromQuat(this.#car.rotation),
           velocityX: linvel.x,
           velocityZ: linvel.z,
+          massKg: this.#car.body.mass(),
         },
         delta,
       );

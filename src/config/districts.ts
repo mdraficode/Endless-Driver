@@ -121,26 +121,68 @@ export const VEGETATION_CONFIG: VegetationConfig = {
  * `hitPoints` is spent by impact speed: each hit costs roughly
  * 10 x impactSpeed(m/s) points, so a conifer shrugs off a 3 m/s nudge (bend),
  * snaps around 10 m/s, and a single hit at `shatterSpeed` or beyond destroys
- * it outright regardless of remaining points. `stopSpeed` caps how much
- * velocity (m/s) the tree can absorb from the car in one hit — small trees
- * barely slow a fast car; a rock stops it dead (hitPoints infinite).
+ * it outright regardless of remaining points.
+ *
+ * The speed loss is a momentum model, not a free-floating cap. A standing
+ * tree is rooted into the ground, so while it remains intact the car meets
+ * the tree-plus-soil system and loses essentially all of its normal closing
+ * speed (plus the small rebound in `TREE_COLLISION`). When the trunk fails,
+ * `snapSpeedLossFraction` / `shatterSpeedLossFraction` say how much of the
+ * closing speed the failure takes out of the car; `impactMassKg` is the
+ * trunk/crown mass that can carry momentum away as debris, so the visible
+ * reaction can be derived from the same impulse that slows the car.
  */
 export interface TreeDamageConfig {
   readonly hitPoints: number;
-  readonly stopSpeed: number;
+  /** Fraction of closing speed removed when this hit snaps the trunk. */
+  readonly snapSpeedLossFraction: number;
+  /** Fraction of closing speed removed when this hit shatters the trunk. */
+  readonly shatterSpeedLossFraction: number;
+  /** Trunk/crown mass (kg at scale 1) that can receive reaction momentum. */
+  readonly impactMassKg: number;
   readonly shatterSpeed: number;
   /** Trunk radius in metres (collision + visual scale multiplies it). */
   readonly trunkRadius: number;
 }
 
 export const TREE_DAMAGE: Record<VegetationSpecies, TreeDamageConfig> = {
-  conifer: { hitPoints: 100, stopSpeed: 5.5, shatterSpeed: 13, trunkRadius: 0.24 },
-  broadleaf: { hitPoints: 85, stopSpeed: 4.5, shatterSpeed: 12, trunkRadius: 0.26 },
-  sakura: { hitPoints: 70, stopSpeed: 3.5, shatterSpeed: 11, trunkRadius: 0.22 },
-  bamboo: { hitPoints: 34, stopSpeed: 1.6, shatterSpeed: 9, trunkRadius: 0.3 },
+  conifer: {
+    hitPoints: 100,
+    snapSpeedLossFraction: 0.74,
+    shatterSpeedLossFraction: 0.58,
+    impactMassKg: 300,
+    shatterSpeed: 13,
+    trunkRadius: 0.24,
+  },
+  broadleaf: {
+    hitPoints: 85,
+    snapSpeedLossFraction: 0.7,
+    shatterSpeedLossFraction: 0.54,
+    impactMassKg: 240,
+    shatterSpeed: 12,
+    trunkRadius: 0.26,
+  },
+  sakura: {
+    hitPoints: 70,
+    snapSpeedLossFraction: 0.64,
+    shatterSpeedLossFraction: 0.5,
+    impactMassKg: 180,
+    shatterSpeed: 11,
+    trunkRadius: 0.22,
+  },
+  bamboo: {
+    hitPoints: 34,
+    snapSpeedLossFraction: 0.48,
+    shatterSpeedLossFraction: 0.38,
+    impactMassKg: 75,
+    shatterSpeed: 9,
+    trunkRadius: 0.3,
+  },
   rock: {
     hitPoints: Number.POSITIVE_INFINITY,
-    stopSpeed: 60,
+    snapSpeedLossFraction: 1,
+    shatterSpeedLossFraction: 1,
+    impactMassKg: Number.POSITIVE_INFINITY,
     shatterSpeed: Number.POSITIVE_INFINITY,
     trunkRadius: 0.95,
   },
@@ -156,6 +198,21 @@ export const TREE_COLLISION = {
   hitCooldownSeconds: 0.3,
   /** Damage points charged per (m/s) of impact speed. */
   damagePerSpeed: 10,
+  /**
+   * Rebound fraction for a rooted tree that does not break: the car loses
+   * `1 + standingRestitution` times its closing speed along the normal, so it
+   * leaves at `standingRestitution` of the closing speed. 0.08 is a dull
+   * wooden thud, not a rubber bounce.
+   */
+  standingRestitution: 0.08,
+  /**
+   * Share of the car's lost momentum that becomes visible trunk/crown motion
+   * when a tree fails. The rest is genuinely dissipated — splintering wood,
+   * tearing roots, deforming soil — which is why this is well below 1.
+   */
+  momentumTransferFraction: 0.26,
+  /** Share of the geometric yaw lever that becomes angular impulse. */
+  yawImpulseFraction: 0.16,
   /** Crown debris and fragments persist at most this long (seconds). */
   debrisLifetimeSeconds: 22,
 } as const;

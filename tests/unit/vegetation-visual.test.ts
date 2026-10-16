@@ -38,6 +38,9 @@ describe('vegetation destruction visuals', () => {
         dirX: 0,
         dirZ: -1,
         leanAngleRad: 0,
+        absorbedSpeed: 6.7,
+        reactionImpulseNs: 8040,
+        reactionSpeed: 7,
       },
     ]);
     const afterSnap = world.getContentStats();
@@ -68,6 +71,9 @@ describe('vegetation destruction visuals', () => {
         dirX: 0,
         dirZ: -1,
         leanAngleRad: 0,
+        absorbedSpeed: 9.3,
+        reactionImpulseNs: 11160,
+        reactionSpeed: 10,
       },
     ]);
     const afterShatter = world.getContentStats();

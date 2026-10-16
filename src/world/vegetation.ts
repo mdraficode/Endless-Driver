@@ -408,7 +408,9 @@ export class VegetationWorld {
       if (event.outcome === 'bend') {
         this.#bentAnims.set(event.key, {
           angle: this.#bentAnims.get(event.key)?.angle ?? 0,
-          velocity: 0,
+          // The trunk leaves with the reaction speed the impulse gave it:
+          // tip speed over trunk height is the initial sway rate.
+          velocity: Math.min(2.4, Math.max(0.25, event.reactionSpeed / (5 * event.scale))),
           target: event.leanAngleRad,
           dirX: event.dirX,
           dirZ: event.dirZ,
@@ -521,13 +523,22 @@ export class VegetationWorld {
     if (mesh === undefined) {
       return;
     }
-    const push = 1.5 + event.impactSpeed * 0.22;
+    // The crown carries away the reaction speed from the same impulse that
+    // slowed the car (scaled down: the crown's centre moves slower than the
+    // trunk tip speed the reaction is stated at).
+    const push = event.reactionSpeed * 0.48;
     this.#pieces.push({
       mesh,
       position: new Vector3(event.x, event.y + SNAP_HEIGHT * event.scale, event.z),
-      velocity: new Vector3(event.dirX * push, 1.7, event.dirZ * push),
+      velocity: new Vector3(
+        event.dirX * push,
+        1.25 + event.reactionSpeed * 0.05,
+        event.dirZ * push,
+      ),
       quaternion: new Quaternion().setFromAxisAngle(UP, event.rotationY),
-      angular: new Vector3(event.dirZ, 0.4, -event.dirX).multiplyScalar(1.4 + Math.random() * 1.8),
+      angular: new Vector3(event.dirZ, 0.4, -event.dirX).multiplyScalar(
+        1.1 + event.reactionSpeed * 0.12 + Math.random() * 1.4,
+      ),
       scale: event.scale,
       age: 0,
       grounded: false,
@@ -549,9 +560,9 @@ export class VegetationWorld {
           event.z + Math.sin(angle) * 0.3,
         ),
         velocity: new Vector3(
-          Math.cos(angle) * radial + event.dirX * event.impactSpeed * 0.32,
-          2.2 + Math.random() * 3.4,
-          Math.sin(angle) * radial + event.dirZ * event.impactSpeed * 0.32,
+          Math.cos(angle) * radial + event.dirX * event.reactionSpeed * 0.5,
+          2 + event.reactionSpeed * 0.16 + Math.random() * 3,
+          Math.sin(angle) * radial + event.dirZ * event.reactionSpeed * 0.5,
         ),
         quaternion: new Quaternion().setFromAxisAngle(
           new Vector3(Math.random(), Math.random(), Math.random()).normalize(),
