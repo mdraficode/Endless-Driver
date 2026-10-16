@@ -2,17 +2,14 @@ import { Group, Mesh, RepeatWrapping } from 'three';
 import { MeshStandardNodeMaterial, type Node } from 'three/webgpu';
 import {
   attribute,
-  Break,
   cameraPosition,
   clamp,
   float,
-  Fn,
-  If,
-  Loop,
   fract,
   mix,
   normalWorld,
   positionWorld,
+  select,
   sin,
   smoothstep,
   texture,
@@ -201,41 +198,45 @@ export class TerrainWorld implements SceneContent {
       // World-planar tangent frame: X/Z is the map plane, Y is up. Grazing views
       // would stretch the march without bound, so the divisor is clamped.
       const slope = viewDir.xz.div(clamp(viewDir.y, 0.22, 1));
-      const marchPom = Fn<[Node<'vec2'>, Node<'vec2'>, Node<'float'>, Node<'vec4'>], Node<'vec2'>>(
-        ([baseXz, slopeXz, fade, splatWeights]) => {
-          const heightAt = (xz: typeof baseXz) =>
-            texture(grass.height!, xz.mul(0.85))
-              .r.mul(splatWeights.x)
-              .add(texture(soil.height!, xz.mul(0.65)).r.mul(splatWeights.y))
-              .add(texture(rock.height!, xz.mul(0.22)).r.mul(splatWeights.z))
-              .add(texture(snow.height!, xz.mul(0.5)).r.mul(splatWeights.w));
-          const stepDepth = float(1).div(float(pomConfig.steps));
-          const depthNow = float(0).toVar();
-          const heightNow = heightAt(baseXz).toVar();
-          If(fade.greaterThan(0), () => {
-            Loop(pomConfig.steps, () => {
-              depthNow.assign(depthNow.add(stepDepth));
-              const sampleXz = baseXz.sub(slopeXz.mul(depthNow.mul(pomConfig.depthMeters)));
-              heightNow.assign(heightAt(sampleXz));
-              If(float(1).sub(depthNow).lessThanEqual(heightNow), () => {
-                Break();
-              });
-            });
-          });
-          // Secant refinement: interpolate the crossing between the last two layers
-          // instead of snapping to a step boundary (which bands at grazing angles).
-          const prevDepth = depthNow.sub(stepDepth);
-          const prevXz = baseXz.sub(slopeXz.mul(prevDepth.mul(pomConfig.depthMeters)));
-          const above = heightAt(prevXz).sub(float(1).sub(prevDepth));
-          const below = heightNow.sub(float(1).sub(depthNow));
-          const fraction = above.div(above.sub(below).max(0.00001)).clamp(0, 1);
-          const hitDepth = prevDepth.add(stepDepth.mul(fraction));
-          const hitXz = baseXz.sub(slopeXz.mul(hitDepth.mul(pomConfig.depthMeters)));
-          return mix(baseXz, hitXz, fade);
-        },
-        { baseXz: 'vec2', slopeXz: 'vec2', fade: 'float', splatWeights: 'vec4', return: 'vec2' },
-      );
-      wxz = marchPom(wxz, slope, pomFade, splat);
+      const heightAt = (xz: typeof wxz) =>
+        texture(grass.height!, xz.mul(0.85))
+          .r.mul(splat.x)
+          .add(texture(soil.height!, xz.mul(0.65)).r.mul(splat.y))
+          .add(texture(rock.height!, xz.mul(0.22)).r.mul(splat.z))
+          .add(texture(snow.height!, xz.mul(0.5)).r.mul(splat.w));
+      // The march is unrolled while the graph is built and the first crossing is
+      // selected arithmetically (no shader loop or function boundary): texture
+      // uniforms then stay in the main material program on both backends, which
+      // a Fn-wrapped march did not survive on WebGL2. All steps sample, so the
+      // cost is fixed — that is why this material exists only on the near ring.
+      const stepDepth = 1 / pomConfig.steps;
+      let found: Node<'float'> = float(0);
+      let hitDepth: Node<'float'> = float(1);
+      let hitHeight: Node<'float'> = float(0);
+      let prevHitDepth: Node<'float'> = float(0);
+      let prevHitHeight: Node<'float'> = heightAt(wxz);
+      let previousHeight: Node<'float'> = prevHitHeight;
+      for (let stepIndex = 1; stepIndex <= pomConfig.steps; stepIndex += 1) {
+        const depth = stepIndex * stepDepth;
+        const sampleXz = wxz.sub(slope.mul(depth * pomConfig.depthMeters));
+        const height = heightAt(sampleXz);
+        const cross = select(float(1 - depth).lessThanEqual(height), float(1), float(0));
+        const firstCross = cross.mul(float(1).sub(found));
+        found = found.add(firstCross);
+        hitDepth = mix(hitDepth, float(depth), firstCross);
+        hitHeight = mix(hitHeight, height, firstCross);
+        prevHitDepth = mix(prevHitDepth, float(depth - stepDepth), firstCross);
+        prevHitHeight = mix(prevHitHeight, previousHeight, firstCross);
+        previousHeight = height;
+      }
+      // Secant refinement: interpolate the crossing between the last two layers
+      // instead of snapping to a step boundary (which bands at grazing angles).
+      const above = prevHitHeight.sub(float(1).sub(prevHitDepth));
+      const below = hitHeight.sub(float(1).sub(hitDepth));
+      const fraction = above.div(above.sub(below).max(0.00001)).clamp(0, 1);
+      const refinedDepth = prevHitDepth.add(float(stepDepth).mul(fraction));
+      const hitXz = wxz.sub(slope.mul(refinedDepth.mul(pomConfig.depthMeters)));
+      wxz = mix(wxz, hitXz, pomFade);
     }
     const wpos = vec3(wxz.x, positionWorld.y, wxz.y);
 
