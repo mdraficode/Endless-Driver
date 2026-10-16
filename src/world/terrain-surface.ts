@@ -28,8 +28,12 @@ export interface TerrainSurfaceSample {
 }
 
 const SURFACE_IDS: readonly TerrainSurfaceId[] = ['grass', 'soil', 'rock', 'snow'];
-/** Relative grip by surface: grass holds less than the asphalt the tire model is tuned on. */
-const GRIP: readonly [number, number, number, number] = [0.8, 0.64, 0.95, 0.4];
+/**
+ * Relative grip by surface: grass holds less than the asphalt the tire model is tuned on.
+ * Soil is dry compacted dirt (~0.72-0.75 of asphalt): with soil patches now covering whole
+ * fields, the old 0.64 put a slippery grip step under the tyres at every patch edge.
+ */
+const GRIP: readonly [number, number, number, number] = [0.8, 0.74, 0.95, 0.4];
 /** Rolling resistance by surface: soft ground drinks momentum; rock barely resists. */
 const ROLLING: readonly [number, number, number, number] = [0.035, 0.05, 0.02, 0.08];
 

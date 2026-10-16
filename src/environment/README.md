@@ -10,9 +10,9 @@ tire friction.
 
 ## Implemented
 
-| File                  | Responsibility                                                                                                                                                                                                                                                                                |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `solar.ts`            | Solar position from hour, latitude, and day of year: declination, hour angle, and rotation into world axes. A pure function, accurate to well under a degree — far more than lighting needs — and therefore fully testable in Node                                                            |
+| File                  | Responsibility                                                                                                                                                                                                                                                                                    |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `solar.ts`            | Solar position from hour, latitude, and day of year: declination, hour angle, and rotation into world axes. A pure function, accurate to well under a degree — far more than lighting needs — and therefore fully testable in Node                                                                |
 | `EnvironmentClock.ts` | Owns time: wraps hours, advances them at the configured rate, and resolves a `DaylightState` — sun direction/colour/intensity, ambient fill, environment intensity, exposure, horizon tint, atmospheric scattering, sun-disc visibility. The curve math is a pure function of the sun's elevation |
 
 The clock knows nothing about rendering, and the renderer never reads the clock: the application resolves a
