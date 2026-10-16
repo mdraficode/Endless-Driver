@@ -212,7 +212,7 @@ describe('daylight curves', () => {
   it('produces colours and values the renderer can accept', () => {
     for (let hour = 0; hour < 24; hour += 0.5) {
       const state = at(hour);
-      for (const color of [state.sunColorHex, state.ambientColorHex, state.fogColorHex]) {
+      for (const color of [state.sunColorHex, state.ambientColorHex, state.horizonColorHex]) {
         expect(Number.isInteger(color)).toBe(true);
         expect(color).toBeGreaterThanOrEqual(0);
         expect(color).toBeLessThanOrEqual(0xffffff);

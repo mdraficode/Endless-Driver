@@ -33,12 +33,7 @@ describe('render configuration', () => {
   });
 
   it('uses integer colors in range', () => {
-    const colors = [
-      RENDER_CONFIG.sky.fogColorDay,
-      RENDER_CONFIG.sky.fogColorHorizon,
-      RENDER_CONFIG.lighting.ambientColor,
-      RENDER_CONFIG.lighting.sunColor,
-    ];
+    const colors = [RENDER_CONFIG.lighting.ambientColor, RENDER_CONFIG.lighting.sunColor];
     for (const color of colors) {
       expect(Number.isInteger(color)).toBe(true);
       expect(color).toBeGreaterThanOrEqual(0);
@@ -52,9 +47,8 @@ describe('render configuration', () => {
     expect(WORLD_CONFIG.ground.grid.fadeDistance).toBeLessThan(RENDER_CONFIG.camera.far);
   });
 
-  it('keeps the fog range inside the camera far plane', () => {
-    expect(RENDER_CONFIG.sky.fogFar).toBeLessThan(RENDER_CONFIG.camera.far);
-    expect(RENDER_CONFIG.sky.fogNear).toBeLessThan(RENDER_CONFIG.sky.fogFar);
+  it('keeps no fog range at all: the sky config carries no fog fields', () => {
+    expect(Object.keys(RENDER_CONFIG.sky)).toEqual(['domeScaleFactor']);
   });
 
   it('drives the atmosphere from a physically meaningful sun', () => {
@@ -73,7 +67,7 @@ describe('render configuration', () => {
   it('cascades shadows across the visible range', () => {
     const { shadows } = RENDER_CONFIG;
     expect(shadows.csm.cascades).toBeGreaterThanOrEqual(2);
-    expect(shadows.csm.maxFar).toBeGreaterThan(RENDER_CONFIG.sky.fogNear);
+    expect(shadows.csm.maxFar).toBeGreaterThan(0);
     expect(shadows.csm.maxFar).toBeLessThanOrEqual(RENDER_CONFIG.camera.far);
     expect(shadows.csm.lightMargin).toBeGreaterThan(0);
   });
@@ -144,30 +138,23 @@ describe('contact shadows and SSGI configuration', () => {
   });
 });
 
-describe('height-aware fog and god rays configuration', () => {
-  it('ships with fog completely removed', () => {
-    const { heightFog } = RENDER_CONFIG.sky;
-    expect(RENDER_CONFIG.sky.fogEnabled).toBe(false);
-    expect(heightFog.enabled).toBe(false);
-    expect(heightFog.distanceDensity).toBe(0);
-    expect(heightFog.heightDensity).toBe(0);
-    expect(heightFog.sunScatterStrength).toBe(0);
+describe('fog removal and god rays configuration', () => {
+  it('ships with fog removed from the config, not merely disabled', () => {
+    expect('fogEnabled' in RENDER_CONFIG.sky).toBe(false);
+    expect('heightFog' in RENDER_CONFIG.sky).toBe(false);
+    expect('fogNear' in RENDER_CONFIG.sky).toBe(false);
+    expect('fogFar' in RENDER_CONFIG.sky).toBe(false);
   });
 
-  it('keeps fog off at every tier', () => {
-    expect(applyTier(RENDER_CONFIG, 'C').sky.heightFog.enabled).toBe(false);
-    expect(applyTier(RENDER_CONFIG, 'B').sky.heightFog.enabled).toBe(false);
-    expect(applyTier(RENDER_CONFIG, 'A').sky.heightFog.enabled).toBe(false);
-    // A tier that only flips the switch must not lose the tuned densities to the merge.
-    expect(applyTier(RENDER_CONFIG, 'C').sky.heightFog.distanceDensity).toBe(
-      RENDER_CONFIG.sky.heightFog.distanceDensity,
-    );
+  it('keeps fog absent at every tier', () => {
+    for (const tier of ['C', 'B', 'A'] as const) {
+      expect(Object.keys(applyTier(RENDER_CONFIG, tier).sky)).toEqual(['domeScaleFactor']);
+    }
   });
 
-  it('does not let URL switches re-enable fog', () => {
-    expect(applyRenderSwitches(RENDER_CONFIG, '?hfog=1').sky.heightFog.enabled).toBe(false);
-    expect(applyRenderSwitches(RENDER_CONFIG, '?fog=on').sky.fogEnabled).toBe(false);
-    expect(applyRenderSwitches(RENDER_CONFIG, '?fog=off').sky.fogEnabled).toBe(false);
+  it('does not let URL switches resurrect fog', () => {
+    expect(applyRenderSwitches(RENDER_CONFIG, '?fog=on&hfog=1').sky).toEqual(RENDER_CONFIG.sky);
+    expect(applyRenderSwitches(RENDER_CONFIG, '?fog=off').sky).toEqual(RENDER_CONFIG.sky);
   });
 
   it('keeps the god-ray march parameters the node can consume', () => {

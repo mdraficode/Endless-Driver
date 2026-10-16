@@ -28,7 +28,7 @@ import type { SceneContent, SceneContentContext } from './WorldContent';
  *   what temporal stability and LOD popping are measured against;
  * - the slatted canopy at 600–720 m exists so god rays have shadow casters arranged for them;
  * - the volcano cone closing the view at the far end exists so aerial perspective has a subject
- *   whose correct appearance is "mostly fog colour, faintly darker than the sky";
+ *   whose correct appearance is a readable grey silhouette against the sky;
  * - the red reference block at the start line is car-sized (1.8 m), the scale and contact-shadow
  *   reference every station is framed against.
  *
@@ -245,9 +245,9 @@ function createBarriers(route: RouteConfig): Mesh {
 /**
  * Distance silhouettes: the volcano that closes the start-line view, and two nearer hills.
  *
- * Aerial perspective is judged on these. At 2.3 km the cone should be mostly fog colour with its
- * shape still readable; without height-aware fog it is a hard grey triangle, and with too much it
- * vanishes into the sky — both failures are obvious from the `start` bookmarks.
+ * Distance readability is judged on these. Fog was removed, so at 2.3 km the cone must stay a
+ * readable grey silhouette against the sky; if it vanishes, the sky/exposure - not a fog
+ * term - is the failure, and it is obvious from the `start` bookmarks.
  */
 function createLandmarks(route: RouteConfig): Group {
   const group = new Group();

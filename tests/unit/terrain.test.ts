@@ -134,6 +134,63 @@ describe('surface splat and driving response', () => {
     geometry.dispose();
   });
 
+  it('keeps snow a small patchy alpine cap, never a lowland biome', () => {
+    const sampler = createTerrainSampler(TERRAIN_CONFIG);
+    const [vx, vz] = TERRAIN_CONFIG.volcano.position;
+    // Nothing below 150 m carries any snow weight, whatever the patch field says.
+    for (let dx = -1100; dx <= 1100; dx += 55) {
+      for (let dz = -1100; dz <= 1100; dz += 55) {
+        const x = vx + dx;
+        const z = vz + dz;
+        if (sampler.heightAt(x, z) < 150) {
+          expect(sampleTerrainSurface(sampler, x, z).weights[3]).toBe(0);
+        }
+      }
+    }
+    // Across the whole volcano footprint, snow-dominant ground is a minority.
+    let total = 0;
+    let snowDominant = 0;
+    for (let dx = -1100; dx <= 1100; dx += 55) {
+      for (let dz = -1100; dz <= 1100; dz += 55) {
+        total += 1;
+        if (sampleTerrainSurface(sampler, vx + dx, vz + dz).id === 'snow') {
+          snowDominant += 1;
+        }
+      }
+    }
+    expect(snowDominant / total).toBeLessThan(0.12);
+    // And the summit itself is broken ground: snow patches beside exposed rock.
+    const summitKinds = new Set<string>();
+    for (let dx = -260; dx <= 260; dx += 40) {
+      for (let dz = -260; dz <= 260; dz += 40) {
+        const x = vx + dx;
+        const z = vz + dz;
+        if (sampler.heightAt(x, z) > 200) {
+          summitKinds.add(sampleTerrainSurface(sampler, x, z).id);
+        }
+      }
+    }
+    expect(summitKinds.has('snow')).toBe(true);
+    expect(summitKinds.has('rock')).toBe(true);
+  });
+
+  it('varies the lowland ground instead of laying one green carpet', () => {
+    const sampler = createTerrainSampler(TERRAIN_CONFIG);
+    const kinds = new Set<string>();
+    let maxRockWeight = 0;
+    for (let x = -600; x <= 700; x += 65) {
+      for (let z = -700; z <= 700; z += 65) {
+        const surface = sampleTerrainSurface(sampler, x, z);
+        kinds.add(surface.id);
+        maxRockWeight = Math.max(maxRockWeight, surface.weights[2]);
+      }
+    }
+    expect(kinds.has('grass')).toBe(true);
+    expect(kinds.has('soil')).toBe(true);
+    // Rock outcrops break crests even where grass/soil own the flats.
+    expect(maxRockWeight).toBeGreaterThan(0.25);
+  });
+
   it('drives like grass on the spawn plateau and like rock/snow on the volcano', () => {
     const sampler = createTerrainSampler(TERRAIN_CONFIG);
     const plateau = sampleTerrainSurface(sampler, 10, -10);

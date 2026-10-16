@@ -150,6 +150,11 @@ export function terrainVariationAt(config: TerrainConfig, x: number, z: number):
   return fbm(x - 811.7, z + 613.9, 260, config.seed + 991);
 }
 
+/** Finer patch field in [-1, 1): the metre-to-hectometre breaks inside a biome. */
+export function terrainPatchAt(config: TerrainConfig, x: number, z: number): number {
+  return fbm(x + 1731.3, z - 2897.7, 90, config.seed + 733);
+}
+
 export type TerrainSplatWeights = readonly [number, number, number, number];
 
 /**
@@ -164,14 +169,41 @@ export function terrainSurfaceWeights(
   config: TerrainConfig,
   height: number,
   slope: number,
+  variation = 0,
+  patch = 0,
 ): TerrainSplatWeights {
-  const rock = smoothstep(0.22, 0.42, slope);
-  const soil = smoothstep(0.07, 0.22, slope) * (1 - rock);
-  const snow =
-    smoothstep(config.snowlineMeters, config.snowlineMeters + 40, height) *
-    (1 - smoothstep(0.25, 0.45, slope));
-  const grass = Math.max(0, 1 - rock - soil - snow);
+  // Snow is a patchy alpine cap, not a biome: the effective snowline wanders
+  // with the large and fine patch fields, wind-scoured slopes expose rock
+  // early, and even well above the line only snow-favoured patches hold a
+  // full snow weight — the rest is exposed alpine rock and soil. A summit
+  // therefore reads as broken grey-brown ground with snow in its hollows,
+  // never as a uniform white sheet.
+  const effectiveSnowline = config.snowlineMeters + variation * 22 + patch * 12;
+  const altitude = smoothstep(effectiveSnowline, effectiveSnowline + 55, height);
+  const snowPatch = 0.16 + 0.84 * smoothstep(-0.25, 0.35, patch * 0.72 + variation * 0.48);
+  const snow = altitude * (1 - smoothstep(0.16, 0.36, slope)) * snowPatch;
+
+  const rockSlope = smoothstep(0.22, 0.42, slope);
+  const alpineRock = altitude * (1 - snowPatch) * 0.62;
+  const rockOutcrop =
+    smoothstep(0.15, 0.5, patch) * smoothstep(0.008, 0.035, slope) * (1 - altitude * 0.5) * 0.8;
+  const rock = Math.min(1, Math.max(rockSlope, alpineRock, rockOutcrop));
+
+  // Dry soil patches break up the flat lowland grass at hectare scale, so a
+  // field is a patchwork the car can see (and feel), not one green carpet.
+  const soilSlope = smoothstep(0.07, 0.22, slope) * (1 - rockSlope);
+  const drySoilPatch = smoothstep(0.05, 0.5, variation) * (1 - rock) * (1 - altitude) * 0.72;
+  const alpineSoil = altitude * (1 - snowPatch) * 0.22 * (1 - rock);
+  const soil = Math.min(1, Math.max(soilSlope, drySoilPatch) + alpineSoil);
+
+  // Grass fades with altitude so exposed high ground goes to rock/soil,
+  // never to green, when the snow patch field says "scoured".
+  let grass = Math.max(0, 1 - rock - soil - snow);
+  grass *= 1 - altitude * 0.65;
   const total = grass + soil + rock + snow;
+  if (total <= 1e-6) {
+    return [1, 0, 0, 0];
+  }
   return [grass / total, soil / total, rock / total, snow / total];
 }
 
@@ -192,6 +224,7 @@ export function terrainColorAt(
   variation: number,
   occlusion = 1,
   groundTint: readonly [number, number, number] = [1, 1, 1],
+  patch = 0,
 ): readonly [number, number, number] {
   // variation in [-1, 1]: patches of dry/wet ground at the hundred-metre scale.
   const grass: readonly [number, number, number] = [
@@ -201,12 +234,16 @@ export function terrainColorAt(
   ];
   const soil: readonly [number, number, number] = [0.28, 0.19, 0.11];
   const rock: readonly [number, number, number] = [0.32, 0.31, 0.3];
-  const snow: readonly [number, number, number] = [0.85, 0.87, 0.9];
+  // Blue-grey shaded snow, deliberately well below paper white: snow that
+  // sits at 0.9 luminance under a pale sky is indistinguishable from fog.
+  const snow: readonly [number, number, number] = [0.6, 0.67, 0.78];
 
   const [grassWeight, soilWeight, rockWeight, snowWeight] = terrainSurfaceWeights(
     config,
     height,
     slope,
+    variation,
+    patch,
   );
   const shade = Math.min(1.08, Math.max(0.8, occlusion));
   const color = [

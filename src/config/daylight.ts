@@ -42,7 +42,7 @@ export interface DaylightConfig {
   readonly ambientColorNight: number;
   readonly ambientColorHorizon: number;
   readonly ambientColorDay: number;
-  readonly fogColorNight: number;
+  readonly horizonColorNight: number;
 
   /** Multipliers applied to the baseline lighting config, per phase. */
   readonly ambientIntensityNight: number;
@@ -119,7 +119,7 @@ export const DAYLIGHT_CONFIG: DaylightConfig = {
   ambientColorNight: 0x1c2a44,
   ambientColorHorizon: 0x8a7f8f,
   ambientColorDay: 0xa8c2de,
-  fogColorNight: 0x0b1220,
+  horizonColorNight: 0x0b1220,
 
   ambientIntensityNight: 0.18,
   ambientIntensityDay: 1,

@@ -2,7 +2,6 @@ import {
   AmbientLight,
   Color,
   DirectionalLight,
-  Fog,
   Mesh,
   PerspectiveCamera,
   Scene,
@@ -15,8 +14,6 @@ import {
 import { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
-import type { Node } from 'three/webgpu';
-import { createHeightFog, type HeightFog } from '../shaders/height-fog';
 import {
   loadEnvironmentAsset,
   loadHdrTexture,
@@ -41,7 +38,7 @@ export interface SceneManagerOptions {
   readonly aspect: number;
   /**
    * What occupies the scene. Defaults to the driving world; the studio look-dev scene passes its
-   * own material grid. Given the same environment either way — the lighting, shadows, and fog are
+   * own material grid. Given the same environment either way — the lighting and shadows are
    * not the content's business.
    */
   readonly content?: SceneContentFactory;
@@ -64,7 +61,8 @@ export interface SceneDiagnostics {
   /** Flat numeric content stats (terrain chunk counts, triangles, build budget usage). */
   readonly contentStats: Readonly<Record<string, number>>;
   /** Which distance-cueing model the frame used: height-aware, the linear band, or none. */
-  readonly fogMode: 'height' | 'linear' | 'off';
+  /** Fog was removed completely; this stays in diagnostics so a capture can prove it. */
+  readonly fogMode: 'off';
   /** Sun elevation in degrees, or `null` before the first daylight update. */
   readonly sunElevationDegrees: number | null;
   readonly isNight: boolean;
@@ -84,7 +82,7 @@ const DEG_TO_RAD = Math.PI / 180;
  * Phase 3 responsibilities:
  * - the sky is a Preetham atmosphere model (`SkyMesh`, TSL) instead of a hand-written gradient
  *   shader, so the horizon, sun disc, and cloud layer respond to the same sun direction the shadow
- *   camera and the fog colour use;
+ *   camera uses;
  * - image-based lighting comes from a verified CC0 HDRI resolved through the asset manifest, so the
  *   scene reflects a real captured environment while remaining licence-auditable;
  * - shadows are cascaded (`CSMShadowNode`) so the car keeps a crisp shadow at distance without the
@@ -113,8 +111,6 @@ export class SceneManager {
   #content: SceneContent;
   #worldOffsetX = 0;
   #worldOffsetZ = 0;
-  readonly #fog: Fog | null;
-  readonly #heightFog: HeightFog | null;
   readonly #godraysLight: DirectionalLight | null;
   readonly #addedObjects = new Set<Object3D>();
   readonly #disposables: readonly (() => void)[];
@@ -132,24 +128,10 @@ export class SceneManager {
     this.#config = config;
     this.#sunDistance = config.lighting.sunDistance;
     this.scene = new Scene();
-    /**
-     * Distance cueing, in one of two models. The height-aware term is a `scene.fogNode` — it is
-     * evaluated inside every material's fragment stage, so it tints lit colour rather than
-     * washing the finished frame, and both backends compile the same TSL. The linear band is
-     * kept for the tier that cannot afford the world-space varying (and for `?hfog=0`
-     * comparisons against exactly what the height term replaced).
-     */
-    this.#heightFog =
-      config.sky.fogEnabled && config.sky.heightFog.enabled ? createHeightFog(config.sky) : null;
-    if (this.#heightFog !== null) {
-      (this.scene as Scene & { fogNode?: Node<'vec4'> }).fogNode = this.#heightFog.node;
-      this.#fog = null;
-    } else {
-      this.#fog = config.sky.fogEnabled
-        ? new Fog(resolveFogColor(config), config.sky.fogNear, config.sky.fogFar)
-        : null;
-      this.scene.fog = this.#fog;
-    }
+    // No fog is created here - not disabled, absent. Distance fog and the
+    // height-fog node were deleted (owner direction, 2026-10-16): the scene
+    // has no `fog` and no `fogNode`, and nothing downstream can re-add one
+    // through configuration or URL switches.
 
     this.camera = new PerspectiveCamera(
       config.camera.fov,
@@ -390,19 +372,16 @@ export class SceneManager {
     return this.#godraysLight;
   }
 
-  /** Which distance-cueing model is active, for diagnostics. */
-  get fogMode(): 'height' | 'linear' | 'off' {
-    if (this.#heightFog !== null) {
-      return 'height';
-    }
-    return this.#fog !== null ? 'linear' : 'off';
+  /** Fog was removed completely; diagnostics keep reporting the proof. */
+  get fogMode(): 'off' {
+    return 'off';
   }
 
   /**
    * Applies a resolved time of day to everything the scene owns.
    *
    * One call, one source of truth: the sun's direction, colour, and strength, the ambient fill, the
-   * atmosphere's scattering and sun disc, the fog tint, and the intensity of the image-based
+   * atmosphere's scattering and sun disc, and the intensity of the image-based
    * lighting all come from the same `DaylightState`. Nothing recomputes the sun separately, so the
    * sky, the shadows, and the light on the car can never disagree about where the sun is.
    *
@@ -434,25 +413,6 @@ export class SceneManager {
     this.#sky.rayleigh.value = state.rayleigh;
     this.#sky.showSunDisc.value = state.showSunDisc ? 1 : 0;
 
-    this.#fog?.color.setHex(state.fogColorHex);
-    if (this.#heightFog !== null) {
-      const { uniforms } = this.#heightFog;
-      const heightFogConfig = this.#config.sky.heightFog;
-      // The haze thickens with the atmosphere's own turbidity curve, which peaks in the horizon
-      // band — dawn mist is the same fact stated in the sky model's language.
-      const densityScale = state.turbidity / Math.max(0.001, this.#config.atmosphere.turbidity);
-      uniforms.fogColour.value.setHex(state.fogColorHex);
-      // Pre-scaled by intensity: at night the sun contributes nothing to scatter, so the lobe
-      // switches itself off rather than needing a second gate in the shader.
-      uniforms.sunColour.value.setHex(state.sunColorHex).multiplyScalar(state.sunIntensity);
-      uniforms.sunDirection.value.set(
-        state.sunDirection.x,
-        state.sunDirection.y,
-        state.sunDirection.z,
-      );
-      uniforms.distanceDensity.value = heightFogConfig.distanceDensity * densityScale;
-      uniforms.heightDensity.value = heightFogConfig.heightDensity * densityScale;
-    }
     this.scene.environmentIntensity = state.environmentIntensity;
     if (this.scene.background !== null) {
       this.scene.backgroundIntensity = state.environmentIntensity;
@@ -620,23 +580,6 @@ function createGodraysLight(config: RenderConfig): DirectionalLight {
   light.shadow.normalBias = config.shadows.normalBias;
   light.target.name = 'godrays-sun-target';
   return light;
-}
-
-/**
- * Fog colour for the configured sun elevation.
- *
- * Fog is what hides the end of the render distance, so it has to match the sky it is seen against: a
- * warm, hazy tint near the horizon at low sun, a cooler blue once the sun is high. Interpolating
- * between two endpoints keeps this a two-line rule while still being driven by the same sun the sky
- * and the shadows use - when a later phase animates the sun, this follows for free.
- */
-function resolveFogColor(config: RenderConfig): Color {
-  const [, sunY] = config.lighting.sunPosition;
-  const length = Math.hypot(...config.lighting.sunPosition);
-  const elevation = length > 0 ? sunY / length : 1;
-  // 0 at the horizon, 1 once the sun is well up.
-  const blend = Math.min(1, Math.max(0, (elevation - 0.08) / 0.35));
-  return new Color(config.sky.fogColorHorizon).lerp(new Color(config.sky.fogColorDay), blend);
 }
 
 /**

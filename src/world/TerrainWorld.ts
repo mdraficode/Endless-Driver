@@ -255,7 +255,10 @@ export class TerrainWorld implements SceneContent {
     const grassLuma = grassRaw.dot(vec3(0.299, 0.587, 0.114));
     const grassAlbedo = mix(vec3(grassLuma), grassRaw, float(1.45)).mul(vec3(0.74, 1.12, 0.62));
     const soilAlbedo = texture(soil.diffuse, wxz.mul(0.65)).rgb;
-    const snowAlbedo = texture(snow.diffuse, wxz.mul(0.5)).rgb;
+    // Shaded blue-grey grade: raw scanned snow under this sun sits near paper
+    // white and reads as fog against the pale horizon. The scan's sparkle and
+    // trample detail survive; only the luminance comes down.
+    const snowAlbedo = texture(snow.diffuse, wxz.mul(0.5)).rgb.mul(vec3(0.62, 0.7, 0.86));
     // Rock triplanar: three projections blended by the world normal, so a cliff face
     // samples the scan across its own plane instead of smearing the top-down tile.
     const axis = normalWorld.abs();

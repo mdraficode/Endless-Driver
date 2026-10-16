@@ -161,9 +161,6 @@ export function applyTier(base: RenderConfig, tier: TierId): RenderConfig {
     sky: {
       ...base.sky,
       ...overrides.sky,
-      // Nested like the cascade config: a tier that only switches the height term off must not
-      // have to restate its densities, and a field it forgets would silently become `undefined`.
-      heightFog: { ...base.sky.heightFog, ...overrides.sky?.heightFog },
     },
     atmosphere: {
       ...base.atmosphere,

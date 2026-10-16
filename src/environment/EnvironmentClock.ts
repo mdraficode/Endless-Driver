@@ -9,7 +9,7 @@ import { solarPosition, toDegrees, type SunPosition } from './solar';
  * - `EnvironmentClock` owns *time* — it wraps hours, advances them at the configured rate, and asks
  *   `solar.ts` where the sun is. It knows nothing about lighting.
  * - `resolveDaylight()` turns a sun position into every value the renderer needs — light colour and
- *   intensity, ambient, environment intensity, exposure, fog tint, atmospheric scattering, sun-disc
+ *   intensity, ambient, environment intensity, exposure, horizon tint, atmospheric scattering, sun-disc
  *   visibility. It is a pure function, so the whole look of the sky at 06:20 is testable in Node.
  *
  * The scene never reads the clock directly: the application resolves a `DaylightState` once per
@@ -37,7 +37,7 @@ export interface DaylightState {
   readonly ambientIntensity: number;
   readonly environmentIntensity: number;
   readonly exposure: number;
-  readonly fogColorHex: number;
+  readonly horizonColorHex: number;
 
   readonly turbidity: number;
   readonly rayleigh: number;
@@ -234,7 +234,7 @@ export function resolveDaylight(sun: SunPosition, config: DaylightConfig): Dayli
   // The sun light fades to nothing through twilight; below that only the ambient and environment
   // light survives, which is what makes dusk read as dusk rather than as a dimmed noon.
   const sunIntensity = dayFactor;
-  const fogColorHex = mixColor(config.fogColorNight, config.ambientColorDay, dayFactor);
+  const horizonColorHex = mixColor(config.horizonColorNight, config.ambientColorDay, dayFactor);
 
   return {
     sunDirection: sun.direction,
@@ -258,7 +258,7 @@ export function resolveDaylight(sun: SunPosition, config: DaylightConfig): Dayli
       dayFactor,
     ),
     exposure: mix(config.exposureNight, config.exposureDay, dayFactor),
-    fogColorHex,
+    horizonColorHex,
 
     turbidity: phased(
       config.turbidityNight,

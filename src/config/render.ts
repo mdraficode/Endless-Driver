@@ -92,67 +92,23 @@ export interface CameraConfig {
 }
 
 /**
- * Procedural sky and distance fog.
+ * Procedural sky.
  *
  * The visible sky is a Preetham sky model (`SkyMesh`) driven by `AtmosphereConfig`, so there are no
- * zenith/horizon color constants any more: the model derives them from the sun position. Fog color
- * is still configured, as two endpoints the scene interpolates by sun elevation so the fogged
- * distance always matches the sky it is seen against.
+ * zenith/horizon color constants any more: the model derives them from the sun position.
+ *
+ * There is deliberately no fog configuration here. Distance fog and height
+ * fog were removed completely (owner direction, 2026-10-16, after repeated
+ * "the screen is foggy" reports): the scene creates no `Fog`, installs no
+ * `fogNode`, and no tier or URL switch can bring either back. Distance is
+ * read from geometry, texture, and shadow - never from a white wash.
  */
 export interface SkyConfig {
-  readonly fogEnabled: boolean;
-  readonly fogNear: number;
-  readonly fogFar: number;
-  /** Fog tint at high sun. */
-  readonly fogColorDay: number;
-  /** Fog tint as the sun approaches the horizon, warmer and hazier. */
-  readonly fogColorHorizon: number;
-  /**
-   * Height-aware aerial perspective, replacing the linear distance fog when enabled.
-   *
-   * A distance band (`fogNear`/`fogFar` above) can only say "far is hazy". Real distance cues
-   * are three separate facts, and this is the config for all three: density that grows with
-   * distance, density that pools in low places and thins with height, and in-scattered light
-   * that brightens towards the sun — which is why a valley at dawn is a glowing bowl while the
-   * ridge above it is clear. Implemented as a TSL `scene.fogNode`
-   * (`src/shaders/height-fog.ts`), so it applies inside each material's lighting rather than as
-   * a post-process wash, and both renderer backends compile the same graph.
-   */
-  readonly heightFog: HeightFogConfig;
   /**
    * Sky dome scale as a multiple of the camera far plane. The dome follows the camera, so it must
    * stay inside the far plane (its corners included) to never be clipped.
    */
   readonly domeScaleFactor: number;
-}
-
-export interface HeightFogConfig {
-  readonly enabled: boolean;
-  /**
-   * Exponential distance density. The fog factor is `1 - exp(-(density x distance)^2)`, so this
-   * is roughly "one over the distance at which the air turns opaque": the shipped 0.0006 puts
-   * that near 1.7 km. Owner feedback twice (2026-10-15/16): 0.0014 (~700 m) and even 0.00085
-   * read as "hazy and foggy" — an A/B with fog fully off showed the remaining wash is mostly
-   * the bright horizon sky + bloom bleed + exposure, which is why those moved in the same
-   * retune (bloom threshold 1.5, exposure 0.94) rather than the fog alone thinning further.
-   */
-  readonly distanceDensity: number;
-  /**
-   * Extra density below `heightMeters`. Fragments under the height threshold are fogged by
-   * how far below it they sit multiplied by their distance - the valley-haze term. Ridges above
-   * the threshold get none of it, which is the entire point.
-   */
-  readonly heightDensity: number;
-  /** World height in metres below which the height term applies. */
-  readonly heightMeters: number;
-  /**
-   * Strength of the sun-facing brightening, 0-1: how far the fog colour travels towards the
-   * sun's colour when the camera looks into the light. This forward-scatter lobe is the cue
-   * that makes low sun read as *in* the air rather than behind it.
-   */
-  readonly sunScatterStrength: number;
-  /** Tightness of the scatter lobe; higher values concentrate it nearer the sun disc. */
-  readonly sunScatterPower: number;
 }
 
 /** Preetham atmospheric scattering parameters plus the optional cloud layer. */
@@ -626,27 +582,6 @@ export const RENDER_CONFIG: RenderConfig = {
     },
   },
   sky: {
-    // No fog in gameplay (owner direction, 2026-10-16): the distance and
-    // height terms are disabled and zero-density at the baseline, so every
-    // tier renders the world with no atmospheric wash. The switches below
-    // are forced off in applyRenderSwitches too: a URL cannot re-enable it.
-    fogEnabled: false,
-    fogNear: 140,
-    fogFar: 760,
-    fogColorDay: 0x9ec6ea,
-    fogColorHorizon: 0xe8b98a,
-    heightFog: {
-      enabled: false,
-      distanceDensity: 0,
-      // Small, deliberately: the height factor multiplies depth-below-threshold by distance, so
-      // it grows quadratically along the view ray - at 0.00035 it had already saturated by
-      // 200 m and the whole route rendered as fog colour. At this value the valley floor is
-      // ~5% hazed at 300 m and ~50% at 1.2 km, while slopes above the threshold stay clear.
-      heightDensity: 0,
-      heightMeters: 12,
-      sunScatterStrength: 0,
-      sunScatterPower: 6,
-    },
     domeScaleFactor: 1.05,
   },
   atmosphere: {
@@ -962,24 +897,10 @@ export function applyRenderSwitches(config: RenderConfig, search: string): Rende
         : params.has('debug'),
   };
 
-  const sky = {
-    ...config.sky,
-    // Fog is removed from gameplay: URL switches cannot turn it back on.
-    fogEnabled: false,
-    heightFog: {
-      ...config.sky.heightFog,
-      enabled: false,
-      distanceDensity: 0,
-      heightDensity: 0,
-      sunScatterStrength: 0,
-    },
-  };
-
   return {
     ...config,
     diagnostics,
     renderer,
-    sky,
     atmosphere: {
       ...config.atmosphere,
       clouds: {

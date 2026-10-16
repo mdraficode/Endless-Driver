@@ -8,8 +8,8 @@ import { RENDER_CONFIG, type RenderConfig } from '../config/render';
 import { ROAD_NETWORK_CONFIG } from '../config/roads';
 import { ORIGIN_CONFIG } from '../config/origin';
 import { TERRAIN_CONFIG } from '../config/terrain';
-import { VEHICLE_CONFIG } from '../config/vehicle';
 import { WORLD_CONFIG, type WorldConfig } from '../config/world';
+import { resolveSpawnPoint, type SpawnPoint } from '../config/spawns';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
 import type { TerrainSampler } from '../world/terrain-height';
 import { OriginManager } from '../world/origin';
@@ -54,6 +54,10 @@ export interface ApplicationOptions {
   readonly tier?: TierResolution;
   /** Time-of-day options; the entrypoint forwards the `?time=` debug switch through this. */
   readonly clock?: EnvironmentClockOptions | undefined;
+  /** Pinned session start (`?spawn=<id>`); omit for the per-session random pick. */
+  readonly spawnId?: string;
+  /** Random source for the session spawn pick; injectable for tests/captures. */
+  readonly spawnRandom?: () => number;
 }
 
 type StatusTone = 'info' | 'error';
@@ -130,6 +134,8 @@ export class Application {
   readonly #origin = new OriginManager(ORIGIN_CONFIG);
   /** Vegetation collision/destruction truth (visuals mirror it via the scene). */
   readonly #treeField: TreeCollisionField;
+  /** This session's start: chosen once, and where the reset key returns to. */
+  readonly #spawn: SpawnPoint & { readonly position: readonly [number, number, number] };
 
   constructor(options: ApplicationOptions) {
     this.#config = options.config ?? RENDER_CONFIG;
@@ -140,6 +146,18 @@ export class Application {
     const terrainSampler = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
     this.#terrainSampler = terrainSampler;
     this.#treeField = new TreeCollisionField(terrainSampler);
+    // One start per session, picked from the curated district starts (a
+    // pinned `?spawn=<id>` wins). The car must never always wake up on the
+    // same meadow again.
+    const spawnPoint = resolveSpawnPoint(options.spawnId, (options.spawnRandom ?? Math.random)());
+    this.#spawn = {
+      ...spawnPoint,
+      position: [
+        spawnPoint.x,
+        terrainSampler.heightAt(spawnPoint.x, spawnPoint.z) + 0.7,
+        spawnPoint.z,
+      ],
+    };
     this.#engine = new Engine({ canvas: options.canvas, config: this.#config });
     this.#scene = new SceneManager({
       canvas: options.canvas,
@@ -159,6 +177,8 @@ export class Application {
     this.#car = new Car({
       rapier: options.rapier,
       physics: this.#physics,
+      spawnPosition: this.#spawn.position,
+      spawnYaw: this.#spawn.yaw,
       // The car asks the physics world what it stands on; the answer comes from the same
       // terrain weights the renderer blends, so grip follows looks by construction.
       surfaceProvider: (x, z) => this.#physics.surfaceAt(x, z),
@@ -454,6 +474,8 @@ export class Application {
       skyMode: scene.skyMode,
       environmentId: scene.environmentId,
       fogMode: scene.fogMode,
+      spawnId: this.#spawn.id,
+      spawnLabel: this.#spawn.label,
       framesPerSecond: statistics.averageFramesPerSecond,
       minimumFramesPerSecond: statistics.minimumFramesPerSecond,
       averageFrameTimeMilliseconds: statistics.averageFrameTimeMilliseconds,
@@ -537,7 +559,7 @@ export class Application {
       this.toggleCameraMode();
     }
     if (commands.reset) {
-      const spawn = VEHICLE_CONFIG.spawn;
+      const spawn = this.#spawn;
       this.#car.reset(
         [
           spawn.position[0] - this.#origin.offset.x,

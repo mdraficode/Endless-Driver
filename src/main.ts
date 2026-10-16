@@ -49,6 +49,11 @@ function readTimeRequest(search: string): number | null {
  * the scene manager, the lighting, and the post chain, which is what makes them honest places to judge
  * what the game will look like.
  */
+function readSpawnRequest(search: string): string | undefined {
+  const id = new URLSearchParams(search).get('spawn');
+  return id === null || id === '' ? undefined : id;
+}
+
 function readSceneRequest(search: string): 'drive' | 'studio' | 'props' | 'route' {
   const scene = new URLSearchParams(search).get('scene');
   if (scene === 'studio' || scene === 'props' || scene === 'route') {
@@ -186,6 +191,7 @@ async function startDrivingScene(): Promise<void> {
     const { config, tier } = resolveRenderConfig();
 
     const startHour = readTimeRequest(window.location.search);
+    const spawnId = readSpawnRequest(window.location.search);
     const options: ApplicationOptions = {
       canvas,
       rapier,
@@ -195,6 +201,7 @@ async function startDrivingScene(): Promise<void> {
       worldConfig: WORLD_CONFIG,
       tier,
       clock: startHour === null ? undefined : { startHour },
+      ...(spawnId === undefined ? {} : { spawnId }),
     };
 
     application = new Application(options);

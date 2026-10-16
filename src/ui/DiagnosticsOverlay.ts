@@ -59,8 +59,12 @@ export interface DiagnosticsSnapshot {
   readonly skyMode: 'procedural' | 'hdri';
   /** Manifest id of the HDRI lighting the scene, or `null` when only the sun lights it. */
   readonly environmentId: string | null;
-  /** Active distance-cueing model; gameplay ships with fog removed, so this must read `off`. */
-  readonly fogMode: 'height' | 'linear' | 'off';
+  /** Fog was removed completely, so this must always read `off`. */
+  readonly fogMode: 'off';
+  /** Session start id (`home-meadow`, `Kiri-cedar`, ...), picked per load. */
+  readonly spawnId: string;
+  /** Player-facing name of that start, e.g. `Kiri Pass`. */
+  readonly spawnLabel: string;
   readonly pixelRatio: number;
   readonly viewport: { readonly width: number; readonly height: number };
   readonly cameraPosition: { readonly x: number; readonly y: number; readonly z: number };
@@ -194,6 +198,10 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
     label: 'Tier',
     format: (snapshot) =>
       `${snapshot.qualityTier} · ${snapshot.tierReason.replace('-', ' ')} · ${snapshot.shadowCascades}x shadow`,
+  },
+  {
+    label: 'Start',
+    format: (snapshot) => snapshot.spawnLabel,
   },
   {
     label: 'Renderer',

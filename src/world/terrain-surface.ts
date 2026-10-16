@@ -1,5 +1,10 @@
 import { ROAD_NETWORK_CONFIG } from '../config/roads';
-import { terrainSurfaceWeights, type TerrainSampler } from './terrain-height';
+import {
+  terrainPatchAt,
+  terrainSurfaceWeights,
+  terrainVariationAt,
+  type TerrainSampler,
+} from './terrain-height';
 
 /**
  * The driving surface at a point: what the ground is made of, for the tire model.
@@ -57,7 +62,13 @@ export function sampleTerrainSurface(
   const { config } = sampler;
   const height = sampler.heightAt(x, z);
   const normal = sampler.normalAt(x, z);
-  const weights = terrainSurfaceWeights(config, height, 1 - normal.y);
+  const weights = terrainSurfaceWeights(
+    config,
+    height,
+    1 - normal.y,
+    terrainVariationAt(config, x, z),
+    terrainPatchAt(config, x, z),
+  );
   let dominant = 0;
   for (let index = 1; index < 4; index += 1) {
     if ((weights[index] ?? 0) > (weights[dominant] ?? 0)) {

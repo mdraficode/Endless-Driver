@@ -10,7 +10,7 @@ phases) vehicle, world, and weather parameters.
 ## Implemented
 
 - `render.ts` — Phase 1 render configuration: pixel-ratio cap (2), frame-delta clamp, camera/debug
-  camera setup, shadow map and sun parameters, sky gradient colors, fog range, ground/grid, reference
+  camera setup, shadow map and sun parameters, sky, ground/grid, reference
   props, and diagnostics cadence.
 
 ## Planned work

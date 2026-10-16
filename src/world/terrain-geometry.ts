@@ -2,6 +2,7 @@ import { BufferAttribute, BufferGeometry } from 'three';
 
 import {
   terrainColorAt,
+  terrainPatchAt,
   terrainSurfaceWeights,
   terrainVariationAt,
   type TerrainSampler,
@@ -108,12 +109,13 @@ export function buildChunkGeometryData(
       (step * step);
     const occlusion = Math.min(1.05, Math.max(0.84, 1 - laplacian * 1.1));
     const variation = terrainVariationAt(config, x, z);
+    const patch = terrainPatchAt(config, x, z);
     const districtTint = groundTintAt(x, z);
-    const color = terrainColorAt(config, height, 1 - ny, variation, occlusion, districtTint);
+    const color = terrainColorAt(config, height, 1 - ny, variation, occlusion, districtTint, patch);
     districts[index * 3] = districtTint[0];
     districts[index * 3 + 1] = districtTint[1];
     districts[index * 3 + 2] = districtTint[2];
-    const weights = terrainSurfaceWeights(config, height, 1 - ny);
+    const weights = terrainSurfaceWeights(config, height, 1 - ny, variation, patch);
     positions[index * 3] = x;
     positions[index * 3 + 1] = yOverride ?? height;
     positions[index * 3 + 2] = z;

@@ -136,7 +136,7 @@ describe('applying a tier', () => {
     const c = applyTier(RENDER_CONFIG, 'C');
     expect(c.camera).toEqual(RENDER_CONFIG.camera);
     expect(c.lighting).toEqual(RENDER_CONFIG.lighting);
-    expect(c.sky.fogFar).toBe(RENDER_CONFIG.sky.fogFar);
+    expect(c.sky).toEqual(RENDER_CONFIG.sky);
     expect(c.diagnostics).toEqual(RENDER_CONFIG.diagnostics);
   });
 
@@ -147,8 +147,6 @@ describe('applying a tier', () => {
     for (const tier of TIER_ORDER) {
       const config = applyTier(RENDER_CONFIG, tier);
       expect(config.camera.near).toBeLessThan(config.camera.far);
-      expect(config.sky.fogNear).toBeLessThan(config.sky.fogFar);
-      expect(config.sky.fogFar).toBeLessThan(config.camera.far);
       expect(config.shadows.cameraNear).toBeLessThan(config.shadows.cameraFar);
       expect(config.shadows.csm.maxFar).toBeLessThanOrEqual(config.camera.far);
       expect(config.shadows.csm.cascades).toBeGreaterThanOrEqual(1);

@@ -8,7 +8,7 @@ import type { TownCarProbe, TownHit } from './town';
 /**
  * The scene's *content* — everything that is not environment.
  *
- * `SceneManager` owns the environment: sky, sun, ambient fill, fog, cascaded shadows, the HDRI, and
+ * `SceneManager` owns the environment: sky, sun, ambient fill, cascaded shadows, the HDRI, and
  * the camera. What is *in* that environment is pluggable, because the project needs more than one
  * answer to that question:
  *

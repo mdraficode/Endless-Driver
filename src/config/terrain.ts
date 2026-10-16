@@ -59,7 +59,11 @@ export interface TerrainConfig {
     readonly flatRadiusMeters: number;
     readonly blendRadiusMeters: number;
   };
-  /** Snowline: above this height the splat blends to snow/rock pale. */
+  /**
+   * Snowline: above this height the splat *starts* to hold snow, in patches.
+   * Kept high (the volcano peak is 300 m) so snow stays a small alpine cap on
+   * Hinode-dake rather than a biome: most of the prefecture never sees it.
+   */
   readonly snowlineMeters: number;
   /**
    * Near-tier parallax occlusion (Phase 4): the closest LOD ring raymarches the
@@ -100,6 +104,6 @@ export const TERRAIN_CONFIG: TerrainConfig = {
     flatRadiusMeters: 45,
     blendRadiusMeters: 110,
   },
-  snowlineMeters: 170,
+  snowlineMeters: 190,
   pom: { steps: 12, depthMeters: 0.09, fadeStartMeters: 16, fadeEndMeters: 42 },
 };

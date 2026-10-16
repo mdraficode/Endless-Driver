@@ -27,7 +27,6 @@ import type {
   EnvironmentConfig,
   FilmGrainConfig,
   GodraysConfig,
-  HeightFogConfig,
   LightingConfig,
   PostProcessingConfig,
   RendererConfig,
@@ -52,9 +51,7 @@ export interface TierRenderOverrides {
   readonly maxPixelRatio?: number;
   readonly renderer?: Partial<RendererConfig>;
   readonly shadows?: Partial<Omit<ShadowConfig, 'csm'>> & { readonly csm?: Partial<CsmConfig> };
-  readonly sky?: Partial<Omit<SkyConfig, 'heightFog'>> & {
-    readonly heightFog?: Partial<HeightFogConfig>;
-  };
+  readonly sky?: Partial<SkyConfig>;
   readonly atmosphere?: Partial<Omit<AtmosphereConfig, 'clouds'>> & {
     readonly clouds?: Partial<CloudConfig>;
   };
@@ -140,12 +137,6 @@ const TIER_C: TierDefinition = {
     atmosphere: {
       clouds: { enabled: false },
     },
-    sky: {
-      // The linear distance band stays on this tier: the height-aware term costs a world-space
-      // varying and three exponentials per fragment, and on the hardware tier C exists for that
-      // budget buys resolution instead. The distance cue is not lost, only simpler.
-      heightFog: { enabled: false },
-    },
     environment: {
       // The HDRI lights and reflects; it is never the visible backdrop. A garden photo
       // behind open terrain reads as a diorama at every tier, and the procedural sky is
@@ -217,12 +208,6 @@ const TIER_B: TierDefinition = {
     },
     environment: {
       useAsBackground: false,
-    },
-    sky: {
-      // No valley height fog on the gameplay tiers (owner report, 2026-10-16):
-      // it read as permanent fog on desktop. Tier A keeps it as the opt-in
-      // cinematic tier; the linear distance term stays everywhere.
-      heightFog: { enabled: false },
     },
     postProcessing: {
       antiAliasing: 'taa',

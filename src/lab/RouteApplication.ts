@@ -53,7 +53,7 @@ export interface RouteDiagnostics {
   readonly tierReason: string;
   readonly rendererBackend: string | null;
   readonly postEffects: readonly string[];
-  readonly fogMode: 'height' | 'linear' | 'off';
+  readonly fogMode: 'off';
   readonly look: string | null;
   readonly focusDistance: number | null;
   readonly renderScale: number | null;
