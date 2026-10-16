@@ -1284,3 +1284,30 @@ grade, bloom, lut, chromaticAberration, sharpen, vignette` — no
   ground differs too (worker transferables 6→7). Snowline 150→170 m
   shrinks the volcano cap; shoulder gravel darkened a step. District
   brow captures verify zero errors and visibly different ground/vegetation.
+
+## 42. Fog removed completely (2026-10-16)
+
+Owner clarified that the perceived white/foggy wash should not merely be
+thinned: the fog effect is to be removed completely so the gameplay view
+stays clear. That supersedes the earlier fog-density passes.
+
+- **No fog is created in gameplay**: the baseline now ships with
+  `sky.fogEnabled: false` and `sky.heightFog.enabled: false`; the height
+  fog's distance density, height density, and sun-scatter strength are all
+  zero. Tier resolution therefore leaves fog off on C, B, and A.
+- **URL switches cannot turn it back on**: `applyRenderSwitches` forces
+  both fog switches off, ignoring attempts such as `?fog=on` or
+  `?hfog=1`.
+- **The state is observable**: the application diagnostics now expose
+  `fogMode`, sourced from the scene. Under the shipped configuration the
+  scene creates neither the linear `Fog` nor the height-fog node, so this
+  must read `off`.
+- **Proof at the owner's tier**: a tier-B browser run with
+  `?tier=B&debug=1&fog=on&hfog=1` still reported `fogMode: "off"`, Far
+  view at 70°, and zero page/console errors. A tier-C field capture also
+  completed with zero errors and showed the road and vegetation continuing
+  to the horizon; the pale band at the top of that capture is the sky
+  itself, not scene fog. Fog removal is in `1c3fac2`; diagnostics exposure
+  is in `f3c10aa`.
+- **Full verification**: unfiltered `npm run check` passed with 413/413
+  tests, asset verification, and the production build.
