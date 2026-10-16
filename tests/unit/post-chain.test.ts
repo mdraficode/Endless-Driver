@@ -292,11 +292,13 @@ describe('depth of field and the look', () => {
     expect(resolvePostEffects(tierC)).toContain('lut');
   });
 
-  it('keeps depth of field on above the constrained tier', () => {
-    for (const tier of ['B', 'A'] as const) {
+  it('keeps depth of field off at every tier during gameplay', () => {
+    // Gameplay legibility beats the bokeh: distant road must stay readable.
+    // Photo mode (Phase 8) is where DOF returns.
+    for (const tier of ['C', 'B', 'A'] as const) {
       const config = applyTier(RENDER_CONFIG, tier);
-      expect(config.postProcessing.depthOfField.enabled).toBe(true);
-      expect(resolvePostEffects(config)).toContain('dof');
+      expect(config.postProcessing.depthOfField.enabled).toBe(false);
+      expect(resolvePostEffects(config)).not.toContain('dof');
     }
   });
 });

@@ -638,9 +638,9 @@ export const RENDER_CONFIG: RenderConfig = {
       // it grows quadratically along the view ray - at 0.00035 it had already saturated by
       // 200 m and the whole route rendered as fog colour. At this value the valley floor is
       // ~5% hazed at 300 m and ~50% at 1.2 km, while slopes above the threshold stay clear.
-      heightDensity: 0.000022,
+      heightDensity: 0.000012,
       heightMeters: 12,
-      sunScatterStrength: 0.34,
+      sunScatterStrength: 0.3,
       sunScatterPower: 6,
     },
     domeScaleFactor: 1.05,
@@ -689,7 +689,12 @@ export const RENDER_CONFIG: RenderConfig = {
       size: 17,
     },
     depthOfField: {
-      enabled: true,
+      // OFF for gameplay (owner report, 2026-10-16): a 12 m focus with full blur
+      // beyond ~26 m made every distant road unreadable on the desktop tiers —
+      // and the Far chase view pushed even more of the frame past the blur line.
+      // The effect stays implemented for photo mode (Phase 8), where a frozen
+      // frame is exactly what it is for.
+      enabled: false,
       focusDistance: 12,
       // 20 m of falloff. The number that matters is not taste but *where the player is looking*: the
       // chase camera sits about 6.7 m behind the car, and everything past focus + falloff is fully
@@ -711,7 +716,7 @@ export const RENDER_CONFIG: RenderConfig = {
     motionBlur: {
       enabled: true,
       samples: 12,
-      intensity: 1,
+      intensity: 0.55,
     },
     temporalAntiAliasing: {
       enabled: true,
