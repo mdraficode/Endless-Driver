@@ -1129,3 +1129,26 @@ distanceDensity 0.00085→0.0006 (opaque ~1.7 km), valley heightDensity
 1→0.94. Note: two captures black-framed with "WebGPU device lost" — sandbox
 RAM pressure (2 GB, duplicate preview servers), not a game regression; clean
 after cleanup, zero errors. 403 tests green.
+
+## 35. Phase 4 Increment 5b — Yūhi Town buildings + roadside poles (2026-10-16)
+
+The town is a deterministic function of the map, like the forest
+(`src/config/town.ts`, `src/world/town.ts`): 107 buildings on a jittered
+24 m plot grid inside the Yūhi Town district (≥12 m from road centrelines,
+slope-gated, no tree swallowed, fronts the nearest street) across three
+archetypes (house/shop/tall) instanced as walls+roofs sharing transforms;
+137 utility poles walking every road edge at 38 m spacing / 7.2 m offset,
+alternating sides, 12 m clear of junctions. Collision shares the trees'
+response (`applyCollisionResponse` extracted in `tree-collision.ts`):
+buildings are solid against two car plan-circles vs the OBB; poles (HP 30)
+accumulate closing×10 damage — with a 0.3 s per-pole hit cooldown mirroring
+the trees, added after lint flagged the unused `deltaSeconds` (a slow push
+cannot farm per-frame hits) — then fold to ≈83° and stop colliding.
+Diagnostics: `townBuildings`/`townPoles`/`townPolesDown`. Verification:
+408/408 tests green (5 town tests pin determinism, clearances, the solid
+stop, the fold, and the cooldown), full unfiltered `npm run check` green,
+and browser proof via `scripts/capture-town.mjs` (captures in `/tmp`, per
+the keep-local-minimal rule): the car stopped at the tall building's face
+(18→1 km/h, resting 7.0 m from its centre) and folded the east-plain pole
+at 43 km/h (counter 0→1, speed bled, pole visibly down), zero page errors.
+Remaining in this phase: near-tier terrain POM; bridges/tunnels deferred.

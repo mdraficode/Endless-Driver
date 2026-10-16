@@ -597,8 +597,12 @@ per-species hit points — brushes bend trees on a spring, solid hits snap them
 (falling crown debris + stump), fast hits shatter them into fragments, rocks
 stay solid — with the car losing exactly the absorbed velocity. Browser proof:
 forest drive at 54 km/h shattered a cedar (13 shards, stump, speed bled to
-35 km/h, zero errors). Remaining in this phase: town buildings + roadside
-props (5b), POM on the near terrain tier, bridges/tunnels still deferred.
+35 km/h, zero errors). The town build-out (5b) followed: deterministic
+buildings on road-fronting plots inside the Yūhi Town district and utility
+poles along every road edge — buildings solid, poles folding under
+accumulated hits — browser-proven (car stopped at a building face; pole
+counter flipped on impact, zero errors). Remaining in this phase: POM on the
+near terrain tier; bridges/tunnels still deferred.
 
 **Stop:** Request authorization before Phase 5.
 

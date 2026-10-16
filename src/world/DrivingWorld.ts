@@ -3,6 +3,7 @@ import { MeshStandardNodeMaterial } from 'three/webgpu';
 import type { WorldConfig } from '../config/world';
 import { RoadWorld } from './RoadWorld';
 import { TerrainWorld } from './TerrainWorld';
+import { TownWorld } from './town';
 import { VegetationWorld } from './vegetation';
 import type { SceneContent, SceneContentContext } from './WorldContent';
 
@@ -38,6 +39,9 @@ export function createDrivingWorld({
   // District vegetation (Increment 5): instanced scatter fed by the same sampler.
   const vegetation = new VegetationWorld(terrainSampler);
   root.add(vegetation.root);
+  // Yuhi Town + roadside poles (Increment 5b): static town, always resident.
+  const town = new TownWorld(terrainSampler);
+  root.add(town.root);
 
   return {
     root,
@@ -45,7 +49,9 @@ export function createDrivingWorld({
     updateStreaming: (focus, velocity, deltaSeconds) => {
       terrain.updateStreaming(focus, velocity);
       vegetation.updateStreaming(focus, deltaSeconds ?? 0);
+      town.updateStreaming(focus, deltaSeconds ?? 0);
     },
+    collideTown: (car, deltaSeconds) => town.collide(car, deltaSeconds),
     applyVegetationHits: (events) => {
       vegetation.applyHits(events);
     },
@@ -62,11 +68,13 @@ export function createDrivingWorld({
       ...terrain.getContentStats(),
       ...(roads === null ? {} : roads.getStats()),
       ...vegetation.getContentStats(),
+      ...town.getContentStats(),
     }),
     dispose(): void {
       terrain.dispose();
       roads?.dispose();
       vegetation.dispose();
+      town.dispose();
       const geometries = new Set<BufferGeometry>();
       const materials = new Set<Material>();
       root.traverse((object) => {

@@ -3,6 +3,7 @@ import type { RenderConfig } from '../config/render';
 import type { WorldConfig } from '../config/world';
 import type { TerrainSampler } from './terrain-height';
 import type { TreeHitEvent, TreeVisualState } from './tree-collision';
+import type { TownCarProbe, TownHit } from './town';
 
 /**
  * The scene's *content* — everything that is not environment.
@@ -36,6 +37,8 @@ export interface SceneContent {
   ): void;
   /** Vegetation destruction events from the collision field (driving world). */
   applyVegetationHits?(events: readonly TreeHitEvent[]): void;
+  /** Town collision (buildings/poles), evaluated beside the tree field. */
+  collideTown?(car: TownCarProbe, deltaSeconds: number): readonly TownHit[];
   /** Gives content the collision field's per-plant truth for rebuilds. */
   setVegetationStateProvider?(
     provider: ((key: string) => TreeVisualState | undefined) | null,

@@ -71,12 +71,14 @@ export interface TreeHit extends TreeHitEvent {
   readonly lateralOffset: number;
 }
 
-interface BodyLike {
+export interface CollisionBody {
   mass(): number;
   linvel(): { x: number; y: number; z: number };
   applyImpulse(impulse: { x: number; y: number; z: number }, wakeUp: boolean): void;
   applyTorqueImpulse(impulse: { x: number; y: number; z: number }, wakeUp: boolean): void;
 }
+
+type BodyLike = CollisionBody;
 
 const CAR_HALF_WIDTH = 0.9;
 const CAR_HALF_LENGTH = 2.05;
@@ -307,27 +309,46 @@ export class TreeCollisionField {
 
   /** Applies one hit's velocity change (and a whisper of yaw) to the car body. */
   respond(body: BodyLike, hit: TreeHit): void {
-    const velocity = body.linvel();
-    const vn = velocity.x * hit.normalX + velocity.z * hit.normalZ;
-    let target = vn + hit.absorbedSpeed;
-    if (!hit.impact) {
-      // No break: never leave the car interpenetrating — guarantee separation.
-      target = Math.max(target, Math.min(2.5, hit.penetration * 5));
-    }
-    if (hit.solid && hit.impactSpeed > 1) {
-      // A rock gives a little back.
-      target = Math.max(target, hit.impactSpeed * 0.12);
-    }
-    const dv = target - vn;
-    if (dv <= 0) {
-      return;
-    }
-    const mass = body.mass();
-    body.applyImpulse({ x: hit.normalX * dv * mass, y: 0, z: hit.normalZ * dv * mass }, true);
-    // Off-centre hits nudge the nose away; centre hits stay clean.
-    const torque = -hit.lateralOffset * dv * mass * 0.06;
-    if (Math.abs(torque) > 1) {
-      body.applyTorqueImpulse({ x: 0, y: torque, z: 0 }, true);
-    }
+    applyCollisionResponse(body, hit);
+  }
+}
+
+/**
+ * The shared collision response: removes the hit's absorbed velocity along the
+ * contact normal (guaranteeing separation when nothing broke, a small bounce
+ * off solids), plus a whisper of yaw on off-centre hits. Trees, rocks,
+ * buildings and poles all answer the car through this one contract.
+ */
+export function applyCollisionResponse(
+  body: CollisionBody,
+  hit: {
+    readonly normalX: number;
+    readonly normalZ: number;
+    readonly penetration: number;
+    readonly absorbedSpeed: number;
+    readonly solid: boolean;
+    readonly impact: boolean;
+    readonly impactSpeed: number;
+    readonly lateralOffset: number;
+  },
+): void {
+  const velocity = body.linvel();
+  const vn = velocity.x * hit.normalX + velocity.z * hit.normalZ;
+  let target = vn + hit.absorbedSpeed;
+  if (!hit.impact) {
+    target = Math.max(target, Math.min(2.5, hit.penetration * 5));
+  }
+  if (hit.solid && hit.impactSpeed > 1) {
+    target = Math.max(target, hit.impactSpeed * 0.12);
+  }
+  const dv = target - vn;
+  if (dv <= 0) {
+    return;
+  }
+  const mass = body.mass();
+  body.applyImpulse({ x: hit.normalX * dv * mass, y: 0, z: hit.normalZ * dv * mass }, true);
+  const torque = -hit.lateralOffset * dv * mass * 0.06;
+  if (Math.abs(torque) > 1) {
+    body.applyTorqueImpulse({ x: 0, y: torque, z: 0 }, true);
   }
 }

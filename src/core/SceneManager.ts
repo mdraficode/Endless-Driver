@@ -32,6 +32,7 @@ import { createDrivingWorld } from '../world/DrivingWorld';
 import type { SceneContent, SceneContentFactory } from '../world/WorldContent';
 import type { TerrainSampler } from '../world/terrain-height';
 import type { TreeHitEvent, TreeVisualState } from '../world/tree-collision';
+import type { TownCarProbe, TownHit } from '../world/town';
 
 export interface SceneManagerOptions {
   readonly canvas: HTMLCanvasElement;
@@ -537,6 +538,11 @@ export class SceneManager {
    */
   streamContent(focus: Vec3, velocity?: { x: number; z: number }, deltaSeconds?: number): void {
     this.#content.updateStreaming?.(focus, velocity, deltaSeconds);
+  }
+
+  /** Town collision via the content, when it has a town. */
+  collideTown(car: TownCarProbe, deltaSeconds: number): readonly TownHit[] {
+    return this.#content.collideTown?.(car, deltaSeconds) ?? [];
   }
 
   /** Forwards vegetation destruction events to the content, when it has any. */

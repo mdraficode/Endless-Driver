@@ -13,7 +13,7 @@ import { WORLD_CONFIG, type WorldConfig } from '../config/world';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
 import type { TerrainSampler } from '../world/terrain-height';
 import { OriginManager } from '../world/origin';
-import { TreeCollisionField } from '../world/tree-collision';
+import { applyCollisionResponse, TreeCollisionField } from '../world/tree-collision';
 import { createWorldTerrainSampler } from '../world/world-terrain';
 import type { RapierModule } from '../physics/RapierModule';
 import { yawFromQuat, type Vec3 } from '../shared/vector';
@@ -572,6 +572,20 @@ export class Application {
         if (impacts.length > 0) {
           this.#scene.applyVegetationHits(impacts);
         }
+      }
+      // Buildings stop the car; poles fold. Same response contract as trees.
+      const townHits = this.#scene.collideTown(
+        {
+          x: carWorldX,
+          z: carWorldZ,
+          yaw: yawFromQuat(this.#car.rotation),
+          velocityX: linvel.x,
+          velocityZ: linvel.z,
+        },
+        delta,
+      );
+      for (const hit of townHits) {
+        applyCollisionResponse(this.#car.body, hit);
       }
     }
 

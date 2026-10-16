@@ -2,8 +2,8 @@
 
 **Status:** Phase 4 in progress (authorized 2026-10-15). Terrain foundation and the spline
 road network have landed — seeded heightfield, chunked LOD streaming, heightfield
-colliders, carved roads with scanned surfaces. The generation worker and floating origin
-are the remaining increments.
+colliders, carved roads with scanned surfaces, worker generation, floating origin,
+destructible vegetation, and the Yūhi Town build-out.
 
 ## Responsibility
 
@@ -14,7 +14,7 @@ origin — and the pluggable definition of what a scene is made of.
 
 | File                      | Responsibility                                                                                                                                                                               |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `WorldContent.ts`         | `SceneContent`, the seam between the environment and what stands in it, with the optional `updateStreaming`/`getContentStats` hooks Phase 4 streams through                                  |
+| `WorldContent.ts`         | `SceneContent`, the seam between the environment and what stands in it, with the optional `updateStreaming`/`getContentStats`/`collideTown` hooks Phase 4 streams through                    |
 | `terrain-height.ts`       | The one height function: integer-hash deterministic fBm hills + the Hinode-dake cone + the exactly-flat spawn plateau, plus the height/slope splat colours. Pure; everything samples it      |
 | `terrain-chunks.ts`       | The pure streaming planner: chunk coordinates, LOD-by-ring, the visual plan and the physics window. No three.js, no Rapier, so the plan is unit-testable                                     |
 | `terrain-geometry.ts`     | Chunk mesh building: halo-sampled grid normals (bit-identical shared borders), vertex-colour splat, skirts against LOD cracks                                                                |
@@ -27,6 +27,7 @@ origin — and the pluggable definition of what a scene is made of.
 | `vegetation.ts`           | Deterministic instanced scatter: hash-decided placement per cell, sampler-gated (road/treeline/slope), species registry + streaming window                                                   |
 | `vegetation-placement.ts` | The pure placement function (renderer-free): same chunk in, same forest out — shared by the renderer and the collision field                                                                 |
 | `tree-collision.ts`       | Destructive-vegetation truth: trunk-vs-chassis collision, hit-point damage (bend → snap → shatter), rock-solid response impulses                                                             |
+| `town.ts`                 | Yūhi Town: deterministic building plots (road-clear, slope-gated, tree-free) and roadside poles from the solved network; buildings solid, poles fold on accumulated hits (0.3 s cooldown)    |
 | `DrivingWorld.ts`         | The driving content: streamed terrain plus the Phase 2 reference obstacles on the plateau                                                                                                    |
 | `road-network.ts`         | The pure road graph builder: Catmull-Rom splines over an authored topology, moving-average smoothing, pinned junction elevations, grade clamping on true segment runs, spatial segment index |
 | `world-terrain.ts`        | The composed sampler the game uses: base terrain with the solved road profiles carved into the height function, so meshes, colliders, and grip share one ground truth                        |
