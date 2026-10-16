@@ -1152,3 +1152,16 @@ the keep-local-minimal rule): the car stopped at the tall building's face
 (18→1 km/h, resting 7.0 m from its centre) and folded the east-plain pole
 at 43 km/h (counter 0→1, speed bled, pole visibly down), zero page errors.
 Remaining in this phase: near-tier terrain POM; bridges/tunnels deferred.
+
+## 36. Workspace policy — GitHub is the only home (2026-10-16)
+
+Owner order: the Arena workspace must stay near-empty (snapshot cap ~128 MB;
+the repo alone was 63 MB — 31 MB git objects + 29 MB `public/` assets).
+Rule: **no project files persist in `/home/user`.** Each work session starts
+with `~/dev-fetch.sh`, which shallow-clones (`--depth 1`) the repo into
+`/tmp/endless-driver` (ephemeral, outside the workspace snapshot); all work,
+captures, `node_modules`, and browser installs live in `/tmp`; commit + push
+increments early and often (uncommitted work does not survive sandbox
+rotation); the clone is deleted when the task ships. `~/` keeps only the
+GitHub auth files and small helper scripts (~30 KB total). GitHub (source +
+Actions CI + Pages build) is the single source of truth.
