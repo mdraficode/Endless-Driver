@@ -37,6 +37,9 @@ export interface ChunkGeometryData {
   readonly colors: Float32Array;
   readonly splats: Float32Array;
   readonly tints: Float32Array;
+  /** District ground tint (vec3) per vertex: the textured material multiplies it
+   * into the detail so districts tint near ground too, not just the far macro. */
+  readonly districts: Float32Array;
   readonly indices: Uint32Array;
 }
 
@@ -80,6 +83,7 @@ export function buildChunkGeometryData(
   // Macro tint around 1.0 (variation + curvature occlusion): the textured material
   // multiplies its detail by this, the flat material ignores it.
   const tints = new Float32Array(gridCount + borderCount);
+  const districts = new Float32Array((gridCount + borderCount) * 3);
 
   const writeVertex = (index: number, i: number, j: number, yOverride: number | null): void => {
     const height = heightAtCell(i, j);
@@ -104,7 +108,11 @@ export function buildChunkGeometryData(
       (step * step);
     const occlusion = Math.min(1.05, Math.max(0.84, 1 - laplacian * 1.1));
     const variation = terrainVariationAt(config, x, z);
-    const color = terrainColorAt(config, height, 1 - ny, variation, occlusion, groundTintAt(x, z));
+    const districtTint = groundTintAt(x, z);
+    const color = terrainColorAt(config, height, 1 - ny, variation, occlusion, districtTint);
+    districts[index * 3] = districtTint[0];
+    districts[index * 3 + 1] = districtTint[1];
+    districts[index * 3 + 2] = districtTint[2];
     const weights = terrainSurfaceWeights(config, height, 1 - ny);
     positions[index * 3] = x;
     positions[index * 3 + 1] = yOverride ?? height;
@@ -168,6 +176,7 @@ export function buildChunkGeometryData(
     colors,
     splats,
     tints,
+    districts,
     indices: Uint32Array.from(indexList),
   };
 }
@@ -180,6 +189,7 @@ export function chunkGeometryFromData(data: ChunkGeometryData): BufferGeometry {
   geometry.setAttribute('color', new BufferAttribute(data.colors, 3));
   geometry.setAttribute('splat', new BufferAttribute(data.splats, 4));
   geometry.setAttribute('tint', new BufferAttribute(data.tints, 1));
+  geometry.setAttribute('district', new BufferAttribute(data.districts, 3));
   geometry.setIndex(new BufferAttribute(data.indices, 1));
   geometry.computeBoundingSphere();
   return geometry;

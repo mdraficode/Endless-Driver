@@ -181,6 +181,7 @@ export class TerrainWorld implements SceneContent {
     ];
     const splat = attribute('splat', 'vec4');
     const tint = attribute('tint', 'float');
+    const districtTint = attribute('district', 'vec3');
     let wxz = positionWorld.xz;
 
     if (pom) {
@@ -290,7 +291,7 @@ export class TerrainWorld implements SceneContent {
     };
 
     const macro = vertexColor();
-    material.colorNode = mix(macro, detailAlbedo.mul(tint), detailFade);
+    material.colorNode = mix(macro, detailAlbedo.mul(tint).mul(districtTint), detailFade);
     material.roughnessNode = mix(float(0.96), mixArm('g', 0.95), detailFade);
     material.aoNode = mix(float(1), mixArm('r', 1), detailFade);
 

@@ -71,6 +71,7 @@ export function resultTransferables(result: TerrainGenerationResult): ArrayBuffe
     data.colors.buffer as ArrayBuffer,
     data.splats.buffer as ArrayBuffer,
     data.tints.buffer as ArrayBuffer,
+    data.districts.buffer as ArrayBuffer,
     data.indices.buffer as ArrayBuffer,
   ];
 }
