@@ -1117,3 +1117,15 @@ debris pool has gravity, ground bounce, settle, 22 s lifetime). Wired in
 Application before each physics step (world space; impulse is offset-free).
 Browser proof (capture-trees.mjs): 54 km/h forest impact → shattered 1,
 stump 1, debris 13, speed 54→35, zero errors. 403 tests green.
+
+## 34. Haze retune, second pass (2026-10-16)
+
+Owner again: "screen looks so hazy and foggy." A/B at the junction (fog2/
+evidence): fog fully OFF vs default were nearly identical at road distances —
+the fog was a minor accomplice. Dominant wash: near-white horizon sky, bloom
+bleeding off it (threshold 1.0), and exposure 1.0 flattening contrast. Retune:
+distanceDensity 0.00085→0.0006 (opaque ~1.7 km), valley heightDensity
+0.00006→0.00004, sunScatter 0.65→0.45, bloom threshold 1→1.5, exposure
+1→0.94. Note: two captures black-framed with "WebGPU device lost" — sandbox
+RAM pressure (2 GB, duplicate preview servers), not a game regression; clean
+after cleanup, zero errors. 403 tests green.

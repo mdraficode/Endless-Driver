@@ -130,9 +130,11 @@ export interface HeightFogConfig {
   readonly enabled: boolean;
   /**
    * Exponential distance density. The fog factor is `1 - exp(-(density x distance)^2)`, so this
-   * is roughly "one over the distance at which the air turns opaque": the shipped 0.00085 puts
-   * that near 1.2 km (owner feedback 2026-10-15: the original 0.0014 / ~700 m read as "foggy"
-   * on the flat spawn plain), reached smoothly instead of in a ramp with a visible near edge.
+   * is roughly "one over the distance at which the air turns opaque": the shipped 0.0006 puts
+   * that near 1.7 km. Owner feedback twice (2026-10-15/16): 0.0014 (~700 m) and even 0.00085
+   * read as "hazy and foggy" — an A/B with fog fully off showed the remaining wash is mostly
+   * the bright horizon sky + bloom bleed + exposure, which is why those moved in the same
+   * retune (bloom threshold 1.5, exposure 0.94) rather than the fog alone thinning further.
    */
   readonly distanceDensity: number;
   /**
@@ -593,7 +595,7 @@ export const RENDER_CONFIG: RenderConfig = {
     antialias: false,
     samples: 0,
     toneMapping: 'aces',
-    toneMappingExposure: 1,
+    toneMappingExposure: 0.94,
   },
   camera: {
     fov: 60,
@@ -631,14 +633,14 @@ export const RENDER_CONFIG: RenderConfig = {
     fogColorHorizon: 0xe8b98a,
     heightFog: {
       enabled: true,
-      distanceDensity: 0.00085,
+      distanceDensity: 0.0006,
       // Small, deliberately: the height factor multiplies depth-below-threshold by distance, so
       // it grows quadratically along the view ray - at 0.00035 it had already saturated by
       // 200 m and the whole route rendered as fog colour. At this value the valley floor is
       // ~5% hazed at 300 m and ~50% at 1.2 km, while slopes above the threshold stay clear.
-      heightDensity: 0.00006,
+      heightDensity: 0.00004,
       heightMeters: 12,
-      sunScatterStrength: 0.65,
+      sunScatterStrength: 0.45,
       sunScatterPower: 6,
     },
     domeScaleFactor: 1.05,
@@ -766,7 +768,7 @@ export const RENDER_CONFIG: RenderConfig = {
       enabled: true,
       strength: 0.22,
       radius: 0.45,
-      threshold: 1,
+      threshold: 1.5,
     },
     ambientOcclusion: {
       enabled: true,
