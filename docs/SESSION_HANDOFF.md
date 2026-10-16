@@ -1311,3 +1311,37 @@ stays clear. That supersedes the earlier fog-density passes.
   is in `f3c10aa`.
 - **Full verification**: unfiltered `npm run check` passed with 413/413
   tests, asset verification, and the production build.
+
+## 43. Tree impacts exchange momentum (2026-10-16)
+
+Owner: trees felt like "weightless destructible boxes" — the car broke
+through without slowing, with no equal-and-opposite reaction. Diagnosis
+confirmed it: the response removed a fixed `stopSpeed` cap (5.5 m/s for a
+conifer) regardless of impact speed, so a 54 km/h hit kept ~35 km/h; and
+during the 0.3 s damage cooldown a bent tree applied no resistance at
+all, opening a push-through hole.
+
+The solver (`world/tree-collision.ts`, species data in
+`config/districts.ts`) now states one momentum exchange and uses it on
+both sides. Every hit records `absorbedSpeed`, `reactionImpulseNs`
+(car mass x absorbed speed, against the body's real Rapier mass) and a
+`reactionSpeed` for the trunk/crown derived from the species' impact
+mass. A tree that holds is **rooted**: it takes the car's whole normal
+closing speed (plus a dull 0.08 rebound) and keeps resisting on every
+contact frame — only damage is on cooldown, never the obstacle. A tree
+that fails takes a fracture share of the closing speed on the way down
+(conifer: 74% snap / 58% shatter; lighter species less), and the crown,
+shards, and bent-tree sway now launch from the same reaction speed
+instead of unrelated cosmetic pushes. Off-centre hits yaw the car from
+the contact's real lever arm (r x impulse, capped). `respond` /
+`applyCollisionResponse` return the impulse actually delivered to the
+car so tests can assert the two sides are equal.
+
+Unit proof: 10 m/s conifer snap now leaves 2.6 m/s (was 4.5), a 16 m/s
+shatter leaves 6.7 m/s (was 10.5), a 2 m/s bend stops and rebounds the
+car, sustained pushes stay blocked, off-centre torque is pinned.
+Browser proof (tier C, cedar pass): the car accelerated 1→42 km/h into
+the forest and the frame the snap counter moved it read **17 km/h**,
+debris 1, zero page/console errors. Full unfiltered
+`npm run check`: 415/415 tests green (fog removal is `93cfb25`'s
+predecessor `1c3fac2`; this model is `93cfb25`).
