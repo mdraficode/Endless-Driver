@@ -1,18 +1,20 @@
 # Platform input
 
-**Status:** Keyboard (Phase 2) and multi-touch driving controls (pulled forward from
+**Status:** Keyboard (Phase 2), multi-touch driving controls and standard-mapping
+gamepad (both pulled forward from
 Phase 8 at the owner's request, 2026-10-15 — the game was unplayable on phones without
 them).
 
 ## Responsibility
 
-Keyboard and independent-pointer touch handling publish normalized actions. Input never directly
+Keyboard, independent-pointer touch handling, and per-frame gamepad polling publish normalized actions. Input never directly
 mutates vehicle transforms.
 
 ## Implemented
 
 | File               | Responsibility                                                                                                                                                                                                                                                                                                                     |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gamepad-state.ts` | Pure standard-mapping pad → drive state: dead-zoned centre-softened stick steer, analog LT/RT triggers, A/RB handbrake, Y reset, X camera, D-pad steer fallback; polled (never event-trusted) by `InputManager`.                                                                                                                   |
 | `InputManager.ts`  | Keyboard state → `VehicleActions`. Asymmetric attack/release smoothing on throttle and brake with a response curve, a steering rate limiter plus exponential smoothing so a key press interpolates instead of snapping, a smoothed handbrake, one-shot reset/camera commands with a lifetime, and full clearing on blur or detach. |
 | `touch-state.ts`   | Pure touch logic: joystick deflection → analog steer (dead-zoned, rim-clamped), and the multi-pointer `TouchStateTracker` that lets independent thumbs steer and pedal simultaneously.                                                                                                                                             |
 | `TouchControls.ts` | The DOM surface: left steering joystick, BRAKE/GAS pedals, handbrake, camera/reset/fullscreen buttons — each tracking its own pointer ids, publishing into `InputManager.setTouchState`. Attempts fullscreen + landscape lock on first touch; the portrait rotate prompt is CSS.                                                   |

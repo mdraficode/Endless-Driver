@@ -1205,3 +1205,35 @@ at the same teleport: sky/UI pixel-identical (mean |diff| 0.00),
 foreground strip mean |diff| 4.76 — the difference lives exactly where
 the effect fades in. Phase 4 remainder: bridges/tunnels deferred as
 decided; Phase 3 hardware validation still the owner's.
+
+## 39. Owner feel pass — gamepad, steering bite, wider/clearer view (2026-10-16)
+
+Owner: screen still foggy/blurry with a narrow field of vision; driving and
+controls "still very off". Owner facts that reframed the diagnosis: playing
+on **desktop with a gamepad**, symptoms = understeer + twitchiness + floaty
+combined, view priority = widest/farthest/clearest, look = keep cinematic.
+The headline root cause: **the game had no gamepad support at all** — a
+controller player was on binary keys through a smoothing ramp (numb
+turn-in, then sudden yaw: all three symptoms from one cause).
+
+- **Gamepad** (`src/input/gamepad-state.ts`, Phase 8 scope pulled
+  forward): standard mapping, dead-zoned centre-softened analog stick,
+  analog LT/RT pedals, A/RB handbrake, Y reset, X camera, D-pad fallback;
+  polled per frame and merged with keyboard/touch. Unit tests pin the
+  mapping; browser proof (`scripts/capture-gamepad.mjs`, stubbed pad):
+  trigger launched the car 0→30 km/h, half-stick bent wheels −12° and
+  the heading followed, zero errors.
+- **Feel retune**: digital steering rate 3.2→4.2/s and smoothing
+  0.06→0.045 s (less float), `gripBudgetFactor` 1.2→1.35 (turn-in bite at
+  speed), stability yaw response 3.2→3.8/s (catches rotation earlier).
+  Vehicle stability/physics suites green on the new values.
+- **View**: base FOV 62→70°, speed FOV 78→86°, default view now Far
+  (which keeps the full FOV: its −5° trim removed), camera-storage key
+  bumped to `:v2` so existing players actually land on the new default.
+- **Clarity (third fog pass, cinematic kept)**: distance fog
+  0.0006→0.00038, height fog 0.00004→0.000022, sun scatter 0.45→0.34;
+  TAA dynamic-resolution floor 0.67→0.8 (less downscale smear); bloom/
+  exposure/motion blur untouched per the owner's cinematic choice.
+  Junction capture: road reads clear to the horizon at Far/70°, zero
+  errors. If the view still feels foggy after this, the remaining lever
+  is the bright horizon sky itself (sky/exposure), not the fog density.
