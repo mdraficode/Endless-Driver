@@ -601,8 +601,16 @@ forest drive at 54 km/h shattered a cedar (13 shards, stump, speed bled to
 buildings on road-fronting plots inside the Yūhi Town district and utility
 poles along every road edge — buildings solid, poles folding under
 accumulated hits — browser-proven (car stopped at a building face; pole
-counter flipped on impact, zero errors). Remaining in this phase: POM on the
-near terrain tier; bridges/tunnels still deferred.
+counter flipped on impact, zero errors). Finally the near terrain tier got
+its parallax occlusion mapping: the four terrain splat sets publish their
+scanned displacement maps through the asset pipeline, and the closest LOD
+ring's material raymarches the blended heightfield (12 steps plus a secant
+refinement, fading out by 42 m so the far material cannot seam). Browser
+proof: POM active on the 9 near-ring chunks with zero errors, and an A/B
+capture against the pre-POM build differs only in the near foreground
+(sky/UI pixel-identical). With that, Phase 4's built scope is delivered;
+bridges/tunnels remain deferred as decided, and Phase 3 still awaits the
+owner's hardware frame-budget validation.
 
 **Stop:** Request authorization before Phase 5.
 

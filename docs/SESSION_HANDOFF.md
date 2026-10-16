@@ -1176,3 +1176,32 @@ captures regenerable from committed scripts, credentials out of repo and
 out of view), with a pointer at the top of `AGENTS.md` and a copy kept in
 the Arena workspace. Any future agent — Arena or the owner's own — can pick
 the project up from that file plus `PROJECT_PLAN.md` and this handover.
+
+## 38. Phase 4 — near-tier terrain POM (2026-10-16)
+
+Parallax occlusion mapping for the closest ground, completing Phase 4's
+built scope. The four terrain splat sets now publish their scanned Poly
+Haven displacement maps through the asset pipeline (`heightMap: true` on
+the terrain entries in `scripts/fetch-assets.mjs`, `height` slot in
+`MaterialTextureSet`, +1.5 MB, `assets:verify` green). `TerrainWorld` grew
+a second material: chunks at `lodSegments[0]` (the 3×3 near ring) wear the
+near material, whose sampling position is marched through the
+splat-blended heightfield — 12 steps over a 0.09 m relief with a secant
+refinement across the crossing layer, offset fading out 16→42 m so beyond
+that both materials sample identically and cannot seam. Diagnostics:
+`terrainPomActive`/`terrainPomSteps`/`terrainPomChunks`.
+
+Two TSL dead ends, recorded so nobody retries them: `If`/`Loop` at
+material-graph build time throws (no current stack — they need an `Fn`),
+and a texture-sampling march inside an `Fn` produces undeclared texture
+uniforms on the WebGL2 backend. The shipped march is therefore unrolled
+at graph-construction time with the first crossing selected
+arithmetically — all steps sample, so the step count is also the cost
+ceiling (12, not 24: the first capture at 24 steps/720p could not finish
+in the software renderer). Browser proof (`scripts/capture-pom.mjs`,
+640×360 in `/tmp`): surfaces loaded, POM active, 12 steps, exactly 9 POM
+chunks, 121 chunks total, zero errors. An A/B against the pre-POM build
+at the same teleport: sky/UI pixel-identical (mean |diff| 0.00),
+foreground strip mean |diff| 4.76 — the difference lives exactly where
+the effect fades in. Phase 4 remainder: bridges/tunnels deferred as
+decided; Phase 3 hardware validation still the owner's.
