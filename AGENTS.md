@@ -2,6 +2,8 @@
 
 This file is the first checkpoint for any assistant or contributor resuming the project.
 
+**Before anything else, read [`WORKFLOW.md`](WORKFLOW.md)** — the standard dev-environment workflow (GitHub is the only permanent home; local environments are disposable scratch; push before every run). It governs _where and how_ work happens; this file governs the engineering itself.
+
 ## Current authorization
 
 - On 2026-10-13 the user authorized **Phase 1 only**: engine, render loop, camera, and lighting. Phase 1 is implemented, validated, and pushed.

@@ -1165,3 +1165,14 @@ increments early and often (uncommitted work does not survive sandbox
 rotation); the clone is deleted when the task ships. `~/` keeps only the
 GitHub auth files and small helper scripts (~30 KB total). GitHub (source +
 Actions CI + Pages build) is the single source of truth.
+
+## 37. The workflow is now a portable rule file (2026-10-16)
+
+Owner asked that the GitHub-only workflow survive session and agent changes:
+`WORKFLOW.md` now sits at the repo root as the standard operating contract
+(GitHub is the only permanent home, ephemeral shallow clones in `/tmp`, push
+before every run, keep the sandbox alive until SHA/CI/live are verified,
+captures regenerable from committed scripts, credentials out of repo and
+out of view), with a pointer at the top of `AGENTS.md` and a copy kept in
+the Arena workspace. Any future agent — Arena or the owner's own — can pick
+the project up from that file plus `PROJECT_PLAN.md` and this handover.
