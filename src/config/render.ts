@@ -626,21 +626,25 @@ export const RENDER_CONFIG: RenderConfig = {
     },
   },
   sky: {
-    fogEnabled: true,
+    // No fog in gameplay (owner direction, 2026-10-16): the distance and
+    // height terms are disabled and zero-density at the baseline, so every
+    // tier renders the world with no atmospheric wash. The switches below
+    // are forced off in applyRenderSwitches too: a URL cannot re-enable it.
+    fogEnabled: false,
     fogNear: 140,
     fogFar: 760,
     fogColorDay: 0x9ec6ea,
     fogColorHorizon: 0xe8b98a,
     heightFog: {
-      enabled: true,
-      distanceDensity: 0.00024,
+      enabled: false,
+      distanceDensity: 0,
       // Small, deliberately: the height factor multiplies depth-below-threshold by distance, so
       // it grows quadratically along the view ray - at 0.00035 it had already saturated by
       // 200 m and the whole route rendered as fog colour. At this value the valley floor is
       // ~5% hazed at 300 m and ~50% at 1.2 km, while slopes above the threshold stay clear.
-      heightDensity: 0.000012,
+      heightDensity: 0,
       heightMeters: 12,
-      sunScatterStrength: 0.3,
+      sunScatterStrength: 0,
       sunScatterPower: 6,
     },
     domeScaleFactor: 1.05,
@@ -845,8 +849,6 @@ export function applyRenderSwitches(config: RenderConfig, search: string): Rende
   const tonemap = params.get('tonemap');
   const grain = params.get('grain');
   const clouds = params.get('clouds');
-  const hfog = params.get('hfog');
-  const fogSwitch = params.get('fog');
 
   const depthOfField = {
     ...config.postProcessing.depthOfField,
@@ -947,11 +949,6 @@ export function applyRenderSwitches(config: RenderConfig, search: string): Rende
   };
 
   /**
-   * `?fog=off` removes distance cueing entirely; `?hfog=0` keeps fog but returns it to the
-   * linear band. Both exist so the height-aware term can be A/B'd against exactly what it
-   * replaced, from the same URL pattern as every other effect in the stack.
-   */
-  /**
    * The diagnostics overlay is developer instrumentation, not a player HUD: it is only
    * shown when the URL asks for it (`?debug`, or explicitly `?overlay=1`) and
    * `?overlay=0` always hides it. A plain player visit gets a clean screen.
@@ -967,12 +964,14 @@ export function applyRenderSwitches(config: RenderConfig, search: string): Rende
 
   const sky = {
     ...config.sky,
-    ...(fogSwitch === 'off' || fogSwitch === '0' || fogSwitch === 'false'
-      ? { fogEnabled: false }
-      : {}),
+    // Fog is removed from gameplay: URL switches cannot turn it back on.
+    fogEnabled: false,
     heightFog: {
       ...config.sky.heightFog,
-      ...(hfog === null || hfog === '' ? {} : { enabled: hfog !== '0' && hfog !== 'false' }),
+      enabled: false,
+      distanceDensity: 0,
+      heightDensity: 0,
+      sunScatterStrength: 0,
     },
   };
 

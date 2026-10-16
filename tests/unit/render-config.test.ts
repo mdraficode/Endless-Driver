@@ -145,32 +145,28 @@ describe('contact shadows and SSGI configuration', () => {
 });
 
 describe('height-aware fog and god rays configuration', () => {
-  it('keeps the height-fog densities in the range the factor functions expect', () => {
+  it('ships with fog completely removed', () => {
     const { heightFog } = RENDER_CONFIG.sky;
-    expect(heightFog.distanceDensity).toBeGreaterThan(0);
-    expect(heightFog.distanceDensity).toBeLessThan(0.01);
-    expect(heightFog.heightDensity).toBeGreaterThan(0);
-    expect(heightFog.heightDensity).toBeLessThan(heightFog.distanceDensity);
-    expect(heightFog.heightMeters).toBeGreaterThan(0);
-    expect(heightFog.heightMeters).toBeLessThan(100);
-    expect(heightFog.sunScatterStrength).toBeGreaterThanOrEqual(0);
-    expect(heightFog.sunScatterStrength).toBeLessThanOrEqual(1);
-    expect(heightFog.sunScatterPower).toBeGreaterThan(1);
+    expect(RENDER_CONFIG.sky.fogEnabled).toBe(false);
+    expect(heightFog.enabled).toBe(false);
+    expect(heightFog.distanceDensity).toBe(0);
+    expect(heightFog.heightDensity).toBe(0);
+    expect(heightFog.sunScatterStrength).toBe(0);
   });
 
-  it('keeps the height term off the gameplay tiers and on the opt-in tier', () => {
+  it('keeps fog off at every tier', () => {
     expect(applyTier(RENDER_CONFIG, 'C').sky.heightFog.enabled).toBe(false);
     expect(applyTier(RENDER_CONFIG, 'B').sky.heightFog.enabled).toBe(false);
-    expect(applyTier(RENDER_CONFIG, 'A').sky.heightFog.enabled).toBe(true);
+    expect(applyTier(RENDER_CONFIG, 'A').sky.heightFog.enabled).toBe(false);
     // A tier that only flips the switch must not lose the tuned densities to the merge.
     expect(applyTier(RENDER_CONFIG, 'C').sky.heightFog.distanceDensity).toBe(
       RENDER_CONFIG.sky.heightFog.distanceDensity,
     );
   });
 
-  it('switches the height term and fog itself from the URL', () => {
-    expect(applyRenderSwitches(RENDER_CONFIG, '?hfog=0').sky.heightFog.enabled).toBe(false);
-    expect(applyRenderSwitches(RENDER_CONFIG, '?hfog=1').sky.heightFog.enabled).toBe(true);
+  it('does not let URL switches re-enable fog', () => {
+    expect(applyRenderSwitches(RENDER_CONFIG, '?hfog=1').sky.heightFog.enabled).toBe(false);
+    expect(applyRenderSwitches(RENDER_CONFIG, '?fog=on').sky.fogEnabled).toBe(false);
     expect(applyRenderSwitches(RENDER_CONFIG, '?fog=off').sky.fogEnabled).toBe(false);
   });
 
