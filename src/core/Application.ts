@@ -13,6 +13,7 @@ import { WORLD_CONFIG, type WorldConfig } from '../config/world';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
 import type { TerrainSampler } from '../world/terrain-height';
 import { OriginManager } from '../world/origin';
+import { TreeCollisionField } from '../world/tree-collision';
 import { createWorldTerrainSampler } from '../world/world-terrain';
 import type { RapierModule } from '../physics/RapierModule';
 import { yawFromQuat, type Vec3 } from '../shared/vector';
@@ -122,6 +123,8 @@ export class Application {
    * computes far from an origin in float32.
    */
   readonly #origin = new OriginManager(ORIGIN_CONFIG);
+  /** Vegetation collision/destruction truth (visuals mirror it via the scene). */
+  readonly #treeField: TreeCollisionField;
 
   constructor(options: ApplicationOptions) {
     this.#config = options.config ?? RENDER_CONFIG;
@@ -131,6 +134,7 @@ export class Application {
     // physics heightfields: ground you see and ground you drive on are the same function.
     const terrainSampler = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
     this.#terrainSampler = terrainSampler;
+    this.#treeField = new TreeCollisionField(terrainSampler);
     this.#engine = new Engine({ canvas: options.canvas, config: this.#config });
     this.#scene = new SceneManager({
       canvas: options.canvas,
@@ -182,6 +186,8 @@ export class Application {
     this.#tier = options.tier ?? { id: 'B', reason: 'unresolved' };
     this.#clock = new EnvironmentClock(options.clock);
     this.#daylightController = new DaylightController(this.#clock);
+
+    this.#scene.setVegetationStateProvider((key) => this.#treeField.getVisualState(key));
 
     // Lighting is resolved before the first frame so the scene never renders with the baseline sun
     // while the clock says something else.
@@ -540,6 +546,35 @@ export class Application {
       this.#syncDebugCamera(pose, true);
     }
 
+    // 1b. Vegetation collision: standing trunks near the car are tested against
+    // the chassis (world space; the impulse lands on the body before the step,
+    // so Rapier integrates the outcome). Real impacts mirror into the visuals.
+    {
+      const carWorldX = this.#car.position.x + this.#origin.offset.x;
+      const carWorldZ = this.#car.position.z + this.#origin.offset.z;
+      this.#treeField.sync(carWorldX, carWorldZ);
+      const linvel = this.#car.body.linvel();
+      const hits = this.#treeField.evaluate(
+        {
+          x: carWorldX,
+          z: carWorldZ,
+          yaw: yawFromQuat(this.#car.rotation),
+          velocityX: linvel.x,
+          velocityZ: linvel.z,
+        },
+        delta,
+      );
+      if (hits.length > 0) {
+        for (const hit of hits) {
+          this.#treeField.respond(this.#car.body, hit);
+        }
+        const impacts = hits.filter((hit) => hit.impact);
+        if (impacts.length > 0) {
+          this.#scene.applyVegetationHits(impacts);
+        }
+      }
+    }
+
     // 2. Physics advances in whole fixed steps; the car applies its impulses inside each step.
     this.#physics.update(delta);
 
@@ -572,10 +607,14 @@ export class Application {
       y: pose.position.y,
       z: pose.position.z + this.#origin.offset.z,
     };
-    this.#scene.streamContent(worldFocus, {
-      x: -Math.sin(yaw) * forwardSpeed,
-      z: -Math.cos(yaw) * forwardSpeed,
-    });
+    this.#scene.streamContent(
+      worldFocus,
+      {
+        x: -Math.sin(yaw) * forwardSpeed,
+        z: -Math.cos(yaw) * forwardSpeed,
+      },
+      delta,
+    );
     this.#physics.syncTerrain(worldFocus);
 
     if (this.#cameraMode === 'chase') {

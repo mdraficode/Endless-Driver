@@ -31,6 +31,7 @@ import type { Viewport } from './Engine';
 import { createDrivingWorld } from '../world/DrivingWorld';
 import type { SceneContent, SceneContentFactory } from '../world/WorldContent';
 import type { TerrainSampler } from '../world/terrain-height';
+import type { TreeHitEvent, TreeVisualState } from '../world/tree-collision';
 
 export interface SceneManagerOptions {
   readonly canvas: HTMLCanvasElement;
@@ -534,8 +535,20 @@ export class SceneManager {
    * vehicle position by `Application`, beside the sun focus: ground and light follow the
    * same point. Content without streaming pays one optional-call check.
    */
-  streamContent(focus: Vec3, velocity?: { x: number; z: number }): void {
-    this.#content.updateStreaming?.(focus, velocity);
+  streamContent(focus: Vec3, velocity?: { x: number; z: number }, deltaSeconds?: number): void {
+    this.#content.updateStreaming?.(focus, velocity, deltaSeconds);
+  }
+
+  /** Forwards vegetation destruction events to the content, when it has any. */
+  applyVegetationHits(events: readonly TreeHitEvent[]): void {
+    this.#content.applyVegetationHits?.(events);
+  }
+
+  /** Wires the collision field's per-plant truth into the content's rebuilds. */
+  setVegetationStateProvider(
+    provider: ((key: string) => TreeVisualState | undefined) | null,
+  ): void {
+    this.#content.setVegetationStateProvider?.(provider);
   }
 
   /** Resolves the content's async surface loading (terrain scans), if it has any. */

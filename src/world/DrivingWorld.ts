@@ -42,9 +42,15 @@ export function createDrivingWorld({
   return {
     root,
     kind: 'driving',
-    updateStreaming: (focus, velocity) => {
+    updateStreaming: (focus, velocity, deltaSeconds) => {
       terrain.updateStreaming(focus, velocity);
-      vegetation.updateStreaming(focus);
+      vegetation.updateStreaming(focus, deltaSeconds ?? 0);
+    },
+    applyVegetationHits: (events) => {
+      vegetation.applyHits(events);
+    },
+    setVegetationStateProvider: (provider) => {
+      vegetation.setStateProvider(provider);
     },
     loadSurfaces: async () => {
       await Promise.all([

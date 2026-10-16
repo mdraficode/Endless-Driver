@@ -2,6 +2,7 @@ import type { Object3D } from 'three';
 import type { RenderConfig } from '../config/render';
 import type { WorldConfig } from '../config/world';
 import type { TerrainSampler } from './terrain-height';
+import type { TreeHitEvent, TreeVisualState } from './tree-collision';
 
 /**
  * The scene's *content* — everything that is not environment.
@@ -31,6 +32,13 @@ export interface SceneContent {
   updateStreaming?(
     focus: { x: number; y: number; z: number },
     velocity?: { x: number; z: number },
+    deltaSeconds?: number,
+  ): void;
+  /** Vegetation destruction events from the collision field (driving world). */
+  applyVegetationHits?(events: readonly TreeHitEvent[]): void;
+  /** Gives content the collision field's per-plant truth for rebuilds. */
+  setVegetationStateProvider?(
+    provider: ((key: string) => TreeVisualState | undefined) | null,
   ): void;
   /**
    * Async surface/texture loading, resolved once at startup (the terrain's scanned sets).

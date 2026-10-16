@@ -1099,3 +1099,21 @@ replacement; InstancedMesh per species/variant, 7×7-chunk window, ≤3 chunk
 generations/frame. Browser: 8,236 instances at cedar pass, 5,360 at avenue,
 123 draw calls, zero errors; 398 tests. Remaining Phase 4: town buildings +
 roadside props (5b), near-tier POM, bridges/tunnels deferred.
+
+## 33. Destructible vegetation (2026-10-16)
+
+Owner: "the car body is passing through the trees; trees should be
+destructive — minimal impact half break/bend/fracture, full impact
+shattered, realistic animations." Built: placement extracted to
+vegetation-placement.ts (renderer-free, shared truth); tree-collision.ts
+analytic trunk-circle vs chassis-OBB field with per-species hit points
+(config/districts.ts TREE_DAMAGE): bend (spring-lean away, accumulates) →
+snap at 100% (crown becomes ballistic debris over a stump) → shatter at
+shatterSpeed (13 m/s conifer) or 220% accumulated (13 instanced shards);
+rocks indestructible and stop the car; response removes exactly
+stopSpeed-capped velocity + whisper of yaw torque. VegetationWorld mirrors
+via hit events + state provider (stumps/bent persist across window slides;
+debris pool has gravity, ground bounce, settle, 22 s lifetime). Wired in
+Application before each physics step (world space; impulse is offset-free).
+Browser proof (capture-trees.mjs): 54 km/h forest impact → shattered 1,
+stump 1, debris 13, speed 54→35, zero errors. 403 tests green.

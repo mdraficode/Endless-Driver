@@ -591,8 +591,14 @@ forms in three tint variants behind a registry meant to take scanned CC0
 models later; streaming mirrors the terrain window (7×7 chunks, budgeted
 generation, one InstancedMesh per species/variant). Browser proof: 8,236
 instances at the pass, 5,360 at the avenue, districts visually distinct, zero
-errors. Remaining in this phase: town buildings + roadside props (5b), POM on
-the near terrain tier, bridges/tunnels still deferred.
+errors. Vegetation is also destructive (owner request 2026-10-16): an analytic
+trunk-vs-chassis collision field (`src/world/tree-collision.ts`) spends
+per-species hit points — brushes bend trees on a spring, solid hits snap them
+(falling crown debris + stump), fast hits shatter them into fragments, rocks
+stay solid — with the car losing exactly the absorbed velocity. Browser proof:
+forest drive at 54 km/h shattered a cedar (13 shards, stump, speed bled to
+35 km/h, zero errors). Remaining in this phase: town buildings + roadside
+props (5b), POM on the near terrain tier, bridges/tunnels still deferred.
 
 **Stop:** Request authorization before Phase 5.
 

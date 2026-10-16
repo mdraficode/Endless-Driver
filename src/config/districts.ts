@@ -103,3 +103,47 @@ export const VEGETATION_CONFIG: VegetationConfig = {
   spawnClearanceMeters: 55,
   treeLineMeters: 150,
 };
+
+/**
+ * How vegetation answers being hit (world/tree-collision.ts consumes this).
+ * `hitPoints` is spent by impact speed: each hit costs roughly
+ * 10 x impactSpeed(m/s) points, so a conifer shrugs off a 3 m/s nudge (bend),
+ * snaps around 10 m/s, and a single hit at `shatterSpeed` or beyond destroys
+ * it outright regardless of remaining points. `stopSpeed` caps how much
+ * velocity (m/s) the tree can absorb from the car in one hit — small trees
+ * barely slow a fast car; a rock stops it dead (hitPoints infinite).
+ */
+export interface TreeDamageConfig {
+  readonly hitPoints: number;
+  readonly stopSpeed: number;
+  readonly shatterSpeed: number;
+  /** Trunk radius in metres (collision + visual scale multiplies it). */
+  readonly trunkRadius: number;
+}
+
+export const TREE_DAMAGE: Record<VegetationSpecies, TreeDamageConfig> = {
+  conifer: { hitPoints: 100, stopSpeed: 5.5, shatterSpeed: 13, trunkRadius: 0.24 },
+  broadleaf: { hitPoints: 85, stopSpeed: 4.5, shatterSpeed: 12, trunkRadius: 0.26 },
+  sakura: { hitPoints: 70, stopSpeed: 3.5, shatterSpeed: 11, trunkRadius: 0.22 },
+  bamboo: { hitPoints: 34, stopSpeed: 1.6, shatterSpeed: 9, trunkRadius: 0.3 },
+  rock: {
+    hitPoints: Number.POSITIVE_INFINITY,
+    stopSpeed: 60,
+    shatterSpeed: Number.POSITIVE_INFINITY,
+    trunkRadius: 0.95,
+  },
+};
+
+/** Collision/destruction tuning shared by the field and the visuals. */
+export const TREE_COLLISION = {
+  /** Trees are tracked for collision inside this radius of the car (metres). */
+  activeRadiusMeters: 56,
+  /** A hit below this closing speed (m/s) is a brush, not an impact. */
+  minImpactSpeed: 0.9,
+  /** The same tree cannot register two hits inside this window (seconds). */
+  hitCooldownSeconds: 0.3,
+  /** Damage points charged per (m/s) of impact speed. */
+  damagePerSpeed: 10,
+  /** Crown debris and fragments persist at most this long (seconds). */
+  debrisLifetimeSeconds: 22,
+} as const;

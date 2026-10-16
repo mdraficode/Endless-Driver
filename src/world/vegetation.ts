@@ -8,6 +8,8 @@ import {
   IcosahedronGeometry,
   InstancedMesh,
   Object3D,
+  Quaternion,
+  Vector3,
 } from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { vertexColor } from 'three/tsl';
@@ -18,7 +20,17 @@ import {
   type VegetationConfig,
   type VegetationSpecies,
 } from '../config/districts';
-import { speciesMultipliersAt, VEGETATION_SPECIES } from './districts';
+import {
+  generateChunkVegetation,
+  hash01,
+  TREE_SPECIES,
+  type VegetationPlacement,
+} from './vegetation-placement';
+
+export { generateChunkVegetation, type VegetationPlacement } from './vegetation-placement';
+import { TREE_COLLISION } from '../config/districts';
+import { VEGETATION_SPECIES } from './districts';
+import type { TreeHitEvent, TreeVisualState } from './tree-collision';
 import type { TerrainSampler } from './terrain-height';
 import { chunkKey, planChunksAround, resolveWindowCenter } from './terrain-chunks';
 
@@ -36,138 +48,6 @@ import { chunkKey, planChunksAround, resolveWindowCenter } from './terrain-chunk
  * vertex-colour palettes (three tint variants for the leafy species), built to
  * be replaced by scanned CC0 models behind this same registry later.
  */
-
-export interface VegetationPlacement {
-  readonly species: VegetationSpecies;
-  readonly variant: number;
-  readonly x: number;
-  readonly y: number;
-  readonly z: number;
-  readonly scale: number;
-  readonly rotationY: number;
-}
-
-/** Integer hash → [0, 1), stable across platforms (same family as the terrain). */
-function hash01(ix: number, iz: number, salt: number): number {
-  let h = (Math.imul(ix, 374761393) + Math.imul(iz, 668265263) + Math.imul(salt, 974711)) | 0;
-  h = Math.imul(h ^ (h >>> 13), 1274126177);
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-}
-
-const TREE_SPECIES: ReadonlySet<VegetationSpecies> = new Set([
-  'conifer',
-  'broadleaf',
-  'sakura',
-  'bamboo',
-]);
-
-/** Slope/altitude gate per species, before district multipliers apply. */
-function speciesGate(
-  species: VegetationSpecies,
-  height: number,
-  steepness: number,
-  config: VegetationConfig,
-): number {
-  switch (species) {
-    case 'conifer':
-      if (height > config.treeLineMeters || steepness > 0.38) return 0;
-      // Cedars own the mid-slopes; the lowland floor is broadleaf country.
-      return height < 12 ? 0.45 : 1;
-    case 'broadleaf':
-      if (height > config.treeLineMeters || steepness > 0.32) return 0;
-      return height > 110 ? Math.max(0, 1 - (height - 110) / 40) : 1;
-    case 'sakura':
-      if (height > 95 || steepness > 0.26) return 0;
-      return 1;
-    case 'bamboo':
-      if (height > 80 || steepness > 0.3) return 0;
-      return 1;
-    case 'rock':
-      // Rock appears where trees cannot hold, and as scree above the treeline.
-      return Math.min(
-        1,
-        Math.max(0, (steepness - 0.18) * 2.2) + (height > config.treeLineMeters ? 0.45 : 0),
-      );
-  }
-}
-
-/** All placements inside one terrain chunk (deterministic; no streamer state). */
-export function generateChunkVegetation(
-  sampler: TerrainSampler,
-  chunkX: number,
-  chunkZ: number,
-  config: VegetationConfig = VEGETATION_CONFIG,
-): VegetationPlacement[] {
-  const size = sampler.config.chunkSizeMeters;
-  const originX = chunkX * size;
-  const originZ = chunkZ * size;
-  const cell = config.cellMeters;
-  const firstCellX = Math.floor(originX / cell);
-  const firstCellZ = Math.floor(originZ / cell);
-  const cellsPerChunk = Math.ceil(size / cell);
-  const placements: VegetationPlacement[] = [];
-
-  for (let iz = firstCellZ; iz < firstCellZ + cellsPerChunk; iz += 1) {
-    for (let ix = firstCellX; ix < firstCellX + cellsPerChunk; ix += 1) {
-      const x = (ix + 0.15 + 0.7 * hash01(ix, iz, 11)) * cell;
-      const z = (iz + 0.15 + 0.7 * hash01(ix, iz, 23)) * cell;
-      if (x < originX || x >= originX + size || z < originZ || z >= originZ + size) {
-        continue;
-      }
-      if (Math.hypot(x, z) < config.spawnClearanceMeters) {
-        continue;
-      }
-      const road = sampler.roadAt?.(x, z) ?? null;
-      if (road !== null && road.distance < config.roadClearanceMeters) {
-        continue;
-      }
-      const height = sampler.heightAt(x, z);
-      const normal = sampler.normalAt(x, z);
-      const steepness = 1 - normal.y;
-      const multipliers = speciesMultipliersAt(x, z);
-
-      // One plant per cell at most: species compete by weighted keep-probability.
-      // Sakura and bamboo are district signatures, not background flora: without a
-      // district asking for them (multiplier > 1), they never win a cell.
-      let total = 0;
-      const weights: number[] = [];
-      for (const species of VEGETATION_SPECIES) {
-        const districtOnly =
-          (species === 'sakura' || species === 'bamboo') && multipliers[species] <= 1;
-        const weight =
-          (districtOnly ? 0 : config.baseDensity[species]) *
-          multipliers[species] *
-          speciesGate(species, height, steepness, config);
-        weights.push(weight);
-        total += weight;
-      }
-      const roll = hash01(ix, iz, 37);
-      if (roll >= total) {
-        continue;
-      }
-      let cumulative = 0;
-      let species: VegetationSpecies = 'rock';
-      for (let index = 0; index < VEGETATION_SPECIES.length; index += 1) {
-        cumulative += weights[index]!;
-        if (roll < cumulative) {
-          species = VEGETATION_SPECIES[index]!;
-          break;
-        }
-      }
-      const isTree = TREE_SPECIES.has(species);
-      placements.push({
-        species,
-        variant: Math.floor(hash01(ix, iz, 41) * 3),
-        x,
-        y: height - 0.12,
-        z,
-        scale: isTree ? 0.8 + 0.85 * hash01(ix, iz, 53) : 0.7 + 1.1 * hash01(ix, iz, 53),
-        rotationY: hash01(ix, iz, 67) * Math.PI * 2,
-      });
-    }
-  }
-  return placements;
-}
 
 // ---------------------------------------------------------------------------
 // Species geometry: authored low-poly forms, vertex-colour baked, three tint
@@ -261,6 +141,78 @@ export function buildSpeciesGeometry(species: VegetationSpecies, variant: number
   }
 }
 
+/** Height where a snapped trunk separates (the stump keeps this much). */
+export const SNAP_HEIGHT = 1.25;
+
+/**
+ * The crown of a species (everything above the snap point), origin at the snap
+ * so a falling crown pivots where it broke. Bamboo crowns keep their culms.
+ */
+export function buildCrownGeometry(species: VegetationSpecies, variant: number): BufferGeometry {
+  const tint = LEAF_TINTS[variant % LEAF_TINTS.length]!;
+  const lift = -SNAP_HEIGHT;
+  switch (species) {
+    case 'conifer':
+      return mergeGeometries([
+        part(new CylinderGeometry(0.09, 0.13, 1.2, 5), 0x6b4a33, 0, 0.6, 0),
+        part(new ConeGeometry(1.55, 2.7, 7), tint[0], 0, 2.4 + lift, 0),
+        part(new ConeGeometry(1.18, 2.3, 7), tint[0], 0, 3.6 + lift, 0),
+        part(new ConeGeometry(0.78, 1.9, 7), tint[0], 0, 4.7 + lift, 0),
+      ])!;
+    case 'broadleaf':
+      return mergeGeometries([
+        part(new IcosahedronGeometry(1.55, 0), tint[1], 0, 3.1 + lift, 0),
+        part(new IcosahedronGeometry(1.0, 0), tint[1], 0.95, 2.55 + lift, 0.3),
+        part(new IcosahedronGeometry(0.92, 0), tint[1], -0.85, 2.7 + lift, -0.25),
+      ])!;
+    case 'sakura':
+      return mergeGeometries([
+        part(new IcosahedronGeometry(1.5, 0), tint[2], 0, 3.0 + lift, 0),
+        part(new IcosahedronGeometry(0.95, 0), tint[2], 0.9, 2.5 + lift, -0.2),
+        part(new IcosahedronGeometry(0.88, 0), tint[2], -0.8, 2.6 + lift, 0.3),
+      ])!;
+    case 'bamboo': {
+      const parts: BufferGeometry[] = [];
+      const culms: readonly (readonly [number, number])[] = [
+        [0, 0],
+        [0.5, 0.2],
+        [-0.4, 0.35],
+        [0.15, -0.45],
+      ];
+      for (const [cx, cz] of culms) {
+        parts.push(part(new CylinderGeometry(0.045, 0.055, 3.55, 4), 0x7fae56, cx, 1.78, cz));
+        parts.push(part(new ConeGeometry(0.55, 1.5, 5), 0x8fbc62, cx, 5.2 + lift, cz));
+      }
+      return mergeGeometries(parts)!;
+    }
+    case 'rock':
+      return new BufferGeometry();
+  }
+}
+
+/** What a snapped tree leaves behind: a waist-high stump with a pale cut top. */
+export function buildStumpGeometry(): BufferGeometry {
+  return mergeGeometries([
+    part(new CylinderGeometry(0.17, 0.27, SNAP_HEIGHT, 6), 0x6b4a33, 0, SNAP_HEIGHT / 2, 0),
+    part(new CylinderGeometry(0.17, 0.17, 0.06, 6), 0xc9a06b, 0, SNAP_HEIGHT + 0.02, 0),
+  ])!;
+}
+
+export type ShardKind = 'wood' | 'leaf' | 'blossom';
+
+/** One flying fragment of a shattered tree (splinter or leaf clump). */
+export function buildShardGeometry(kind: ShardKind): BufferGeometry {
+  if (kind === 'wood') {
+    return paint(new CylinderGeometry(0.05, 0.09, 0.85, 4).toNonIndexed(), 0x77543a);
+  }
+  return paint(
+    new IcosahedronGeometry(0.42, 0).toNonIndexed(),
+    kind === 'leaf' ? 0x3a6b35 : 0xe8a7bf,
+  );
+}
+
+const UP = new Vector3(0, 1, 0);
+
 const SPECIES_CAPACITY: Record<VegetationSpecies, number> = {
   conifer: 5200,
   broadleaf: 4200,
@@ -275,6 +227,25 @@ const SPECIES_CAPACITY: Record<VegetationSpecies, number> = {
  * only when the window's chunk set changes; placement generation is budgeted
  * per frame like terrain builds, so a fast slide-in never hitches.
  */
+interface DebrisPiece {
+  mesh: InstancedMesh;
+  position: Vector3;
+  velocity: Vector3;
+  quaternion: Quaternion;
+  angular: Vector3;
+  scale: number;
+  age: number;
+  grounded: boolean;
+}
+
+interface BentAnimation {
+  angle: number;
+  velocity: number;
+  target: number;
+  dirX: number;
+  dirZ: number;
+}
+
 export class VegetationWorld {
   readonly root = new Group();
   readonly #sampler: TerrainSampler;
@@ -285,6 +256,18 @@ export class VegetationWorld {
   #totalInstances = 0;
   #generatedChunks = 0;
   #disposed = false;
+  // Destruction visuals (tree-collision.ts owns the truth; this mirrors it):
+  readonly #crownMeshes = new Map<string, InstancedMesh>();
+  #stumpMesh: InstancedMesh | null = null;
+  readonly #shardMeshes = new Map<ShardKind, InstancedMesh>();
+  #stateProvider: ((key: string) => TreeVisualState | undefined) | null = null;
+  readonly #states = new Map<string, TreeVisualState>();
+  readonly #placementByKey = new Map<string, VegetationPlacement>();
+  readonly #instanceByKey = new Map<string, { mesh: InstancedMesh; index: number }>();
+  readonly #bentAnims = new Map<string, BentAnimation>();
+  #pieces: DebrisPiece[] = [];
+  #stumpCount = 0;
+  #lastFocus = { x: 0, z: 0 };
 
   constructor(sampler: TerrainSampler, config: VegetationConfig = VEGETATION_CONFIG) {
     this.#sampler = sampler;
@@ -314,15 +297,56 @@ export class VegetationWorld {
     }
     // One shared material instance across all instanced meshes.
     this.#sharedMaterial = material;
+
+    // Destruction meshes: falling crowns per species/variant, one stump mesh,
+    // and three shard pools (splinters, leaf clumps, blossom clumps).
+    for (const species of VEGETATION_SPECIES) {
+      if (species === 'rock') {
+        continue;
+      }
+      const variants = TREE_SPECIES.has(species) ? 3 : 2;
+      for (let variant = 0; variant < variants; variant += 1) {
+        const mesh = new InstancedMesh(buildCrownGeometry(species, variant), material, 40);
+        mesh.castShadow = true;
+        mesh.frustumCulled = false;
+        mesh.count = 0;
+        mesh.name = `vegetation-crown-${species}-${variant}`;
+        this.root.add(mesh);
+        this.#crownMeshes.set(`${species}:${variant}`, mesh);
+      }
+    }
+    const stump = new InstancedMesh(buildStumpGeometry(), material, 1024);
+    stump.castShadow = true;
+    stump.receiveShadow = true;
+    stump.frustumCulled = false;
+    stump.count = 0;
+    stump.name = 'vegetation-stumps';
+    this.root.add(stump);
+    this.#stumpMesh = stump;
+    for (const kind of ['wood', 'leaf', 'blossom'] as const) {
+      const mesh = new InstancedMesh(buildShardGeometry(kind), material, 260);
+      mesh.castShadow = true;
+      mesh.frustumCulled = false;
+      mesh.count = 0;
+      mesh.name = `vegetation-shards-${kind}`;
+      this.root.add(mesh);
+      this.#shardMeshes.set(kind, mesh);
+    }
+  }
+
+  /** Wires the collision field's truth into rebuilds (bent leans, stumps). */
+  setStateProvider(provider: ((key: string) => TreeVisualState | undefined) | null): void {
+    this.#stateProvider = provider;
   }
 
   readonly #sharedMaterial: MeshStandardNodeMaterial;
 
   /** Per-frame streaming hook, driven beside the terrain's own. */
-  updateStreaming(focus: { x: number; z: number }): void {
+  updateStreaming(focus: { x: number; z: number }, deltaSeconds = 0): void {
     if (this.#disposed) {
       return;
     }
+    this.#lastFocus = { x: focus.x, z: focus.z };
     const terrainConfig = this.#sampler.config;
     this.#center = resolveWindowCenter(this.#center, terrainConfig, focus.x, focus.z);
     const planned = planChunksAround(
@@ -361,6 +385,63 @@ export class VegetationWorld {
     if (changed) {
       this.#rebuildInstances(focus);
     }
+    this.#tick(deltaSeconds);
+  }
+
+  /**
+   * Mirrors collision-field hit events into visuals: bent trees start their
+   * spring, snapped crowns become falling debris over a stump, shattered trees
+   * burst into shards. Rebuilds the standing instances once per event batch.
+   */
+  applyHits(events: readonly TreeHitEvent[]): void {
+    if (this.#disposed || events.length === 0) {
+      return;
+    }
+    for (const event of events) {
+      this.#states.set(event.key, {
+        condition:
+          event.outcome === 'bend' ? 'bent' : event.outcome === 'snap' ? 'snapped' : 'shattered',
+        leanAngleRad: event.leanAngleRad,
+        leanDirX: event.dirX,
+        leanDirZ: event.dirZ,
+      });
+      if (event.outcome === 'bend') {
+        this.#bentAnims.set(event.key, {
+          angle: this.#bentAnims.get(event.key)?.angle ?? 0,
+          velocity: 0,
+          target: event.leanAngleRad,
+          dirX: event.dirX,
+          dirZ: event.dirZ,
+        });
+      } else if (event.outcome === 'snap') {
+        this.#bentAnims.delete(event.key);
+        this.#spawnCrown(event);
+      } else {
+        this.#bentAnims.delete(event.key);
+        this.#spawnShards(event);
+      }
+    }
+    this.#rebuildInstances(this.#lastFocus);
+  }
+
+  #writeMatrix(
+    mesh: InstancedMesh,
+    index: number,
+    placement: VegetationPlacement,
+    lean: { angle: number; dirX: number; dirZ: number } | null,
+    dummy: Object3D,
+  ): void {
+    dummy.position.set(placement.x, placement.y, placement.z);
+    if (lean === null || lean.angle <= 0.001) {
+      dummy.quaternion.setFromAxisAngle(UP, placement.rotationY);
+    } else {
+      const axis = new Vector3(lean.dirZ, 0, -lean.dirX).normalize();
+      const tilt = new Quaternion().setFromAxisAngle(axis, lean.angle);
+      dummy.quaternion.setFromAxisAngle(UP, placement.rotationY).multiply(tilt);
+    }
+    dummy.scale.setScalar(placement.scale);
+    dummy.updateMatrix();
+    mesh.setMatrixAt(index, dummy.matrix);
   }
 
   #rebuildInstances(focus: { x: number; z: number }): void {
@@ -380,9 +461,26 @@ export class VegetationWorld {
     for (const entry of this.#meshes) {
       counts.set(entry.mesh, 0);
     }
+    this.#placementByKey.clear();
+    this.#instanceByKey.clear();
     let total = 0;
+    let stumps = 0;
     for (const { placements } of ordered) {
       for (const placement of placements) {
+        this.#placementByKey.set(placement.key, placement);
+        const state = this.#stateProvider?.(placement.key) ?? this.#states.get(placement.key);
+        if (state !== undefined && state.condition !== 'intact' && state.condition !== 'bent') {
+          // Down: only the stump remains (the crown is debris, handled separately).
+          if (this.#stumpMesh !== null && stumps < this.#stumpMesh.instanceMatrix.count) {
+            dummy.position.set(placement.x, placement.y, placement.z);
+            dummy.quaternion.setFromAxisAngle(UP, placement.rotationY);
+            dummy.scale.setScalar(placement.scale);
+            dummy.updateMatrix();
+            this.#stumpMesh.setMatrixAt(stumps, dummy.matrix);
+            stumps += 1;
+          }
+          continue;
+        }
         const entry = this.#meshes.find(
           (candidate) =>
             candidate.species === placement.species && candidate.variant === placement.variant,
@@ -391,11 +489,15 @@ export class VegetationWorld {
         if (index >= entry.mesh.instanceMatrix.count) {
           continue;
         }
-        dummy.position.set(placement.x, placement.y, placement.z);
-        dummy.rotation.set(0, placement.rotationY, 0);
-        dummy.scale.setScalar(placement.scale);
-        dummy.updateMatrix();
-        entry.mesh.setMatrixAt(index, dummy.matrix);
+        const anim = this.#bentAnims.get(placement.key);
+        const lean =
+          anim !== undefined
+            ? { angle: anim.angle, dirX: anim.dirX, dirZ: anim.dirZ }
+            : state !== undefined && state.condition === 'bent'
+              ? { angle: state.leanAngleRad, dirX: state.leanDirX, dirZ: state.leanDirZ }
+              : null;
+        this.#writeMatrix(entry.mesh, index, placement, lean, dummy);
+        this.#instanceByKey.set(placement.key, { mesh: entry.mesh, index });
         counts.set(entry.mesh, index + 1);
         total += 1;
       }
@@ -404,14 +506,183 @@ export class VegetationWorld {
       entry.mesh.count = counts.get(entry.mesh)!;
       entry.mesh.instanceMatrix.needsUpdate = true;
     }
+    if (this.#stumpMesh !== null) {
+      this.#stumpMesh.count = stumps;
+      this.#stumpMesh.instanceMatrix.needsUpdate = true;
+    }
+    this.#stumpCount = stumps;
     this.#totalInstances = total;
   }
 
+  // ---------- debris ----------
+
+  #spawnCrown(event: TreeHitEvent): void {
+    const mesh = this.#crownMeshes.get(`${event.species}:${event.variant}`);
+    if (mesh === undefined) {
+      return;
+    }
+    const push = 1.5 + event.impactSpeed * 0.22;
+    this.#pieces.push({
+      mesh,
+      position: new Vector3(event.x, event.y + SNAP_HEIGHT * event.scale, event.z),
+      velocity: new Vector3(event.dirX * push, 1.7, event.dirZ * push),
+      quaternion: new Quaternion().setFromAxisAngle(UP, event.rotationY),
+      angular: new Vector3(event.dirZ, 0.4, -event.dirX).multiplyScalar(1.4 + Math.random() * 1.8),
+      scale: event.scale,
+      age: 0,
+      grounded: false,
+    });
+  }
+
+  #spawnShards(event: TreeHitEvent): void {
+    const leafKind: ShardKind = event.species === 'sakura' ? 'blossom' : 'leaf';
+    for (let index = 0; index < 13; index += 1) {
+      const kind: ShardKind = index < 5 ? 'wood' : leafKind;
+      const mesh = this.#shardMeshes.get(kind)!;
+      const angle = Math.random() * Math.PI * 2;
+      const radial = 1 + Math.random() * 3.2;
+      this.#pieces.push({
+        mesh,
+        position: new Vector3(
+          event.x + Math.cos(angle) * 0.3,
+          event.y + 0.8 + Math.random() * 2.4,
+          event.z + Math.sin(angle) * 0.3,
+        ),
+        velocity: new Vector3(
+          Math.cos(angle) * radial + event.dirX * event.impactSpeed * 0.32,
+          2.2 + Math.random() * 3.4,
+          Math.sin(angle) * radial + event.dirZ * event.impactSpeed * 0.32,
+        ),
+        quaternion: new Quaternion().setFromAxisAngle(
+          new Vector3(Math.random(), Math.random(), Math.random()).normalize(),
+          Math.random() * Math.PI,
+        ),
+        angular: new Vector3(
+          (Math.random() - 0.5) * 11,
+          (Math.random() - 0.5) * 11,
+          (Math.random() - 0.5) * 11,
+        ),
+        scale: (0.7 + Math.random() * 0.8) * Math.min(1.4, event.scale),
+        age: 0,
+        grounded: false,
+      });
+    }
+  }
+
+  #tick(deltaSeconds: number): void {
+    if (deltaSeconds <= 0) {
+      return;
+    }
+    const dt = Math.min(deltaSeconds, 0.05);
+    const dummy = new Object3D();
+
+    // Bent trees: a damped spring into their lean, with overshoot (the crackle
+    // settle). Only the handful of animating trees pay per-frame matrix writes.
+    for (const [key, anim] of this.#bentAnims) {
+      const target = this.#instanceByKey.get(key);
+      const placement = this.#placementByKey.get(key);
+      if (target === undefined || placement === undefined) {
+        this.#bentAnims.delete(key);
+        continue;
+      }
+      const acceleration = (anim.target - anim.angle) * 26 - anim.velocity * 7;
+      anim.velocity += acceleration * dt;
+      anim.angle = Math.max(0, anim.angle + anim.velocity * dt);
+      this.#writeMatrix(
+        target.mesh,
+        target.index,
+        placement,
+        { angle: anim.angle, dirX: anim.dirX, dirZ: anim.dirZ },
+        dummy,
+      );
+      target.mesh.instanceMatrix.needsUpdate = true;
+      if (Math.abs(anim.target - anim.angle) < 0.002 && Math.abs(anim.velocity) < 0.01) {
+        this.#bentAnims.delete(key);
+      }
+    }
+
+    if (this.#pieces.length === 0) {
+      return;
+    }
+    const lifetime = TREE_COLLISION.debrisLifetimeSeconds;
+    const survivors: DebrisPiece[] = [];
+    const perMesh = new Map<InstancedMesh, number>();
+    for (const piece of this.#pieces) {
+      piece.age += dt;
+      if (piece.age >= lifetime) {
+        continue;
+      }
+      if (!piece.grounded) {
+        piece.velocity.y -= 9.81 * dt;
+        piece.position.addScaledVector(piece.velocity, dt);
+        // q' = q + 0.5 * (omega, 0) * q
+        const spin = new Quaternion(
+          piece.angular.x * dt * 0.5,
+          piece.angular.y * dt * 0.5,
+          piece.angular.z * dt * 0.5,
+          0,
+        ).multiply(piece.quaternion);
+        piece.quaternion
+          .set(
+            piece.quaternion.x + spin.x,
+            piece.quaternion.y + spin.y,
+            piece.quaternion.z + spin.z,
+            piece.quaternion.w + spin.w,
+          )
+          .normalize();
+        const groundY = this.#sampler.heightAt(piece.position.x, piece.position.z) + 0.12;
+        if (piece.position.y <= groundY) {
+          piece.position.y = groundY;
+          if (Math.abs(piece.velocity.y) > 1.1) {
+            piece.velocity.y = -piece.velocity.y * 0.3;
+            piece.velocity.x *= 0.62;
+            piece.velocity.z *= 0.62;
+            piece.angular.multiplyScalar(0.5);
+          } else {
+            piece.grounded = true;
+            piece.velocity.set(0, 0, 0);
+          }
+        }
+      } else {
+        piece.angular.multiplyScalar(Math.pow(0.02, dt));
+      }
+      const shrink = piece.age > lifetime - 1.5 ? Math.max(0, (lifetime - piece.age) / 1.5) : 1;
+      const index = perMesh.get(piece.mesh) ?? 0;
+      if (index < piece.mesh.instanceMatrix.count) {
+        dummy.position.copy(piece.position);
+        dummy.quaternion.copy(piece.quaternion);
+        dummy.scale.setScalar(piece.scale * shrink);
+        dummy.updateMatrix();
+        piece.mesh.setMatrixAt(index, dummy.matrix);
+        perMesh.set(piece.mesh, index + 1);
+      }
+      survivors.push(piece);
+    }
+    this.#pieces = survivors;
+    for (const mesh of new Set([...this.#crownMeshes.values(), ...this.#shardMeshes.values()])) {
+      mesh.count = perMesh.get(mesh) ?? 0;
+      mesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+
   getContentStats(): Readonly<Record<string, number>> {
+    let bent = 0;
+    let snapped = 0;
+    let shattered = 0;
+    for (const state of this.#states.values()) {
+      if (state.condition === 'bent') bent += 1;
+      else if (state.condition === 'snapped') snapped += 1;
+      else if (state.condition === 'shattered') shattered += 1;
+    }
     return {
       vegetationInstances: this.#totalInstances,
       vegetationChunks: this.#chunkPlacements.size,
       vegetationChunksGenerated: this.#generatedChunks,
+      vegetationBent: bent,
+      vegetationSnapped: snapped,
+      vegetationShattered: shattered,
+      vegetationStumps: this.#stumpCount,
+      vegetationDebris: this.#pieces.length,
     };
   }
 
@@ -423,6 +694,18 @@ export class VegetationWorld {
     for (const entry of this.#meshes) {
       entry.mesh.geometry.dispose();
       entry.mesh.dispose();
+    }
+    for (const mesh of this.#crownMeshes.values()) {
+      mesh.geometry.dispose();
+      mesh.dispose();
+    }
+    for (const mesh of this.#shardMeshes.values()) {
+      mesh.geometry.dispose();
+      mesh.dispose();
+    }
+    if (this.#stumpMesh !== null) {
+      this.#stumpMesh.geometry.dispose();
+      this.#stumpMesh.dispose();
     }
     this.#sharedMaterial.dispose();
     this.root.removeFromParent();
