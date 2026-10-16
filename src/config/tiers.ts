@@ -218,13 +218,20 @@ const TIER_B: TierDefinition = {
     environment: {
       useAsBackground: false,
     },
+    sky: {
+      // No valley height fog on the gameplay tiers (owner report, 2026-10-16):
+      // it read as permanent fog on desktop. Tier A keeps it as the opt-in
+      // cinematic tier; the linear distance term stays everywhere.
+      heightFog: { enabled: false },
+    },
     postProcessing: {
       antiAliasing: 'taa',
-      // Two taps fewer than the baseline: this tier renders at 1.5x, so the same blur distance in UV is
-      // fifty percent more pixels to walk, and the effect is fill-rate bound.
-      motionBlur: { samples: 10 },
+      // Motion blur is off for gameplay (owner report, 2026-10-16): the
+      // cinematic stack was smearing the driving image. It stays implemented
+      // for photo mode / tier comparisons via config, not deleted.
+      motionBlur: { enabled: false },
       temporalAntiAliasing: { enabled: true, dynamicResolution: true },
-      bloom: { strength: 0.22, radius: 0.45 },
+      bloom: { strength: 0.16, radius: 0.4 },
       // A slightly tighter aperture than the baseline: this tier renders at 1.5x, and the blur is a
       // share of the frame, so the same number would read as a larger circle of confusion in pixels.
       depthOfField: { bokehScale: 13 },
@@ -278,7 +285,7 @@ const TIER_A: TierDefinition = {
       // defaulted on, so a frame can always name what it paid for them.
       contactShadows: { enabled: true, steps: 16 },
       ssgi: { enabled: true },
-      motionBlur: { samples: 16 },
+      motionBlur: { enabled: false },
       // A higher floor than the balanced tier: this tier is for hardware that was measured to hold its
       // frame budget, so the controller has less reason to trade resolution away. It still adapts — the
       // cost of not adapting is a stutter, and the schedule in `docs/REALISM_PLAN.md` §5 is what decides

@@ -633,7 +633,7 @@ export const RENDER_CONFIG: RenderConfig = {
     fogColorHorizon: 0xe8b98a,
     heightFog: {
       enabled: true,
-      distanceDensity: 0.00038,
+      distanceDensity: 0.00024,
       // Small, deliberately: the height factor multiplies depth-below-threshold by distance, so
       // it grows quadratically along the view ray - at 0.00035 it had already saturated by
       // 200 m and the whole route rendered as fog colour. At this value the valley floor is
@@ -790,7 +790,7 @@ export const RENDER_CONFIG: RenderConfig = {
     },
     chromaticAberration: {
       enabled: true,
-      strength: 0.4,
+      strength: 0.12,
       scale: 1.1,
     },
     sharpen: {
@@ -804,7 +804,7 @@ export const RENDER_CONFIG: RenderConfig = {
     },
     vignette: {
       enabled: true,
-      intensity: 0.55,
+      intensity: 0.3,
       smoothness: 0.85,
     },
   },

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { DISTRICTS } from '../../src/config/districts';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
-import { districtAt, speciesMultipliersAt } from '../../src/world/districts';
+import { districtAt, groundTintAt, speciesMultipliersAt } from '../../src/world/districts';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
 import { generateChunkVegetation } from '../../src/world/vegetation';
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
@@ -77,5 +77,16 @@ describe('vegetation placement', () => {
     const fieldTrees = fieldChunk.filter((p) => p.species !== 'rock').length;
     expect(conifers).toBeGreaterThan(12);
     expect(conifers).toBeGreaterThan(fieldTrees);
+  });
+});
+
+describe('district ground tints', () => {
+  it('tints the ground per district and stays neutral outside', () => {
+    const fields = groundTintAt(60, 620);
+    expect(fields[0]).toBeGreaterThan(1.05); // golden farmland
+    const pass = groundTintAt(-430, -1010);
+    expect(pass[0]).toBeLessThan(0.92); // deep cedar green
+    expect(pass[1]).toBeGreaterThan(pass[0]);
+    expect(groundTintAt(1400, 1400)).toEqual([1, 1, 1]);
   });
 });

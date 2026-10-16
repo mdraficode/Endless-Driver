@@ -20,6 +20,12 @@ export interface DistrictConfig {
   readonly radiusMeters: number;
   /** Per-species density multiplier inside the district (background rules are 1). */
   readonly speciesDensity: Partial<Record<VegetationSpecies, number>>;
+  /**
+   * Macro ground tint (multiplier on the terrain vertex colour) so districts
+   * read as different ground, not just different trees (owner report,
+   * 2026-10-16: "no diversity on different terrain"). Applied at 65% strength.
+   */
+  readonly groundTint: readonly [number, number, number];
 }
 
 export const DISTRICTS: readonly DistrictConfig[] = [
@@ -31,6 +37,7 @@ export const DISTRICTS: readonly DistrictConfig[] = [
     centerZ: -1010,
     radiusMeters: 720,
     speciesDensity: { conifer: 3.2, broadleaf: 0.5, rock: 1.4 },
+    groundTint: [0.8, 0.93, 0.79],
   },
   {
     // Sakura Avenue along the eastern road into town: blossom trees crowd the verge.
@@ -40,6 +47,7 @@ export const DISTRICTS: readonly DistrictConfig[] = [
     centerZ: -430,
     radiusMeters: 420,
     speciesDensity: { sakura: 3.4, broadleaf: 1.2, conifer: 0.4 },
+    groundTint: [1.07, 0.94, 0.95],
   },
   {
     // Take-no-Michi (竹の道): the bamboo lane leaving the junction southward.
@@ -49,6 +57,7 @@ export const DISTRICTS: readonly DistrictConfig[] = [
     centerZ: 90,
     radiusMeters: 300,
     speciesDensity: { bamboo: 4.2, broadleaf: 0.7, conifer: 0.3 },
+    groundTint: [0.84, 1.03, 0.85],
   },
   {
     // Yūhi Town (夕陽町): garden trees only — buildings carry this district (5b).
@@ -58,6 +67,7 @@ export const DISTRICTS: readonly DistrictConfig[] = [
     centerZ: 300,
     radiusMeters: 340,
     speciesDensity: { conifer: 0.15, broadleaf: 0.55, sakura: 0.8, bamboo: 0.2, rock: 0.1 },
+    groundTint: [1.03, 0.99, 0.9],
   },
   {
     // Shirasagi Terraces (白鷺の棚田): open farmland — trees are events, not cover.
@@ -67,6 +77,7 @@ export const DISTRICTS: readonly DistrictConfig[] = [
     centerZ: 620,
     radiusMeters: 680,
     speciesDensity: { conifer: 0.1, broadleaf: 0.35, sakura: 0.15, rock: 0.4 },
+    groundTint: [1.13, 1.03, 0.76],
   },
   {
     // hokuto-side highlands west: wind-bent broadleaf and exposed rock.
@@ -76,6 +87,7 @@ export const DISTRICTS: readonly DistrictConfig[] = [
     centerZ: 330,
     radiusMeters: 560,
     speciesDensity: { conifer: 0.7, broadleaf: 0.8, rock: 2.2 },
+    groundTint: [0.99, 0.93, 0.79],
   },
 ];
 

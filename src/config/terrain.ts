@@ -100,6 +100,6 @@ export const TERRAIN_CONFIG: TerrainConfig = {
     flatRadiusMeters: 45,
     blendRadiusMeters: 110,
   },
-  snowlineMeters: 150,
+  snowlineMeters: 170,
   pom: { steps: 12, depthMeters: 0.09, fadeStartMeters: 16, fadeEndMeters: 42 },
 };

@@ -179,7 +179,7 @@ describe('post stack per tier', () => {
     expect(tierB.renderer.antialias).toBe(false);
     expect(tierB.renderer.samples).toBe(0);
     expect(resolvePostEffects(tierB)).toContain('taa');
-    expect(resolvePostEffects(tierB)).toContain('motionBlur');
+    expect(resolvePostEffects(tierB)).not.toContain('motionBlur');
     expect(resolvePostEffects(tierB)).not.toContain('smaa');
     expect(resolvePostEffects(tierB)).not.toContain('fxaa');
     expect(tierB.postProcessing.ambientOcclusion.enabled).toBe(true);
@@ -516,7 +516,7 @@ describe('contact shadows and SSGI', () => {
     const effects = resolvePostEffects(applyTier(RENDER_CONFIG, 'A'));
     expect(effects.indexOf('ssgi')).toBeLessThan(effects.indexOf('contactShadows'));
     expect(effects.indexOf('contactShadows')).toBeLessThan(effects.indexOf('taa'));
-    expect(effects.indexOf('contactShadows')).toBeLessThan(effects.indexOf('motionBlur'));
+    expect(effects).not.toContain('motionBlur'); // gameplay: no motion blur (2026-10-16)
   });
 
   it('replaces GTAO with SSGI on the high tier instead of stacking both occlusion terms', () => {

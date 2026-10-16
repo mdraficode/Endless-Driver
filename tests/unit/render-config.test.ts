@@ -158,9 +158,9 @@ describe('height-aware fog and god rays configuration', () => {
     expect(heightFog.sunScatterPower).toBeGreaterThan(1);
   });
 
-  it('gives the constrained tier the linear band and the desktop tiers the height term', () => {
+  it('keeps the height term off the gameplay tiers and on the opt-in tier', () => {
     expect(applyTier(RENDER_CONFIG, 'C').sky.heightFog.enabled).toBe(false);
-    expect(applyTier(RENDER_CONFIG, 'B').sky.heightFog.enabled).toBe(true);
+    expect(applyTier(RENDER_CONFIG, 'B').sky.heightFog.enabled).toBe(false);
     expect(applyTier(RENDER_CONFIG, 'A').sky.heightFog.enabled).toBe(true);
     // A tier that only flips the switch must not lose the tuned densities to the merge.
     expect(applyTier(RENDER_CONFIG, 'C').sky.heightFog.distanceDensity).toBe(

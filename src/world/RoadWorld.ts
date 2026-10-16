@@ -50,7 +50,7 @@ export class RoadWorld {
     this.#asphaltMaterial.metalness = 0;
 
     this.#shoulderMaterial = new MeshStandardNodeMaterial();
-    this.#shoulderMaterial.color.set(0x8a7f6a);
+    this.#shoulderMaterial.color.set(0x7a6c50);
     this.#shoulderMaterial.roughness = 1;
     this.#shoulderMaterial.metalness = 0;
 

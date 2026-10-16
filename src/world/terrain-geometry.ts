@@ -6,6 +6,7 @@ import {
   terrainVariationAt,
   type TerrainSampler,
 } from './terrain-height';
+import { groundTintAt } from './districts';
 
 /**
  * Chunk mesh construction: a heightfield grid sampled from the world height function, plus
@@ -103,7 +104,7 @@ export function buildChunkGeometryData(
       (step * step);
     const occlusion = Math.min(1.05, Math.max(0.84, 1 - laplacian * 1.1));
     const variation = terrainVariationAt(config, x, z);
-    const color = terrainColorAt(config, height, 1 - ny, variation, occlusion);
+    const color = terrainColorAt(config, height, 1 - ny, variation, occlusion, groundTintAt(x, z));
     const weights = terrainSurfaceWeights(config, height, 1 - ny);
     positions[index * 3] = x;
     positions[index * 3 + 1] = yOverride ?? height;

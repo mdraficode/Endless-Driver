@@ -191,6 +191,7 @@ export function terrainColorAt(
   slope: number,
   variation: number,
   occlusion = 1,
+  groundTint: readonly [number, number, number] = [1, 1, 1],
 ): readonly [number, number, number] {
   // variation in [-1, 1]: patches of dry/wet ground at the hundred-metre scale.
   const grass: readonly [number, number, number] = [
@@ -210,11 +211,14 @@ export function terrainColorAt(
   const shade = Math.min(1.08, Math.max(0.8, occlusion));
   const color = [
     (grass[0] * grassWeight + soil[0] * soilWeight + rock[0] * rockWeight + snow[0] * snowWeight) *
-      shade,
+      shade *
+      groundTint[0],
     (grass[1] * grassWeight + soil[1] * soilWeight + rock[1] * rockWeight + snow[1] * snowWeight) *
-      shade,
+      shade *
+      groundTint[1],
     (grass[2] * grassWeight + soil[2] * soilWeight + rock[2] * rockWeight + snow[2] * snowWeight) *
-      shade,
+      shade *
+      groundTint[2],
   ] as const;
   return color;
 }

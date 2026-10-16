@@ -62,3 +62,42 @@ export function districtAt(x: number, z: number): DistrictConfig | null {
   }
   return best;
 }
+
+/** District edge influence (0..1) shared by the ground-tint resolver. */
+function districtEdge(district: DistrictConfig, x: number, z: number): number {
+  const distance = Math.hypot(x - district.centerX, z - district.centerZ);
+  if (distance >= district.radiusMeters) {
+    return 0;
+  }
+  const t = distance / district.radiusMeters;
+  if (t <= 0.55) {
+    return 1;
+  }
+  const u = (t - 0.55) / 0.45;
+  return 1 - u * u * (3 - 2 * u);
+}
+
+const NEUTRAL_TINT: readonly [number, number, number] = [1, 1, 1];
+
+/**
+ * Macro ground tint at a point: the strongest district's tint, mixed from
+ * neutral at 65% of its edge influence. Outside every district the ground
+ * keeps the prefecture-wide palette.
+ */
+export function groundTintAt(x: number, z: number): readonly [number, number, number] {
+  let tint: readonly [number, number, number] = NEUTRAL_TINT;
+  let strongest = 0;
+  for (const district of DISTRICTS) {
+    const edge = districtEdge(district, x, z);
+    if (edge > strongest) {
+      strongest = edge;
+      tint = district.groundTint;
+    }
+  }
+  const mixAmount = strongest * 0.65;
+  return [
+    1 + (tint[0] - 1) * mixAmount,
+    1 + (tint[1] - 1) * mixAmount,
+    1 + (tint[2] - 1) * mixAmount,
+  ];
+}
