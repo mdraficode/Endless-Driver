@@ -222,11 +222,7 @@
           "KHR_texture_basisu"
         ],
         "images": 3,
-        "nodes": [
-          "lod1",
-          "lod2",
-          "lod0"
-        ]
+        "nodes": ["lod1", "lod2", "lod0"]
       }
     },
     {
