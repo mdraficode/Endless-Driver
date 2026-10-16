@@ -1,5 +1,5 @@
 import { Group, Mesh, RepeatWrapping } from 'three';
-import { MeshStandardNodeMaterial } from 'three/webgpu';
+import { MeshStandardNodeMaterial, type Node } from 'three/webgpu';
 import {
   attribute,
   Break,
@@ -192,43 +192,50 @@ export class TerrainWorld implements SceneContent {
       const cameraDistance = toCamera.length();
       const viewDir = toCamera.normalize();
       const pomFade = float(1).sub(
-        smoothstep(float(pomConfig.fadeStartMeters), float(pomConfig.fadeEndMeters), cameraDistance),
+        smoothstep(
+          float(pomConfig.fadeStartMeters),
+          float(pomConfig.fadeEndMeters),
+          cameraDistance,
+        ),
       );
       // World-planar tangent frame: X/Z is the map plane, Y is up. Grazing views
       // would stretch the march without bound, so the divisor is clamped.
       const slope = viewDir.xz.div(clamp(viewDir.y, 0.22, 1));
-      const marchPom = Fn(() => {
-        const heightAt = (xz: typeof wxz) =>
-          texture(grass.height!, xz.mul(0.85))
-            .r.mul(splat.x)
-            .add(texture(soil.height!, xz.mul(0.65)).r.mul(splat.y))
-            .add(texture(rock.height!, xz.mul(0.22)).r.mul(splat.z))
-            .add(texture(snow.height!, xz.mul(0.5)).r.mul(splat.w));
-        const stepDepth = float(1).div(float(pomConfig.steps));
-        const depthNow = float(0).toVar();
-        const heightNow = heightAt(wxz).toVar();
-        If(pomFade.greaterThan(0), () => {
-          Loop(pomConfig.steps, () => {
-            depthNow.assign(depthNow.add(stepDepth));
-            const sampleXz = wxz.sub(slope.mul(depthNow.mul(pomConfig.depthMeters)));
-            heightNow.assign(heightAt(sampleXz));
-            If(float(1).sub(depthNow).lessThanEqual(heightNow), () => {
-              Break();
+      const marchPom = Fn<[Node<'vec2'>, Node<'vec2'>, Node<'float'>, Node<'vec4'>], Node<'vec2'>>(
+        ([baseXz, slopeXz, fade, splatWeights]) => {
+          const heightAt = (xz: typeof baseXz) =>
+            texture(grass.height!, xz.mul(0.85))
+              .r.mul(splatWeights.x)
+              .add(texture(soil.height!, xz.mul(0.65)).r.mul(splatWeights.y))
+              .add(texture(rock.height!, xz.mul(0.22)).r.mul(splatWeights.z))
+              .add(texture(snow.height!, xz.mul(0.5)).r.mul(splatWeights.w));
+          const stepDepth = float(1).div(float(pomConfig.steps));
+          const depthNow = float(0).toVar();
+          const heightNow = heightAt(baseXz).toVar();
+          If(fade.greaterThan(0), () => {
+            Loop(pomConfig.steps, () => {
+              depthNow.assign(depthNow.add(stepDepth));
+              const sampleXz = baseXz.sub(slopeXz.mul(depthNow.mul(pomConfig.depthMeters)));
+              heightNow.assign(heightAt(sampleXz));
+              If(float(1).sub(depthNow).lessThanEqual(heightNow), () => {
+                Break();
+              });
             });
           });
-        });
-        // Secant refinement: interpolate the crossing between the last two layers
-        // instead of snapping to a step boundary (which bands at grazing angles).
-        const prevDepth = depthNow.sub(stepDepth);
-        const prevXz = wxz.sub(slope.mul(prevDepth.mul(pomConfig.depthMeters)));
-        const above = heightAt(prevXz).sub(float(1).sub(prevDepth));
-        const below = heightNow.sub(float(1).sub(depthNow));
-        const fraction = above.div(above.sub(below).max(0.00001)).clamp(0, 1);
-        const hitDepth = prevDepth.add(stepDepth.mul(fraction));
-        const hitXz = wxz.sub(slope.mul(hitDepth.mul(pomConfig.depthMeters)));
-        return mix(wxz, hitXz, pomFade);
-      });
-      wxz = marchPom();
+          // Secant refinement: interpolate the crossing between the last two layers
+          // instead of snapping to a step boundary (which bands at grazing angles).
+          const prevDepth = depthNow.sub(stepDepth);
+          const prevXz = baseXz.sub(slopeXz.mul(prevDepth.mul(pomConfig.depthMeters)));
+          const above = heightAt(prevXz).sub(float(1).sub(prevDepth));
+          const below = heightNow.sub(float(1).sub(depthNow));
+          const fraction = above.div(above.sub(below).max(0.00001)).clamp(0, 1);
+          const hitDepth = prevDepth.add(stepDepth.mul(fraction));
+          const hitXz = baseXz.sub(slopeXz.mul(hitDepth.mul(pomConfig.depthMeters)));
+          return mix(baseXz, hitXz, fade);
+        },
+        { baseXz: 'vec2', slopeXz: 'vec2', fade: 'float', splatWeights: 'vec4', return: 'vec2' },
+      );
+      wxz = marchPom(wxz, slope, pomFade, splat);
     }
     const wpos = vec3(wxz.x, positionWorld.y, wxz.y);
 
