@@ -453,6 +453,7 @@ export class Application {
       shadowCascades: this.#config.shadows.csm.cascades,
       skyMode: scene.skyMode,
       environmentId: scene.environmentId,
+      fogMode: scene.fogMode,
       framesPerSecond: statistics.averageFramesPerSecond,
       minimumFramesPerSecond: statistics.minimumFramesPerSecond,
       averageFrameTimeMilliseconds: statistics.averageFrameTimeMilliseconds,
