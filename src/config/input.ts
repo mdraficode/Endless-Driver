@@ -22,11 +22,25 @@ export interface SteeringInputConfig {
   readonly smoothingSeconds: number;
 }
 
+export interface GamepadInputConfig {
+  /** Fraction of stick travel ignored around the centre. */
+  readonly deadzone: number;
+  /** Centre-softening exponent on stick steering (>1 = finer small inputs). */
+  readonly steerExponent: number;
+  /**
+   * Steering rate (units/second) while a stick is live. Analog targets move
+   * with the thumb, so this is far above the keyboard rate: it exists to
+   * smooth stick noise, not to interpolate a binary key.
+   */
+  readonly steerRatePerSecond: number;
+}
+
 export interface InputConfig {
   readonly throttle: AxisSmoothingConfig;
   readonly brake: AxisSmoothingConfig;
   readonly handbrake: Omit<AxisSmoothingConfig, 'curveExponent'>;
   readonly steering: SteeringInputConfig;
+  readonly gamepad: GamepadInputConfig;
   /** Seconds a discrete command stays pending for the simulation to consume. */
   readonly commandLifetimeSeconds: number;
 }
@@ -56,10 +70,11 @@ export const INPUT_CONFIG: InputConfig = {
   brake: { attackSeconds: 0.12, releaseSeconds: 0.15, curveExponent: 1.2 },
   handbrake: { attackSeconds: 0.05, releaseSeconds: 0.05 },
   steering: {
-    ratePerSecond: 3.2,
+    ratePerSecond: 4.2,
     returnRatePerSecond: 5,
-    smoothingSeconds: 0.06,
+    smoothingSeconds: 0.045,
   },
+  gamepad: { deadzone: 0.14, steerExponent: 1.25, steerRatePerSecond: 14 },
   commandLifetimeSeconds: 0.25,
 };
 

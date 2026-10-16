@@ -2,6 +2,12 @@ import { INPUT_CONFIG, KEY_BINDINGS, type InputConfig, type KeyBindings } from '
 import { clamp } from '../shared/math';
 import { smoothingFactor } from '../shared/vector';
 import { NEUTRAL_ACTIONS, type VehicleActions } from '../vehicles/types';
+import {
+  NEUTRAL_GAMEPAD as NEUTRAL_GAMEPAD_STATE,
+  pollGamepad,
+  readGamepadState,
+  type GamepadLike,
+} from './gamepad-state';
 import type { TouchDriveState } from './touch-state';
 
 export interface InputManagerOptions {
@@ -9,6 +15,8 @@ export interface InputManagerOptions {
   readonly bindings?: KeyBindings;
   /** Event target; defaults to `window` when available. Injectable for tests. */
   readonly target?: InputTarget | null;
+  /** Gamepad source; defaults to polling `navigator.getGamepads`. Injectable for tests. */
+  readonly gamepadProvider?: () => GamepadLike | null;
 }
 
 /** Minimal surface this manager needs from the DOM, so tests can supply a stub. */
@@ -59,7 +67,11 @@ export class InputManager {
   readonly #config: InputConfig;
   readonly #bindings: KeyBindings;
   readonly #target: InputTarget | null;
+  readonly #gamepadProvider: () => GamepadLike | null;
   readonly #pressed = new Set<string>();
+  #padResetHeld = false;
+  #padCameraHeld = false;
+  #gamepadLive = false;
   readonly #resetCommand: CommandState = { remaining: 0 };
   readonly #cameraCommand: CommandState = { remaining: 0 };
   #throttle = 0;
@@ -75,6 +87,12 @@ export class InputManager {
     this.#bindings = options.bindings ?? KEY_BINDINGS;
     this.#target =
       options.target !== undefined ? options.target : typeof window === 'undefined' ? null : window;
+    this.#gamepadProvider = options.gamepadProvider ?? pollGamepad;
+  }
+
+  /** True while a gamepad is connected and being read. */
+  get gamepadConnected(): boolean {
+    return this.#gamepadLive;
   }
 
   get isAttached(): boolean {
@@ -153,10 +171,33 @@ export class InputManager {
     const dt = deltaSeconds > 0 ? deltaSeconds : 0;
     const touch = this.#touch;
 
-    const throttleTarget = this.#isAnyPressed(this.#bindings.throttle) || touch?.throttle ? 1 : 0;
-    const brakeTarget = this.#isAnyPressed(this.#bindings.brake) || touch?.brake ? 1 : 0;
+    // Gamepad first: polled every frame (the API has no events worth trusting),
+    // merged with keyboard/touch below — any device can drive, none blocks another.
+    const pad = readGamepadState(
+      this.#gamepadProvider(),
+      config.gamepad.deadzone,
+      config.gamepad.steerExponent,
+    );
+    this.#gamepadLive = pad !== NEUTRAL_GAMEPAD_STATE;
+    if (pad.resetPressed && !this.#padResetHeld) {
+      this.#resetCommand.remaining = config.commandLifetimeSeconds;
+    }
+    if (pad.cameraPressed && !this.#padCameraHeld) {
+      this.#cameraCommand.remaining = config.commandLifetimeSeconds;
+    }
+    this.#padResetHeld = pad.resetPressed;
+    this.#padCameraHeld = pad.cameraPressed;
+
+    const throttleTarget = Math.max(
+      this.#isAnyPressed(this.#bindings.throttle) || touch?.throttle ? 1 : 0,
+      pad.throttle,
+    );
+    const brakeTarget = Math.max(
+      this.#isAnyPressed(this.#bindings.brake) || touch?.brake ? 1 : 0,
+      pad.brake,
+    );
     const handbrakeTarget =
-      this.#isAnyPressed(this.#bindings.handbrake) || touch?.handbrake ? 1 : 0;
+      this.#isAnyPressed(this.#bindings.handbrake) || touch?.handbrake || pad.handbrake ? 1 : 0;
 
     this.#throttle = this.#smoothAxis(this.#throttle, throttleTarget, dt, config.throttle);
     this.#brake = this.#smoothAxis(this.#brake, brakeTarget, dt, config.brake);
@@ -168,9 +209,13 @@ export class InputManager {
     const keyboardSteer =
       (this.#isAnyPressed(this.#bindings.steerRight) ? 1 : 0) -
       (this.#isAnyPressed(this.#bindings.steerLeft) ? 1 : 0);
-    const steerTarget = touch?.steer ?? keyboardSteer;
+    const steerTarget = pad.steer ?? touch?.steer ?? keyboardSteer;
     const rate =
-      steerTarget === 0 ? config.steering.returnRatePerSecond : config.steering.ratePerSecond;
+      steerTarget === 0
+        ? config.steering.returnRatePerSecond
+        : pad.steer !== null
+          ? config.gamepad.steerRatePerSecond
+          : config.steering.ratePerSecond;
     const maxStep = rate * dt;
     const delta = clamp(steerTarget - this.#steerRaw, -maxStep, maxStep);
     this.#steerRaw = clamp(this.#steerRaw + delta, -1, 1);
