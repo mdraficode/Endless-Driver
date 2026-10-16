@@ -68,15 +68,17 @@ await waitFrames(90);
 await page.evaluate(() => window.__ENDLESS_DRIVER__?.teleportCar?.(-398, -992, -1.1));
 const before = await veg('before');
 await page.keyboard.down('ArrowUp');
-let after = before;
+const readings = [before];
 for (let attempt = 0; attempt < 24; attempt += 1) {
   await page.waitForTimeout(10_000);
-  after = await veg(`driving-${attempt}`);
-  if (after.bent + after.snapped + after.shattered > 0) break;
+  const reading = await veg(`driving-${attempt}`);
+  readings.push(reading);
+  if (reading.bent + reading.snapped + reading.shattered > 0) break;
 }
 await page.keyboard.up('ArrowUp');
 await page.waitForTimeout(4_000);
-after = await veg('after');
+const after = await veg('after');
+readings.push(after);
 await mkdir(dirname(out), { recursive: true });
 await page.screenshot({ path: out, timeout: 280_000 });
 await writeFile(`${out}.json`, JSON.stringify({ url, before, after, errors }, null, 2));
