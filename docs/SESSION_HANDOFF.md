@@ -1084,3 +1084,18 @@ point is led by one lag interval, cancelling the trail at any speed. Unit test
 drives a pose at 40 m/s and holds 6.2 m; browser proof
 (scripts/capture-speedcam.mjs): 6.20 m standing, 5.83 m at 74 km/h, zero
 errors. 392 tests green.
+
+## 32. Phase 4 Increment 5a — districts + vegetation (2026-10-15)
+
+District registry (config/districts.ts: Kiri-cedar, Sakura Avenue,
+Take-no-Michi, Yūhi Town, Shirasagi Terraces, West Highlands) resolved purely
+by world/districts.ts (soft 0.55R core → 0 at R, strongest-deviation blend).
+Vegetation (world/vegetation.ts): deterministic per-cell scatter (6.5 m grid,
+integer hash), sampler-gated (road ≥7.5 m, spawn pad 55 m, treeline 150 m,
+slope), one winner species per cell, sakura/bamboo district-gated after the
+avenue species leaked to the pass in the first capture. Authored low-poly
+vertex-colour species (3 tint variants) behind a registry for later CC0 GLB
+replacement; InstancedMesh per species/variant, 7×7-chunk window, ≤3 chunk
+generations/frame. Browser: 8,236 instances at cedar pass, 5,360 at avenue,
+123 draw calls, zero errors; 398 tests. Remaining Phase 4: town buildings +
+roadside props (5b), near-tier POM, bridges/tunnels deferred.

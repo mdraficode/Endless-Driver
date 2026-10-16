@@ -3,6 +3,7 @@ import { MeshStandardNodeMaterial } from 'three/webgpu';
 import type { WorldConfig } from '../config/world';
 import { RoadWorld } from './RoadWorld';
 import { TerrainWorld } from './TerrainWorld';
+import { VegetationWorld } from './vegetation';
 import type { SceneContent, SceneContentContext } from './WorldContent';
 
 /**
@@ -34,12 +35,16 @@ export function createDrivingWorld({
   if (roads !== null) {
     root.add(roads.object);
   }
+  // District vegetation (Increment 5): instanced scatter fed by the same sampler.
+  const vegetation = new VegetationWorld(terrainSampler);
+  root.add(vegetation.root);
 
   return {
     root,
     kind: 'driving',
     updateStreaming: (focus, velocity) => {
       terrain.updateStreaming(focus, velocity);
+      vegetation.updateStreaming(focus);
     },
     loadSurfaces: async () => {
       await Promise.all([
@@ -50,10 +55,12 @@ export function createDrivingWorld({
     getContentStats: () => ({
       ...terrain.getContentStats(),
       ...(roads === null ? {} : roads.getStats()),
+      ...vegetation.getContentStats(),
     }),
     dispose(): void {
       terrain.dispose();
       roads?.dispose();
+      vegetation.dispose();
       const geometries = new Set<BufferGeometry>();
       const materials = new Set<Material>();
       root.traverse((object) => {

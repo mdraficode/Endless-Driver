@@ -578,6 +578,22 @@ position continuous); browser proof at the volcano (world −1500, −2100):
 the new origin, 4/4 contacts, zero errors. Remaining in this phase: the §5
 district build-out (bridges/tunnels still deferred).
 
+**Progress (2026-10-15, increment 5a — districts + vegetation):** the §5 district
+registry exists (`src/config/districts.ts`, resolved purely by
+`src/world/districts.ts`) keyed to the road geography: Kiri-cedar forest,
+Sakura Avenue, Take-no-Michi bamboo lane, Yūhi Town, Shirasagi Terraces,
+West Highlands. On top of it, deterministic instanced vegetation
+(`src/world/vegetation.ts`): one candidate per 6.5 m cell decided by integer
+hash, gated by the shared sampler (road corridor ≥7.5 m clear, spawn pad,
+treeline, slope — only rock clings), species competing per cell, sakura/bamboo
+as district-signature species. Species are authored low-poly vertex-coloured
+forms in three tint variants behind a registry meant to take scanned CC0
+models later; streaming mirrors the terrain window (7×7 chunks, budgeted
+generation, one InstancedMesh per species/variant). Browser proof: 8,236
+instances at the pass, 5,360 at the avenue, districts visually distinct, zero
+errors. Remaining in this phase: town buildings + roadside props (5b), POM on
+the near terrain tier, bridges/tunnels still deferred.
+
 **Stop:** Request authorization before Phase 5.
 
 ### Phase 5 — Environment detail: vegetation, props, atmosphere
