@@ -80,13 +80,13 @@ export interface ChaseCameraConfig {
 
 export const CHASE_CAMERA_CONFIG: ChaseCameraConfig = {
   views: CHASE_CAMERA_VIEWS,
-  defaultViewId: 'normal',
+  defaultViewId: 'far',
   viewTransitionSeconds: 0.45,
   positionLagSeconds: 0.18,
   lookLagSeconds: 0.1,
   headingLagSeconds: 0.28,
-  baseFov: 62,
-  maxFov: 78,
+  baseFov: 70,
+  maxFov: 86,
   fovMaxSpeed: 62,
   fovLagSeconds: 0.35,
   lateralRollFactor: 0.006,

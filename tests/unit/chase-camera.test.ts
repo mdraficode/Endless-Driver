@@ -60,6 +60,7 @@ function advance(
 describe('chase camera', () => {
   it('starts at the configured base field of view behind the car', () => {
     const camera = new ChaseCamera(CHASE_CAMERA_CONFIG, 16 / 9);
+    camera.setView('normal');
     camera.snapTo(pose());
 
     expect(camera.camera.fov).toBe(CHASE_CAMERA_CONFIG.baseFov);
@@ -77,6 +78,7 @@ describe('chase camera', () => {
 
   it('rotates its offset with the car so it stays behind the nose', () => {
     const camera = new ChaseCamera(CHASE_CAMERA_CONFIG, 1);
+    camera.setView('normal');
     camera.snapTo(pose(0, 0.6, 0, Math.PI / 2));
 
     // Quarter turn to the left: forward becomes -X, so the camera trails at +X.
@@ -89,6 +91,7 @@ describe('chase camera', () => {
 
   it('lags behind position changes and then catches up', () => {
     const camera = new ChaseCamera(CHASE_CAMERA_CONFIG, 1);
+    camera.setView('normal');
     camera.snapTo(pose());
     const startZ = camera.camera.position.z;
 
@@ -186,6 +189,7 @@ describe('chase camera', () => {
 
   it('lags its heading behind a turn, then settles behind the car', () => {
     const camera = new ChaseCamera(CHASE_CAMERA_CONFIG, 1);
+    camera.setView('normal');
     camera.snapTo(pose(0, 0.6, 0, 0));
     const turned = pose(0, 0.6, 0, Math.PI / 2);
     camera.update(1 / 60, turned, telemetry());
@@ -223,14 +227,14 @@ describe('chase camera', () => {
 });
 
 describe('chase camera distance views', () => {
-  it('starts on Normal and cycles Close → Normal → Far → Close', () => {
+  it('starts on Far and cycles Far → Close → Normal → Far', () => {
     const camera = new ChaseCamera(CHASE_CAMERA_CONFIG, 16 / 9);
-    expect(camera.view.id).toBe('normal');
-    expect(camera.cycleView().id).toBe('far');
+    expect(camera.view.id).toBe('far');
     expect(camera.cycleView().id).toBe('close');
     expect(camera.cycleView().id).toBe('normal');
+    expect(camera.cycleView().id).toBe('far');
     expect(camera.setView('nope')).toBe(false);
-    expect(camera.view.id).toBe('normal');
+    expect(camera.view.id).toBe('far');
   });
 
   it('frames the car closer on Close and farther on Far', () => {
@@ -247,6 +251,7 @@ describe('chase camera distance views', () => {
 
   it('glides to the new distance instead of cutting', () => {
     const camera = new ChaseCamera(CHASE_CAMERA_CONFIG, 16 / 9);
+    camera.setView('normal');
     camera.snapTo(pose());
     camera.cycleView(); // normal → far
     advance(camera, 0.1, pose());
@@ -261,6 +266,7 @@ describe('chase camera distance views', () => {
 describe('chase camera at speed', () => {
   it('holds the view distance at speed instead of trailing behind', () => {
     const camera = new ChaseCamera(CHASE_CAMERA_CONFIG, 16 / 9);
+    camera.setView('normal');
     // Drive the pose north (-Z) at a steady 40 m/s (144 km/h) for four seconds.
     const step = 1 / 60;
     let z = 0;

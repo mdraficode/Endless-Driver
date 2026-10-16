@@ -74,8 +74,13 @@ type StatusTone = 'info' | 'error';
  * Ownership flows one way: Application owns everything below it; the systems never reach back up.
  * The vehicle never touches the renderer, and the renderer never touches physics.
  */
-/** localStorage key for the player's chosen chase distance view. */
-const CAMERA_VIEW_STORAGE_KEY = 'endless-driver:camera-view';
+/**
+ * localStorage key for the player's chosen chase distance view. The `:v2` suffix is a
+ * one-time reset: the default view moved to Far with the wider FOV (owner request,
+ * 2026-10-16), and a stored pre-retune choice would otherwise silently keep the
+ * narrow framing the retune exists to remove.
+ */
+const CAMERA_VIEW_STORAGE_KEY = 'endless-driver:camera-view:v2';
 
 export class Application {
   readonly #config: RenderConfig;

@@ -286,14 +286,14 @@ export const VEHICLE_CONFIG: VehicleConfig = {
     handbrakeForce: 2600,
   },
   stability: {
-    yawResponsePerSecond: 3.2,
+    yawResponsePerSecond: 3.8,
     minSpeedMps: 4,
     airborneGravityScale: 0.6,
   },
   steering: {
     maxAngle: 0.55,
     minAngle: 0.015,
-    gripBudgetFactor: 1.2,
+    gripBudgetFactor: 1.35,
     slipReliefFactor: 0.7,
     ackermann: 0.25,
   },

@@ -633,14 +633,14 @@ export const RENDER_CONFIG: RenderConfig = {
     fogColorHorizon: 0xe8b98a,
     heightFog: {
       enabled: true,
-      distanceDensity: 0.0006,
+      distanceDensity: 0.00038,
       // Small, deliberately: the height factor multiplies depth-below-threshold by distance, so
       // it grows quadratically along the view ray - at 0.00035 it had already saturated by
       // 200 m and the whole route rendered as fog colour. At this value the valley floor is
       // ~5% hazed at 300 m and ~50% at 1.2 km, while slopes above the threshold stay clear.
-      heightDensity: 0.00004,
+      heightDensity: 0.000022,
       heightMeters: 12,
-      sunScatterStrength: 0.45,
+      sunScatterStrength: 0.34,
       sunScatterPower: 6,
     },
     domeScaleFactor: 1.05,
@@ -720,7 +720,7 @@ export const RENDER_CONFIG: RenderConfig = {
       // Two thirds of native. The resolve already reconstructs from jittered samples, so a reduced render
       // scale degrades less here than it would anywhere else — and it is the only reason the effect can
       // pay for itself on a mid-range GPU.
-      minScale: 0.67,
+      minScale: 0.8,
       maxScale: 1,
       // A 60 Hz deadline, with the dead band below doing the work of keeping the controller from fighting
       // a display that is comfortably meeting it.
