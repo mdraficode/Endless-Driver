@@ -1260,3 +1260,27 @@ black-framed on SwiftShader context loss — sandbox RAM, previously
 diagnosed; the diagnostics were collected clean in the same runs.)
 Standing lesson: visual proofs must state their tier, and a tier-C proof
 says nothing about a tier-B player's screen.
+
+## 41. Cinematic down + terrain diversity (2026-10-16)
+
+Owner: turn down the cinematic effect on the gameplay screen; and "only
+snow on the tracks… no diversity on different terrain". Measured first:
+snow covers 4.1% of the map (the volcano cap above the snowline) and
+**zero road points** — the white on/around roads was the pale wash
+(light gravel shoulders, fog, bloom), not snow. Two fixes followed.
+
+- **Cinematic stack down for gameplay**: motion blur off on tiers B and
+  A (kept implemented for photo mode), chromatic aberration 0.4→0.12,
+  vignette 0.55→0.30, tier-B bloom 0.22→0.16. **Height fog is now off on
+  tier B as well** (tier A opt-in keeps it); distance fog 0.00038→0.00024.
+  Tier-B diagnostics verify the live chain: `ao, contactShadows, taa,
+grade, bloom, lut, chromaticAberration, sharpen, vignette` — no
+  motionBlur, no dof. Tests re-pinned accordingly.
+- **Terrain diversity**: districts previously only changed trees. Each
+  district now carries a `groundTint` (golden farmland, deep cedar green
+  at the pass, bamboo emerald, rose-soft Sakura Avenue, warm town, dry
+  highlands), applied in the macro vertex colour **and** carried through
+  a new `district` vertex attribute into the textured detail, so near
+  ground differs too (worker transferables 6→7). Snowline 150→170 m
+  shrinks the volcano cap; shoulder gravel darkened a step. District
+  brow captures verify zero errors and visibly different ground/vegetation.
