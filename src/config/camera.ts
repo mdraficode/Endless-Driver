@@ -49,7 +49,7 @@ export const CHASE_CAMERA_VIEWS: readonly ChaseCameraView[] = [
     label: 'Far',
     offset: [0, 3.2, 10.2],
     lookOffset: [0, 1.25, -8],
-    fovDelta: -5,
+    fovDelta: 0,
   },
 ];
 
