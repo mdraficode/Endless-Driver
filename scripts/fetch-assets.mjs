@@ -100,6 +100,7 @@ const ENTRIES = [
     runtimePath: 'assets/textures/leafy_grass_1k',
     url: `${BASE_URL}/Textures/jpg/1k/leafy_grass`,
     stem: 'leafy_grass',
+    heightMap: true,
     role: 'Terrain splat diffuse/normal/roughness/AO for grass lowlands (Phase 4 realism pass).',
   },
   {
@@ -114,6 +115,7 @@ const ENTRIES = [
     runtimePath: 'assets/textures/brown_mud_dry_1k',
     url: `${BASE_URL}/Textures/jpg/1k/brown_mud_dry`,
     stem: 'brown_mud_dry',
+    heightMap: true,
     role: 'Terrain splat diffuse/normal/roughness/AO for soil slopes and worked ground (Phase 4 realism pass).',
   },
   {
@@ -128,6 +130,7 @@ const ENTRIES = [
     runtimePath: 'assets/textures/rock_face_03_1k',
     url: `${BASE_URL}/Textures/jpg/1k/rock_face_03`,
     stem: 'rock_face_03',
+    heightMap: true,
     role: 'Terrain splat diffuse/normal/roughness/AO for steep rock and cliffs (Phase 4 realism pass).',
   },
   {
@@ -142,6 +145,7 @@ const ENTRIES = [
     runtimePath: 'assets/textures/snow_01_1k',
     url: `${BASE_URL}/Textures/jpg/1k/snow_01`,
     stem: 'snow_01',
+    heightMap: true,
     role: 'Terrain splat diffuse/normal/roughness/AO above the snowline (Phase 4 realism pass).',
   },
   {
@@ -198,6 +202,9 @@ const TEXTURE_MAPS = [
   ['normal', 'nor_gl', 'linear'],
   ['roughness', 'rough', 'linear'],
   ['arm', 'arm', 'linear'],
+  // Scanned displacement, published only for the terrain splat sets
+  // (`heightMap: true` below): the near-tier POM raymarch samples it.
+  ['height', 'disp', 'linear'],
 ];
 
 const args = new Set(process.argv.slice(2));
@@ -236,6 +243,9 @@ async function fetchEntry(entry) {
   } else {
     const stem = entry.stem ?? 'japanese_cedar_planks';
     for (const [slot, suffix, colourSpace] of TEXTURE_MAPS) {
+      if (slot === 'height' && entry.heightMap !== true) {
+        continue;
+      }
       const relative = `${entry.runtimePath}_${suffix}_1k.jpg`;
       const url = `${entry.url}/${stem}_${suffix}_1k.jpg`;
       const target = join(PUBLIC_DIR, relative);

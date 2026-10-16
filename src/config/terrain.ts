@@ -61,6 +61,19 @@ export interface TerrainConfig {
   };
   /** Snowline: above this height the splat blends to snow/rock pale. */
   readonly snowlineMeters: number;
+  /**
+   * Near-tier parallax occlusion (Phase 4): the closest LOD ring raymarches the
+   * splat's blended scanned displacement so close ground has real depth.
+   */
+  readonly pom: {
+    /** Raymarch steps across the relief; also the per-fragment cost ceiling. */
+    readonly steps: number;
+    /** World-space relief depth the 0..1 displacement spans, metres. */
+    readonly depthMeters: number;
+    /** Camera distance where the offset starts / finishes fading out, metres. */
+    readonly fadeStartMeters: number;
+    readonly fadeEndMeters: number;
+  };
 }
 
 export const TERRAIN_CONFIG: TerrainConfig = {
@@ -88,4 +101,5 @@ export const TERRAIN_CONFIG: TerrainConfig = {
     blendRadiusMeters: 110,
   },
   snowlineMeters: 150,
+  pom: { steps: 24, depthMeters: 0.09, fadeStartMeters: 16, fadeEndMeters: 42 },
 };

@@ -106,6 +106,8 @@ export interface MaterialTextureSet {
   readonly normal: Texture;
   /** Roughness in the green channel, ambient occlusion in red, metalness in blue. */
   readonly arm: Texture | null;
+  /** Linear displacement (white = high); only the terrain splat sets publish one. */
+  readonly height: Texture | null;
   dispose(): void;
 }
 
@@ -214,6 +216,7 @@ export async function loadMaterialTextureSet(
   const diffuse = await load('diffuse', 'srgb');
   const normal = await load('normal', 'linear');
   const arm = await load('arm', 'linear');
+  const height = await load('height', 'linear');
   if (diffuse === null || normal === null) {
     for (const texture of loaded) {
       texture.dispose();
@@ -230,6 +233,7 @@ export async function loadMaterialTextureSet(
     diffuse,
     normal,
     arm,
+    height,
     dispose(): void {
       for (const texture of loaded) {
         texture.dispose();
