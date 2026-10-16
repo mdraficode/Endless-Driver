@@ -1237,3 +1237,26 @@ turn-in, then sudden yaw: all three symptoms from one cause).
   Junction capture: road reads clear to the horizon at Far/70°, zero
   errors. If the view still feels foggy after this, the remaining lever
   is the bright horizon sky itself (sky/exposure), not the fog density.
+
+## 40. Blur root cause — depth of field on the desktop tiers (2026-10-16)
+
+Owner: "even more blurry and foggy" after §39. The fog densities had gone
+_down_, so the regression was elsewhere — and the §39 proofs were all
+captured at tier C, where depth of field and height fog are disabled.
+The owner's desktop resolves to tier B, whose baseline had **DOF enabled:
+12 m focus, full blur beyond ~26 m** — every distant road blurred by
+design, and the new Far default view pushed more of the frame past the
+blur line. A tier mismatch between proof and player had hidden it twice.
+
+Fix: DOF is off at every tier during gameplay (`RENDER_CONFIG` baseline;
+it returns with photo mode, Phase 8); motion-blur intensity 1→0.55;
+height fog 0.000022→0.000012, sun scatter 0.34→0.30. The post-chain test
+that pinned "DOF on above tier C" now pins the opposite. Verification at
+the owner's own tier this time: tier-B diagnostics report the live effect
+list `ao, contactShadows, taa, motionBlur, grade, bloom, lut,
+chromaticAberration, sharpen, vignette` — no `dof` — at Far/70°,
+renderScale 0.8, zero page errors. (Two tier-B screenshot attempts
+black-framed on SwiftShader context loss — sandbox RAM, previously
+diagnosed; the diagnostics were collected clean in the same runs.)
+Standing lesson: visual proofs must state their tier, and a tier-C proof
+says nothing about a tier-B player's screen.
