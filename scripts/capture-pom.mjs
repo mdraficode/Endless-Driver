@@ -23,7 +23,7 @@ const url = `${baseUrl}?tier=C&debug=1`;
 const browser = await chromium.launch({
   args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--mute-audio'],
 });
-const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+const page = await browser.newPage({ viewport: { width: 640, height: 360 } });
 const errors = [];
 page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
 page.on('console', (message) => {
@@ -63,9 +63,9 @@ const waitFrames = async (count) => {
 // camera sits ~2 m up, so the foreground is all near-tier ground at grazing
 // angles — exactly where POM earns its cost.
 await page.evaluate(() => window.__ENDLESS_DRIVER__?.teleportCar?.(30, 34, 0));
-await waitFrames(120);
+await waitFrames(90);
 await page.evaluate(() => window.__ENDLESS_DRIVER__?.teleportCar?.(30, 34, 0));
-await waitFrames(60);
+await waitFrames(45);
 const settled = await reading('settled');
 await mkdir(dirname(out), { recursive: true });
 await page.screenshot({ path: out, timeout: 280_000 });
