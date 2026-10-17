@@ -28,7 +28,7 @@ import { chmod, mkdir, readFile, writeFile, stat } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { NodeIO } from '@gltf-transform/core';
+import { NodeIO, VertexLayout } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import {
   cloneDocument,
@@ -640,6 +640,118 @@ function bakeNodeTransforms(document) {
 }
 
 /**
+ * Foliage materials: the scans' needle/leaf primitives are real geometry (the fir's twig
+ * primitive is four million triangles of individual needles), which no game budget can carry —
+ * every simplifier turns needles into invisible slivers. cardifyFoliage() replaces those
+ * primitives with cross-quads sampled from the needle cloud, textured by the asset's foliage
+ * atlas with a keyed alpha, which is how game foliage is built anyway.
+ */
+const FOLIAGE_MATERIAL = /twig|leaf|leaves|needle|foliage/i;
+
+/** Cross-quads per level of detail: enough mass to read as a crown, few enough to instance. */
+const FOLIAGE_CARD_QUADS = [900, 260, 70];
+
+function isFoliagePrimitive(primitive) {
+  const material = primitive.getMaterial();
+  return material !== null && FOLIAGE_MATERIAL.test(material.getName() ?? '');
+}
+
+function cardifyFoliage(document, mesh, level) {
+  for (const primitive of mesh.listPrimitives()) {
+    if (!isFoliagePrimitive(primitive)) {
+      continue;
+    }
+    const position = primitive.getAttribute('POSITION');
+    if (position === null) {
+      mesh.removePrimitive(primitive);
+      continue;
+    }
+    // Sample crown centres straight from the needle cloud: a strided walk is deterministic and
+    // follows whatever density the scan gave each part of the crown.
+    const count = position.getCount();
+    const quads = FOLIAGE_CARD_QUADS[Math.min(level, FOLIAGE_CARD_QUADS.length - 1)];
+    const step = Math.max(1, Math.floor(count / Math.max(1, quads * 2)));
+    const centres = [];
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (let index = 0; index < count && centres.length < quads; index += step) {
+      const element = position.getElement(index, []);
+      centres.push(element);
+      if (element[1] < minY) minY = element[1];
+      if (element[1] > maxY) maxY = element[1];
+    }
+    if (centres.length === 0) {
+      mesh.removePrimitive(primitive);
+      continue;
+    }
+    const size = Math.min(2.4, Math.max(1.0, (maxY - minY) / 9));
+    let seed = level * 7919 + 131;
+    const rand = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    };
+    const verts = [];
+    const norms = [];
+    const uvs = [];
+    const indices = [];
+    for (const centre of centres) {
+      const yaw = rand() * Math.PI;
+      for (let quad = 0; quad < 2; quad += 1) {
+        const angle = yaw + (quad * Math.PI) / 2;
+        const dx = Math.cos(angle);
+        const dz = Math.sin(angle);
+        const hw = size / 2;
+        const hh = size / 2;
+        const [cx, cy, cz] = centre;
+        const base = verts.length / 3;
+        verts.push(
+          cx - dx * hw,
+          cy - hh,
+          cz - dz * hw,
+          cx + dx * hw,
+          cy - hh,
+          cz + dz * hw,
+          cx + dx * hw,
+          cy + hh,
+          cz + dz * hw,
+          cx - dx * hw,
+          cy + hh,
+          cz + dz * hw,
+        );
+        const nx = -dz;
+        const nz = dx;
+        for (let corner = 0; corner < 4; corner += 1) norms.push(nx, 0, nz);
+        if (rand() < 0.5) uvs.push(1, 0, 0, 0, 0, 1, 1, 1);
+        else uvs.push(0, 0, 1, 0, 1, 1, 0, 1);
+        indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      }
+    }
+    const positionAccessor = document.createAccessor();
+    positionAccessor.setType('VEC3');
+    positionAccessor.setArray(new Float32Array(verts));
+    const normalAccessor = document.createAccessor();
+    normalAccessor.setType('VEC3');
+    normalAccessor.setArray(new Float32Array(norms));
+    const uvAccessor = document.createAccessor();
+    uvAccessor.setType('VEC2');
+    uvAccessor.setArray(new Float32Array(uvs));
+    const indexAccessor = document.createAccessor();
+    indexAccessor.setType('SCALAR');
+    indexAccessor.setArray(new Uint16Array(indices));
+    const cardPrimitive = document.createPrimitive();
+    cardPrimitive.setAttribute('POSITION', positionAccessor);
+    cardPrimitive.setAttribute('NORMAL', normalAccessor);
+    cardPrimitive.setAttribute('TEXCOORD_0', uvAccessor);
+    cardPrimitive.setIndices(indexAccessor);
+    cardPrimitive.setMaterial(primitive.getMaterial());
+    mesh.removePrimitive(primitive);
+    mesh.addPrimitive(cardPrimitive);
+    return true;
+  }
+  return false;
+}
+
+/**
  * Re-states foliage alpha that gltfpack's pre-decimation drops, and swaps in an alpha-carrying
  * PNG sibling where the archive's JPEG lost the channel.
  *
@@ -671,8 +783,14 @@ async function restoreFoliageAlpha(document, sources, rootPath) {
       const jpeg = image !== null && image.byteLength > 2 && image[0] === 0xff && image[1] === 0xd8;
       if (jpeg) {
         // A PNG sibling in the same textures directory carries alpha where the JPEG cannot.
-        const pngPath = join(sources.directory, uri.replace(/\.jpe?g$/i, '.png'));
-        if (existsSync(pngPath)) {
+        const pngName = basename(uri.replace(/\.jpe?g$/i, '.png'));
+        const candidates = [
+          join(sources.directory, uri.replace(/\.jpe?g$/i, '.png')),
+          // Derived alpha maps we authored (keyed foliage atlases) live beside the pipeline.
+          join(dirname(fileURLToPath(import.meta.url)), 'model-sources', pngName),
+        ];
+        const pngPath = candidates.find((candidate) => existsSync(candidate));
+        if (pngPath !== undefined) {
           const png = await read(pngPath);
           // IHDR colour type 6 = truecolour with alpha; 2 = without. Byte 25 of any PNG.
           if (png.length > 25 && png[25] === 6) {
@@ -788,12 +906,16 @@ async function derive(io, sources, entry, budget, variant = { meshIndex: 0 }) {
   //   simplifier's error and lose the shape by LOD2.
   if (budget.lodTriangles) {
     for (const primitive of sourceMesh.listPrimitives()) {
+      if (isFoliagePrimitive(primitive)) {
+        continue;
+      }
       simplifyPrimitive(primitive, {
         simplifier: MeshoptSimplifier,
         ratio: ratioFor(0),
         error: MODEL_SIMPLIFY_ERROR,
       });
     }
+    cardifyFoliage(document, sourceMesh, 0);
     addLevel(0, sourceMesh, countMeshTriangles(sourceMesh), false, 0);
     for (let level = 1; level < levelCount; level += 1) {
       // Every deeper level derives from the settled LOD0 mesh (36k triangles at most), never from
@@ -814,6 +936,9 @@ async function derive(io, sources, entry, budget, variant = { meshIndex: 0 }) {
       let seamVerticesRemoved = 0;
       const fromTriangles = Math.max(1, countMeshTriangles(cloneMesh));
       for (const primitive of cloneMesh.listPrimitives()) {
+        if (isFoliagePrimitive(primitive)) {
+          continue;
+        }
         seamVerticesRemoved += mergePositionSeams(primitive).removed;
         simplifyPrimitive(primitive, {
           simplifier: MeshoptSimplifier,
@@ -825,6 +950,7 @@ async function derive(io, sources, entry, budget, variant = { meshIndex: 0 }) {
       for (const primitive of cloneMesh.listPrimitives()) {
         mesh.addPrimitive(copyPrimitiveInto(primitive, document, materialFor(primitive)));
       }
+      cardifyFoliage(document, mesh, level);
       addLevel(level, mesh, countMeshTriangles(mesh), true, seamVerticesRemoved);
     }
     levels.sort((a, b) => a.level - b.level);
@@ -853,6 +979,9 @@ async function derive(io, sources, entry, budget, variant = { meshIndex: 0 }) {
     const cloneMesh = clone.getRoot().listMeshes()[0];
     let seamVerticesRemoved = 0;
     for (const primitive of cloneMesh.listPrimitives()) {
+      if (isFoliagePrimitive(primitive)) {
+        continue;
+      }
       seamVerticesRemoved += mergePositionSeams(primitive).removed;
       simplifyPrimitive(primitive, {
         simplifier: MeshoptSimplifier,
@@ -872,12 +1001,16 @@ async function derive(io, sources, entry, budget, variant = { meshIndex: 0 }) {
   }
 
   for (const primitive of sourceMesh.listPrimitives()) {
+    if (isFoliagePrimitive(primitive)) {
+      continue;
+    }
     simplifyPrimitive(primitive, {
       simplifier: MeshoptSimplifier,
       ratio: ratioFor(0),
       error: MODEL_SIMPLIFY_ERROR,
     });
   }
+  cardifyFoliage(document, sourceMesh, 0);
   addLevel(0, sourceMesh, countMeshTriangles(sourceMesh), false, 0);
   levels.sort((a, b) => a.level - b.level);
 
@@ -1040,9 +1173,13 @@ async function main() {
   // has to be registered here, and the decoder alongside it so the result can be re-read and
   // verified. Without this, writing a compressed document throws an error naming a codec method
   // rather than a missing dependency.
+  // Separate vertex layouts: the conservative packing every loader and driver treats as plain
+  // arrays. Interleaved views from the scans survived loading but added a failure surface with
+  // no payoff; on trees the size cost is irrelevant next to their textures.
   const io = new NodeIO()
     .registerExtensions(ALL_EXTENSIONS)
-    .registerDependencies({ 'meshopt.encoder': MeshoptEncoder, 'meshopt.decoder': MeshoptDecoder });
+    .registerDependencies({ 'meshopt.encoder': MeshoptEncoder, 'meshopt.decoder': MeshoptDecoder })
+    .setVertexLayout(VertexLayout.SEPARATE);
   await MeshoptEncoder.ready;
   await MeshoptSimplifier.ready;
 

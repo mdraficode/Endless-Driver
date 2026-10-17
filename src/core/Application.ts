@@ -167,6 +167,7 @@ export class Application {
       worldConfig: this.#worldConfig,
       aspect: this.#engine.viewport.aspect,
       terrainSampler,
+      renderer: this.#engine.renderer,
     });
     this.#engine.setGodraysLight(this.#scene.godraysLight);
 
