@@ -280,6 +280,11 @@ export class Application {
     return this.#scene;
   }
 
+  /** The shared terrain sampler (roads, heights, districts) — HUD maps read it. */
+  get terrainSampler(): TerrainSampler {
+    return this.#terrainSampler;
+  }
+
   get physics(): PhysicsWorld {
     return this.#physics;
   }

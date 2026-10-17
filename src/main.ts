@@ -16,6 +16,8 @@ import { StudioApplication, type StudioDiagnostics } from './lab/StudioApplicati
 import { PropLabApplication, type PropLabDiagnostics } from './lab/PropLabApplication';
 import { RouteApplication, type RouteDiagnostics } from './lab/RouteApplication';
 import type { DiagnosticsSnapshot } from './ui/DiagnosticsOverlay';
+import { Minimap } from './ui/Minimap';
+import { yawFromQuat } from './shared/vector';
 
 export interface EndlessDriverDebugHandle {
   getDiagnostics(): DiagnosticsSnapshot | StudioDiagnostics | PropLabDiagnostics | RouteDiagnostics;
@@ -23,6 +25,8 @@ export interface EndlessDriverDebugHandle {
   resume(): void;
   /** Driving scene only: instantly place the car at a world (x, z) for captures. */
   teleportCar?(x: number, z: number, yaw?: number): void;
+  /** Driving scene only: cycle the minimap's next-destination target by hand. */
+  cycleMinimapTarget?(): string | null;
 }
 
 /**
@@ -183,6 +187,7 @@ async function startDrivingScene(): Promise<void> {
   setStatus('Loading physics engine…', 'info');
 
   let application: Application;
+  let minimap: Minimap | null = null;
   try {
     // Two async preconditions before the first frame: Rapier ships as WebAssembly and has to
     // initialise before the vehicle can be wired, and `WebGPURenderer` builds its device and
@@ -215,6 +220,29 @@ async function startDrivingScene(): Promise<void> {
       }
     }
     await application.start();
+    // Minimap HUD (owner request, 2026-10-18): heading-up scope with the road
+    // and trail networks and an edge arrow to the next point of interest.
+    // `?map=0` hides it for clean captures; a failure never blocks the boot.
+    const mapParam = new URLSearchParams(window.location.search).get('map');
+    if (mapParam !== '0') {
+      try {
+        minimap = new Minimap({
+          sampler: application.terrainSampler,
+          getPose: () => {
+            const pose = application.car.getInterpolatedPose(
+              application.physics.interpolationAlpha,
+            );
+            return {
+              x: pose.position.x,
+              z: pose.position.z,
+              yaw: yawFromQuat(pose.rotation),
+            };
+          },
+        });
+      } catch (error) {
+        console.warn('minimap unavailable:', (error as Error).message);
+      }
+    }
   } catch (error) {
     reportStartupFailure(error);
     return;
@@ -223,6 +251,7 @@ async function startDrivingScene(): Promise<void> {
   if (isDebugEnabled()) {
     window.__ENDLESS_DRIVER__ = {
       getDiagnostics: () => application.getDiagnostics(),
+      cycleMinimapTarget: () => minimap?.cycleTarget().label ?? null,
       pause: () => {
         application.stop();
       },
