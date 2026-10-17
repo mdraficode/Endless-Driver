@@ -226,6 +226,789 @@
       }
     },
     {
+      "id": "model-fir-tree-01-a",
+      "kind": "model",
+      "name": "Fir Tree 01 — 1K scanned conifer — variant A",
+      "assetClass": "tree",
+      "source": {
+        "url": "https://polyhaven.com/a/fir_tree_01",
+        "creator": "Rob Tuytel, Rico Cilliers",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-17",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/fir_tree_01/fir_tree_01_1k.gltf"
+      },
+      "role": "Conifer for the cedar runs and highland forest; the source file holds three scanned variants, published as three runtime models so a forest never repeats one silhouette (Phase 5).",
+      "pipeline": {
+        "resolution": "1024",
+        "sourceBytes": 487358833,
+        "outputBytes": 2644308,
+        "reductions": [
+          "dedup + prune + weld",
+          "simplify (ratios 0.8, 0.4, 0.16; levels 1+ merge position seams first)",
+          "KHR_mesh_quantization",
+          "EXT_meshopt_compression",
+          "KHR_texture_basisu (KTX2, ETC1S)"
+        ],
+        "lods": [
+          {
+            "level": 0,
+            "node": "lod0",
+            "triangles": 33370,
+            "ratio": 0.008618999291087307,
+            "seamMerged": false
+          },
+          {
+            "level": 1,
+            "node": "lod1",
+            "triangles": 10738,
+            "ratio": 0.002633583116721122,
+            "seamMerged": true
+          },
+          {
+            "level": 2,
+            "node": "lod2",
+            "triangles": 1712,
+            "ratio": 0.0008379582644112661,
+            "seamMerged": true
+          }
+        ],
+        "notes": "3 levels of detail share one texture set in one file; the runtime picks a level by distance, so the closest keeps its full detail and the farthest costs a fraction of it. Textures are KTX2 (Basis ETC1S), transcoded on the GPU to BC7/ASTC/ETC2 so the browser never holds a decoded 1K RGBA image per texture, and colour-space aware — albedo is sRGB, normal and packed maps are linear."
+      },
+      "sourceFiles": [
+        {
+          "path": "fir_tree_01_1k.gltf",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/fir_tree_01/fir_tree_01_1k.gltf",
+          "bytes": 30279,
+          "md5": "0a184431efdba9e4bf76900d8d56504d",
+          "sha256": "72e49eefb4ed4db6a8ca5e17fb10980f8463dd300d94589ac774cde95ade7709"
+        },
+        {
+          "path": "textures/fir_tree_01_bark_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_bark_nor_gl_1k.jpg",
+          "bytes": 1137533,
+          "md5": "978d32ec721696e45b38a72411c4edf4",
+          "sha256": "6a570ab53ab2249ecdfa93e7d3b9a8a2cb1a8ad391400e5a64c708914779b2c3"
+        },
+        {
+          "path": "textures/fir_tree_01_bark_diff_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_bark_diff_1k.jpg",
+          "bytes": 776567,
+          "md5": "93265c0d9fbd3cf17deabdb68aa8b5e9",
+          "sha256": "a5d25150ba1bee10008c039f98aa3c73b4477a404d6715c511ca9b5b0f4a9077"
+        },
+        {
+          "path": "textures/fir_tree_01_bark_arm_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_bark_arm_1k.jpg",
+          "bytes": 789264,
+          "md5": "4e48a7fa876a1ad47401fe86277a4373",
+          "sha256": "95d4e9e62cd309fbc38a175e2306379c76c062425b09c0fb72c5b7356a719123"
+        },
+        {
+          "path": "textures/fir_tree_01_trunk_a_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_a_nor_gl_1k.jpg",
+          "bytes": 997355,
+          "md5": "41b92112b3b9a48eb2e1b4b3562dd937",
+          "sha256": "9d46c05be22de0dcc4af7e3703fde4c7397644b9faeff4914c0469a6bde99caf"
+        },
+        {
+          "path": "textures/fir_tree_01_trunk_a_diff_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_a_diff_1k.jpg",
+          "bytes": 789806,
+          "md5": "304f688bc8212f90a39a3b77f6065ee5",
+          "sha256": "cfb646cbc4b6cb2db410eb4342174ebe7812a4ae03520491e788722cf1867286"
+        },
+        {
+          "path": "textures/fir_tree_01_trunk_a_arm_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_a_arm_1k.jpg",
+          "bytes": 788967,
+          "md5": "e68adf3bf077b1552b5acff7f9d7bebf",
+          "sha256": "2e439391e98f427207a7fc180eb262f4c1ab3ca0ef570785ea7352826bac342b"
+        },
+        {
+          "path": "textures/fir_tree_01_twig_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_twig_nor_gl_1k.jpg",
+          "bytes": 472604,
+          "md5": "1ef6c0d7c2dc74cc073a8c33f58f3795",
+          "sha256": "d470dc39b1d02bbeba06feb0ad818680ef3c24623b4db597270301a5fb8c9369"
+        },
+        {
+          "path": "textures/fir_tree_01_twig_diff_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_twig_diff_1k.jpg",
+          "bytes": 371741,
+          "md5": "d267b1117a5d6dbbbd620bd997fb498e",
+          "sha256": "8c0833a10e4fd44498d848cf9e659fe250a3813984cbd679f42430eb98c61fb8"
+        },
+        {
+          "path": "textures/fir_tree_01_twig_arm_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_twig_arm_1k.jpg",
+          "bytes": 407309,
+          "md5": "b0d09189350cb716533c1590fec8f8a4",
+          "sha256": "d66c81fc073ee7ea97a76b6da2399769f16944e50ef0e007f09c95619f597c79"
+        },
+        {
+          "path": "textures/fir_tree_01_trunk_b_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_b_nor_gl_1k.jpg",
+          "bytes": 915273,
+          "md5": "310666823cba305dd25d1494fbe73877",
+          "sha256": "5e498ee6fee29437196085620c978346ba6731edad8bfc2a2642868f8bf64efe"
+        },
+        {
+          "path": "textures/fir_tree_01_trunk_b_diff_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_b_diff_1k.jpg",
+          "bytes": 687662,
+          "md5": "00ad0c0643a4e6b34914b8ac05cc28cb",
+          "sha256": "9d39263a9243a4b6cd669de5e3a504eae32d52f5ab48e471cad5f7e52e052508"
+        },
+        {
+          "path": "textures/fir_tree_01_trunk_b_arm_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_b_arm_1k.jpg",
+          "bytes": 732269,
+          "md5": "2bd8df9326c28b68d8ace5d52adfd4f4",
+          "sha256": "c9e0571b2067cad25a4553119204874e6a5ea3156043cacbd5171155d856cff4"
+        },
+        {
+          "path": "fir_tree_01.bin",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/fir_tree_01/fir_tree_01.bin",
+          "bytes": 478462204,
+          "md5": "26d2bf6d4d2e32d3524e8fa3760f643f",
+          "sha256": "ba2ef15a1061a84c73b0a74643e88c118f801ce1664ca7a25a6a79bcc2c63790"
+        }
+      ],
+      "files": [
+        {
+          "slot": "model",
+          "path": "assets/models/fir-tree-01-a.glb",
+          "bytes": 2644308,
+          "sha256": "501b81d0847f027c21b714ac1c6268b470222e30fd9c7d740208b2977b40151b",
+          "format": "glb",
+          "triangles": 33370,
+          "textures": 9
+        }
+      ],
+      "verification": {
+        "extensionsUsed": [
+          "EXT_meshopt_compression",
+          "KHR_materials_ior",
+          "KHR_materials_specular",
+          "KHR_mesh_quantization",
+          "KHR_texture_basisu",
+          "KHR_texture_transform"
+        ],
+        "images": 9,
+        "nodes": ["lod0", "lod1", "lod2"]
+      }
+    },
+    {
+      "id": "model-fir-tree-01-b",
+      "kind": "model",
+      "name": "Fir Tree 01 — 1K scanned conifer — variant B",
+      "assetClass": "tree",
+      "source": {
+        "url": "https://polyhaven.com/a/fir_tree_01",
+        "creator": "Rob Tuytel, Rico Cilliers",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-17",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/fir_tree_01/fir_tree_01_1k.gltf"
+      },
+      "role": "Conifer for the cedar runs and highland forest; the source file holds three scanned variants, published as three runtime models so a forest never repeats one silhouette (Phase 5).",
+      "pipeline": {
+        "resolution": "1024",
+        "sourceBytes": 487358833,
+        "outputBytes": 2935280,
+        "reductions": [
+          "dedup + prune + weld",
+          "simplify (ratios 0.8, 0.4, 0.16; levels 1+ merge position seams first)",
+          "KHR_mesh_quantization",
+          "EXT_meshopt_compression",
+          "KHR_texture_basisu (KTX2, ETC1S)"
+        ],
+        "lods": [
+          {
+            "level": 0,
+            "node": "lod0",
+            "triangles": 34135,
+            "ratio": 0.015647928561990137,
+            "seamMerged": false
+          },
+          {
+            "level": 1,
+            "node": "lod1",
+            "triangles": 10837,
+            "ratio": 0.004781311505052542,
+            "seamMerged": true
+          },
+          {
+            "level": 2,
+            "node": "lod2",
+            "triangles": 1742,
+            "ratio": 0.0015213263879712636,
+            "seamMerged": true
+          }
+        ],
+        "notes": "3 levels of detail share one texture set in one file; the runtime picks a level by distance, so the closest keeps its full detail and the farthest costs a fraction of it. Textures are KTX2 (Basis ETC1S), transcoded on the GPU to BC7/ASTC/ETC2 so the browser never holds a decoded 1K RGBA image per texture, and colour-space aware — albedo is sRGB, normal and packed maps are linear."
+      },
+      "sourceFiles": [
+        {
+          "path": "fir_tree_01_1k.gltf",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/fir_tree_01/fir_tree_01_1k.gltf",
+          "bytes": 30279,
+          "md5": "0a184431efdba9e4bf76900d8d56504d",
+          "sha256": "72e49eefb4ed4db6a8ca5e17fb10980f8463dd300d94589ac774cde95ade7709"
+        },
+        {
+          "path": "textures/fir_tree_01_bark_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_bark_nor_gl_1k.jpg",
+          "bytes": 1137533,
+          "md5": "978d32ec721696e45b38a72411c4edf4",
+          "sha256": "6a570ab53ab2249ecdfa93e7d3b9a8a2cb1a8ad391400e5a64c708914779b2c3"
+        },
+        {
+          "path": "textures/fir_tree_01_bark_diff_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_bark_diff_1k.jpg",
+          "bytes": 776567,
+          "md5": "93265c0d9fbd3cf17deabdb68aa8b5e9",
+          "sha256": "a5d25150ba1bee10008c039f98aa3c73b4477a404d6715c511ca9b5b0f4a9077"
+        },
+        {
+          "path": "textures/fir_tree_01_bark_arm_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_bark_arm_1k.jpg",
+          "bytes": 789264,
+          "md5": "4e48a7fa876a1ad47401fe86277a4373",
+          "sha256": "95d4e9e62cd309fbc38a175e2306379c76c062425b09c0fb72c5b7356a719123"
+        },
+        {
+          "path": "textures/fir_tree_01_trunk_a_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_a_nor_gl_1k.jpg",
+          "bytes": 997355,
+          "md5": "41b92112b3b9a48eb2e1b4b3562dd937",
+          "sha256": "9d46c05be22de0dcc4af7e3703fde4c7397644b9faeff4914c0469a6bde99caf"
+        },
+        {
+          "path": "textures/fir_tree_01_trunk_a_diff_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_a_diff_1k.jpg",
+          "bytes": 789806,
+          "md5": "304f688bc8212f90a39a3b77f6065ee5",
+          "sha256": "cfb646cbc4b6cb2db410eb4342174ebe7812a4ae03520491e788722cf1867286"
+        },
+        {
+          "path": "textures/fir_tree_01_trunk_a_arm_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_a_arm_1k.jpg",
+          "bytes": 788967,
+          "md5": "e68adf3bf077b1552b5acff7f9d7bebf",
+          "sha256": "2e439391e98f427207a7fc180eb262f4c1ab3ca0ef570785ea7352826bac342b"
+        },
+        {
+          "path": "textures/fir_tree_01_twig_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_twig_nor_gl_1k.jpg",
+          "bytes": 472604,
+          "md5": "1ef6c0d7c2dc74cc073a8c33f58f3795",
+          "sha256": "d470dc39b1d02bbeba06feb0ad818680ef3c24623b4db597270301a5fb8c9369"
+        },
+        {
+          "path": "textures/fir_tree_01_twig_diff_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_twig_diff_1k.jpg",
+          "bytes": 371741,
+          "md5": "d267b1117a5d6dbbbd620bd997fb498e",
+          "sha256": "8c0833a10e4fd44498d848cf9e659fe250a3813984cbd679f42430eb98c61fb8"
+        },
+        {
+          "path": "textures/fir_tree_01_twig_arm_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_twig_arm_1k.jpg",
+          "bytes": 407309,
+          "md5": "b0d09189350cb716533c1590fec8f8a4",
+          "sha256": "d66c81fc073ee7ea97a76b6da2399769f16944e50ef0e007f09c95619f597c79"
+        },
+        {
+          "path": "textures/fir_tree_01_trunk_b_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_b_nor_gl_1k.jpg",
+          "bytes": 915273,
+          "md5": "310666823cba305dd25d1494fbe73877",
+          "sha256": "5e498ee6fee29437196085620c978346ba6731edad8bfc2a2642868f8bf64efe"
+        },
+        {
+          "path": "textures/fir_tree_01_trunk_b_diff_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_b_diff_1k.jpg",
+          "bytes": 687662,
+          "md5": "00ad0c0643a4e6b34914b8ac05cc28cb",
+          "sha256": "9d39263a9243a4b6cd669de5e3a504eae32d52f5ab48e471cad5f7e52e052508"
+        },
+        {
+          "path": "textures/fir_tree_01_trunk_b_arm_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_b_arm_1k.jpg",
+          "bytes": 732269,
+          "md5": "2bd8df9326c28b68d8ace5d52adfd4f4",
+          "sha256": "c9e0571b2067cad25a4553119204874e6a5ea3156043cacbd5171155d856cff4"
+        },
+        {
+          "path": "fir_tree_01.bin",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/fir_tree_01/fir_tree_01.bin",
+          "bytes": 478462204,
+          "md5": "26d2bf6d4d2e32d3524e8fa3760f643f",
+          "sha256": "ba2ef15a1061a84c73b0a74643e88c118f801ce1664ca7a25a6a79bcc2c63790"
+        }
+      ],
+      "files": [
+        {
+          "slot": "model",
+          "path": "assets/models/fir-tree-01-b.glb",
+          "bytes": 2935280,
+          "sha256": "88ddec0e90101e3daaa9321fef778d34d645bca162e4efb39a61dd81c043eebf",
+          "format": "glb",
+          "triangles": 34135,
+          "textures": 9
+        }
+      ],
+      "verification": {
+        "extensionsUsed": [
+          "EXT_meshopt_compression",
+          "KHR_materials_ior",
+          "KHR_materials_specular",
+          "KHR_mesh_quantization",
+          "KHR_texture_basisu",
+          "KHR_texture_transform"
+        ],
+        "images": 9,
+        "nodes": ["lod0", "lod1", "lod2"]
+      }
+    },
+    {
+      "id": "model-fir-tree-01-c",
+      "kind": "model",
+      "name": "Fir Tree 01 — 1K scanned conifer — variant C",
+      "assetClass": "tree",
+      "source": {
+        "url": "https://polyhaven.com/a/fir_tree_01",
+        "creator": "Rob Tuytel, Rico Cilliers",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-17",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/fir_tree_01/fir_tree_01_1k.gltf"
+      },
+      "role": "Conifer for the cedar runs and highland forest; the source file holds three scanned variants, published as three runtime models so a forest never repeats one silhouette (Phase 5).",
+      "pipeline": {
+        "resolution": "1024",
+        "sourceBytes": 487358833,
+        "outputBytes": 2372620,
+        "reductions": [
+          "dedup + prune + weld",
+          "simplify (ratios 0.8, 0.4, 0.16; levels 1+ merge position seams first)",
+          "KHR_mesh_quantization",
+          "EXT_meshopt_compression",
+          "KHR_texture_basisu (KTX2, ETC1S)"
+        ],
+        "lods": [
+          {
+            "level": 0,
+            "node": "lod0",
+            "triangles": 34874,
+            "ratio": 0.07121746252181035,
+            "seamMerged": false
+          },
+          {
+            "level": 1,
+            "node": "lod1",
+            "triangles": 10989,
+            "ratio": 0.021760891326108717,
+            "seamMerged": true
+          },
+          {
+            "level": 2,
+            "node": "lod2",
+            "triangles": 1751,
+            "ratio": 0.006923919967398228,
+            "seamMerged": true
+          }
+        ],
+        "notes": "3 levels of detail share one texture set in one file; the runtime picks a level by distance, so the closest keeps its full detail and the farthest costs a fraction of it. Textures are KTX2 (Basis ETC1S), transcoded on the GPU to BC7/ASTC/ETC2 so the browser never holds a decoded 1K RGBA image per texture, and colour-space aware — albedo is sRGB, normal and packed maps are linear."
+      },
+      "sourceFiles": [
+        {
+          "path": "fir_tree_01_1k.gltf",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/fir_tree_01/fir_tree_01_1k.gltf",
+          "bytes": 30279,
+          "md5": "0a184431efdba9e4bf76900d8d56504d",
+          "sha256": "72e49eefb4ed4db6a8ca5e17fb10980f8463dd300d94589ac774cde95ade7709"
+        },
+        {
+          "path": "textures/fir_tree_01_bark_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_bark_nor_gl_1k.jpg",
+          "bytes": 1137533,
+          "md5": "978d32ec721696e45b38a72411c4edf4",
+          "sha256": "6a570ab53ab2249ecdfa93e7d3b9a8a2cb1a8ad391400e5a64c708914779b2c3"
+        },
+        {
+          "path": "textures/fir_tree_01_bark_diff_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_bark_diff_1k.jpg",
+          "bytes": 776567,
+          "md5": "93265c0d9fbd3cf17deabdb68aa8b5e9",
+          "sha256": "a5d25150ba1bee10008c039f98aa3c73b4477a404d6715c511ca9b5b0f4a9077"
+        },
+        {
+          "path": "textures/fir_tree_01_bark_arm_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_bark_arm_1k.jpg",
+          "bytes": 789264,
+          "md5": "4e48a7fa876a1ad47401fe86277a4373",
+          "sha256": "95d4e9e62cd309fbc38a175e2306379c76c062425b09c0fb72c5b7356a719123"
+        },
+        {
+          "path": "textures/fir_tree_01_trunk_a_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_a_nor_gl_1k.jpg",
+          "bytes": 997355,
+          "md5": "41b92112b3b9a48eb2e1b4b3562dd937",
+          "sha256": "9d46c05be22de0dcc4af7e3703fde4c7397644b9faeff4914c0469a6bde99caf"
+        },
+        {
+          "path": "textures/fir_tree_01_trunk_a_diff_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_a_diff_1k.jpg",
+          "bytes": 789806,
+          "md5": "304f688bc8212f90a39a3b77f6065ee5",
+          "sha256": "cfb646cbc4b6cb2db410eb4342174ebe7812a4ae03520491e788722cf1867286"
+        },
+        {
+          "path": "textures/fir_tree_01_trunk_a_arm_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_a_arm_1k.jpg",
+          "bytes": 788967,
+          "md5": "e68adf3bf077b1552b5acff7f9d7bebf",
+          "sha256": "2e439391e98f427207a7fc180eb262f4c1ab3ca0ef570785ea7352826bac342b"
+        },
+        {
+          "path": "textures/fir_tree_01_twig_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_twig_nor_gl_1k.jpg",
+          "bytes": 472604,
+          "md5": "1ef6c0d7c2dc74cc073a8c33f58f3795",
+          "sha256": "d470dc39b1d02bbeba06feb0ad818680ef3c24623b4db597270301a5fb8c9369"
+        },
+        {
+          "path": "textures/fir_tree_01_twig_diff_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_twig_diff_1k.jpg",
+          "bytes": 371741,
+          "md5": "d267b1117a5d6dbbbd620bd997fb498e",
+          "sha256": "8c0833a10e4fd44498d848cf9e659fe250a3813984cbd679f42430eb98c61fb8"
+        },
+        {
+          "path": "textures/fir_tree_01_twig_arm_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_twig_arm_1k.jpg",
+          "bytes": 407309,
+          "md5": "b0d09189350cb716533c1590fec8f8a4",
+          "sha256": "d66c81fc073ee7ea97a76b6da2399769f16944e50ef0e007f09c95619f597c79"
+        },
+        {
+          "path": "textures/fir_tree_01_trunk_b_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_b_nor_gl_1k.jpg",
+          "bytes": 915273,
+          "md5": "310666823cba305dd25d1494fbe73877",
+          "sha256": "5e498ee6fee29437196085620c978346ba6731edad8bfc2a2642868f8bf64efe"
+        },
+        {
+          "path": "textures/fir_tree_01_trunk_b_diff_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_b_diff_1k.jpg",
+          "bytes": 687662,
+          "md5": "00ad0c0643a4e6b34914b8ac05cc28cb",
+          "sha256": "9d39263a9243a4b6cd669de5e3a504eae32d52f5ab48e471cad5f7e52e052508"
+        },
+        {
+          "path": "textures/fir_tree_01_trunk_b_arm_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_b_arm_1k.jpg",
+          "bytes": 732269,
+          "md5": "2bd8df9326c28b68d8ace5d52adfd4f4",
+          "sha256": "c9e0571b2067cad25a4553119204874e6a5ea3156043cacbd5171155d856cff4"
+        },
+        {
+          "path": "fir_tree_01.bin",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/fir_tree_01/fir_tree_01.bin",
+          "bytes": 478462204,
+          "md5": "26d2bf6d4d2e32d3524e8fa3760f643f",
+          "sha256": "ba2ef15a1061a84c73b0a74643e88c118f801ce1664ca7a25a6a79bcc2c63790"
+        }
+      ],
+      "files": [
+        {
+          "slot": "model",
+          "path": "assets/models/fir-tree-01-c.glb",
+          "bytes": 2372620,
+          "sha256": "7f27c48410e721993428bc9a3dd22f29c0978e0fdcf0aa13d427b5e85ce6babb",
+          "format": "glb",
+          "triangles": 34874,
+          "textures": 6
+        }
+      ],
+      "verification": {
+        "extensionsUsed": [
+          "EXT_meshopt_compression",
+          "KHR_materials_ior",
+          "KHR_materials_specular",
+          "KHR_mesh_quantization",
+          "KHR_texture_basisu",
+          "KHR_texture_transform"
+        ],
+        "images": 6,
+        "nodes": ["lod0", "lod1", "lod2"]
+      }
+    },
+    {
+      "id": "model-island-tree-01",
+      "kind": "model",
+      "name": "Island Tree 01 — 1K scanned broadleaf",
+      "assetClass": "tree",
+      "source": {
+        "url": "https://polyhaven.com/a/island_tree_01",
+        "creator": "Rob Tuytel, Rico Cilliers",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-17",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/island_tree_01/island_tree_01_1k.gltf"
+      },
+      "role": "Broadleaf canopy for meadow edges and roadside shade; the deciduous half of the Hinode tree scatter (Phase 5).",
+      "pipeline": {
+        "resolution": "1024",
+        "sourceBytes": 66337268,
+        "outputBytes": 2832068,
+        "reductions": [
+          "dedup + prune + weld",
+          "simplify (ratios 0.8, 0.4, 0.16; levels 1+ merge position seams first)",
+          "KHR_mesh_quantization",
+          "EXT_meshopt_compression",
+          "KHR_texture_basisu (KTX2, ETC1S)"
+        ],
+        "lods": [
+          {
+            "level": 0,
+            "node": "lod0",
+            "triangles": 35334,
+            "ratio": 0.022508398446170228,
+            "seamMerged": false
+          },
+          {
+            "level": 1,
+            "node": "lod1",
+            "triangles": 11079,
+            "ratio": 0.006877566191885347,
+            "seamMerged": true
+          },
+          {
+            "level": 2,
+            "node": "lod2",
+            "triangles": 4048,
+            "ratio": 0.002188316515599883,
+            "seamMerged": true
+          }
+        ],
+        "notes": "3 levels of detail share one texture set in one file; the runtime picks a level by distance, so the closest keeps its full detail and the farthest costs a fraction of it. Textures are KTX2 (Basis ETC1S), transcoded on the GPU to BC7/ASTC/ETC2 so the browser never holds a decoded 1K RGBA image per texture, and colour-space aware — albedo is sRGB, normal and packed maps are linear."
+      },
+      "sourceFiles": [
+        {
+          "path": "island_tree_01_1k.gltf",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/island_tree_01/island_tree_01_1k.gltf",
+          "bytes": 8576,
+          "md5": "fbc0c570ebd71ea88cedc1f9d5edb835",
+          "sha256": "78e905a40670bfabb2760601d4d9a6c17193a50d68e6271c66893eb7bd75906d"
+        },
+        {
+          "path": "textures/island_tree_01_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_nor_gl_1k.jpg",
+          "bytes": 1207134,
+          "md5": "3871f67863453a16b866950202fa2b7f",
+          "sha256": "ca22e428e1b1ebac47b2fc67ec355700c8779d6628d2fc6c3ebae9002988f63e"
+        },
+        {
+          "path": "textures/island_tree_01_diff_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_diff_1k.jpg",
+          "bytes": 791327,
+          "md5": "8a67489846657df6b859d97e0b80fcf4",
+          "sha256": "51bff9a3a6ed7d89ff4c73f01708b7267ed8d7a82b0cb12343741894f708218f"
+        },
+        {
+          "path": "textures/island_tree_01_arm_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_arm_1k.jpg",
+          "bytes": 727403,
+          "md5": "8077da7d1a001867c0da0cde6bc807f2",
+          "sha256": "bf972dff0fbc71f146b4c02103fc3596477a49a9eff46b87b13c89b7b90d18ca"
+        },
+        {
+          "path": "textures/island_tree_01_leaves_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_leaves_nor_gl_1k.jpg",
+          "bytes": 379443,
+          "md5": "a08ffb98b5ffb7dfa682e05a1639c642",
+          "sha256": "07ba461c0c95da4e49a42981766bdb6191d4c3c4d815796c082266dcc3cecdb8"
+        },
+        {
+          "path": "textures/island_tree_01_leaves_diff_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_leaves_diff_1k.jpg",
+          "bytes": 191886,
+          "md5": "1356cbb5a5dd1318f9f2a01eddbf03e1",
+          "sha256": "f56d762a1507754752abf164cc12acbc1e87ce87fa609ac44b98a1b0037c89d8"
+        },
+        {
+          "path": "textures/island_tree_01_leaves_arm_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_leaves_arm_1k.jpg",
+          "bytes": 489476,
+          "md5": "27b06c4a53ff115ed7d51ee94e417257",
+          "sha256": "90da3a072dbcb052715b1313b9dbc69a4aa8a09a31a4b3868411a2bb51d72037"
+        },
+        {
+          "path": "textures/island_tree_01_branches_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_branches_nor_gl_1k.jpg",
+          "bytes": 819101,
+          "md5": "789084affb01f4a22290a848558f5e12",
+          "sha256": "2d67393ba76a0f49cf965fa0c99d8c16268e71e87b1203d35539bfdb971a514e"
+        },
+        {
+          "path": "textures/island_tree_01_branches_diff_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_branches_diff_1k.jpg",
+          "bytes": 528304,
+          "md5": "7792907fe2b2b748c129a2384192a579",
+          "sha256": "bee5ec22196e9e31ad0c95a5a9b4636571cc0124d5bb27a92f1e307d289cc60d"
+        },
+        {
+          "path": "textures/island_tree_01_branches_arm_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_01/island_tree_01_branches_arm_1k.jpg",
+          "bytes": 484806,
+          "md5": "5b6f5b3838f4a8f60fea14fa3a3fef9f",
+          "sha256": "9e3f82263247ce4f619692cea4c4f6fe9936ff465a86623481849062642c7d05"
+        },
+        {
+          "path": "island_tree_01.bin",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/island_tree_01/island_tree_01.bin",
+          "bytes": 60709812,
+          "md5": "8271f2d12c2727bd647ce0c242acdcec",
+          "sha256": "1faa817b46e24ed6fc90d3ec72188a0dc5ac75e82c89b3dd3c5fdaecf7cc005c"
+        }
+      ],
+      "files": [
+        {
+          "slot": "model",
+          "path": "assets/models/island-tree-01.glb",
+          "bytes": 2832068,
+          "sha256": "9e497733f0b9d4929c23848c7b0ba579c350a1b2264da1fea3fd0e60386c33f8",
+          "format": "glb",
+          "triangles": 35334,
+          "textures": 9
+        }
+      ],
+      "verification": {
+        "extensionsUsed": [
+          "EXT_meshopt_compression",
+          "KHR_materials_ior",
+          "KHR_materials_specular",
+          "KHR_mesh_quantization",
+          "KHR_texture_basisu",
+          "KHR_texture_transform"
+        ],
+        "images": 9,
+        "nodes": ["lod1", "lod2", "lod0"]
+      }
+    },
+    {
+      "id": "model-tree-stump-01",
+      "kind": "model",
+      "name": "Tree Stump 01 — 1K scanned stump",
+      "assetClass": "prop",
+      "source": {
+        "url": "https://polyhaven.com/a/tree_stump_01",
+        "creator": "Rob Tuytel",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-17",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/tree_stump_01/tree_stump_01_1k.gltf"
+      },
+      "role": "Cut-stump scatter for felled verges and forest edges; replaces the procedural cylinder stumps with a scanned surface (Phase 5).",
+      "pipeline": {
+        "resolution": "1024",
+        "sourceBytes": 3939674,
+        "outputBytes": 1039612,
+        "reductions": [
+          "dedup + prune + weld",
+          "simplify (ratios 0.8, 0.4, 0.16; levels 1+ merge position seams first)",
+          "KHR_mesh_quantization",
+          "EXT_meshopt_compression",
+          "KHR_texture_basisu (KTX2, ETC1S)"
+        ],
+        "lods": [
+          {
+            "level": 0,
+            "node": "lod0",
+            "triangles": 32836,
+            "ratio": 0.8,
+            "seamMerged": false
+          },
+          {
+            "level": 1,
+            "node": "lod1",
+            "triangles": 16415,
+            "ratio": 0.4,
+            "seamMerged": true
+          },
+          {
+            "level": 2,
+            "node": "lod2",
+            "triangles": 6567,
+            "ratio": 0.16,
+            "seamMerged": true
+          }
+        ],
+        "notes": "3 levels of detail share one texture set in one file; the runtime picks a level by distance, so the closest keeps its full detail and the farthest costs a fraction of it. Textures are KTX2 (Basis ETC1S), transcoded on the GPU to BC7/ASTC/ETC2 so the browser never holds a decoded 1K RGBA image per texture, and colour-space aware — albedo is sRGB, normal and packed maps are linear."
+      },
+      "sourceFiles": [
+        {
+          "path": "tree_stump_01_1k.gltf",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/tree_stump_01/tree_stump_01_1k.gltf",
+          "bytes": 2793,
+          "md5": "fedfc620634a8dbaf6345413b13abe1a",
+          "sha256": "9c66ba87d693f35eb404acaa96e0eeff831c295b61a0a903795584cbcc3527c9"
+        },
+        {
+          "path": "tree_stump_01.bin",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/tree_stump_01/tree_stump_01.bin",
+          "bytes": 965380,
+          "md5": "acb292727949126b92e58217fd50fca9",
+          "sha256": "b4d9ca70b3c908c4a638fbd6a23ed96c84055bbbf14cf44b89e31ad59fa21e0a"
+        },
+        {
+          "path": "textures/tree_stump_01_diff_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_stump_01/tree_stump_01_diff_1k.jpg",
+          "bytes": 907451,
+          "md5": "c71fe60400276a37b8847048cbec3720",
+          "sha256": "781ebe420ac4d84f2e44b9e9937a596e3d5d90711d978a1392f8bf3771b5bf31"
+        },
+        {
+          "path": "textures/tree_stump_01_nor_gl_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_stump_01/tree_stump_01_nor_gl_1k.jpg",
+          "bytes": 1238404,
+          "md5": "cc2a3c6e4682a521b15cccc61a416bbf",
+          "sha256": "425117514b0386bb6df41cb64a61a624d2596472e05777483d4021b3285e3ceb"
+        },
+        {
+          "path": "textures/tree_stump_01_arm_1k.jpg",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_stump_01/tree_stump_01_arm_1k.jpg",
+          "bytes": 825646,
+          "md5": "09b7aa228dccb93f5cf4188ba5530578",
+          "sha256": "d845cd6ab45288c546267d059ebe1f8a737e174330fe9375e5f99e753f2f95d8"
+        }
+      ],
+      "files": [
+        {
+          "slot": "model",
+          "path": "assets/models/tree-stump-01.glb",
+          "bytes": 1039612,
+          "sha256": "b75129c8e8b604d70f2c97f9dd385e0a3755661fb65e2ea62cc51bd2577a7a3c",
+          "format": "glb",
+          "triangles": 32836,
+          "textures": 3
+        }
+      ],
+      "verification": {
+        "extensionsUsed": [
+          "EXT_meshopt_compression",
+          "KHR_mesh_quantization",
+          "KHR_texture_basisu"
+        ],
+        "images": 3,
+        "nodes": ["lod1", "lod2", "lod0"]
+      }
+    },
+    {
       "id": "tex-asphalt-03-1k",
       "kind": "texture",
       "name": "Asphalt 03 — 1K PBR set",
@@ -629,5 +1412,5 @@
       ]
     }
   ],
-  "updated": "2026-10-16"
+  "updated": "2026-10-17"
 }

@@ -36,6 +36,16 @@ listed because their work deserves the credit, not because the licence asks for 
   - file: `assets/luts/hinode-film-17.cube`
 - **Boulder 01 — 1K scanned prop** — James Ray Cock — [source](https://polyhaven.com/a/boulder_01) — CC0-1.0
   - file: `assets/models/boulder-01.glb`
+- **Fir Tree 01 — 1K scanned conifer — variant A** — Rob Tuytel, Rico Cilliers — [source](https://polyhaven.com/a/fir_tree_01) — CC0-1.0
+  - file: `assets/models/fir-tree-01-a.glb`
+- **Fir Tree 01 — 1K scanned conifer — variant B** — Rob Tuytel, Rico Cilliers — [source](https://polyhaven.com/a/fir_tree_01) — CC0-1.0
+  - file: `assets/models/fir-tree-01-b.glb`
+- **Fir Tree 01 — 1K scanned conifer — variant C** — Rob Tuytel, Rico Cilliers — [source](https://polyhaven.com/a/fir_tree_01) — CC0-1.0
+  - file: `assets/models/fir-tree-01-c.glb`
+- **Island Tree 01 — 1K scanned broadleaf** — Rob Tuytel, Rico Cilliers — [source](https://polyhaven.com/a/island_tree_01) — CC0-1.0
+  - file: `assets/models/island-tree-01.glb`
+- **Tree Stump 01 — 1K scanned stump** — Rob Tuytel — [source](https://polyhaven.com/a/tree_stump_01) — CC0-1.0
+  - file: `assets/models/tree-stump-01.glb`
 - **Asphalt 03 — 1K PBR set** — Dario Barresi, Charlotte Baglioni — [source](https://polyhaven.com/a/asphalt_03) — CC0-1.0
   - file: `assets/textures/asphalt_03_1k_diff_1k.jpg`, `assets/textures/asphalt_03_1k_nor_gl_1k.jpg`, `assets/textures/asphalt_03_1k_rough_1k.jpg`, `assets/textures/asphalt_03_1k_arm_1k.jpg`
 - **Brown Mud Dry — 1K PBR set** — Rob Tuytel — [source](https://polyhaven.com/a/brown_mud_dry) — CC0-1.0

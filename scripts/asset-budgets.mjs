@@ -34,6 +34,28 @@ export const MODEL_BUDGETS = {
     minLods: 2,
     maxLods: 3,
   },
+  /**
+   * A scanned tree: the dominant silhouette of the world, seen from every distance at once —
+   * roadside at 5 m and a hillside forest at 300 m in the same frame. Three levels are the
+   * minimum that covers that range without a visible switch, and the triangle ceiling is what
+   * a chunk of forest can carry: VISUAL_TARGET.md §3 budgets the whole vegetation system at
+   * 200k triangles on the top tier, so a single tree may not ask for a fifth of that at LOD0.
+   */
+  tree: {
+    maxBytes: 4_500_000,
+    maxTriangles: 40_000,
+    maxTextureSize: 1024,
+    minLods: 3,
+    maxLods: 3,
+    /**
+     * Absolute per-level triangle targets. Scanned trees arrive at 1.6-7 million triangles,
+     * where a ratio of the source is meaningless (0.8 of a fir is still 3.3 million); the tree
+     * class therefore names its levels in triangles and the builder derives a per-source ratio
+     * from them. The numbers are what a conifer silhouette needs at each switch distance:
+     * full shape near, crown mass mid, a recognisable cone far.
+     */
+    lodTriangles: [36_000, 11_000, 3_500],
+  },
 };
 
 /**
