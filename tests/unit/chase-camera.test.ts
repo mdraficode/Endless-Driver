@@ -281,3 +281,47 @@ describe('chase camera at speed', () => {
     expect(distance).toBeLessThan(7);
   });
 });
+
+describe('swipe-to-orbit framing', () => {
+  const settle = (camera: ChaseCamera, swipe?: [number, number]) => {
+    camera.update(1 / 60, pose(), telemetry());
+    if (swipe !== undefined) {
+      camera.orbitBySwipe(swipe[0], swipe[1]);
+    }
+    for (let i = 0; i < 180; i += 1) {
+      camera.update(1 / 60, pose(), telemetry());
+    }
+    return camera.position;
+  };
+
+  it('moves the camera sideways around a stationary car', () => {
+    const plain = settle(new ChaseCamera());
+    const orbited = settle(new ChaseCamera(), [300, 0]);
+    expect(orbited.x).toBeGreaterThan(plain.x + 2);
+    // Framing distance is preserved: an orbit is a rotation, not a dolly.
+    const distance = (p: { x: number; y: number; z: number }) => Math.hypot(p.x, p.y - 0.6, p.z);
+    expect(distance(orbited)).toBeCloseTo(distance(plain), 1);
+  });
+
+  it('raises the camera on a downward swipe', () => {
+    const plain = settle(new ChaseCamera());
+    const raised = settle(new ChaseCamera(), [0, 200]);
+    expect(raised.y).toBeGreaterThan(plain.y + 1);
+  });
+
+  it('eases towards the swipe instead of cutting', () => {
+    const camera = new ChaseCamera();
+    camera.update(1 / 60, pose(), telemetry());
+    camera.orbitBySwipe(300, 0);
+    camera.update(1 / 60, pose(), telemetry());
+    expect(Math.abs(camera.orbit.yaw)).toBeLessThan(camera.orbitTarget.yaw);
+    expect(Math.abs(camera.orbit.yaw)).toBeGreaterThan(0);
+  });
+
+  it('clamps the orbit so thumbs cannot bury the camera', () => {
+    const camera = new ChaseCamera();
+    camera.orbitBySwipe(100000, -100000);
+    expect(camera.orbitTarget.yaw).toBeLessThanOrEqual(1.4);
+    expect(camera.orbitTarget.pitch).toBeGreaterThanOrEqual(-0.2);
+  });
+});

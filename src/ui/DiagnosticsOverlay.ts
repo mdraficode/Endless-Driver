@@ -76,6 +76,8 @@ export interface DiagnosticsSnapshot {
   readonly cameraMode: CameraMode;
   /** Player-facing framing name (Close / Normal / Far / Orbit). */
   readonly cameraView: string;
+  /** Swipe-to-orbit offset around the car, degrees (yaw / pitch). */
+  readonly cameraOrbit: { readonly yawDegrees: number; readonly pitchDegrees: number };
   readonly cameraFov: number;
   readonly speedKph: number;
   /** Signed speed along the chassis forward axis, m/s (negative when reversing). */
@@ -251,7 +253,7 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
   {
     label: 'Camera',
     format: (snapshot) =>
-      `${snapshot.cameraView} · ${snapshot.cameraFov.toFixed(1)}° fov · ${snapshot.cameraPosition.x.toFixed(0)}, ${snapshot.cameraPosition.y.toFixed(0)}, ${snapshot.cameraPosition.z.toFixed(0)}`,
+      `${snapshot.cameraView}${orbitSuffix(snapshot)} · ${snapshot.cameraFov.toFixed(1)}° fov · ${snapshot.cameraPosition.x.toFixed(0)}, ${snapshot.cameraPosition.y.toFixed(0)}, ${snapshot.cameraPosition.z.toFixed(0)}`,
   },
   { label: 'Frames', format: (snapshot) => snapshot.totalFrames.toLocaleString('en-US') },
 ];
@@ -302,6 +304,17 @@ const PANEL_CLASSES = [
 
 const LABEL_CLASSES = 'text-slate-400';
 const VALUE_CLASSES = 'text-right text-teal-200';
+
+/** Orbit angles only earn screen space once a thumb has actually moved the camera. */
+function orbitSuffix(snapshot: {
+  readonly cameraOrbit: { readonly yawDegrees: number; readonly pitchDegrees: number };
+}): string {
+  const { yawDegrees, pitchDegrees } = snapshot.cameraOrbit;
+  if (Math.abs(yawDegrees) + Math.abs(pitchDegrees) < 0.5) {
+    return '';
+  }
+  return ` · orbit ${yawDegrees.toFixed(0)}°/${pitchDegrees.toFixed(0)}°`;
+}
 
 export class DiagnosticsOverlay {
   readonly #panel: HTMLElement;

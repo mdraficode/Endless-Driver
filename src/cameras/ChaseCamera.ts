@@ -4,6 +4,14 @@ import {
   type ChaseCameraConfig,
   type ChaseCameraView,
 } from '../config/camera';
+import {
+  applyOrbitSwipe,
+  CHASE_ORBIT_CONFIG,
+  NEUTRAL_ORBIT,
+  orbitOffsetVec3,
+  type ChaseOrbitConfig,
+  type OrbitOffset,
+} from './camera-orbit';
 import { clamp } from '../shared/math';
 import {
   addVec3,
@@ -58,6 +66,14 @@ export class ChaseCamera {
    * spikes on every bump; the roll must chase it, never mirror it. */
   #roll = 0;
   #groundHeight: ((x: number, z: number) => number) | null = null;
+  /**
+   * Swipe-to-orbit offset around the car (owner request 2026-10-17): the target
+   * moves immediately with each swipe pixel, and the framed offset eases after it
+   * on its own time constant so a flick reads as a camera move, not a cut.
+   */
+  #orbitTarget: OrbitOffset = { ...NEUTRAL_ORBIT };
+  #orbit: OrbitOffset = { ...NEUTRAL_ORBIT };
+  readonly #orbitConfig: ChaseOrbitConfig;
 
   // Scratch vectors kept out of the per-frame allocation path.
   readonly #desiredPosition = vec3();
@@ -65,8 +81,13 @@ export class ChaseCamera {
   readonly #offset = vec3();
   readonly #lookOffset = vec3();
 
-  constructor(config: ChaseCameraConfig = CHASE_CAMERA_CONFIG, aspect = 1) {
+  constructor(
+    config: ChaseCameraConfig = CHASE_CAMERA_CONFIG,
+    aspect = 1,
+    orbitConfig: ChaseOrbitConfig = CHASE_ORBIT_CONFIG,
+  ) {
     this.#config = config;
+    this.#orbitConfig = orbitConfig;
     this.#fov = config.baseFov;
     this.camera = new PerspectiveCamera(config.baseFov, aspect, 0.1, 2000);
     this.camera.position.set(0, 3, 8);
@@ -131,6 +152,29 @@ export class ChaseCamera {
     this.#groundHeight = provider;
   }
 
+  /** The eased orbit offset currently framing the shot, radians. */
+  get orbit(): OrbitOffset {
+    return { ...this.#orbit };
+  }
+
+  /** The orbit the camera is easing towards, radians. */
+  get orbitTarget(): OrbitOffset {
+    return { ...this.#orbitTarget };
+  }
+
+  /**
+   * Applies one free-space swipe (pixels) to the orbit target. Clamped by the pure
+   * orbit model, so the camera can never be swiped into the ground or behind the car.
+   */
+  orbitBySwipe(deltaXPixels: number, deltaYPixels: number): void {
+    this.#orbitTarget = applyOrbitSwipe(
+      this.#orbitTarget,
+      deltaXPixels,
+      deltaYPixels,
+      this.#orbitConfig,
+    );
+  }
+
   /** Places the camera immediately at the ideal pose (spawn, reset, teleports). */
   snapTo(pose: VehiclePose): void {
     copyVec3(this.#lastPosePosition, pose.position);
@@ -149,6 +193,7 @@ export class ChaseCamera {
     });
     this.#currentFovDelta = view.fovDelta;
     this.#yaw = yawFromQuat(pose.rotation);
+    this.#orbit = { ...this.#orbitTarget };
     this.#computeDesired(pose);
     copyVec3(this.#position, this.#desiredPosition);
     copyVec3(this.#lookAt, this.#desiredLook);
@@ -194,6 +239,13 @@ export class ChaseCamera {
     }
     copyVec3(this.#lastPosePosition, pose.position);
     this.#hasPoseSample = true;
+
+    // Orbit ease: the framed offset chases the swipe target on its own constant.
+    const orbitFactor = smoothingFactor(dt, this.#orbitConfig.smoothingSeconds);
+    this.#orbit = {
+      yaw: this.#orbit.yaw + (this.#orbitTarget.yaw - this.#orbit.yaw) * orbitFactor,
+      pitch: this.#orbit.pitch + (this.#orbitTarget.pitch - this.#orbit.pitch) * orbitFactor,
+    };
 
     const targetYaw = yawFromQuat(pose.rotation);
     let delta = targetYaw - this.#yaw;
@@ -253,7 +305,13 @@ export class ChaseCamera {
     const heading: Quat = { x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) };
     const worldOffset = rotateVec3ByQuat(this.#offset, this.#offset, heading);
     const worldLookOffset = rotateVec3ByQuat(this.#lookOffset, this.#lookOffset, heading);
-    addVec3(this.#desiredPosition, pose.position, worldOffset);
+    // Swipe-to-orbit: swing the framed offset around the car, keeping the view's
+    // distance. The look point stays on the car, so orbiting re-aims by construction.
+    const orbited = orbitOffsetVec3(worldOffset, this.#orbit, this.#orbitConfig);
+    this.#desiredPosition.x = pose.position.x;
+    this.#desiredPosition.y = pose.position.y;
+    this.#desiredPosition.z = pose.position.z;
+    addVec3(this.#desiredPosition, this.#desiredPosition, orbited);
     addVec3(this.#desiredLook, pose.position, worldLookOffset);
 
     // Feed-forward (see #velocity): with the desired point one lag-interval ahead,

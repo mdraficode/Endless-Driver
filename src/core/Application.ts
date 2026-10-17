@@ -23,6 +23,7 @@ import { CarVisual } from '../vehicles/CarVisual';
 import type { VehiclePose, VehicleTelemetry } from '../vehicles/types';
 import { ChaseCamera } from '../cameras/ChaseCamera';
 import { InputManager } from '../input/InputManager';
+import { OrbitGesture } from '../input/orbit-gesture';
 import { TouchControls } from '../input/TouchControls';
 import type { PerspectiveCamera } from 'three';
 import { DaylightController } from '../environment/DaylightController';
@@ -99,6 +100,7 @@ export class Application {
   readonly #input: InputManager;
 
   #touchControls: TouchControls | null = null;
+  #orbitGesture: OrbitGesture | null = null;
 
   #touchActive = false;
   readonly #chaseCamera: ChaseCamera;
@@ -194,6 +196,12 @@ export class Application {
     this.#chaseCamera.setGroundHeightProvider((x, z) =>
       terrainSampler.heightAt(x + this.#origin.offset.x, z + this.#origin.offset.z),
     );
+    // Free-space swipe orbits the chase camera: the canvas is the gesture surface,
+    // every on-screen control captures its own pointers, so thumbs on the joystick
+    // and pedals never fight a finger looking around (owner request 2026-10-17).
+    this.#orbitGesture = new OrbitGesture(options.canvas, {
+      onSwipe: (dx, dy) => this.#chaseCamera.orbitBySwipe(dx, dy),
+    });
     this.#input = new InputManager();
     this.#input.attach();
 
@@ -494,6 +502,10 @@ export class Application {
       },
       totalFrames: this.#monitor.totalFrames,
       cameraMode: this.#cameraMode,
+      cameraOrbit: {
+        yawDegrees: (this.#chaseCamera.orbit.yaw * 180) / Math.PI,
+        pitchDegrees: (this.#chaseCamera.orbit.pitch * 180) / Math.PI,
+      },
       cameraView: this.#cameraMode === 'orbit' ? 'Orbit' : this.#chaseCamera.view.label,
       cameraFov: activeCamera.fov,
       speedKph: telemetry.speedKph,
@@ -534,6 +546,7 @@ export class Application {
     if (typeof window !== 'undefined') {
       window.removeEventListener('keydown', this.#handleKeyDown);
     }
+    this.#orbitGesture?.dispose();
     this.#touchControls?.dispose();
     this.#touchControls = null;
     this.#input.detach();
