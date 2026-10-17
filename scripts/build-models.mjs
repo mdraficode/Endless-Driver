@@ -596,10 +596,7 @@ function bakeNodeTransforms(document) {
     ];
     const done = new Set();
     for (const primitive of mesh.listPrimitives()) {
-      for (const [semantic, normalize] of [
-        ['POSITION', false],
-        ['NORMAL', true],
-      ]) {
+      for (const semantic of ['POSITION', 'NORMAL']) {
         const attribute = primitive.getAttribute(semantic);
         if (attribute === null || done.has(attribute)) {
           continue;
