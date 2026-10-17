@@ -1345,3 +1345,52 @@ the forest and the frame the snap counter moved it read **17 km/h**,
 debris 1, zero page/console errors. Full unfiltered
 `npm run check`: 415/415 tests green (fog removal is `93cfb25`'s
 predecessor `1c3fac2`; this model is `93cfb25`).
+
+## 44. Snow cap, fog code deleted, rotating starts (2026-10-17)
+
+Owner report after §42/§43: on snowy terrain the screen was "fully foggy",
+"nothing but snow all around", "no diversity on terrain generation at all —
+like driving on Antarctica, not Japan", and the car always spawned on the
+same terrain.
+
+Root cause (the snow): `terrainSurfaceWeights` depended only on height and
+slope, so everything above 170–210 m on gentle ground became a uniform
+splat of paper-white snow (macro colour 0.85/0.87/0.90, raw scanned texture
+up close). Under a pale sky that luminance is indistinguishable from fog —
+which is why "fog off" diagnostics never matched what the owner saw.
+
+Fixes (`ea56e0d`, `873c11a`):
+
+- **Patchy alpine cap, not a biome.** `terrainSurfaceWeights` now takes the
+  large `terrainVariationAt` field and a new finer `terrainPatchAt` field
+  (90 m fBm). The effective snowline wanders ±34 m; snow fades on slopes
+  from 0.16; even above the line only snow-favoured patches hold full snow,
+  the rest is exposed alpine rock/soil; grass fades with altitude. Base
+  snowline 190 m (peak 300 m). The renderer (`terrain-geometry.ts`) and the
+  physics surface (`terrain-surface.ts`) pass the same fields, so what you
+  see is what the tyres feel.
+- **Snow is shaded, not white.** Macro snow 0.60/0.67/0.78; the near
+  scanned `snow_01` albedo is graded by (0.62, 0.70, 0.86) in
+  `TerrainWorld.ts`.
+- **Lowland diversity.** Dry-soil patches cover whole fields; rock outcrops
+  break crests. Tests pin: no snow weight below 150 m; snow-dominant ground
+  < 12% of the volcano footprint; the summit contains both snow and rock;
+  lowland has grass and soil dominance and rock weight > 0.25 on crests.
+- **Soil grip 0.64 → 0.74** (dry compacted dirt). With soil now covering
+  fields, 0.64 put a grip step at every patch edge and the seed-7
+  cross-country stability test spun 0.7% of the run; the honest value fixes
+  it with no test relaxed.
+- **Fog deleted, not disabled.** `src/shaders/height-fog.ts` removed;
+  `SkyConfig` is now only `domeScaleFactor`; `SceneManager` creates no
+  `Fog`/`fogNode`; tier overrides and URL switches have nothing to enable.
+  Diagnostics `fogMode` is typed `'off'` and tests assert the sky config
+  keys equal `['domeScaleFactor']` at every tier and under `?fog=on&hfog=1`.
+  The daylight `fogColorHex` was renamed `horizonColorHex`.
+- **Rotating starts.** `src/config/spawns.ts`: six curated starts (Home
+  Meadow, Kiri Pass, Sakura Avenue, Yūhi Town, Shirasagi Terraces, West
+  Highlands), one picked at random per page load; `?spawn=<id>` pins one;
+  reset returns to the session's start; diagnostics show `spawnId`/
+  `spawnLabel` and a "Start" row. Tests pin that every road start is on
+  asphalt and none is on snow.
+
+Full unfiltered `npm run check`: **419/419**.
