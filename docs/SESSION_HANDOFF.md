@@ -1396,3 +1396,51 @@ Fixes (`ea56e0d`, `873c11a`):
   asphalt and none is on snow.
 
 Full unfiltered `npm run check`: **419/419**.
+
+## 45. Round 7 — the "fog" was bloom: veil killed, daylight baselines fixed, placeholder blocks retired (2026-10-17)
+
+Owner report (repeat of round 6, after round 6 shipped): "the camera fog is not removed, the
+screen is fully foggy when the car is on a snowy terrain and there is nothing but snow and snow
+all around… don't always spawn the car in a same terrain." Owner clarifications: the wash is
+there **right at the start**, on **phone and desktop**, after a hard refresh of the round-6 build.
+
+### Root cause (measured, not guessed)
+
+Headless captures of the live round-6 build showed a milky veil over every frame: the darkest
+5% of pixels sat at 195/255. A/B variant builds isolated it:
+
+1. **Bloom over the HDR sky.** The sky's linear radiance exceeds any practical bloom threshold,
+   so bloom's wide kernel (`radius 0.45`) spread sky white across the whole frame — strongest
+   towards the horizon and the sun, exactly like aerial fog, and it flattened every district
+   into one pale sheet (green highlands read as a snow field). With bloom off the same frame's
+   black level drops to 33/255. Fog code was already gone (round 6); this was the last veiling
+   path. Bloom is now **off at every gameplay tier** (`render.ts`), pinned by
+   `quality-tier.test.ts`; photo mode (Phase 8) may re-enable it per shot.
+2. **Daylight phase values applied as absolutes.** `EnvironmentClock` documents sun/ambient/
+   environment/exposure as _multipliers_ (1 at noon), but `SceneManager`/`Engine` wrote them
+   straight onto the lights: noon ran sun 1.0 vs fill 1.0 (no shadow contrast) instead of
+   2.4 vs 0.35. Now composed through `src/environment/daylight-levels.ts` (`scaleBaseline`),
+   tested.
+3. **Exposure 0.94** sat past the ACES shoulder; baseline is now 0.72 (daylight multiplies it).
+4. **Phase 1/2 reference blocks** (pale cubes on the spawn plateau) still rendered in the
+   shipped world. Retired: `WORLD_CONFIG.obstacles` ships empty (list kept as a fixture seam;
+   the vehicle-physics seam test places its own block).
+
+### Also in this round
+
+- Grass macro is two-tone (fresh green ↔ dry straw, keyed to the same variation field as the
+  soil patches) and dry-soil patchwork is stronger, so lowlands read as patchwork.
+- Pinned in `spawns.test.ts`: snow-dominant ground **< 5% within 250 m of every session start**
+  — the owner sees a start's _view_, not its point; round 6 only checked the point.
+
+### Verification
+
+- `npm run check` 424/424 unfiltered at `5c3294a`; CI Validate + Deploy success.
+- Live bundle `assets/index-E73NHhGQ.js`; live captures (tier C, WebGL2 fallback):
+  west-highlands black level 196 → 33, home-meadow 196 → 151; proof sheet
+  `/tmp/round7-before-after.png` (ephemeral).
+- Diagnostics at both starts: `fogMode off`, zero page errors.
+
+### Still open
+
+- Tree-collision _feel_ (rounds 5-6 rejection) remains the standing open acceptance item.
