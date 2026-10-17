@@ -1484,3 +1484,47 @@ move when swiping on the free spaces on the screen."
 ### Still open
 
 - Tree-collision _feel_ (rounds 5-6 rejection) remains the standing open acceptance item.
+
+## 47. Round 9 — light ratio, rooted trees, physical texture scales, verified backend (2026-10-17)
+
+Owner report: snow greets the player at every start and driving feels monotonous;
+trees visibly float above the ground; textures read unrealistically — no shadows,
+no smoothness, no HDR feel. Target restated: gameplay that feels "almost life like".
+
+**Shadows (root cause found).** A three-way A/B on local variant builds settled it:
+cascades 3 vs 1 made no difference (CSM exonerated); a fills-at-zero variant
+rendered a black frame (the sun alone, at 2.4, was being drowned once ambient and
+IBL were removed from the exposure balance); a 10x-sun variant showed crisp cast
+shadows. Conclusion: the fill/sun ratio, not the shadow pipeline, flattened every
+frame. Shipped rebalance: `sunIntensity` 2.4 → 3.4, `ambientIntensity` 0.35 → 0.25,
+environment intensity 1 → 0.5 (exposure untouched at 0.72). Post-change captures
+show the car and tree cast shadows plus deeper, more saturated colour; measured
+on tier B 480x270 WebGL2: 5th-percentile luminance (wash) 0.610 → 0.550 at
+home-meadow and 0.348 → 0.270 at Kiri-cedar, mean saturation 0.333 → 0.364 and
+0.319 → 0.340. "HDR look" is a lighting ratio here, not a toggle.
+
+**Floating trees.** Chunk meshes decimate with distance while the scatter samples
+exact heights, so trunks sat above the decimated surface. Instances now sink
+0.3 x scale (stumps 0.15 x scale) in `vegetation.ts #writeMatrix`, and trunk
+cylinders carry +0.5-0.6 m of buried length so bases stay underground across LOD
+seams. Kiri-cedar captures show every trunk meeting the grass.
+
+**Texture realism.** World-space UV scales were hand-picked and unphysical (grass
+blades at half their scanned size, the rock face at double its width). They now
+derive from each Poly Haven scan's documented width (GRASS_UV 0.5, SOIL_UV 0.77,
+ROCK_UV 0.45, SNOW_UV 0.5 tiles/m) across diffuse, height and ARM sampling, and
+scanned detail now survives to 380 m (was 260 m) before the macro tint blends in.
+
+**Backend default.** The owner's "snow everywhere / all white ground" has never
+reproduced in any WebGL2 capture at any tier or spawn across rounds 6-9; their
+devices default to WebGPU, which no capture, test or CI job in this project can
+exercise (no WebGPU adapter in the sandbox). `backendPreference` is therefore
+`'webgl'` in the base config, and per-tier overrides may no longer restate a
+backend (they carried `'auto'`, which would have silently undone the default —
+now pinned by `quality-tier.test.ts`). WebGPU stays implemented; switching the
+default back to `'auto'` is a one-line change once real-hardware captures exist.
+
+**Still open (carried):** tree-impact feel from round 5 remains rejected by the
+owner (criteria in §43); the remaining realism ceiling is asset-class — procedural
+cone trees and the box placeholder car — which is exactly what Phases 5-6 unlock
+(scanned CC0 trees, hero car). Owner decision pending on unlocking them.
