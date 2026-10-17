@@ -30,6 +30,7 @@ import {
 export { generateChunkVegetation, type VegetationPlacement } from './vegetation-placement';
 import { TREE_COLLISION } from '../config/districts';
 import { VEGETATION_SPECIES } from './districts';
+import { loadScannedSpecies, type ScannedSpecies } from './scanned-vegetation';
 import type { TreeHitEvent, TreeVisualState } from './tree-collision';
 import type { TerrainSampler } from './terrain-height';
 import { chunkKey, planChunksAround, resolveWindowCenter } from './terrain-chunks';
@@ -222,6 +223,45 @@ const SPECIES_CAPACITY: Record<VegetationSpecies, number> = {
 };
 
 /**
+ * Scanned-vegetation adoption (Phase 5): which derived model replaces which authored
+ * species/variant, and the game height each scanned tree is normalised to. The scans arrive at
+ * their real-world metres (an 18.9 m fir); the scatter states how tall that tree should stand in
+ * Hinode, and every instance is scaled by the ratio, so placement scale still varies tree size.
+ */
+const SCANNED_FOR: readonly { key: string; assetId: string }[] = [
+  { key: 'conifer:0', assetId: 'model-fir-tree-01-a' },
+  { key: 'conifer:1', assetId: 'model-fir-tree-01-b' },
+  { key: 'conifer:2', assetId: 'model-fir-tree-01-c' },
+  { key: 'broadleaf:0', assetId: 'model-island-tree-01' },
+  { key: 'broadleaf:1', assetId: 'model-island-tree-01' },
+  { key: 'broadleaf:2', assetId: 'model-island-tree-01' },
+  { key: 'rock:0', assetId: 'model-boulder-01' },
+  { key: 'rock:1', assetId: 'model-boulder-01' },
+];
+
+const SCANNED_GAME_HEIGHTS: Record<VegetationSpecies, number> = {
+  conifer: 12,
+  broadleaf: 8.5,
+  sakura: 5.5,
+  bamboo: 6,
+  rock: 1.8,
+};
+
+/** Distance rings for the scanned levels of detail: lod0 inside 30 m, lod1 inside 80 m. */
+export const SCANNED_LOD_RADII: readonly [number, number] = [30, 80];
+/** Beyond this range half the scanned instances are dropped by a positional hash. */
+export const SCANNED_THIN_METERS = 180;
+/** Beyond this range nothing scanned is instanced at all; the authored scatter keeps no trees
+ *  here either, so the horizon stays cheap. */
+export const SCANNED_FAR_CULL_METERS = 300;
+
+/** One instanced pool of one scanned part (material) at one level of detail. */
+interface ScannedPool {
+  readonly level: number;
+  readonly mesh: InstancedMesh;
+}
+
+/**
  * The streaming owner: one InstancedMesh per species/variant, fed by generated
  * chunk placements inside the vegetation window. Rebuilds the instance buffers
  * only when the window's chunk set changes; placement generation is budgeted
@@ -268,6 +308,11 @@ export class VegetationWorld {
   #pieces: DebrisPiece[] = [];
   #stumpCount = 0;
   #lastFocus = { x: 0, z: 0 };
+  // Scanned adoption (Phase 5): species key -> grouped scan, and its pools per part/level.
+  readonly #scanned = new Map<string, ScannedSpecies>();
+  readonly #scannedPools = new Map<string, ScannedPool[]>();
+  readonly #scannedCounts = new Map<InstancedMesh, number>();
+  #scannedStump: ScannedPool[] | null = null;
 
   constructor(sampler: TerrainSampler, config: VegetationConfig = VEGETATION_CONFIG) {
     this.#sampler = sampler;
@@ -340,6 +385,140 @@ export class VegetationWorld {
   }
 
   readonly #sharedMaterial: MeshStandardNodeMaterial;
+
+  /**
+   * Replaces authored species with their scanned CC0 stand-ins, one InstancedMesh per material
+   * part per level of detail (Phase 5). Adoption is opportunistic: a model that fails to load
+   * leaves its authored species standing, and the scatter never notices the difference.
+   *
+   * Pools are created once, at adoption, and then simply re-counted by every rebuild — creating
+   * them per rebuild leaked a mesh per window slide, and sharing one instanceMatrix across the
+   * parts of a tree painted every material with the first part's geometry.
+   */
+  async adoptScanned(renderer: object): Promise<void> {
+    if (this.#disposed) {
+      return;
+    }
+    const results = await Promise.all(
+      SCANNED_FOR.map(async (entry) => {
+        try {
+          return { key: entry.key, species: await loadScannedSpecies(renderer, entry.assetId) };
+        } catch (error) {
+          console.warn(
+            `scanned vegetation unavailable for ${entry.assetId}: ${(error as Error).message}`,
+          );
+          return { key: entry.key, species: null };
+        }
+      }),
+    );
+    for (const { key, species } of results) {
+      if (species === null || this.#scanned.has(key)) {
+        continue;
+      }
+      const comma = key.indexOf(':');
+      const speciesName = key.slice(0, comma) as VegetationSpecies;
+      const variants = TREE_SPECIES.has(speciesName) ? 3 : 2;
+      const capacity = Math.floor(SPECIES_CAPACITY[speciesName] / variants);
+      const pools: ScannedPool[] = [];
+      for (const lod of species.lods) {
+        lod.parts.forEach((part, partIndex) => {
+          const mesh = new InstancedMesh(part.geometry, part.material, capacity);
+          // Only the nearest level casts: a shadow cascade cannot tell lod1 from lod0, and the
+          // far rings would pay shadow cost for silhouettes a dozen pixels tall.
+          mesh.castShadow = lod.level === 0;
+          mesh.receiveShadow = lod.level === 0;
+          mesh.frustumCulled = false;
+          mesh.count = 0;
+          mesh.name = `vegetation-${key}-lod${lod.level}-${partIndex}`;
+          this.root.add(mesh);
+          this.#scannedCounts.set(mesh, 0);
+          pools.push({ level: lod.level, mesh });
+        });
+      }
+      this.#scanned.set(key, species);
+      this.#scannedPools.set(key, pools);
+    }
+    try {
+      const stump = await loadScannedSpecies(renderer, 'model-tree-stump-01');
+      if (stump !== null) {
+        const pools: ScannedPool[] = [];
+        for (const lod of stump.lods) {
+          if (lod.level !== 0) {
+            continue;
+          }
+          lod.parts.forEach((part, partIndex) => {
+            const mesh = new InstancedMesh(part.geometry, part.material, 1024);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.frustumCulled = false;
+            mesh.count = 0;
+            mesh.name = `vegetation-stump-scanned-${partIndex}`;
+            this.root.add(mesh);
+            this.#scannedCounts.set(mesh, 0);
+            pools.push({ level: 0, mesh });
+          });
+        }
+        if (pools.length > 0) {
+          this.#scannedStump = pools;
+        }
+      }
+    } catch (error) {
+      console.warn(`scanned stump unavailable: ${(error as Error).message}`);
+    }
+    this.#rebuildInstances(this.#lastFocus);
+  }
+
+  /** Instances one scanned tree at its placement, at the level its distance earns. */
+  #writeScanned(
+    key: string,
+    species: VegetationSpecies,
+    placement: VegetationPlacement,
+    lean: { angle: number; dirX: number; dirZ: number } | null,
+    focus: { x: number; z: number },
+    dummy: Object3D,
+  ): void {
+    const scanned = this.#scanned.get(key);
+    const pools = this.#scannedPools.get(key);
+    if (scanned === undefined || pools === undefined) {
+      return;
+    }
+    const distance = Math.hypot(placement.x - focus.x, placement.z - focus.z);
+    if (distance > SCANNED_FAR_CULL_METERS) {
+      return;
+    }
+    // Past the thin ring half of the candidates are dropped by a positional hash, so the far
+    // forest keeps its density *look* without paying for density.
+    if (
+      distance > SCANNED_THIN_METERS &&
+      hash01(Math.round(placement.x), Math.round(placement.z), 91) < 0.5
+    ) {
+      return;
+    }
+    const level = distance < SCANNED_LOD_RADII[0] ? 0 : distance < SCANNED_LOD_RADII[1] ? 1 : 2;
+    const scale = (SCANNED_GAME_HEIGHTS[species] / Math.max(0.5, scanned.height)) * placement.scale;
+    // A shallow sink, not the authored one: scanned trunks carry their own root flare below y=0.
+    dummy.position.set(placement.x, placement.y - 0.2 * placement.scale, placement.z);
+    if (lean === null || lean.angle <= 0.001) {
+      dummy.quaternion.setFromAxisAngle(UP, placement.rotationY);
+    } else {
+      const axis = new Vector3(lean.dirZ, 0, -lean.dirX).normalize();
+      const tilt = new Quaternion().setFromAxisAngle(axis, lean.angle);
+      dummy.quaternion.setFromAxisAngle(UP, placement.rotationY).multiply(tilt);
+    }
+    dummy.scale.setScalar(scale);
+    dummy.updateMatrix();
+    for (const pool of pools) {
+      if (pool.level !== level) {
+        continue;
+      }
+      const index = this.#scannedCounts.get(pool.mesh) ?? 0;
+      if (index >= pool.mesh.instanceMatrix.count) {
+        continue;
+      }
+      pool.mesh.setMatrixAt(index, dummy.matrix);
+      this.#scannedCounts.set(pool.mesh, index + 1);
+    }
+  }
 
   /** Per-frame streaming hook, driven beside the terrain's own. */
   updateStreaming(focus: { x: number; z: number }, deltaSeconds = 0): void {
@@ -467,6 +646,9 @@ export class VegetationWorld {
     for (const entry of this.#meshes) {
       counts.set(entry.mesh, 0);
     }
+    for (const mesh of this.#scannedCounts.keys()) {
+      this.#scannedCounts.set(mesh, 0);
+    }
     this.#placementByKey.clear();
     this.#instanceByKey.clear();
     let total = 0;
@@ -477,7 +659,21 @@ export class VegetationWorld {
         const state = this.#stateProvider?.(placement.key) ?? this.#states.get(placement.key);
         if (state !== undefined && state.condition !== 'intact' && state.condition !== 'bent') {
           // Down: only the stump remains (the crown is debris, handled separately).
-          if (this.#stumpMesh !== null && stumps < this.#stumpMesh.instanceMatrix.count) {
+          const downKey = `${placement.species}:${placement.variant}`;
+          if (this.#scanned.has(downKey) && this.#scannedStump !== null) {
+            dummy.position.set(placement.x, placement.y - 0.15 * placement.scale, placement.z);
+            dummy.quaternion.setFromAxisAngle(UP, placement.rotationY);
+            dummy.scale.setScalar(placement.scale);
+            dummy.updateMatrix();
+            for (const pool of this.#scannedStump) {
+              const stumpIndex = this.#scannedCounts.get(pool.mesh) ?? 0;
+              if (stumpIndex >= pool.mesh.instanceMatrix.count) {
+                continue;
+              }
+              pool.mesh.setMatrixAt(stumpIndex, dummy.matrix);
+              this.#scannedCounts.set(pool.mesh, stumpIndex + 1);
+            }
+          } else if (this.#stumpMesh !== null && stumps < this.#stumpMesh.instanceMatrix.count) {
             dummy.position.set(placement.x, placement.y - 0.15 * placement.scale, placement.z);
             dummy.quaternion.setFromAxisAngle(UP, placement.rotationY);
             dummy.scale.setScalar(placement.scale);
@@ -485,6 +681,20 @@ export class VegetationWorld {
             this.#stumpMesh.setMatrixAt(stumps, dummy.matrix);
             stumps += 1;
           }
+          continue;
+        }
+        const standingKey = `${placement.species}:${placement.variant}`;
+        if (this.#scanned.has(standingKey)) {
+          const anim = this.#bentAnims.get(placement.key);
+          const lean =
+            anim !== undefined
+              ? { angle: anim.angle, dirX: anim.dirX, dirZ: anim.dirZ }
+              : state !== undefined && state.condition === 'bent'
+                ? { angle: state.leanAngleRad, dirX: state.leanDirX, dirZ: state.leanDirZ }
+                : null;
+          this.#writeScanned(standingKey, placement.species, placement, lean, focus, dummy);
+          this.#placementByKey.set(placement.key, placement);
+          total += 1;
           continue;
         }
         const entry = this.#meshes.find(
@@ -515,6 +725,18 @@ export class VegetationWorld {
     if (this.#stumpMesh !== null) {
       this.#stumpMesh.count = stumps;
       this.#stumpMesh.instanceMatrix.needsUpdate = true;
+    }
+    for (const pools of this.#scannedPools.values()) {
+      for (const pool of pools) {
+        pool.mesh.count = this.#scannedCounts.get(pool.mesh) ?? 0;
+        pool.mesh.instanceMatrix.needsUpdate = true;
+      }
+    }
+    if (this.#scannedStump !== null) {
+      for (const pool of this.#scannedStump) {
+        pool.mesh.count = this.#scannedCounts.get(pool.mesh) ?? 0;
+        pool.mesh.instanceMatrix.needsUpdate = true;
+      }
     }
     this.#stumpCount = stumps;
     this.#totalInstances = total;

@@ -49,6 +49,8 @@ export interface SceneManagerOptions {
    * the identical height function.
    */
   readonly terrainSampler?: TerrainSampler;
+  /** Forwarded into the content context so streamed content can load compressed assets. */
+  readonly renderer?: object;
 }
 
 export interface SceneDiagnostics {
@@ -178,6 +180,7 @@ export class SceneManager {
       config,
       worldConfig,
       ...(options.terrainSampler !== undefined ? { terrainSampler: options.terrainSampler } : {}),
+      ...(options.renderer !== undefined ? { renderer: options.renderer } : {}),
     });
 
     this.scene.add(this.#sky, ambient, this.#sun, this.#sun.target, this.#content.root);

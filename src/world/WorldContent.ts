@@ -63,6 +63,13 @@ export interface SceneContentContext {
    * terrain requires it, other content ignores it.
    */
   readonly terrainSampler?: TerrainSampler;
+  /**
+   * The live renderer, for content that loads compressed texture formats at runtime (the scanned
+   * vegetation of Phase 5). Optional because unit fixtures and the lab scenes construct content
+   * without an engine, and adoption is opportunistic: absent a renderer, the authored species
+   * simply stay.
+   */
+  readonly renderer?: object;
 }
 
 /** Builds a scene's content. Called once, by `SceneManager`, during construction. */

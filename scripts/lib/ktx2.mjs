@@ -115,7 +115,12 @@ export async function encodeKtx2(document, options) {
       const isNormal = normalPattern.test(name);
       const isLinear = isNormal || linearPattern.test(name);
 
-      const input = join(directory, `input-${index}.jpg`);
+      // The encoder picks its image reader by file extension, so a swapped-in PNG sibling
+      // (foliage alpha) must not arrive named .jpg.
+      const input = join(
+        directory,
+        `input-${index}${texture.getMimeType() === 'image/png' ? '.png' : '.jpg'}`,
+      );
       const output = join(directory, `output-${index}.ktx2`);
       await writeFile(input, image);
 

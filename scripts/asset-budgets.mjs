@@ -54,7 +54,7 @@ export const MODEL_BUDGETS = {
      * from them. The numbers are what a conifer silhouette needs at each switch distance:
      * full shape near, crown mass mid, a recognisable cone far.
      */
-    lodTriangles: [36_000, 11_000, 3_500],
+    lodTriangles: [20_000, 3_000, 450],
   },
 };
 

@@ -35,7 +35,6 @@ import {
   dedup,
   meshopt,
   prune,
-  quantize,
   simplifyPrimitive,
   textureCompress,
   weld,
@@ -230,6 +229,15 @@ const MODEL_ENTRIES = [
         md5: '5b6f5b3838f4a8f60fea14fa3a3fef9f',
       },
       {
+        path: 'textures/island_tree_01_leaves_diff_1k.png',
+        // The leaves material is alphaMode BLEND in the source and the PNG carries the real
+        // alpha channel the JPEG sibling loses; restoreFoliageAlpha() swaps it in and re-states
+        // the mask mode, because gltfpack's pre-decimation silently drops alphaMode.
+        url: `https://dl.polyhaven.org/file/ph-assets/Models/png/1k/island_tree_01/island_tree_01_leaves_diff_1k.png`,
+        bytes: 1638916,
+        md5: 'f5dcd85f170c154cba9cb8367af5dbdd',
+      },
+      {
         path: 'island_tree_01.bin',
         url: `https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/island_tree_01/island_tree_01.bin`,
         bytes: 60709812,
@@ -332,6 +340,17 @@ const MODEL_ENTRIES = [
         url: `https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fir_tree_01/fir_tree_01_trunk_b_arm_1k.jpg`,
         bytes: 732269,
         md5: '2bd8df9326c28b68d8ace5d52adfd4f4',
+      },
+      {
+        path: 'textures/fir_tree_01_twig_diff_1k.png',
+        // The glTF archive ships the twig diffuse as a JPEG, i.e. without the alpha channel its
+        // own material (alphaMode BLEND) needs; the PNG beside it in the asset's png/ archive is
+        // RGB as well, so the needle cards of this scan are opaque soft blobs by nature. The file
+        // is still fetched because restoreFoliageAlpha() prefers a PNG sibling over a JPEG when
+        // one carries alpha — and for the fir it documents that none does.
+        url: `https://dl.polyhaven.org/file/ph-assets/Models/png/1k/fir_tree_01/fir_tree_01_twig_diff_1k.png`,
+        bytes: 3411459,
+        md5: '3791a2e595b63410ed0bd054633373de',
       },
       {
         path: 'fir_tree_01.bin',
@@ -458,6 +477,10 @@ async function preDecimate(sources, entry) {
       String(entry.preDecimate),
       '-se',
       '0.02',
+      // -noq: keep the intermediate's attributes as plain floats. A quantized intermediate
+      // (int16 positions) rounds metre-scale scans into hinge-sized steps once the node scale
+      // is baked in, and the rounding survives every later stage.
+      '-noq',
       '-kn',
       '-km',
       '-tr',
@@ -521,6 +544,157 @@ async function fetchSources(entry) {
  *    carry three copies of the same half-megabyte of textures.
  * 5. **Quantize and compress.** Applied to every level at once.
  */
+/**
+ * Bakes every node's transform into its mesh positions and resets the nodes to identity.
+ *
+ * Scans arrive as one mesh under a node carrying the archive's unit scale (the fir's is ~9.4),
+ * and the runtime must never have to dequantize or re-apply that matrix: a quantized position
+ * attribute multiplied by a node scale rounds metre-scale trees into hinge-sized steps, and the
+ * rounding is invisible until every instance collapses to NaN bounds. Baking here ships plain
+ * float32 metres at identity nodes, so the loader's only job is to read them.
+ */
+function bakeNodeTransforms(document) {
+  for (const node of document.getRoot().listNodes()) {
+    const mesh = node.getMesh();
+    if (mesh === null) {
+      continue;
+    }
+    const translation = node.getTranslation();
+    const rotation = node.getRotation();
+    const scale = node.getScale();
+    const identity =
+      translation.every((value) => value === 0) &&
+      scale.every((value) => value === 1) &&
+      rotation[0] === 0 &&
+      rotation[1] === 0 &&
+      rotation[2] === 0 &&
+      rotation[3] === 1;
+    if (identity) {
+      continue;
+    }
+    // Column-major TRS, matching the glTF node matrix the runtime would have applied.
+    const [x, y, z] = translation;
+    const [qx, qy, qz, qw] = rotation;
+    const [sx, sy, sz] = scale;
+    const m = [
+      (1 - 2 * (qy * qy + qz * qz)) * sx,
+      2 * (qx * qy + qz * qw) * sx,
+      2 * (qx * qz - qy * qw) * sx,
+      0,
+      2 * (qx * qy - qz * qw) * sy,
+      (1 - 2 * (qx * qx + qz * qz)) * sy,
+      2 * (qy * qz + qx * qw) * sy,
+      0,
+      2 * (qx * qz + qy * qw) * sz,
+      2 * (qy * qz - qx * qw) * sz,
+      (1 - 2 * (qx * qx + qy * qy)) * sz,
+      0,
+      x,
+      y,
+      z,
+      1,
+    ];
+    const done = new Set();
+    for (const primitive of mesh.listPrimitives()) {
+      for (const [semantic, normalize] of [
+        ['POSITION', false],
+        ['NORMAL', true],
+      ]) {
+        const attribute = primitive.getAttribute(semantic);
+        if (attribute === null || done.has(attribute)) {
+          continue;
+        }
+        done.add(attribute);
+        const array = attribute.getArray();
+        if (array === null) {
+          continue;
+        }
+        for (let index = 0; index < array.length; index += 3) {
+          const x = array[index];
+          const y = array[index + 1];
+          const z = array[index + 2];
+          let nx = m[0] * x + m[4] * y + m[8] * z;
+          let ny = m[1] * x + m[5] * y + m[9] * z;
+          let nz = m[2] * x + m[6] * y + m[10] * z;
+          if (semantic === 'POSITION') {
+            nx += m[12];
+            ny += m[13];
+            nz += m[14];
+          } else {
+            const length = Math.hypot(nx, ny, nz) || 1;
+            nx /= length;
+            ny /= length;
+            nz /= length;
+          }
+          array[index] = nx;
+          array[index + 1] = ny;
+          array[index + 2] = nz;
+        }
+        attribute.setArray(array);
+      }
+    }
+    // One argument would be read as the whole vector by these setters; three scalars landed in
+    // the file as `"translation": 0` once, which loaders turn into NaN matrices.
+    node.setTranslation([0, 0, 0]).setRotation([0, 0, 0, 1]).setScale([1, 1, 1]);
+  }
+}
+
+/**
+ * Re-states foliage alpha that gltfpack's pre-decimation drops, and swaps in an alpha-carrying
+ * PNG sibling where the archive's JPEG lost the channel.
+ *
+ * The source glTF (read straight from the cache, pre-gltfpack) is the only record of which
+ * materials were BLEND/MASK. A material that was masked but arrives opaque renders its needle
+ * cards as solid quads; one left BLEND without alpha in the texture sorts into the transparent
+ * pass for nothing. So: mask mode with a 0.5 cutoff when alpha pixels exist, opaque otherwise.
+ */
+async function restoreFoliageAlpha(document, sources, rootPath) {
+  const { readFile: read } = await import('node:fs/promises');
+  const sourceGltf = JSON.parse(
+    (await read(join(sources.directory, rootPath.replace(/\.decimated\.gltf$/, '.gltf')))).toString(
+      'utf8',
+    ),
+  );
+  const sourceMode = new Map(
+    (sourceGltf.materials ?? []).map((material) => [material.name, material.alphaMode ?? 'OPAQUE']),
+  );
+  for (const material of document.getRoot().listMaterials()) {
+    const mode = sourceMode.get(material.getName() ?? '');
+    if (mode !== 'BLEND' && mode !== 'MASK') {
+      continue;
+    }
+    const texture = material.getBaseColorTexture();
+    let hasAlpha = false;
+    if (texture !== null) {
+      const image = texture.getImage();
+      const uri = texture.getURI();
+      const jpeg = image !== null && image.byteLength > 2 && image[0] === 0xff && image[1] === 0xd8;
+      if (jpeg) {
+        // A PNG sibling in the same textures directory carries alpha where the JPEG cannot.
+        const pngPath = join(sources.directory, uri.replace(/\.jpe?g$/i, '.png'));
+        if (existsSync(pngPath)) {
+          const png = await read(pngPath);
+          // IHDR colour type 6 = truecolour with alpha; 2 = without. Byte 25 of any PNG.
+          if (png.length > 25 && png[25] === 6) {
+            texture.setImage(new Uint8Array(png));
+            texture.setMimeType('image/png');
+            hasAlpha = true;
+          }
+        }
+      } else if (image !== null && image.length > 25 && image[8] === 0x89 && image[25] === 6) {
+        hasAlpha = true;
+      }
+    }
+    if (hasAlpha) {
+      material.setAlphaMode('MASK');
+      material.setAlphaCutoff(0.5);
+      material.setDoubleSided(true);
+    } else {
+      material.setAlphaMode('OPAQUE');
+    }
+  }
+}
+
 async function derive(io, sources, entry, budget, variant = { meshIndex: 0 }) {
   const root = entry.preDecimate
     ? await preDecimate(sources, entry)
@@ -560,6 +734,8 @@ async function derive(io, sources, entry, budget, variant = { meshIndex: 0 }) {
 
   const sourceNode = gltf.listNodes().find((node) => node.getMesh() === sourceMesh) ?? null;
   const material = sourceMesh.listPrimitives()[0]?.getMaterial() ?? null;
+  await restoreFoliageAlpha(document, sources, root.path);
+  bakeNodeTransforms(document);
   // Deeper levels copy primitives out of a cloned document, whose materials are clone-local
   // objects: referencing one directly would connect two property graphs. Names are stable across
   // cloneDocument, so the copy resolves each primitive's material back into this document.
@@ -626,7 +802,15 @@ async function derive(io, sources, entry, budget, variant = { meshIndex: 0 }) {
       // gltfpack and cloneDocument, so the variant index addresses the clone reliably — names do
       // not, because gltfpack's pre-decimation drops unnamed mesh names.
       const clone = cloneDocument(document);
-      const cloneMesh = clone.getRoot().listMeshes()[variant.meshIndex] ?? sourceMesh;
+      // The settled LOD0 mesh, addressed through the clone's lod0 node. An index fallback is a
+      // trap here: the document holds exactly one mesh after sibling disposal, so any out-of-range
+      // index falls back to the *original* mesh and the "clone" pass simplifies LOD0 in place.
+      const cloneMesh =
+        clone
+          .getRoot()
+          .listNodes()
+          .find((node) => node.getName() === 'lod0')
+          ?.getMesh() ?? clone.getRoot().listMeshes()[0];
       let seamVerticesRemoved = 0;
       const fromTriangles = Math.max(1, countMeshTriangles(cloneMesh));
       for (const primitive of cloneMesh.listPrimitives()) {
@@ -649,12 +833,15 @@ async function derive(io, sources, entry, budget, variant = { meshIndex: 0 }) {
       quality: MODEL_TEXTURE.etc1sQuality,
       linearPattern: /arm|rough|occlusion|metal/i,
     });
-    await document.transform(quantize(), meshopt({ encoder: MeshoptEncoder, level: 'high' }));
+    // Trees ship uncompressed vertices: quantization rounds the baked metre positions back into
+    // hinge steps, and the meshopt encoder's stride assert trips on the scanned vertex layout
+    // (colour + tangent + two UV sets). KTX2 textures still carry the size win.
     return {
       document,
       levels,
       sourceTriangles,
       textures: sequential.textures,
+      compressed: false,
     };
   }
 
@@ -705,10 +892,11 @@ async function derive(io, sources, entry, budget, variant = { meshIndex: 0 }) {
     linearPattern: /arm|rough|occlusion|metal/i,
   });
 
-  // Stage 5: every level, in one pass.
-  await document.transform(quantize(), meshopt({ encoder: MeshoptEncoder, level: 'high' }));
+  // Stage 5: every level, in one pass. Authored props keep meshopt compression; quantization is
+  // omitted project-wide because its int16 positions cost scans their metre precision.
+  await document.transform(meshopt({ encoder: MeshoptEncoder, level: 'high' }));
 
-  return { document, levels, sourceTriangles, textures };
+  return { document, levels, sourceTriangles, textures, compressed: true };
 }
 
 /**
@@ -720,13 +908,13 @@ async function derive(io, sources, entry, budget, variant = { meshIndex: 0 }) {
  * can "succeed" and produce geometry several times the size it promised. Checking the bytes on disk
  * is the only assertion that would have caught it.
  */
-async function verifyOutput(io, path, levels, textures) {
+async function verifyOutput(io, path, levels, textures, compressed = true) {
   const buffer = await readFile(path);
   const jsonLength = buffer.readUInt32LE(12);
   const json = JSON.parse(buffer.subarray(20, 20 + jsonLength).toString('utf8'));
   const used = json.extensionsUsed ?? [];
   const missing = [
-    'EXT_meshopt_compression',
+    ...(compressed ? ['EXT_meshopt_compression'] : []),
     ...(textures > 0 ? ['KHR_texture_basisu'] : []),
   ].filter((name) => !used.includes(name));
   if (missing.length > 0) {
@@ -738,6 +926,17 @@ async function verifyOutput(io, path, levels, textures) {
   const images = json.images ?? [];
   if (images.some((image) => image.mimeType !== 'image/ktx2')) {
     throw new Error(`${path} contains a non-KTX2 image, expected every texture to be transcodable`);
+  }
+  // A node transform written as a bare scalar is invalid glTF that loaders turn into NaN
+  // matrices — and a NaN bounding box silently hides every instance of the model. Caught here
+  // because it once shipped: a setTranslation(0, 0, 0) where the setter takes one vec3 argument.
+  for (const node of json.nodes ?? []) {
+    for (const key of ['translation', 'scale']) {
+      const value = node[key];
+      if (value !== undefined && !Array.isArray(value)) {
+        throw new Error(`${path} node "${node.name}" has a scalar ${key}; transforms must be vec3`);
+      }
+    }
   }
 
   // Reading it back decodes every meshopt buffer and every KTX2 texture — which is what the runtime
@@ -885,7 +1084,7 @@ async function main() {
 
     for (const { variant, variantEntry } of pending) {
       const { outputPath, relativePath } = pathFor(variantEntry);
-      const { document, levels, sourceTriangles, textures } = await derive(
+      const { document, levels, sourceTriangles, textures, compressed } = await derive(
         io,
         sources,
         variantEntry,
@@ -949,7 +1148,7 @@ async function main() {
         );
       }
 
-      const verification = await verifyOutput(io, outputPath, levels, textures);
+      const verification = await verifyOutput(io, outputPath, levels, textures, compressed);
       console.log(`  verified: decodes to ${verification.nodes.join(', ')}`);
 
       const manifestEntry = buildManifestEntry(

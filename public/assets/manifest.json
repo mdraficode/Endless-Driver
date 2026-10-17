@@ -127,14 +127,14 @@
         "creator": "James Ray Cock",
         "licence": "CC0-1.0",
         "attribution": "",
-        "retrieved": "2026-10-14",
+        "retrieved": "2026-10-17",
         "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/boulder_01/boulder_01_1k.gltf"
       },
       "role": "First real mesh through the derivation pipeline, and a rock for the Hinode Prefecture forest floor (Phase 5).",
       "pipeline": {
         "resolution": "1024",
         "sourceBytes": 5771986,
-        "outputBytes": 1540784,
+        "outputBytes": 1540772,
         "reductions": [
           "dedup + prune + weld",
           "simplify (ratios 0.8, 0.4, 0.16; levels 1+ merge position seams first)",
@@ -208,8 +208,8 @@
         {
           "slot": "model",
           "path": "assets/models/boulder-01.glb",
-          "bytes": 1540784,
-          "sha256": "e36d9c24fd74971db5a079ef4fd17f5961507f633373371a9fad17eeb9b566da",
+          "bytes": 1540772,
+          "sha256": "d3d5cba523cea9ff7014cd45a131c4933908f9de3ff27e16c33c5d5a4ed0c7ac",
           "format": "glb",
           "triangles": 54138,
           "textures": 3
@@ -222,7 +222,11 @@
           "KHR_texture_basisu"
         ],
         "images": 3,
-        "nodes": ["lod1", "lod2", "lod0"]
+        "nodes": [
+          "lod1",
+          "lod2",
+          "lod0"
+        ]
       }
     },
     {
@@ -241,8 +245,8 @@
       "role": "Conifer for the cedar runs and highland forest; the source file holds three scanned variants, published as three runtime models so a forest never repeats one silhouette (Phase 5).",
       "pipeline": {
         "resolution": "1024",
-        "sourceBytes": 487358833,
-        "outputBytes": 2644308,
+        "sourceBytes": 490770292,
+        "outputBytes": 2642604,
         "reductions": [
           "dedup + prune + weld",
           "simplify (ratios 0.8, 0.4, 0.16; levels 1+ merge position seams first)",
@@ -254,22 +258,22 @@
           {
             "level": 0,
             "node": "lod0",
-            "triangles": 33370,
-            "ratio": 0.008618999291087307,
+            "triangles": 17126,
+            "ratio": 0.05953018775821219,
             "seamMerged": false
           },
           {
             "level": 1,
             "node": "lod1",
-            "triangles": 10738,
-            "ratio": 0.002633583116721122,
+            "triangles": 2939,
+            "ratio": 0.00892952816373183,
             "seamMerged": true
           },
           {
             "level": 2,
             "node": "lod2",
-            "triangles": 1712,
-            "ratio": 0.0008379582644112661,
+            "triangles": 381,
+            "ratio": 0.0013394292245597743,
             "seamMerged": true
           }
         ],
@@ -368,6 +372,13 @@
           "sha256": "c9e0571b2067cad25a4553119204874e6a5ea3156043cacbd5171155d856cff4"
         },
         {
+          "path": "textures/fir_tree_01_twig_diff_1k.png",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/fir_tree_01/fir_tree_01_twig_diff_1k.png",
+          "bytes": 3411459,
+          "md5": "3791a2e595b63410ed0bd054633373de",
+          "sha256": "76f6d0c0044d76bac08fbbd3d2ac1c9b66bb046de7d0b1a22aa9b319308f3833"
+        },
+        {
           "path": "fir_tree_01.bin",
           "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/fir_tree_01/fir_tree_01.bin",
           "bytes": 478462204,
@@ -379,24 +390,26 @@
         {
           "slot": "model",
           "path": "assets/models/fir-tree-01-a.glb",
-          "bytes": 2644308,
-          "sha256": "501b81d0847f027c21b714ac1c6268b470222e30fd9c7d740208b2977b40151b",
+          "bytes": 2642604,
+          "sha256": "50433b220b8078bb58c3d8b80d56afb2c4cdd0f4f512e426796c0a0682e2401d",
           "format": "glb",
-          "triangles": 33370,
+          "triangles": 17126,
           "textures": 9
         }
       ],
       "verification": {
         "extensionsUsed": [
-          "EXT_meshopt_compression",
           "KHR_materials_ior",
           "KHR_materials_specular",
-          "KHR_mesh_quantization",
           "KHR_texture_basisu",
           "KHR_texture_transform"
         ],
         "images": 9,
-        "nodes": ["lod0", "lod1", "lod2"]
+        "nodes": [
+          "lod0",
+          "lod1",
+          "lod2"
+        ]
       }
     },
     {
@@ -415,8 +428,8 @@
       "role": "Conifer for the cedar runs and highland forest; the source file holds three scanned variants, published as three runtime models so a forest never repeats one silhouette (Phase 5).",
       "pipeline": {
         "resolution": "1024",
-        "sourceBytes": 487358833,
-        "outputBytes": 2935280,
+        "sourceBytes": 490770292,
+        "outputBytes": 2599752,
         "reductions": [
           "dedup + prune + weld",
           "simplify (ratios 0.8, 0.4, 0.16; levels 1+ merge position seams first)",
@@ -428,22 +441,22 @@
           {
             "level": 0,
             "node": "lod0",
-            "triangles": 34135,
-            "ratio": 0.015647928561990137,
+            "triangles": 19612,
+            "ratio": 0.1081852997814657,
             "seamMerged": false
           },
           {
             "level": 1,
             "node": "lod1",
-            "triangles": 10837,
-            "ratio": 0.004781311505052542,
+            "triangles": 2900,
+            "ratio": 0.016227794967219853,
             "seamMerged": true
           },
           {
             "level": 2,
             "node": "lod2",
-            "triangles": 1742,
-            "ratio": 0.0015213263879712636,
+            "triangles": 391,
+            "ratio": 0.002434169245082978,
             "seamMerged": true
           }
         ],
@@ -542,6 +555,13 @@
           "sha256": "c9e0571b2067cad25a4553119204874e6a5ea3156043cacbd5171155d856cff4"
         },
         {
+          "path": "textures/fir_tree_01_twig_diff_1k.png",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/fir_tree_01/fir_tree_01_twig_diff_1k.png",
+          "bytes": 3411459,
+          "md5": "3791a2e595b63410ed0bd054633373de",
+          "sha256": "76f6d0c0044d76bac08fbbd3d2ac1c9b66bb046de7d0b1a22aa9b319308f3833"
+        },
+        {
           "path": "fir_tree_01.bin",
           "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/fir_tree_01/fir_tree_01.bin",
           "bytes": 478462204,
@@ -553,24 +573,26 @@
         {
           "slot": "model",
           "path": "assets/models/fir-tree-01-b.glb",
-          "bytes": 2935280,
-          "sha256": "88ddec0e90101e3daaa9321fef778d34d645bca162e4efb39a61dd81c043eebf",
+          "bytes": 2599752,
+          "sha256": "c7b8b7da1a419441223084cf1fe2aa6c0aaba277b3962e405e0535442e3e8037",
           "format": "glb",
-          "triangles": 34135,
+          "triangles": 19612,
           "textures": 9
         }
       ],
       "verification": {
         "extensionsUsed": [
-          "EXT_meshopt_compression",
           "KHR_materials_ior",
           "KHR_materials_specular",
-          "KHR_mesh_quantization",
           "KHR_texture_basisu",
           "KHR_texture_transform"
         ],
         "images": 9,
-        "nodes": ["lod0", "lod1", "lod2"]
+        "nodes": [
+          "lod0",
+          "lod1",
+          "lod2"
+        ]
       }
     },
     {
@@ -589,8 +611,8 @@
       "role": "Conifer for the cedar runs and highland forest; the source file holds three scanned variants, published as three runtime models so a forest never repeats one silhouette (Phase 5).",
       "pipeline": {
         "resolution": "1024",
-        "sourceBytes": 487358833,
-        "outputBytes": 2372620,
+        "sourceBytes": 490770292,
+        "outputBytes": 1792056,
         "reductions": [
           "dedup + prune + weld",
           "simplify (ratios 0.8, 0.4, 0.16; levels 1+ merge position seams first)",
@@ -602,22 +624,22 @@
           {
             "level": 0,
             "node": "lod0",
-            "triangles": 34874,
-            "ratio": 0.07121746252181035,
+            "triangles": 19661,
+            "ratio": 0.4862748911959931,
             "seamMerged": false
           },
           {
             "level": 1,
             "node": "lod1",
-            "triangles": 10989,
-            "ratio": 0.021760891326108717,
+            "triangles": 2889,
+            "ratio": 0.07294123367939896,
             "seamMerged": true
           },
           {
             "level": 2,
             "node": "lod2",
-            "triangles": 1751,
-            "ratio": 0.006923919967398228,
+            "triangles": 435,
+            "ratio": 0.010941185051909845,
             "seamMerged": true
           }
         ],
@@ -716,6 +738,13 @@
           "sha256": "c9e0571b2067cad25a4553119204874e6a5ea3156043cacbd5171155d856cff4"
         },
         {
+          "path": "textures/fir_tree_01_twig_diff_1k.png",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/fir_tree_01/fir_tree_01_twig_diff_1k.png",
+          "bytes": 3411459,
+          "md5": "3791a2e595b63410ed0bd054633373de",
+          "sha256": "76f6d0c0044d76bac08fbbd3d2ac1c9b66bb046de7d0b1a22aa9b319308f3833"
+        },
+        {
           "path": "fir_tree_01.bin",
           "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/fir_tree_01/fir_tree_01.bin",
           "bytes": 478462204,
@@ -727,24 +756,26 @@
         {
           "slot": "model",
           "path": "assets/models/fir-tree-01-c.glb",
-          "bytes": 2372620,
-          "sha256": "7f27c48410e721993428bc9a3dd22f29c0978e0fdcf0aa13d427b5e85ce6babb",
+          "bytes": 1792056,
+          "sha256": "5390835b2b994e12418a8f5db4c21d2e3804b7150a91f7d87b15ad86e6910ce8",
           "format": "glb",
-          "triangles": 34874,
+          "triangles": 19661,
           "textures": 6
         }
       ],
       "verification": {
         "extensionsUsed": [
-          "EXT_meshopt_compression",
           "KHR_materials_ior",
           "KHR_materials_specular",
-          "KHR_mesh_quantization",
           "KHR_texture_basisu",
           "KHR_texture_transform"
         ],
         "images": 6,
-        "nodes": ["lod0", "lod1", "lod2"]
+        "nodes": [
+          "lod0",
+          "lod1",
+          "lod2"
+        ]
       }
     },
     {
@@ -763,8 +794,8 @@
       "role": "Broadleaf canopy for meadow edges and roadside shade; the deciduous half of the Hinode tree scatter (Phase 5).",
       "pipeline": {
         "resolution": "1024",
-        "sourceBytes": 66337268,
-        "outputBytes": 2832068,
+        "sourceBytes": 67976184,
+        "outputBytes": 3424272,
         "reductions": [
           "dedup + prune + weld",
           "simplify (ratios 0.8, 0.4, 0.16; levels 1+ merge position seams first)",
@@ -776,22 +807,22 @@
           {
             "level": 0,
             "node": "lod0",
-            "triangles": 35334,
-            "ratio": 0.022508398446170228,
+            "triangles": 20310,
+            "ratio": 0.012504665803427904,
             "seamMerged": false
           },
           {
             "level": 1,
             "node": "lod1",
-            "triangles": 11079,
-            "ratio": 0.006877566191885347,
+            "triangles": 3219,
+            "ratio": 0.0018756998705141857,
             "seamMerged": true
           },
           {
             "level": 2,
             "node": "lod2",
-            "triangles": 4048,
-            "ratio": 0.002188316515599883,
+            "triangles": 884,
+            "ratio": 0.00028135498057712784,
             "seamMerged": true
           }
         ],
@@ -869,6 +900,13 @@
           "sha256": "9e3f82263247ce4f619692cea4c4f6fe9936ff465a86623481849062642c7d05"
         },
         {
+          "path": "textures/island_tree_01_leaves_diff_1k.png",
+          "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/island_tree_01/island_tree_01_leaves_diff_1k.png",
+          "bytes": 1638916,
+          "md5": "f5dcd85f170c154cba9cb8367af5dbdd",
+          "sha256": "63d3563a22a62151f338ceb4e992de7c31b62e8e3582e2762d5071f02d286349"
+        },
+        {
           "path": "island_tree_01.bin",
           "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/island_tree_01/island_tree_01.bin",
           "bytes": 60709812,
@@ -880,24 +918,26 @@
         {
           "slot": "model",
           "path": "assets/models/island-tree-01.glb",
-          "bytes": 2832068,
-          "sha256": "9e497733f0b9d4929c23848c7b0ba579c350a1b2264da1fea3fd0e60386c33f8",
+          "bytes": 3424272,
+          "sha256": "9de91e69562e72d361d01bf367c1000e39d68a0cde6f851aa936ce6249afa2f9",
           "format": "glb",
-          "triangles": 35334,
+          "triangles": 20310,
           "textures": 9
         }
       ],
       "verification": {
         "extensionsUsed": [
-          "EXT_meshopt_compression",
           "KHR_materials_ior",
           "KHR_materials_specular",
-          "KHR_mesh_quantization",
           "KHR_texture_basisu",
           "KHR_texture_transform"
         ],
         "images": 9,
-        "nodes": ["lod1", "lod2", "lod0"]
+        "nodes": [
+          "lod0",
+          "lod1",
+          "lod2"
+        ]
       }
     },
     {
@@ -917,7 +957,7 @@
       "pipeline": {
         "resolution": "1024",
         "sourceBytes": 3939674,
-        "outputBytes": 1039612,
+        "outputBytes": 1039604,
         "reductions": [
           "dedup + prune + weld",
           "simplify (ratios 0.8, 0.4, 0.16; levels 1+ merge position seams first)",
@@ -991,8 +1031,8 @@
         {
           "slot": "model",
           "path": "assets/models/tree-stump-01.glb",
-          "bytes": 1039612,
-          "sha256": "b75129c8e8b604d70f2c97f9dd385e0a3755661fb65e2ea62cc51bd2577a7a3c",
+          "bytes": 1039604,
+          "sha256": "a5f89cab882de92b9ecc149f85fdc6a25535171f0a0e004922320b21f16d5e94",
           "format": "glb",
           "triangles": 32836,
           "textures": 3
@@ -1005,7 +1045,11 @@
           "KHR_texture_basisu"
         ],
         "images": 3,
-        "nodes": ["lod1", "lod2", "lod0"]
+        "nodes": [
+          "lod1",
+          "lod2",
+          "lod0"
+        ]
       }
     },
     {

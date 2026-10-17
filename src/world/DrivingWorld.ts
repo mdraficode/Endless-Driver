@@ -14,7 +14,8 @@ import type { SceneContent, SceneContentContext } from './WorldContent';
  * config still carries an obstacle list (empty in the shipped game) so physics fixtures
  * keep their seam, but nothing placeholder stands in the landscape any more.
  */
-export function createDrivingWorld({ terrainSampler }: SceneContentContext): SceneContent {
+export function createDrivingWorld(context: SceneContentContext): SceneContent {
+  const { terrainSampler } = context;
   if (terrainSampler === undefined) {
     throw new Error(
       'createDrivingWorld requires a terrain sampler: Application creates one and shares it with physics.',
@@ -34,6 +35,14 @@ export function createDrivingWorld({ terrainSampler }: SceneContentContext): Sce
   // District vegetation (Increment 5): instanced scatter fed by the same sampler.
   const vegetation = new VegetationWorld(terrainSampler);
   root.add(vegetation.root);
+  // Scanned CC0 trees replace the authored species behind the same scatter (Phase 5). Adoption
+  // runs off the startup path: a slow asset server must not delay the first frame, and a failed
+  // one leaves the authored forest standing.
+  if (context.renderer !== undefined) {
+    vegetation.adoptScanned(context.renderer).catch((error: unknown) => {
+      console.warn('scanned vegetation unavailable:', (error as Error).message);
+    });
+  }
   // Yuhi Town + roadside poles (Increment 5b): static town, always resident.
   const town = new TownWorld(terrainSampler);
   root.add(town.root);
