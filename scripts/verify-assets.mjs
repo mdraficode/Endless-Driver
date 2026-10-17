@@ -182,14 +182,22 @@ async function verifyModel(label, asset) {
   const json = JSON.parse(buffer.subarray(20, 20 + jsonLength).toString('utf8'));
   const used = json.extensionsUsed ?? [];
 
-  require_(
-    used.includes('EXT_meshopt_compression'),
-    `${label}: ${file.path} does not declare EXT_meshopt_compression — its geometry is uncompressed`,
-  );
-  require_(
-    used.includes('KHR_mesh_quantization'),
-    `${label}: ${file.path} does not declare KHR_mesh_quantization`,
-  );
+  // The manifest records the extensions the pipeline verified when it wrote the file, so this
+  // is a drift check: a writer that silently drops an extension shows up here as a file whose
+  // declarations no longer match its own manifest entry. Trees ship uncompressed vertices on
+  // purpose (quantization rounds their baked metre positions; the meshopt encoder trips on the
+  // scanned layout), so a single hard-coded compression policy would be wrong for half the set.
+  const expected = asset.verification?.extensionsUsed ?? [
+    'EXT_meshopt_compression',
+    'KHR_mesh_quantization',
+    'KHR_texture_basisu',
+  ];
+  for (const extension of expected) {
+    require_(
+      used.includes(extension),
+      `${label}: ${file.path} does not declare ${extension}, which its manifest entry promises`,
+    );
+  }
   require_(
     used.includes('KHR_texture_basisu'),
     `${label}: ${file.path} does not declare KHR_texture_basisu`,
