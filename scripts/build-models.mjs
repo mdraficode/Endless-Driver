@@ -955,6 +955,9 @@ async function derive(io, sources, entry, budget, variant = { meshIndex: 0 }) {
     }
     levels.sort((a, b) => a.level - b.level);
     sourceNode?.dispose();
+    // Cardification removes the needle primitives after the first prune(), orphaning their
+    // accessors; without a second prune the multi-megabyte needle arrays ship unreferenced.
+    await document.transform(prune());
     const sequential = await encodeKtx2(document, {
       quality: MODEL_TEXTURE.etc1sQuality,
       linearPattern: /arm|rough|occlusion|metal/i,
@@ -1016,6 +1019,7 @@ async function derive(io, sources, entry, budget, variant = { meshIndex: 0 }) {
 
   // The original node is replaced by the named level nodes above; leaving it would double the model.
   sourceNode?.dispose();
+  await document.transform(prune());
 
   // Stage 4: textures, once.
   const { textures } = await encodeKtx2(document, {

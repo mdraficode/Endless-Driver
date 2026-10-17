@@ -222,11 +222,7 @@
           "KHR_texture_basisu"
         ],
         "images": 3,
-        "nodes": [
-          "lod1",
-          "lod2",
-          "lod0"
-        ]
+        "nodes": ["lod1", "lod2", "lod0"]
       }
     },
     {
@@ -246,7 +242,7 @@
       "pipeline": {
         "resolution": "1024",
         "sourceBytes": 490770292,
-        "outputBytes": 2642604,
+        "outputBytes": 2014668,
         "reductions": [
           "dedup + prune + weld",
           "simplify (ratios 0.8, 0.4, 0.16; levels 1+ merge position seams first)",
@@ -258,21 +254,21 @@
           {
             "level": 0,
             "node": "lod0",
-            "triangles": 17126,
+            "triangles": 4247,
             "ratio": 0.05953018775821219,
             "seamMerged": false
           },
           {
             "level": 1,
             "node": "lod1",
-            "triangles": 2939,
+            "triangles": 1295,
             "ratio": 0.00892952816373183,
             "seamMerged": true
           },
           {
             "level": 2,
             "node": "lod2",
-            "triangles": 381,
+            "triangles": 346,
             "ratio": 0.0013394292245597743,
             "seamMerged": true
           }
@@ -390,10 +386,10 @@
         {
           "slot": "model",
           "path": "assets/models/fir-tree-01-a.glb",
-          "bytes": 2642604,
-          "sha256": "50433b220b8078bb58c3d8b80d56afb2c4cdd0f4f512e426796c0a0682e2401d",
+          "bytes": 2014668,
+          "sha256": "0322739f3887e87a0fdc886726e510e2d16b0247c75b6047c845daa83832ccbc",
           "format": "glb",
-          "triangles": 17126,
+          "triangles": 4247,
           "textures": 9
         }
       ],
@@ -405,11 +401,7 @@
           "KHR_texture_transform"
         ],
         "images": 9,
-        "nodes": [
-          "lod0",
-          "lod1",
-          "lod2"
-        ]
+        "nodes": ["lod0", "lod1", "lod2"]
       }
     },
     {
@@ -429,7 +421,7 @@
       "pipeline": {
         "resolution": "1024",
         "sourceBytes": 490770292,
-        "outputBytes": 2599752,
+        "outputBytes": 1982752,
         "reductions": [
           "dedup + prune + weld",
           "simplify (ratios 0.8, 0.4, 0.16; levels 1+ merge position seams first)",
@@ -441,21 +433,21 @@
           {
             "level": 0,
             "node": "lod0",
-            "triangles": 19612,
+            "triangles": 4491,
             "ratio": 0.1081852997814657,
             "seamMerged": false
           },
           {
             "level": 1,
             "node": "lod1",
-            "triangles": 2900,
+            "triangles": 1393,
             "ratio": 0.016227794967219853,
             "seamMerged": true
           },
           {
             "level": 2,
             "node": "lod2",
-            "triangles": 391,
+            "triangles": 363,
             "ratio": 0.002434169245082978,
             "seamMerged": true
           }
@@ -573,10 +565,10 @@
         {
           "slot": "model",
           "path": "assets/models/fir-tree-01-b.glb",
-          "bytes": 2599752,
-          "sha256": "c7b8b7da1a419441223084cf1fe2aa6c0aaba277b3962e405e0535442e3e8037",
+          "bytes": 1982752,
+          "sha256": "c8a8625f2919cc4363fdcd65c4d6a7b90852408ca90103d4de48198bbd6fe7ca",
           "format": "glb",
-          "triangles": 19612,
+          "triangles": 4491,
           "textures": 9
         }
       ],
@@ -588,11 +580,7 @@
           "KHR_texture_transform"
         ],
         "images": 9,
-        "nodes": [
-          "lod0",
-          "lod1",
-          "lod2"
-        ]
+        "nodes": ["lod0", "lod1", "lod2"]
       }
     },
     {
@@ -612,7 +600,7 @@
       "pipeline": {
         "resolution": "1024",
         "sourceBytes": 490770292,
-        "outputBytes": 1792056,
+        "outputBytes": 1468928,
         "reductions": [
           "dedup + prune + weld",
           "simplify (ratios 0.8, 0.4, 0.16; levels 1+ merge position seams first)",
@@ -624,21 +612,21 @@
           {
             "level": 0,
             "node": "lod0",
-            "triangles": 19661,
+            "triangles": 6203,
             "ratio": 0.4862748911959931,
             "seamMerged": false
           },
           {
             "level": 1,
             "node": "lod1",
-            "triangles": 2889,
+            "triangles": 2072,
             "ratio": 0.07294123367939896,
             "seamMerged": true
           },
           {
             "level": 2,
             "node": "lod2",
-            "triangles": 435,
+            "triangles": 465,
             "ratio": 0.010941185051909845,
             "seamMerged": true
           }
@@ -756,10 +744,10 @@
         {
           "slot": "model",
           "path": "assets/models/fir-tree-01-c.glb",
-          "bytes": 1792056,
-          "sha256": "5390835b2b994e12418a8f5db4c21d2e3804b7150a91f7d87b15ad86e6910ce8",
+          "bytes": 1468928,
+          "sha256": "d0a7b1aceee6d935c64a45b238c02e3d3ffd57f7810ba855ef7f914d0654cfa9",
           "format": "glb",
-          "triangles": 19661,
+          "triangles": 6203,
           "textures": 6
         }
       ],
@@ -771,11 +759,7 @@
           "KHR_texture_transform"
         ],
         "images": 6,
-        "nodes": [
-          "lod0",
-          "lod1",
-          "lod2"
-        ]
+        "nodes": ["lod0", "lod1", "lod2"]
       }
     },
     {
@@ -795,7 +779,7 @@
       "pipeline": {
         "resolution": "1024",
         "sourceBytes": 67976184,
-        "outputBytes": 3424272,
+        "outputBytes": 2371048,
         "reductions": [
           "dedup + prune + weld",
           "simplify (ratios 0.8, 0.4, 0.16; levels 1+ merge position seams first)",
@@ -807,21 +791,21 @@
           {
             "level": 0,
             "node": "lod0",
-            "triangles": 20310,
+            "triangles": 10655,
             "ratio": 0.012504665803427904,
             "seamMerged": false
           },
           {
             "level": 1,
             "node": "lod1",
-            "triangles": 3219,
+            "triangles": 3089,
             "ratio": 0.0018756998705141857,
             "seamMerged": true
           },
           {
             "level": 2,
             "node": "lod2",
-            "triangles": 884,
+            "triangles": 988,
             "ratio": 0.00028135498057712784,
             "seamMerged": true
           }
@@ -918,10 +902,10 @@
         {
           "slot": "model",
           "path": "assets/models/island-tree-01.glb",
-          "bytes": 3424272,
-          "sha256": "9de91e69562e72d361d01bf367c1000e39d68a0cde6f851aa936ce6249afa2f9",
+          "bytes": 2371048,
+          "sha256": "43f15d7e9c0eb802b6eb0ff37ee727879998ab2ff5570b9b646958217833840a",
           "format": "glb",
-          "triangles": 20310,
+          "triangles": 10655,
           "textures": 9
         }
       ],
@@ -933,11 +917,7 @@
           "KHR_texture_transform"
         ],
         "images": 9,
-        "nodes": [
-          "lod0",
-          "lod1",
-          "lod2"
-        ]
+        "nodes": ["lod0", "lod1", "lod2"]
       }
     },
     {
@@ -1045,11 +1025,7 @@
           "KHR_texture_basisu"
         ],
         "images": 3,
-        "nodes": [
-          "lod1",
-          "lod2",
-          "lod0"
-        ]
+        "nodes": ["lod1", "lod2", "lod0"]
       }
     },
     {
