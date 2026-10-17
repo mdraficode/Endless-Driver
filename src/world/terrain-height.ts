@@ -180,13 +180,13 @@ export function terrainSurfaceWeights(
   // never as a uniform white sheet.
   const effectiveSnowline = config.snowlineMeters + variation * 22 + patch * 12;
   const altitude = smoothstep(effectiveSnowline, effectiveSnowline + 55, height);
-  const snowPatch = 0.16 + 0.84 * smoothstep(-0.25, 0.35, patch * 0.72 + variation * 0.48);
+  const snowPatch = 0.08 + 0.92 * smoothstep(0.05, 0.45, patch * 0.72 + variation * 0.48);
   const snow = altitude * (1 - smoothstep(0.16, 0.36, slope)) * snowPatch;
 
   const rockSlope = smoothstep(0.22, 0.42, slope);
   const alpineRock = altitude * (1 - snowPatch) * 0.62;
   const rockOutcrop =
-    smoothstep(0.15, 0.5, patch) * smoothstep(0.008, 0.035, slope) * (1 - altitude * 0.5) * 0.8;
+    smoothstep(0.32, 0.62, patch) * smoothstep(0.012, 0.045, slope) * (1 - altitude * 0.5) * 0.85;
   const rock = Math.min(1, Math.max(rockSlope, alpineRock, rockOutcrop));
 
   // Dry soil patches break up the flat lowland grass at hectare scale, so a

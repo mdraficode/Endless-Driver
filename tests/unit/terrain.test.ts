@@ -178,8 +178,9 @@ describe('surface splat and driving response', () => {
     const sampler = createTerrainSampler(TERRAIN_CONFIG);
     const kinds = new Set<string>();
     let maxRockWeight = 0;
-    for (let x = -600; x <= 700; x += 65) {
-      for (let z = -700; z <= 700; z += 65) {
+    // 20 m pitch: outcrops are deliberately clustered, tens of metres across.
+    for (let x = -600; x <= 700; x += 20) {
+      for (let z = -700; z <= 700; z += 20) {
         const surface = sampleTerrainSurface(sampler, x, z);
         kinds.add(surface.id);
         maxRockWeight = Math.max(maxRockWeight, surface.weights[2]);

@@ -1365,7 +1365,9 @@ Fixes (`ea56e0d`, `873c11a`):
   large `terrainVariationAt` field and a new finer `terrainPatchAt` field
   (90 m fBm). The effective snowline wanders ±34 m; snow fades on slopes
   from 0.16; even above the line only snow-favoured patches hold full snow,
-  the rest is exposed alpine rock/soil; grass fades with altitude. Base
+  the rest is exposed alpine rock/soil; grass fades with altitude.
+  Measured: snow dominates 2.2% of the 2.5 km volcano map and only 33% of
+  ground above 230 m (was a solid sheet). Base
   snowline 190 m (peak 300 m). The renderer (`terrain-geometry.ts`) and the
   physics surface (`terrain-surface.ts`) pass the same fields, so what you
   see is what the tyres feel.
