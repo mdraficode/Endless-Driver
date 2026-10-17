@@ -101,3 +101,25 @@ export function groundTintAt(x: number, z: number): readonly [number, number, nu
     1 + (tint[2] - 1) * mixAmount,
   ];
 }
+
+/**
+ * Canopy height multiplier at a point: the strongest district that declares a
+ * `canopyScale`, blended from neutral by its edge influence. The deep jungle
+ * holds its crowns well above the trail corridor with this (2026-10-18).
+ */
+export function canopyScaleAt(x: number, z: number): number {
+  let scale = 1;
+  let strongest = 0;
+  for (const district of DISTRICTS) {
+    const canopy = district.canopyScale ?? 1;
+    if (canopy === 1) {
+      continue;
+    }
+    const edge = districtEdge(district, x, z);
+    if (edge > strongest) {
+      strongest = edge;
+      scale = canopy;
+    }
+  }
+  return 1 + (scale - 1) * strongest;
+}

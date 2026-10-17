@@ -26,6 +26,12 @@ export interface DistrictConfig {
    * 2026-10-16: "no diversity on different terrain"). Applied at 65% strength.
    */
   readonly groundTint: readonly [number, number, number];
+  /**
+   * Canopy height multiplier for trees inside the district (1 = normal).
+   * The deep jungle runs its broadleaf and bamboo well above road height so
+   * trails underneath tunnel through shade (owner request, 2026-10-18).
+   */
+  readonly canopyScale?: number;
 }
 
 export const DISTRICTS: readonly DistrictConfig[] = [
@@ -78,6 +84,19 @@ export const DISTRICTS: readonly DistrictConfig[] = [
     radiusMeters: 680,
     speciesDensity: { conifer: 0.1, broadleaf: 0.35, sakura: 0.15, rock: 0.4 },
     groundTint: [1.13, 1.03, 0.76],
+  },
+  {
+    // Kuroha Jungle (黒葉の森): the deep jungle south-west of the junction —
+    // dense bamboo understory under a broadleaf canopy held well above road
+    // height, so the off-road trails tunnel through shade (2026-10-18).
+    id: 'kuroha-jungle',
+    label: 'Kuroha Jungle',
+    centerX: -430,
+    centerZ: -240,
+    radiusMeters: 420,
+    speciesDensity: { bamboo: 3.2, broadleaf: 2.2, conifer: 0.35, rock: 0.5 },
+    groundTint: [0.8, 1.05, 0.82],
+    canopyScale: 1.55,
   },
   {
     // hokuto-side highlands west: wind-bent broadleaf and exposed rock.

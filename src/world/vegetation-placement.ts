@@ -3,7 +3,9 @@ import {
   type VegetationConfig,
   type VegetationSpecies,
 } from '../config/districts';
-import { speciesMultipliersAt, VEGETATION_SPECIES } from './districts';
+import { speciesMultipliersAt, VEGETATION_SPECIES, canopyScaleAt } from './districts';
+import { TRAIL_NETWORK_CONFIG } from '../config/trails';
+import { trailAt } from './trails';
 import type { TerrainSampler } from './terrain-height';
 
 /**
@@ -105,6 +107,17 @@ export function generateChunkVegetation(
       if (road !== null && road.distance < config.roadClearanceMeters) {
         continue;
       }
+      // Trail corridor: inside the clear band nothing grows at all (the route
+      // must be drivable); inside the canopy band only tall trees may stand, so
+      // the trail tunnels under the crowns instead of crossing open ground.
+      const trail = trailAt(x, z);
+      let canopyOnly = false;
+      if (trail !== null) {
+        if (trail.distance < TRAIL_NETWORK_CONFIG.clearInnerMeters) {
+          continue;
+        }
+        canopyOnly = trail.distance < TRAIL_NETWORK_CONFIG.canopyOuterMeters;
+      }
       const height = sampler.heightAt(x, z);
       const normal = sampler.normalAt(x, z);
       const steepness = 1 - normal.y;
@@ -139,13 +152,24 @@ export function generateChunkVegetation(
         }
       }
       const isTree = TREE_SPECIES.has(species);
+      const scale =
+        (isTree ? 0.8 + 0.85 * hash01(ix, iz, 53) : 0.7 + 1.1 * hash01(ix, iz, 53)) *
+        canopyScaleAt(x, z);
+      if (
+        canopyOnly &&
+        (species === 'bamboo' ||
+          species === 'sakura' ||
+          scale < TRAIL_NETWORK_CONFIG.canopyMinScale)
+      ) {
+        continue;
+      }
       placements.push({
         species,
         variant: Math.floor(hash01(ix, iz, 41) * 3),
         x,
         y: height - 0.12,
         z,
-        scale: isTree ? 0.8 + 0.85 * hash01(ix, iz, 53) : 0.7 + 1.1 * hash01(ix, iz, 53),
+        scale,
         rotationY: hash01(ix, iz, 67) * Math.PI * 2,
         cellX: ix,
         cellZ: iz,

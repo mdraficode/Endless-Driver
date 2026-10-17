@@ -171,6 +171,7 @@ export function terrainSurfaceWeights(
   slope: number,
   variation = 0,
   patch = 0,
+  trail = 0,
 ): TerrainSplatWeights {
   // Snow is a patchy alpine cap, not a biome: the effective snowline wanders
   // with the large and fine patch fields, wind-scoured slopes expose rock
@@ -181,25 +182,36 @@ export function terrainSurfaceWeights(
   const effectiveSnowline = config.snowlineMeters + variation * 22 + patch * 12;
   const altitude = smoothstep(effectiveSnowline, effectiveSnowline + 55, height);
   const snowPatch = 0.08 + 0.92 * smoothstep(0.05, 0.45, patch * 0.72 + variation * 0.48);
-  const snow = altitude * (1 - smoothstep(0.16, 0.36, slope)) * snowPatch;
+  let snow = altitude * (1 - smoothstep(0.16, 0.36, slope)) * snowPatch;
 
   const rockSlope = smoothstep(0.22, 0.42, slope);
   const alpineRock = altitude * (1 - snowPatch) * 0.62;
   const rockOutcrop =
     smoothstep(0.32, 0.62, patch) * smoothstep(0.012, 0.045, slope) * (1 - altitude * 0.5) * 0.85;
-  const rock = Math.min(1, Math.max(rockSlope, alpineRock, rockOutcrop));
+  let rock = Math.min(1, Math.max(rockSlope, alpineRock, rockOutcrop));
 
   // Dry soil patches break up the flat lowland grass at hectare scale, so a
   // field is a patchwork the car can see (and feel), not one green carpet.
   const soilSlope = smoothstep(0.07, 0.22, slope) * (1 - rockSlope);
   const drySoilPatch = smoothstep(0.02, 0.45, variation) * (1 - rock) * (1 - altitude) * 0.8;
   const alpineSoil = altitude * (1 - snowPatch) * 0.22 * (1 - rock);
-  const soil = Math.min(1, Math.max(soilSlope, drySoilPatch) + alpineSoil);
+  let soil = Math.min(1, Math.max(soilSlope, drySoilPatch) + alpineSoil);
 
   // Grass fades with altitude so exposed high ground goes to rock/soil,
   // never to green, when the snow patch field says "scoured".
   let grass = Math.max(0, 1 - rock - soil - snow);
   grass *= 1 - altitude * 0.65;
+  // Worn trail dirt: off-road routes read as a packed-earth band — soil-dominant
+  // in the middle, grass reclaiming the feathered edge, no snow or rock on the
+  // line. The same numbers feed physics (terrain-surface.ts), so the band a car
+  // sees is the dirt grip it feels.
+  if (trail > 0) {
+    const packed = Math.min(1, trail);
+    grass *= 1 - packed * 0.8;
+    rock *= 1 - packed * 0.7;
+    snow *= 1 - packed;
+    soil = Math.max(soil * (1 - packed), packed * 0.9);
+  }
   const total = grass + soil + rock + snow;
   if (total <= 1e-6) {
     return [1, 0, 0, 0];
@@ -225,6 +237,7 @@ export function terrainColorAt(
   occlusion = 1,
   groundTint: readonly [number, number, number] = [1, 1, 1],
   patch = 0,
+  trail = 0,
 ): readonly [number, number, number] {
   // variation in [-1, 1]: patches of dry/wet ground at the hundred-metre scale.
   // Grass is two-tone rather than one green with a nudge: Japanese lowlands in a
@@ -248,6 +261,7 @@ export function terrainColorAt(
     slope,
     variation,
     patch,
+    trail,
   );
   const shade = Math.min(1.08, Math.max(0.8, occlusion));
   const color = [

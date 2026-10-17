@@ -5,6 +5,7 @@ import {
   terrainVariationAt,
   type TerrainSampler,
 } from './terrain-height';
+import { trailInfluenceAt } from './trails';
 
 /**
  * The driving surface at a point: what the ground is made of, for the tire model.
@@ -72,6 +73,7 @@ export function sampleTerrainSurface(
     1 - normal.y,
     terrainVariationAt(config, x, z),
     terrainPatchAt(config, x, z),
+    trailInfluenceAt(x, z),
   );
   let dominant = 0;
   for (let index = 1; index < 4; index += 1) {

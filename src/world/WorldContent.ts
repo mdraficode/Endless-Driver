@@ -70,6 +70,12 @@ export interface SceneContentContext {
    * simply stay.
    */
   readonly renderer?: object;
+  /**
+   * Resolved quality tier id ('A' | 'B' | 'C'), so streamed content can scale its
+   * own detail budget with the device (the jungle canopy is the worst case:
+   * full density at tier C melted software rasterisers, 2026-10-18).
+   */
+  readonly qualityTier?: string;
 }
 
 /** Builds a scene's content. Called once, by `SceneManager`, during construction. */

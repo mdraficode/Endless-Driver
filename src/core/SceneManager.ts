@@ -43,6 +43,8 @@ export interface SceneManagerOptions {
    * not the content's business.
    */
   readonly content?: SceneContentFactory;
+  /** Resolved quality tier id, forwarded to streamed content for detail budgets. */
+  readonly qualityTier?: string;
   /**
    * The shared terrain sampler (Phase 4), forwarded to the content factory. One instance
    * is created by `Application` so the visual chunks and the physics heightfields sample
@@ -181,6 +183,7 @@ export class SceneManager {
       worldConfig,
       ...(options.terrainSampler !== undefined ? { terrainSampler: options.terrainSampler } : {}),
       ...(options.renderer !== undefined ? { renderer: options.renderer } : {}),
+      ...(options.qualityTier !== undefined ? { qualityTier: options.qualityTier } : {}),
     });
 
     this.scene.add(this.#sky, ambient, this.#sun, this.#sun.target, this.#content.root);

@@ -168,6 +168,7 @@ export class Application {
       aspect: this.#engine.viewport.aspect,
       terrainSampler,
       renderer: this.#engine.renderer,
+      ...(options.tier !== undefined ? { qualityTier: options.tier.id } : {}),
     });
     this.#engine.setGodraysLight(this.#scene.godraysLight);
 

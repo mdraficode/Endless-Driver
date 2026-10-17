@@ -290,6 +290,7 @@ export class VegetationWorld {
   readonly root = new Group();
   readonly #sampler: TerrainSampler;
   readonly #config: VegetationConfig;
+  readonly #detail: number;
   readonly #meshes: { species: VegetationSpecies; variant: number; mesh: InstancedMesh }[] = [];
   readonly #chunkPlacements = new Map<string, VegetationPlacement[]>();
   #center: { cx: number; cz: number } | null = null;
@@ -314,9 +315,14 @@ export class VegetationWorld {
   readonly #scannedCounts = new Map<InstancedMesh, number>();
   #scannedStump: ScannedPool[] | null = null;
 
-  constructor(sampler: TerrainSampler, config: VegetationConfig = VEGETATION_CONFIG) {
+  constructor(
+    sampler: TerrainSampler,
+    config: VegetationConfig = VEGETATION_CONFIG,
+    detailScale = 1,
+  ) {
     this.#sampler = sampler;
     this.#config = config;
+    this.#detail = Math.min(1, Math.max(0.4, detailScale));
     this.root.name = 'VegetationWorld';
 
     const material = new MeshStandardNodeMaterial();
@@ -482,19 +488,23 @@ export class VegetationWorld {
     if (scanned === undefined || pools === undefined) {
       return;
     }
+    const k = this.#detail;
     const distance = Math.hypot(placement.x - focus.x, placement.z - focus.z);
-    if (distance > SCANNED_FAR_CULL_METERS) {
+    if (distance > SCANNED_FAR_CULL_METERS * k) {
       return;
     }
-    // Past the thin ring half of the candidates are dropped by a positional hash, so the far
-    // forest keeps its density *look* without paying for density.
+    // Past the thin ring candidates are dropped by a positional hash, so the far
+    // forest keeps its density *look* without paying for density. Low-detail
+    // devices pull every ring in and thin harder: the deep jungle at full rings
+    // is a couple of million triangles, which only a desktop GPU enjoys.
     if (
-      distance > SCANNED_THIN_METERS &&
-      hash01(Math.round(placement.x), Math.round(placement.z), 91) < 0.5
+      distance > SCANNED_THIN_METERS * k &&
+      hash01(Math.round(placement.x), Math.round(placement.z), 91) < (k < 0.8 ? 0.72 : 0.5)
     ) {
       return;
     }
-    const level = distance < SCANNED_LOD_RADII[0] ? 0 : distance < SCANNED_LOD_RADII[1] ? 1 : 2;
+    const level =
+      distance < SCANNED_LOD_RADII[0] * k ? 0 : distance < SCANNED_LOD_RADII[1] * k ? 1 : 2;
     const scale = (SCANNED_GAME_HEIGHTS[species] / Math.max(0.5, scanned.height)) * placement.scale;
     // A shallow sink, not the authored one: scanned trunks carry their own root flare below y=0.
     dummy.position.set(placement.x, placement.y - 0.2 * placement.scale, placement.z);

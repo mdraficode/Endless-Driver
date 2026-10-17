@@ -33,7 +33,10 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
     root.add(roads.object);
   }
   // District vegetation (Increment 5): instanced scatter fed by the same sampler.
-  const vegetation = new VegetationWorld(terrainSampler);
+  // The detail scale pulls the scanned LOD rings in on modest devices: the deep
+  // jungle canopy is the heaviest thing this world streams.
+  const detailScale = context.qualityTier === 'C' ? 0.6 : context.qualityTier === 'B' ? 0.85 : 1;
+  const vegetation = new VegetationWorld(terrainSampler, undefined, detailScale);
   root.add(vegetation.root);
   // Scanned CC0 trees replace the authored species behind the same scatter (Phase 5). Adoption
   // runs off the startup path: a slow asset server must not delay the first frame, and a failed
