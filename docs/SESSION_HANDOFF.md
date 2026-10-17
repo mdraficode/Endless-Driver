@@ -1444,3 +1444,43 @@ Headless captures of the live round-6 build showed a milky veil over every frame
 ### Still open
 
 - Tree-collision _feel_ (rounds 5-6 rejection) remains the standing open acceptance item.
+
+## 46. Round 8 — swipe free space to orbit the chase camera (2026-10-17)
+
+Owner request: "There is no way to move the camera angle by swiping action. The camera should
+move when swiping on the free spaces on the screen."
+
+### What shipped (`24137db`)
+
+- `src/cameras/camera-orbit.ts` (pure): swipe pixels → orbit angle pair around the car
+  ("grab the world": swipe right swings the camera to the car's left side, swipe down raises
+  it). Clamps: ±77° yaw, +29°/−7° pitch on top of each view's own elevation, absolute
+  elevation floor 3.4° so no swipe buries the camera in the ground. A ~220 px thumb stroke
+  reaches most of the yaw limit (pinned by test).
+- `src/cameras/ChaseCamera.ts`: the orbit target moves with each swipe pixel; the framed
+  offset eases after it on a 0.12 s constant; framing distance is preserved (an orbit is a
+  rotation, not a dolly) and the look point stays on the car, so orbiting re-aims by
+  construction. Works in every distance view.
+- `src/input/orbit-gesture.ts`: the canvas is the gesture surface. Every on-screen control
+  captures its own pointers, so a pointer that goes down on the canvas is by definition free
+  space; one pointer orbits at a time, and a second thumb keeps driving while the first
+  swipes (verified with simultaneous touch points). Pointer events give desktop mouse-drag
+  the same gesture.
+- Diagnostics: `cameraOrbit` (yaw/pitch degrees); the overlay's Camera row shows
+  `· orbit Y°/P°` once a thumb has moved the view.
+
+### Verification
+
+- `npm run check` 46 files green; CI Validate + Deploy success; live bundle
+  `assets/index-Dt_z_-h8.js`.
+- Browser proof (tier C, touch forced): mouse drag → yaw 63.9°; vertical drag → pitch 27.1°;
+  CDP touch swipe left → yaw −56.8°; a swipe starting on the joystick steers and leaves the
+  orbit untouched; joystick held + second-finger swipe orbits while driving. Live site:
+  swipe → yaw 53.3°, zero page errors. Screenshots `/tmp/orbit-*.png` (ephemeral).
+- Regression pinned: `orbit-gesture.test.ts` includes "detaches on dispose" — a dispose call
+  misplaced in `attachTouchControls` once killed the gesture at boot (found by tracing
+  add/removeEventListener in a browser).
+
+### Still open
+
+- Tree-collision _feel_ (rounds 5-6 rejection) remains the standing open acceptance item.
