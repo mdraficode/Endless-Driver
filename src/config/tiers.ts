@@ -120,8 +120,10 @@ const TIER_C: TierDefinition = {
     'Phones and low-end laptops: WebGL2 backend, short shadow range, HDRI light with a procedural sky backdrop.',
   render: {
     maxPixelRatio: 1,
+    // No backendPreference here on purpose: the backend is a project-wide
+    // verification decision (config/render.ts), not a per-tier budget item.
+    // A tier restating it once silently overrode the shipped default.
     renderer: {
-      backendPreference: 'auto',
       antialias: false,
       samples: 0,
     },
@@ -188,7 +190,6 @@ const TIER_B: TierDefinition = {
   render: {
     maxPixelRatio: 1.5,
     renderer: {
-      backendPreference: 'auto',
       // MSAA off: this tier resolves edges temporally, and the two strategies cannot both be on. See the
       // note on `TemporalAntiAliasingConfig` — the trade is MSAA's perfect geometric edges for temporal
       // stability of *everything* (specular, shadow edges, occlusion noise), which is the better half.
@@ -241,8 +242,10 @@ const TIER_A: TierDefinition = {
   summary: 'Capable desktop: 4 cascades at up to 4096, full pixel ratio, strongest lighting.',
   render: {
     maxPixelRatio: 2,
+    // No backendPreference here on purpose: the backend is a project-wide
+    // verification decision (config/render.ts), not a per-tier budget item.
+    // A tier restating it once silently overrode the shipped default.
     renderer: {
-      backendPreference: 'auto',
       antialias: false,
       samples: 0,
     },

@@ -90,21 +90,21 @@ export function buildSpeciesGeometry(species: VegetationSpecies, variant: number
   switch (species) {
     case 'conifer':
       return mergeGeometries([
-        part(new CylinderGeometry(0.13, 0.24, 1.7, 5), 0x6b4a33, 0, 0.85, 0),
+        part(new CylinderGeometry(0.13, 0.24, 2.3, 5), 0x6b4a33, 0, 0.85, 0),
         part(new ConeGeometry(1.55, 2.7, 7), tint[0], 0, 2.4, 0),
         part(new ConeGeometry(1.18, 2.3, 7), tint[0], 0, 3.6, 0),
         part(new ConeGeometry(0.78, 1.9, 7), tint[0], 0, 4.7, 0),
       ])!;
     case 'broadleaf':
       return mergeGeometries([
-        part(new CylinderGeometry(0.15, 0.27, 2.0, 5), 0x6e4f36, 0, 1.0, 0),
+        part(new CylinderGeometry(0.15, 0.27, 2.6, 5), 0x6e4f36, 0, 1.0, 0),
         part(new IcosahedronGeometry(1.55, 0), tint[1], 0, 3.1, 0),
         part(new IcosahedronGeometry(1.0, 0), tint[1], 0.95, 2.55, 0.3),
         part(new IcosahedronGeometry(0.92, 0), tint[1], -0.85, 2.7, -0.25),
       ])!;
     case 'sakura':
       return mergeGeometries([
-        part(new CylinderGeometry(0.14, 0.25, 1.9, 5), 0x574233, 0, 0.95, 0),
+        part(new CylinderGeometry(0.14, 0.25, 2.5, 5), 0x574233, 0, 0.95, 0),
         part(new IcosahedronGeometry(1.5, 0), tint[2], 0, 3.0, 0),
         part(new IcosahedronGeometry(0.95, 0), tint[2], 0.9, 2.5, -0.2),
         part(new IcosahedronGeometry(0.88, 0), tint[2], -0.8, 2.6, 0.3),
@@ -118,7 +118,7 @@ export function buildSpeciesGeometry(species: VegetationSpecies, variant: number
         [0.15, -0.45],
       ];
       for (const [cx, cz] of culms) {
-        parts.push(part(new CylinderGeometry(0.045, 0.06, 4.8, 4), 0x7fae56, cx, 2.4, cz));
+        parts.push(part(new CylinderGeometry(0.045, 0.06, 5.4, 4), 0x7fae56, cx, 2.4, cz));
         parts.push(part(new ConeGeometry(0.55, 1.5, 5), 0x8fbc62, cx, 5.2, cz));
       }
       return mergeGeometries(parts)!;
@@ -154,7 +154,7 @@ export function buildCrownGeometry(species: VegetationSpecies, variant: number):
   switch (species) {
     case 'conifer':
       return mergeGeometries([
-        part(new CylinderGeometry(0.09, 0.13, 1.2, 5), 0x6b4a33, 0, 0.6, 0),
+        part(new CylinderGeometry(0.09, 0.13, 1.7, 5), 0x6b4a33, 0, 0.6, 0),
         part(new ConeGeometry(1.55, 2.7, 7), tint[0], 0, 2.4 + lift, 0),
         part(new ConeGeometry(1.18, 2.3, 7), tint[0], 0, 3.6 + lift, 0),
         part(new ConeGeometry(0.78, 1.9, 7), tint[0], 0, 4.7 + lift, 0),
@@ -433,7 +433,11 @@ export class VegetationWorld {
     lean: { angle: number; dirX: number; dirZ: number } | null,
     dummy: Object3D,
   ): void {
-    dummy.position.set(placement.x, placement.y, placement.z);
+    // Sink the base into the ground: chunk meshes are decimated with distance, so
+    // their surface dips below the exact height the scatter sampled — an unsunk
+    // tree then floats above its own footprint at mid range (owner report
+    // 2026-10-17). The trunks carry extra length below y=0 to pay for it.
+    dummy.position.set(placement.x, placement.y - 0.3 * placement.scale, placement.z);
     if (lean === null || lean.angle <= 0.001) {
       dummy.quaternion.setFromAxisAngle(UP, placement.rotationY);
     } else {
@@ -474,7 +478,7 @@ export class VegetationWorld {
         if (state !== undefined && state.condition !== 'intact' && state.condition !== 'bent') {
           // Down: only the stump remains (the crown is debris, handled separately).
           if (this.#stumpMesh !== null && stumps < this.#stumpMesh.instanceMatrix.count) {
-            dummy.position.set(placement.x, placement.y, placement.z);
+            dummy.position.set(placement.x, placement.y - 0.15 * placement.scale, placement.z);
             dummy.quaternion.setFromAxisAngle(UP, placement.rotationY);
             dummy.scale.setScalar(placement.scale);
             dummy.updateMatrix();

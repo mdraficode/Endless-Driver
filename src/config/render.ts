@@ -544,7 +544,13 @@ export const RENDER_CONFIG: RenderConfig = {
   maxPixelRatio: 2,
   maxFrameDeltaSeconds: 0.1,
   renderer: {
-    backendPreference: 'auto',
+    // WebGL2 is the backend every capture, test and CI run in this project
+    // verifies, so it is the shipped default. WebGPU remains implemented but
+    // unreached until a proof exists on real hardware: the owner's devices
+    // showed artefacts (an all-white ground) that no WebGL2 capture, at any
+    // tier or spawn, has ever reproduced (2026-10-17). Switching the default
+    // back to 'auto' is a one-line change once WebGPU captures exist.
+    backendPreference: 'webgl',
     // MSAA off in the baseline for the same reason the tier table has it off: the AA strategy in force is
     // temporal, and the two cannot both be on. Tier C, which has no TAA, keeps MSAA off as well and uses
     // FXAA; a caller that wants MSAA asks for it explicitly, and the tier test asserts the pairing.
@@ -607,15 +613,15 @@ export const RENDER_CONFIG: RenderConfig = {
   environment: {
     enabled: true,
     assetId: 'hdri-ninomaru-teien-1k',
-    intensity: 1,
+    intensity: 0.5,
     rotationDegrees: 0,
     useAsBackground: false,
   },
   lighting: {
     ambientColor: 0xa8c2de,
-    ambientIntensity: 0.35,
+    ambientIntensity: 0.25,
     sunColor: 0xfff2dd,
-    sunIntensity: 2.4,
+    sunIntensity: 3.4,
     sunPosition: [70, 95, 55],
     sunDistance: 130,
   },

@@ -38,6 +38,19 @@ interface LoadedChunk {
   pom: boolean;
 }
 
+/*
+ * World-space UV scales (tiles per metre), one per scanned set: 1 m divided by
+ * the scan's documented physical width. The old hand-picked scales ran grass
+ * blades at half their real size and the rock face at double its real width —
+ * a major reason the ground read as 'not a real surface' (owner report
+ * 2026-10-17). Detail now also survives to 380 m before the macro tint takes
+ * over, so mid-distance ground keeps scanned relief instead of flat colour.
+ */
+const GRASS_UV = 0.5; // leafy_grass: 2 m scan
+const SOIL_UV = 0.77; // brown_mud_dry: 1.3 m scan
+const ROCK_UV = 0.45; // rock_face_03: ~2.2 m face
+const SNOW_UV = 0.5; // snow_01: 2 m scan
+
 /** Manifest ids of the scanned CC0 sets, in splat order [grass, soil, rock, snow]. */
 const SURFACE_ASSETS = [
   'tex-leafy-grass-1k',
@@ -200,9 +213,9 @@ export class TerrainWorld implements SceneContent {
       // would stretch the march without bound, so the divisor is clamped.
       const slope = viewDir.xz.div(clamp(viewDir.y, 0.22, 1));
       const heightAt = (xz: typeof wxz) =>
-        texture(grass.height!, xz.mul(0.85))
+        texture(grass.height!, xz.mul(GRASS_UV))
           .r.mul(splat.x)
-          .add(texture(soil.height!, xz.mul(0.65)).r.mul(splat.y))
+          .add(texture(soil.height!, xz.mul(SOIL_UV)).r.mul(splat.y))
           .add(texture(rock.height!, xz.mul(0.22)).r.mul(splat.z))
           .add(texture(snow.height!, xz.mul(0.5)).r.mul(splat.w));
       // The march is unrolled while the graph is built and the first crossing is
@@ -245,29 +258,29 @@ export class TerrainWorld implements SceneContent {
     // LOD shares) carries the colour, so chunk resolution changes stop changing the
     // average colour of the ground and texture shimmer dies with distance.
     const detailFade = float(1).sub(
-      smoothstep(float(90), float(260), positionWorld.sub(cameraPosition).length()),
+      smoothstep(float(120), float(380), positionWorld.sub(cameraPosition).length()),
     );
 
     // The leafy-grass scan grades straw-brown under warm sun (it is half leaf litter);
     // a saturation lift and a green-leaning tint pull it back to living grass while the
     // scan's detail — blades, twigs, soil — survives untouched.
-    const grassRaw = texture(grass.diffuse, wxz.mul(0.85)).rgb;
+    const grassRaw = texture(grass.diffuse, wxz.mul(GRASS_UV)).rgb;
     const grassLuma = grassRaw.dot(vec3(0.299, 0.587, 0.114));
     const grassAlbedo = mix(vec3(grassLuma), grassRaw, float(1.45)).mul(vec3(0.74, 1.12, 0.62));
-    const soilAlbedo = texture(soil.diffuse, wxz.mul(0.65)).rgb;
+    const soilAlbedo = texture(soil.diffuse, wxz.mul(SOIL_UV)).rgb;
     // Shaded blue-grey grade: raw scanned snow under this sun sits near paper
     // white and reads as fog against the pale horizon. The scan's sparkle and
     // trample detail survive; only the luminance comes down.
-    const snowAlbedo = texture(snow.diffuse, wxz.mul(0.5)).rgb.mul(vec3(0.62, 0.7, 0.86));
+    const snowAlbedo = texture(snow.diffuse, wxz.mul(SNOW_UV)).rgb.mul(vec3(0.62, 0.7, 0.86));
     // Rock triplanar: three projections blended by the world normal, so a cliff face
     // samples the scan across its own plane instead of smearing the top-down tile.
     const axis = normalWorld.abs();
     const axisWeights = vec3(axis.x.pow(4), axis.y.pow(4), axis.z.pow(4));
     const axisTotal = axisWeights.x.add(axisWeights.y).add(axisWeights.z);
-    const rockAlbedo = texture(rock.diffuse, wxz.mul(0.22))
+    const rockAlbedo = texture(rock.diffuse, wxz.mul(ROCK_UV))
       .rgb.mul(axisWeights.y)
-      .add(texture(rock.diffuse, wpos.zy.mul(0.22)).rgb.mul(axisWeights.x))
-      .add(texture(rock.diffuse, wpos.xy.mul(0.22)).rgb.mul(axisWeights.z))
+      .add(texture(rock.diffuse, wpos.zy.mul(ROCK_UV)).rgb.mul(axisWeights.x))
+      .add(texture(rock.diffuse, wpos.xy.mul(ROCK_UV)).rgb.mul(axisWeights.z))
       .div(axisTotal);
 
     const detailAlbedo = grassAlbedo
@@ -278,10 +291,10 @@ export class TerrainWorld implements SceneContent {
 
     const sampleArm = (set: MaterialTextureSet, uvScale: number) =>
       set.arm !== null ? texture(set.arm, wxz.mul(uvScale)) : null;
-    const grassArm = sampleArm(grass, 0.85);
-    const soilArm = sampleArm(soil, 0.65);
-    const rockArm = sampleArm(rock, 0.22);
-    const snowArm = sampleArm(snow, 0.5);
+    const grassArm = sampleArm(grass, GRASS_UV);
+    const soilArm = sampleArm(soil, SOIL_UV);
+    const rockArm = sampleArm(rock, ROCK_UV);
+    const snowArm = sampleArm(snow, SNOW_UV);
     const mixArm = (channel: 'r' | 'g', fallback: number) => {
       if (grassArm === null || soilArm === null || rockArm === null || snowArm === null) {
         return float(fallback);
@@ -301,11 +314,11 @@ export class TerrainWorld implements SceneContent {
     // Normal detail, blended like the albedo and faded with it: the far field keeps the
     // geometry normals, which is what makes distant LOD steps stop crawling.
     const flatNormal = vec3(0.5, 0.5, 1);
-    const detailNormal = texture(grass.normal, wxz.mul(0.85))
+    const detailNormal = texture(grass.normal, wxz.mul(GRASS_UV))
       .rgb.mul(splat.x)
-      .add(texture(soil.normal, wxz.mul(0.65)).rgb.mul(splat.y))
-      .add(texture(rock.normal, wxz.mul(0.22)).rgb.mul(splat.z))
-      .add(texture(snow.normal, wxz.mul(0.5)).rgb.mul(splat.w));
+      .add(texture(soil.normal, wxz.mul(SOIL_UV)).rgb.mul(splat.y))
+      .add(texture(rock.normal, wxz.mul(ROCK_UV)).rgb.mul(splat.z))
+      .add(texture(snow.normal, wxz.mul(SNOW_UV)).rgb.mul(splat.w));
     material.normalNode = mix(flatNormal, detailNormal, detailFade.mul(0.85));
   }
 

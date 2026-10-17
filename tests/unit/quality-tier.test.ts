@@ -108,12 +108,11 @@ describe('applying a tier', () => {
     expect(a.shadows.mapSize).toBeGreaterThan(b.shadows.mapSize);
     expect(c.shadows.csm.maxFar).toBeLessThan(a.shadows.csm.maxFar);
 
-    // Backend: every tier leaves the choice to the renderer, which prefers WebGPU and falls back
-    // to WebGL2. Tier C differs by budget, not by API — see the note in `config/tiers.ts` on the
-    // deliberate deviation from the §3 table here.
-    expect(c.renderer.backendPreference).toBe('auto');
-    expect(b.renderer.backendPreference).toBe('auto');
-    expect(a.renderer.backendPreference).toBe('auto');
+    // Backend: no tier may restate it — the verified WebGL2 default comes from
+    // the base config and survives every tier (round 9).
+    expect(c.renderer.backendPreference).toBe('webgl');
+    expect(b.renderer.backendPreference).toBe('webgl');
+    expect(a.renderer.backendPreference).toBe('webgl');
     // Anti-aliasing: no MSAA on any tier. Tier C resolves with FXAA and the desktop tiers resolve
     // temporally — and temporal accumulation requires MSAA off, so `antialias` is false at both ends while
     // the *strategy* differs. The mode is the thing that scales, not the sample count.
@@ -192,10 +191,15 @@ describe('forced-backend debug switch', () => {
     // Everything else must survive the override.
     expect(forced.shadows).toEqual(base.shadows);
     expect(forced.maxPixelRatio).toBe(base.maxPixelRatio);
-    // A null request, or one matching what is already set, returns the same object.
+    // A null request, or one matching what is already set, returns the same object;
+    // a different preference clones exactly the renderer block.
     expect(applyBackendOverride(base, null)).toBe(base);
-    expect(applyBackendOverride(base, 'auto')).toBe(base);
-    expect(base.renderer.backendPreference).toBe('auto');
+    expect(applyBackendOverride(base, 'webgl')).toBe(base);
+    const autoForced = applyBackendOverride(base, 'auto');
+    expect(autoForced).not.toBe(base);
+    expect(autoForced.renderer.backendPreference).toBe('auto');
+    expect(autoForced.shadows).toEqual(base.shadows);
+    expect(base.renderer.backendPreference).toBe('webgl');
   });
 
   describe('gameplay clarity: no bloom veil at any tier', () => {
