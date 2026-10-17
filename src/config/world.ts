@@ -68,17 +68,12 @@ export const WORLD_CONFIG: WorldConfig = {
       strength: 0.6,
     },
   },
-  obstacles: [
-    {
-      id: 'block-a',
-      position: [-14, 1.5, -10],
-      size: [3, 3, 3],
-      color: 0xb6bec8,
-      castShadow: true,
-    },
-    { id: 'block-b', position: [11, 1, 7], size: [2.5, 2, 2.5], color: 0xa7b1bd, castShadow: true },
-    { id: 'block-c', position: [14, 2.5, -24], size: [4, 5, 2], color: 0x99a4b1, castShadow: true },
-  ],
+  // Phase 1/2 shipped two pale reference blocks on the spawn plateau as physics
+  // targets. Phase 4's terrain, vegetation and town are the world now, and the
+  // blocks read as litter in it (owner report, 2026-10-17: white boxes on the
+  // meadow). The list stays as the seam fixtures and tests place blocks through;
+  // the shipped game starts empty.
+  obstacles: [],
   friction: 0.9,
   restitution: 0.05,
 };

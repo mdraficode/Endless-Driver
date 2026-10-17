@@ -59,7 +59,8 @@ export class PhysicsWorld {
   #terrainSampler: TerrainSampler | null = null;
   readonly #terrainBodies = new Map<string, RapierRigidBody>();
   /**
-   * Fixed bodies anchored to eternal world coordinates (the spawn-arena obstacles),
+   * Fixed bodies anchored to eternal world coordinates (config obstacles; the shipped
+   * world starts with none — the list is a seam for fixtures and tests),
    * remembered by their world translation so a floating-origin slide can move them
    * without losing where in the world they stand.
    */

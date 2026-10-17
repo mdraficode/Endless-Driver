@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
 import { SPAWN_POINTS, resolveSpawnPoint } from '../../src/config/spawns';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
+import { terrainSurfaceWeights } from '../../src/world/terrain-height';
 import { sampleTerrainSurface } from '../../src/world/terrain-surface';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
 
@@ -40,5 +41,28 @@ describe('session spawn points', () => {
     expect(picked.size).toBe(SPAWN_POINTS.length);
     // Unknown ids fall back to the session pick instead of crashing the boot.
     expect(resolveSpawnPoint('atlantis', 0).id).toBe(SPAWN_POINTS[0]!.id);
+  });
+
+  describe('spawn views are not snow fields', () => {
+    // Owner acceptance (2026-10-17): no start may open onto 'nothing but snow'.
+    // A start's *point* being snow-free is not enough — the whole 360-degree view
+    // the camera sees must be snow-free too.
+    it('keeps snow-dominant ground under 5% within 250 m of every start', () => {
+      const sampler = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
+      for (const spawn of SPAWN_POINTS) {
+        let snow = 0;
+        let n = 0;
+        for (let x = spawn.x - 250; x <= spawn.x + 250; x += 25) {
+          for (let z = spawn.z - 250; z <= spawn.z + 250; z += 25) {
+            const height = sampler.heightAt(x, z);
+            const slope = 1 - sampler.normalAt(x, z).y;
+            const weights = terrainSurfaceWeights(TERRAIN_CONFIG, height, slope, 0, 0);
+            if (weights[3] > 0.5) snow += 1;
+            n += 1;
+          }
+        }
+        expect(snow / n, spawn.id).toBeLessThan(0.05);
+      }
+    });
   });
 });

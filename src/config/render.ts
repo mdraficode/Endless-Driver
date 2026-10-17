@@ -1,6 +1,6 @@
 /**
  * Rendering configuration: everything the renderer, camera rig, lighting, atmosphere, environment,
- * post-processing stack, and HUD need. World content (ground, grid, obstacles) lives in
+ * post-processing stack, and HUD need. World content (terrain, roads, town) lives in
  * `config/world.ts` because the physics world builds colliders from the same definitions.
  *
  * All values are data, never inline constants, so quality tiers and later phases can override them
@@ -551,7 +551,11 @@ export const RENDER_CONFIG: RenderConfig = {
     antialias: false,
     samples: 0,
     toneMapping: 'aces',
-    toneMappingExposure: 0.94,
+    // Baseline exposure, multiplied by the daylight phase (1 at noon). 0.94 put the
+    // whole daytime frame at or past the top of the tone curve: grass, tree lines and
+    // the snow cap all compressed into the same near-white and read as fog (owner
+    // report, 2026-10-17). 0.72 keeps mid-tones on the steep part of the curve.
+    toneMappingExposure: 0.72,
   },
   camera: {
     fov: 60,
@@ -709,10 +713,17 @@ export const RENDER_CONFIG: RenderConfig = {
       thicknessMeters: 0.5,
     },
     bloom: {
-      enabled: true,
-      strength: 0.22,
+      // OFF in gameplay, at every tier. Root cause of the 'camera fog' reports:
+      // the HDR sky sits above any practical threshold, so bloom's wide kernel
+      // veiled the whole frame in white, worst towards the horizon and the sun —
+      // indistinguishable from fog, and it turned green highlands into a snow
+      // field (owner reports 2026-10-16/17; proven by A/B captures 2026-10-17:
+      // with bloom the frame's black level sat at 195/255, without it at 33).
+      // Photo mode (Phase 8) may re-enable it per shot; gameplay clarity wins.
+      enabled: false,
+      strength: 0.1,
       radius: 0.45,
-      threshold: 1.5,
+      threshold: 4,
     },
     ambientOcclusion: {
       enabled: true,

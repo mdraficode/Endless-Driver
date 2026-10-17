@@ -10,6 +10,7 @@ import {
   type DirectionalLight,
   type Scene,
 } from 'three/webgpu';
+import { scaleBaseline } from '../environment/daylight-levels';
 import { buildPostChain, type PostEffectName } from '../shaders/post-chain';
 import { DynamicResolutionController } from './DynamicResolution';
 import { writeLookTable } from '../shaders/lut-identity';
@@ -287,7 +288,10 @@ export class Engine {
    */
   setExposure(exposure: number): void {
     if (Number.isFinite(exposure) && exposure > 0) {
-      this.#renderer.toneMappingExposure = exposure;
+      this.#renderer.toneMappingExposure = scaleBaseline(
+        this.#config.renderer.toneMappingExposure,
+        exposure,
+      );
     }
   }
 

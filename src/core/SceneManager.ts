@@ -23,6 +23,7 @@ import type { RenderConfig } from '../config/render';
 import { WORLD_CONFIG, type WorldConfig } from '../config/world';
 import type { DaylightState } from '../environment/EnvironmentClock';
 import type { Vec3 } from '../shared/vector';
+import { scaleBaseline } from '../environment/daylight-levels';
 import { createAtmosphereSky } from '../shaders/atmosphere-sky';
 import type { Viewport } from './Engine';
 import { createDrivingWorld } from '../world/DrivingWorld';
@@ -91,7 +92,7 @@ const DEG_TO_RAD = Math.PI / 180;
  *   `onBeforeCompile`, which does not exist on the WebGPU backend; `npm run guard:glsl` now forbids
  *   that API from returning.
  *
- * Every resource created here is released in `dispose`. The ground and obstacles remain temporary
+ * Every resource created here is released in `dispose`. The world content remains temporary
  * placeholders for the procedural world planned in Phase 4.
  */
 export class SceneManager {
@@ -398,9 +399,17 @@ export class SceneManager {
     this.#sunOffset.copy(direction);
 
     this.#sun.color.setHex(state.sunColorHex);
-    this.#sun.intensity = state.sunIntensity;
+    // The clock's phase values are MULTIPLIERS on the baseline lighting
+    // (config/daylight.ts says so). Applying them as absolute values ran
+    // the daytime fill light at 1.0 instead of 0.35 and the sun at 1.0
+    // instead of 2.4: a 1:1 sun/fill ratio with no shadow contrast, which
+    // read as a milky haze over the whole frame (owner report, 2026-10-17).
+    this.#sun.intensity = scaleBaseline(this.#config.lighting.sunIntensity, state.sunIntensity);
     this.#ambient.color.setHex(state.ambientColorHex);
-    this.#ambient.intensity = state.ambientIntensity;
+    this.#ambient.intensity = scaleBaseline(
+      this.#config.lighting.ambientIntensity,
+      state.ambientIntensity,
+    );
 
     // The sky model reads the vertical component as a distance, so the unit direction is scaled.
     const sunDistance = this.#config.atmosphere.sunDistance;
@@ -413,9 +422,13 @@ export class SceneManager {
     this.#sky.rayleigh.value = state.rayleigh;
     this.#sky.showSunDisc.value = state.showSunDisc ? 1 : 0;
 
-    this.scene.environmentIntensity = state.environmentIntensity;
+    const environmentIntensity = scaleBaseline(
+      this.#config.environment.intensity,
+      state.environmentIntensity,
+    );
+    this.scene.environmentIntensity = environmentIntensity;
     if (this.scene.background !== null) {
-      this.scene.backgroundIntensity = state.environmentIntensity;
+      this.scene.backgroundIntensity = environmentIntensity;
     }
     this.#daylight = state;
   }

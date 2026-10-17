@@ -192,7 +192,7 @@ export function terrainSurfaceWeights(
   // Dry soil patches break up the flat lowland grass at hectare scale, so a
   // field is a patchwork the car can see (and feel), not one green carpet.
   const soilSlope = smoothstep(0.07, 0.22, slope) * (1 - rockSlope);
-  const drySoilPatch = smoothstep(0.05, 0.5, variation) * (1 - rock) * (1 - altitude) * 0.72;
+  const drySoilPatch = smoothstep(0.02, 0.45, variation) * (1 - rock) * (1 - altitude) * 0.8;
   const alpineSoil = altitude * (1 - snowPatch) * 0.22 * (1 - rock);
   const soil = Math.min(1, Math.max(soilSlope, drySoilPatch) + alpineSoil);
 
@@ -227,10 +227,14 @@ export function terrainColorAt(
   patch = 0,
 ): readonly [number, number, number] {
   // variation in [-1, 1]: patches of dry/wet ground at the hundred-metre scale.
+  // Grass is two-tone rather than one green with a nudge: Japanese lowlands in a
+  // warm season are a patchwork of living grass and dried straw, and a single hue
+  // reads as a painted floor from the chase camera (owner report, 2026-10-17).
+  const dryness = smoothstep(-0.15, 0.55, variation);
   const grass: readonly [number, number, number] = [
-    0.1 + variation * 0.025,
-    0.23 + variation * 0.045,
-    0.065,
+    0.07 + (0.19 - 0.07) * dryness,
+    0.19 + (0.175 - 0.19) * dryness,
+    0.05 + (0.085 - 0.05) * dryness,
   ];
   const soil: readonly [number, number, number] = [0.28, 0.19, 0.11];
   const rock: readonly [number, number, number] = [0.32, 0.31, 0.3];

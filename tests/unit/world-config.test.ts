@@ -26,29 +26,13 @@ describe('world configuration', () => {
     expect(WORLD_CONFIG.ground.thickness).toBeGreaterThan(0.5);
   });
 
-  it('defines obstacles that rest on or above the ground with unique ids', () => {
-    const ids = new Set<string>();
-    for (const obstacle of WORLD_CONFIG.obstacles) {
-      expect(obstacle.id.length).toBeGreaterThan(0);
-      expect(ids.has(obstacle.id)).toBe(false);
-      ids.add(obstacle.id);
-
-      const [x, y, z] = obstacle.position;
-      const [sizeX, sizeY, sizeZ] = obstacle.size;
-      for (const size of [sizeX, sizeY, sizeZ]) {
-        expect(size).toBeGreaterThan(0);
-      }
-      for (const coordinate of [x, y, z]) {
-        expect(Number.isFinite(coordinate)).toBe(true);
-      }
-      // Bottom face at or above the ground plane.
-      expect(y - sizeY / 2).toBeGreaterThanOrEqual(0);
-      // Inside the ground footprint, so nothing floats over the void.
-      expect(Math.abs(x) + sizeX / 2).toBeLessThan(WORLD_CONFIG.ground.size / 2);
-      expect(Math.abs(z) + sizeZ / 2).toBeLessThan(WORLD_CONFIG.ground.size / 2);
-      expect(Number.isInteger(obstacle.color)).toBe(true);
-    }
-    expect(WORLD_CONFIG.obstacles.length).toBeGreaterThan(0);
+  it('ships no Phase 1/2 reference blocks into the Phase 4 world', () => {
+    // The pale obstacle boxes on the spawn plateau were Phase 2 physics targets.
+    // Round 7 retired them from the shipped list: the landscape is terrain,
+    // vegetation and town now, and placeholder litter in it read as a bug
+    // (owner report, 2026-10-17). Fixtures may still place blocks through this
+    // list, which is why the seam itself stays.
+    expect(WORLD_CONFIG.obstacles).toHaveLength(0);
   });
 
   it('keeps collision material properties physical', () => {
@@ -67,18 +51,5 @@ describe('world configuration', () => {
     const contactHeight = VEHICLE_CONFIG.wheels.radius + VEHICLE_CONFIG.wheels.restLength;
     expect(y - contactHeight).toBeLessThan(0.6);
     expect(y).toBeGreaterThan(contactHeight - 0.2);
-  });
-
-  it('keeps the vehicle clear of the arena obstacles at spawn', () => {
-    const [spawnX, , spawnZ] = VEHICLE_CONFIG.spawn.position;
-    const [halfWidth, , halfLength] = VEHICLE_CONFIG.chassis.halfExtents;
-    for (const obstacle of WORLD_CONFIG.obstacles) {
-      const [x, y, z] = obstacle.position;
-      const [sizeX, sizeY, sizeZ] = obstacle.size;
-      const overlapsX = Math.abs(x - spawnX) < sizeX / 2 + halfWidth;
-      const overlapsZ = Math.abs(z - spawnZ) < sizeZ / 2 + halfLength;
-      const overlapsY = y - sizeY / 2 < halfWidth * 2;
-      expect(overlapsX && overlapsZ && overlapsY).toBe(false);
-    }
   });
 });

@@ -1,6 +1,4 @@
-import { BoxGeometry, Color, Group, Mesh, type BufferGeometry, type Material } from 'three';
-import { MeshStandardNodeMaterial } from 'three/webgpu';
-import type { WorldConfig } from '../config/world';
+import { Group, Mesh, type BufferGeometry, type Material } from 'three';
 import { RoadWorld } from './RoadWorld';
 import { TerrainWorld } from './TerrainWorld';
 import { TownWorld } from './town';
@@ -8,18 +6,15 @@ import { VegetationWorld } from './vegetation';
 import type { SceneContent, SceneContentContext } from './WorldContent';
 
 /**
- * The driving world: streamed procedural terrain plus the reference obstacles.
+ * The driving world: streamed procedural terrain, roads, vegetation and the town.
  *
  * Phase 4 replaced the flat Phase 1/2 ground plane with `TerrainWorld` behind this same
- * factory — the seam held, exactly as it was drawn in Phase 3. The obstacles remain the
- * Phase 2 physics reference blocks for now (their colliders come from the same config, so
- * visuals and physics cannot drift); they stand on the spawn plateau, where the terrain is
- * exactly y=0, so their placement did not move a millimetre in the swap.
+ * factory — the seam held, exactly as it was drawn in Phase 3. The Phase 2 reference
+ * blocks this factory used to render retired with the round-7 wash-out fix: the world
+ * config still carries an obstacle list (empty in the shipped game) so physics fixtures
+ * keep their seam, but nothing placeholder stands in the landscape any more.
  */
-export function createDrivingWorld({
-  worldConfig,
-  terrainSampler,
-}: SceneContentContext): SceneContent {
+export function createDrivingWorld({ terrainSampler }: SceneContentContext): SceneContent {
   if (terrainSampler === undefined) {
     throw new Error(
       'createDrivingWorld requires a terrain sampler: Application creates one and shares it with physics.',
@@ -28,7 +23,7 @@ export function createDrivingWorld({
   const root = new Group();
   root.name = 'driving-world';
   const terrain = new TerrainWorld(terrainSampler);
-  root.add(terrain.root, ...createObstacles(worldConfig));
+  root.add(terrain.root);
   // Road ribbons exist only when the shared sampler carries the carved network; the
   // mesh-less samplers used by unit fixtures simply stay roadless.
   const roads =
@@ -97,25 +92,4 @@ export function createDrivingWorld({
       root.removeFromParent();
     },
   };
-}
-
-/**
- * Static obstacle meshes. These are still the Phase 1 reference blocks used as physics test targets;
- * the collider for each one is built by `PhysicsWorld` from the same definitions, so visuals and
- * colliders cannot drift apart. Phases 4-5 replace them with authored props.
- */
-function createObstacles(worldConfig: WorldConfig): Mesh[] {
-  return worldConfig.obstacles.map((obstacle) => {
-    const material = new MeshStandardNodeMaterial({
-      color: new Color(obstacle.color),
-      roughness: 0.8,
-      metalness: 0,
-    });
-    const mesh = new Mesh(new BoxGeometry(...obstacle.size), material);
-    mesh.name = `obstacle-${obstacle.id}`;
-    mesh.position.set(...obstacle.position);
-    mesh.castShadow = obstacle.castShadow;
-    mesh.receiveShadow = true;
-    return mesh;
-  });
 }

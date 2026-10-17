@@ -79,6 +79,11 @@ describe('render configuration', () => {
     expect(RENDER_CONFIG.sky.domeScaleFactor).toBeGreaterThan(1);
     expect(RENDER_CONFIG.renderer.backendPreference).toBe('auto');
     expect(RENDER_CONFIG.renderer.toneMappingExposure).toBeGreaterThan(0);
+    // Wash guards (round 7): the daytime frame must sit below the tone curve's
+    // shoulder and bloom must only catch genuine emitters, or the whole image
+    // compresses into near-white and reads as fog (owner report, 2026-10-17).
+    expect(RENDER_CONFIG.renderer.toneMappingExposure).toBeLessThan(0.8);
+    expect(RENDER_CONFIG.postProcessing.bloom.threshold).toBeGreaterThan(2);
   });
 
   it('gates post-processing per effect instead of all-or-nothing', () => {

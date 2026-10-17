@@ -197,4 +197,14 @@ describe('forced-backend debug switch', () => {
     expect(applyBackendOverride(base, 'auto')).toBe(base);
     expect(base.renderer.backendPreference).toBe('auto');
   });
+
+  describe('gameplay clarity: no bloom veil at any tier', () => {
+    // The bloom veil read as fog and homogenised every district into one pale
+    // sheet (owner report, 2026-10-17). Tier overrides may retune strength and
+    // radius for photo mode later, but no gameplay tier may switch it back on.
+    it.each(['C', 'B', 'A'] as const)('keeps bloom disabled at tier %s', (tier) => {
+      const resolved = applyTier(RENDER_CONFIG, tier);
+      expect(resolved.postProcessing.bloom.enabled).toBe(false);
+    });
+  });
 });

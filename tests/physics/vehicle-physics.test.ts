@@ -242,9 +242,25 @@ describe('vehicle physics (headless Rapier)', () => {
     expect(telemetry.contactCount).toBe(4);
   });
 
-  it('collides with the arena obstacles instead of passing through them', () => {
-    // Aim at block-a at (-14, 1.5, -10), which spans z = -11.5..-8.5, from a clear approach lane.
-    const physics = new PhysicsWorld({ rapier, worldConfig: WORLD_CONFIG });
+  it('collides with placed obstacle blocks instead of passing through them', () => {
+    // Aim at a block at (-14, 1.5, -10), spanning z = -11.5..-8.5, from a clear
+    // approach lane. The shipped world carries no obstacle blocks any more
+    // (round 7), so this seam test places its own through the config list.
+    const physics = new PhysicsWorld({
+      rapier,
+      worldConfig: {
+        ...WORLD_CONFIG,
+        obstacles: [
+          {
+            id: 'test-block',
+            position: [-14, 1.5, -10],
+            size: [3, 3, 3],
+            color: 0xb6bec8,
+            castShadow: true,
+          },
+        ],
+      },
+    });
     const car = new Car({ rapier, physics, spawnPosition: [-14, 1, 2], spawnYaw: 0 });
     const rig = { physics, car };
 
