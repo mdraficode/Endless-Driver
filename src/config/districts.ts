@@ -111,7 +111,10 @@ export const VEGETATION_CONFIG: VegetationConfig = {
   cellMeters: 6.5,
   radiusChunks: 3,
   baseDensity: { conifer: 0.16, broadleaf: 0.13, sakura: 0.05, bamboo: 0.05, rock: 0.05 },
-  roadClearanceMeters: 7.5,
+  // Road edge sits at halfWidth + shoulder = 7.7 m; scanned crowns reach 4-5 m
+  // past their trunk, so trunks must start beyond edge + crown or branches hang
+  // over the lane (and on curves the centreline distance under-reads the edge).
+  roadClearanceMeters: 12.5,
   spawnClearanceMeters: 55,
   treeLineMeters: 150,
 };

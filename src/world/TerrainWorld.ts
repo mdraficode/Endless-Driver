@@ -1,4 +1,4 @@
-import { Group, Mesh, RepeatWrapping } from 'three';
+import { Group, Mesh, RepeatWrapping, type Texture } from 'three';
 import { MeshStandardNodeMaterial, type Node } from 'three/webgpu';
 import {
   attribute,
@@ -81,6 +81,42 @@ const SURFACE_ASSETS = [
  * physics surface query mixes grip from (`terrain-surface.ts`): what a slope looks like
  * and how it drives cannot disagree.
  */
+/**
+ * True when a decoded texture is a uniform near-white sheet — the signature of a
+ * driver that reported success but returned a blank image. Sampled at 32×32 so the
+ * check costs one small readback per surface set at load time, never per frame.
+ */
+function isBlankDecode(texture: Texture): boolean {
+  const image = texture.image as { width?: number; height?: number } | undefined;
+  if (image === undefined || image === null || (image.width ?? 0) < 4 || (image.height ?? 0) < 4) {
+    return true;
+  }
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = 32;
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (ctx === null) return false;
+    ctx.drawImage(image as CanvasImageSource, 0, 0, 32, 32);
+    const data = ctx.getImageData(0, 0, 32, 32).data;
+    let sum = 0;
+    let sumSquares = 0;
+    const pixels = data.length / 4;
+    for (let i = 0; i < data.length; i += 4) {
+      const luma =
+        ((data[i] ?? 0) * 0.2126 + (data[i + 1] ?? 0) * 0.7152 + (data[i + 2] ?? 0) * 0.0722) / 255;
+      sum += luma;
+      sumSquares += luma * luma;
+    }
+    const mean = sum / pixels;
+    const variance = sumSquares / pixels - mean * mean;
+    return mean > 0.96 && variance < 0.0004;
+  } catch {
+    // Unreadable on this browser (tainted or bitmap-only): never punish the set for it.
+    return false;
+  }
+}
+
 export class TerrainWorld implements SceneContent {
   readonly kind = 'terrain';
   readonly root = new Group();
@@ -155,6 +191,22 @@ export class TerrainWorld implements SceneContent {
       return;
     }
     const loaded = sets as MaterialTextureSet[];
+    // Device-side decode sanity: a uniformly white diffuse means the driver handed
+    // back a blank image (seen on memory-pressured mobile GPUs). Rendering it would
+    // paint near ground white while the far vertex-colour macro stays green, so a
+    // blank decode counts as "the set never arrived" and the flat splat stays.
+    for (let i = 0; i < loaded.length; i += 1) {
+      const set = loaded[i];
+      if (set !== undefined && isBlankDecode(set.diffuse)) {
+        for (const set of loaded) {
+          set.dispose();
+        }
+        console.warn(
+          `terrain: surface "${SURFACE_ASSETS[i] ?? i}" decoded blank on this device; keeping the flat splat`,
+        );
+        return;
+      }
+    }
     for (const set of loaded) {
       for (const map of [set.diffuse, set.normal, set.arm, set.height]) {
         if (map !== null) {
