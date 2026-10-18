@@ -1,6 +1,6 @@
 # Look-development lab
 
-**Status:** Phase 3 material studio and route bookmarks are implemented; the Phase 9 `?scene=city` preview is the first bounded Aohara Metropolis night-lighting slice. It is a look-dev block, not yet a driveable or streamed urban district.
+**Status:** Phase 3 material studio and route bookmarks are implemented; the Phase 9 `?scene=city` preview remains an orbit-only view of Aohara's bounded night-lighting block. The same block is wired at an Aohara junction in the main driving world (`?spawn=aohara-city`); local integration checks pass; manual driving and owner-device review remain pending. The full district, AI agents and grade-separated links remain future Phase 9 work.
 
 ## Responsibility
 
@@ -14,7 +14,7 @@ Scenes whose job is to _judge_ the renderer and a first lighting slice: the mate
 | `StudioApplication.ts`     | The second composition root. Shares `Engine`, `SceneManager`, and `DaylightController` with the driving scene and supplies only what makes it a studio: the grid as content, an orbital camera, an environment switcher, a panel        |
 | `StudioPanel.ts`           | The DOM control surface and readout: hour, HDRI, environment rotation, camera reset, and the state of everything those controls affect                                                                                                  |
 | `UrbanNightApplication.ts` | A no-physics look-dev composition root for the bounded Aohara city block; same production daylight, render chain and orbit camera. Opens at night, with `?time=<hours>` available for comparison                                        |
-| `../world/urban-night.ts`  | The first city content slice: high-rise massing/windows, point-lit streetlamps, local Gaussian/diffraction sprites, road sheen, a signalized intersection and crosswalk. It is not yet a streamed, driveable city                       |
+| `../world/urban-night.ts`  | The bounded Aohara night block: high-rise massing/windows, point-lit streetlamps, local Gaussian/diffraction sprites, road sheen, marked crossings and timed signals; reused in the driving world at `?spawn=aohara-city`               |
 
 Reached with `?scene=studio`. Switches: `?hdri=<manifest id>`, `?rot=<degrees>`, `?time=<hours>`,
 `?focus=<material id>` for a close-up, and `?panel=0` to hide the controls for a clean capture.
@@ -41,6 +41,6 @@ The city lighting preview is reached with `?scene=city` (defaults to 23:30; `?ti
 
 ## Planned work
 
-Full Phase 9 work remains: integrate Aohara into the streamed driveable map without changing rural Hinode; expand the road graph and grade-separated links; add bounded single-player vehicle/pedestrian AI; then validate signal/crossing behavior and urban night readability on named devices. The existing 2 km route bookmarks and SSIM baseline remain the separate world-regression harness.
+Full Phase 9 work remains: expand the existing bounded Aohara grid and city content without changing rural Hinode; add sidewalks, grade-separated links and bounded single-player vehicle/pedestrian AI; then validate signal/crossing behavior and urban night readability on named devices. The existing 2 km route bookmarks and SSIM baseline remain the separate world-regression harness. No owner-device visual or performance validation has yet been performed for this integration.
 
 See [the project plan](../../PROJECT_PLAN.md) and [the visual target](../../docs/VISUAL_TARGET.md).

@@ -31,6 +31,8 @@ import {
 } from '../config/urban-city';
 import type { TierId } from '../config/tiers';
 import type { DaylightState } from '../environment/EnvironmentClock';
+import { collideCarWithStaticBoxes, type StaticBuildingBox } from './static-building-collision';
+import type { TownCarProbe, TownHit } from './town';
 import type { SceneContent, SceneContentContext } from './WorldContent';
 
 interface TowerSpec {
@@ -351,10 +353,18 @@ function applySignalAspect(head: SignalHead, aspect: TrafficSignalAspect): void 
   head.active = aspect;
 }
 
+/** Placement options used when the authored Aohara block is mounted in the driving world. */
+export interface UrbanNightWorldOptions {
+  /** World-space root position; omitted for the standalone look-dev scene at the origin. */
+  readonly position?: readonly [number, number, number];
+  /** Road ribbons/lanes come from RoadWorld; keep only this block's crossing and stop lines. */
+  readonly networkIntegrated?: boolean;
+}
+
 /**
- * First Aohara Metropolis night-lighting slice: a bounded avenue/intersection, high-rise silhouettes,
- * emissive windows, point-lit lamps, source-local Gaussian glow/diffraction, a crossing, and timed signals.
- * It is a look-dev scene; it is not yet a streamed or driveable district.
+ * Aohara's bounded night-lighting block: high-rise silhouettes/windows, street lamps, local
+ * Gaussian-diffraction sprites, a marked crossing, and timed signals. It can be viewed in the
+ * isolated `?scene=city` look-dev composition or placed at the shared city road junction.
  */
 export class UrbanNightWorld implements SceneContent {
   readonly root = new Group();
@@ -365,11 +375,23 @@ export class UrbanNightWorld implements SceneContent {
   readonly #signalHeads: SignalHead[] = [];
   readonly #windowInstances: number;
   readonly #flareCount: number;
+  readonly #buildingColliders: readonly StaticBuildingBox[];
+  readonly #networkIntegrated: boolean;
   #signalSeconds = 0;
   #disposed = false;
 
-  constructor(tier: TierId = 'B') {
+  constructor(tier: TierId = 'B', options: UrbanNightWorldOptions = {}) {
     this.#tier = tier;
+    this.#networkIntegrated = options.networkIntegrated ?? false;
+    const [originX, originY, originZ] = options.position ?? [0, 0, 0];
+    this.root.position.set(originX, originY, originZ);
+    this.#buildingColliders = TOWERS.map((tower) => ({
+      x: originX + tower.x,
+      z: originZ + tower.z,
+      yaw: 0,
+      halfWidth: tower.width / 2,
+      halfDepth: tower.depth / 2,
+    }));
     this.root.name = 'AoharaNightLightingBlock';
     const budget = URBAN_NIGHT_TIER_BUDGET[tier];
     const warmFlare = createFlareMaterial(
@@ -448,6 +470,11 @@ export class UrbanNightWorld implements SceneContent {
     };
   }
 
+  /** High-rise footprints stop the player car through the existing Rapier impulse response path. */
+  collide(car: TownCarProbe): TownHit[] {
+    return this.#disposed ? [] : collideCarWithStaticBoxes(car, this.#buildingColliders);
+  }
+
   dispose(): void {
     // The scene manager owns and sweeps this content's attached geometries/materials. This hook
     // only stops the content-owned update path; no timer, worker, or external listener is created.
@@ -467,31 +494,33 @@ export class UrbanNightWorld implements SceneContent {
       'aohara-ground-deck',
     );
 
-    const asphalt = new MeshStandardNodeMaterial();
-    asphalt.color.setHex(0x1d252e);
-    asphalt.roughness = 0.24;
-    asphalt.metalness = 0.08;
-    asphalt.name = 'aohara-dark-asphalt-local-specular';
-    addPlane(
-      this.root,
-      URBAN_CITY_CONFIG.avenue.widthMeters,
-      URBAN_CITY_CONFIG.avenue.lengthMeters,
-      0,
-      ROAD_Y,
-      URBAN_CITY_CONFIG.avenue.centerZ,
-      asphalt,
-      'aohara-main-avenue',
-    );
-    addPlane(
-      this.root,
-      URBAN_CITY_CONFIG.crossStreet.widthMeters,
-      URBAN_CITY_CONFIG.crossStreet.depthMeters,
-      0,
-      ROAD_Y + 0.002,
-      0,
-      asphalt,
-      'aohara-signalized-cross-street',
-    );
+    if (!this.#networkIntegrated) {
+      const asphalt = new MeshStandardNodeMaterial();
+      asphalt.color.setHex(0x1d252e);
+      asphalt.roughness = 0.24;
+      asphalt.metalness = 0.08;
+      asphalt.name = 'aohara-dark-asphalt-local-specular';
+      addPlane(
+        this.root,
+        URBAN_CITY_CONFIG.avenue.widthMeters,
+        URBAN_CITY_CONFIG.avenue.lengthMeters,
+        0,
+        ROAD_Y,
+        URBAN_CITY_CONFIG.avenue.centerZ,
+        asphalt,
+        'aohara-main-avenue',
+      );
+      addPlane(
+        this.root,
+        URBAN_CITY_CONFIG.crossStreet.widthMeters,
+        URBAN_CITY_CONFIG.crossStreet.depthMeters,
+        0,
+        ROAD_Y + 0.002,
+        0,
+        asphalt,
+        'aohara-signalized-cross-street',
+      );
+    }
 
     const sidewalkMaterial = new MeshStandardNodeMaterial();
     sidewalkMaterial.color.setHex(0x424a50);
@@ -509,53 +538,88 @@ export class UrbanNightWorld implements SceneContent {
     }
 
     const white = createBasicMaterial(0xb8c2c7, 'aohara-road-marking-white');
-    const yellow = createBasicMaterial(0xd9b65b, 'aohara-road-marking-amber');
-    const laneDashGeometry = new BoxGeometry(0.13, 0.025, 6.2);
-    const laneDashes: TransformSpec[] = [];
-    for (let z = -91; z <= 47; z += 14) {
-      for (const x of [-3.4, 3.4]) {
-        laneDashes.push({ x, y: ROAD_Y + 0.025, z });
+    if (!this.#networkIntegrated) {
+      const yellow = createBasicMaterial(0xd9b65b, 'aohara-road-marking-amber');
+      const laneDashGeometry = new BoxGeometry(0.13, 0.025, 6.2);
+      const laneDashes: TransformSpec[] = [];
+      for (let z = -91; z <= 47; z += 14) {
+        for (const x of [-3.4, 3.4]) {
+          laneDashes.push({ x, y: ROAD_Y + 0.025, z });
+        }
       }
-    }
-    addInstancedBoxes(this.root, laneDashGeometry, white, laneDashes, 'aohara-white-lane-dashes');
+      addInstancedBoxes(this.root, laneDashGeometry, white, laneDashes, 'aohara-white-lane-dashes');
 
-    const centerLineGeometry = new BoxGeometry(0.11, 0.026, 5.5);
-    const centerLines: TransformSpec[] = [];
-    for (let z = -91; z <= 47; z += 14) {
-      centerLines.push({ x: -0.18, y: ROAD_Y + 0.027, z }, { x: 0.18, y: ROAD_Y + 0.027, z });
+      const centerLineGeometry = new BoxGeometry(0.11, 0.026, 5.5);
+      const centerLines: TransformSpec[] = [];
+      for (let z = -91; z <= 47; z += 14) {
+        centerLines.push(
+          {
+            x: -0.18,
+            y: ROAD_Y + 0.027,
+            z,
+          },
+          { x: 0.18, y: ROAD_Y + 0.027, z },
+        );
+      }
+      addInstancedBoxes(
+        this.root,
+        centerLineGeometry,
+        yellow,
+        centerLines,
+        'aohara-double-center-lines',
+      );
     }
-    addInstancedBoxes(
-      this.root,
-      centerLineGeometry,
-      yellow,
-      centerLines,
-      'aohara-double-center-lines',
-    );
 
     const crosswalkMaterial = createBasicMaterial(0xd3dadd, 'aohara-crosswalk-marking');
-    const barGeometry = new BoxGeometry(1.32, 0.032, 0.72);
-    const crosswalkBars: TransformSpec[] = [];
-    for (const z of [-8.3, 8.3]) {
-      for (let x = -8.5; x <= 8.5; x += 2.25) {
-        crosswalkBars.push({ x, y: ROAD_Y + 0.035, z });
+    const barThickness = 0.032;
+    const stripeWidth = 0.55;
+    const markingY = ROAD_Y + (this.#networkIntegrated ? 0.004 : 0.035);
+    const acrossRoadMeters = URBAN_CITY_CONFIG.avenue.widthMeters - 3.6;
+    const avenueBars: TransformSpec[] = [];
+    const crossStreetBars: TransformSpec[] = [];
+    for (const centreZ of [-8.3, 8.3]) {
+      for (let offset = -2.8; offset <= 2.8; offset += 0.8) {
+        avenueBars.push({ x: 0, y: markingY, z: centreZ + offset });
+      }
+    }
+    for (const centreX of [-11.5, 11.5]) {
+      for (let offset = -2.8; offset <= 2.8; offset += 0.8) {
+        crossStreetBars.push({ x: centreX + offset, y: markingY, z: 0 });
       }
     }
     addInstancedBoxes(
       this.root,
-      barGeometry,
+      new BoxGeometry(acrossRoadMeters, barThickness, stripeWidth),
       crosswalkMaterial,
-      crosswalkBars,
-      'aohara-zebra-crossings',
+      avenueBars,
+      'aohara-avenue-zebra-crossings',
+    );
+    addInstancedBoxes(
+      this.root,
+      new BoxGeometry(stripeWidth, barThickness, acrossRoadMeters),
+      crosswalkMaterial,
+      crossStreetBars,
+      'aohara-cross-street-zebra-crossings',
     );
     addInstancedBoxes(
       this.root,
       new BoxGeometry(URBAN_CITY_CONFIG.avenue.widthMeters, 0.035, 0.32),
       white,
       [
-        { x: 0, y: ROAD_Y + 0.035, z: -5.7 },
-        { x: 0, y: ROAD_Y + 0.035, z: 5.7 },
+        { x: 0, y: markingY, z: -13.7 },
+        { x: 0, y: markingY, z: 13.7 },
       ],
-      'aohara-stop-lines',
+      'aohara-avenue-stop-lines',
+    );
+    addInstancedBoxes(
+      this.root,
+      new BoxGeometry(0.32, 0.035, URBAN_CITY_CONFIG.crossStreet.depthMeters),
+      white,
+      [
+        { x: -17.7, y: markingY, z: 0 },
+        { x: 17.7, y: markingY, z: 0 },
+      ],
+      'aohara-cross-street-stop-lines',
     );
   }
 

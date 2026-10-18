@@ -44,7 +44,9 @@ describe('town placement', () => {
       const road = sampler.roadAt!(pole.x, pole.z);
       expect(road).not.toBeNull();
       expect(road!.distance).toBeGreaterThan(5.4);
-      expect(road!.distance).toBeLessThan(9.2);
+      expect(road!.distance).toBeLessThan(12);
+      expect(road!.roadClass).not.toBe('urban-local');
+      expect(road!.roadClass).not.toBe('urban-arterial');
     }
   });
 });

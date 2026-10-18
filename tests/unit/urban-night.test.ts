@@ -6,6 +6,7 @@ import {
   URBAN_CITY_CONFIG,
   URBAN_NIGHT_TIER_BUDGET,
 } from '../../src/config/urban-city';
+import { AOHARA_DISTRICT_CONFIG } from '../../src/config/urban-district';
 import { UrbanNightWorld } from '../../src/world/urban-night';
 
 describe('Aohara city night-lighting rules', () => {
@@ -84,5 +85,35 @@ describe('Aohara city night-lighting rules', () => {
 
     cityC.dispose();
     cityA.dispose();
+  });
+
+  it('mounts at the shared Aohara junction and blocks the high-rise footprint', () => {
+    const position = [AOHARA_DISTRICT_CONFIG.centerX, 12, AOHARA_DISTRICT_CONFIG.centerZ] as const;
+    const city = new UrbanNightWorld('B', { position, networkIntegrated: true });
+    expect(city.root.position.toArray()).toEqual([...position]);
+    expect(city.root.getObjectByName('aohara-main-avenue')).toBeUndefined();
+    expect(city.root.getObjectByName('aohara-signalized-cross-street')).toBeUndefined();
+
+    const towerX = position[0] - 31;
+    const towerZ = position[2] - 56;
+    const hit = city.collide({
+      x: towerX,
+      z: towerZ + 15,
+      yaw: 0,
+      velocityX: 0,
+      velocityZ: -8,
+    });
+    expect(hit[0]?.solid).toBe(true);
+    expect(hit[0]?.absorbedSpeed).toBeCloseTo(8, 0);
+    expect(
+      city.collide({
+        x: position[0],
+        z: position[2],
+        yaw: 0,
+        velocityX: 0,
+        velocityZ: -8,
+      }),
+    ).toHaveLength(0);
+    city.dispose();
   });
 });

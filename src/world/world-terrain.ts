@@ -1,5 +1,6 @@
 import type { TerrainConfig } from '../config/terrain';
 import type { RoadNetworkConfig } from '../config/roads';
+import { AOHARA_DISTRICT_CONFIG } from '../config/urban-district';
 import { createTerrainSampler, terrainNormalAt, type TerrainSampler } from './terrain-height';
 import { buildRoadNetwork, roadInfluence } from './road-network';
 
@@ -16,15 +17,44 @@ export function createWorldTerrainSampler(
   roadConfig: RoadNetworkConfig,
 ): TerrainSampler {
   const base = createTerrainSampler(terrainConfig);
-  const network = buildRoadNetwork(roadConfig, (x, z) => base.heightAt(x, z));
+  const cityElevation = base.heightAt(
+    AOHARA_DISTRICT_CONFIG.centerX,
+    AOHARA_DISTRICT_CONFIG.centerZ,
+  );
+  // The city core is a bounded graded plain, not a second terrain/physics surface. A smooth
+  // radial transition restores the original seeded Hinode heightfield before the district edge.
+  const baseHeightAt = (x: number, z: number): number => {
+    const distance = Math.hypot(
+      x - AOHARA_DISTRICT_CONFIG.centerX,
+      z - AOHARA_DISTRICT_CONFIG.centerZ,
+    );
+    if (distance <= AOHARA_DISTRICT_CONFIG.flatRadiusMeters) {
+      return cityElevation;
+    }
+    const naturalHeight = base.heightAt(x, z);
+    if (distance >= AOHARA_DISTRICT_CONFIG.terrainBlendRadiusMeters) {
+      return naturalHeight;
+    }
+    const t =
+      (distance - AOHARA_DISTRICT_CONFIG.flatRadiusMeters) /
+      (AOHARA_DISTRICT_CONFIG.terrainBlendRadiusMeters - AOHARA_DISTRICT_CONFIG.flatRadiusMeters);
+    const blend = t * t * (3 - 2 * t);
+    return cityElevation + (naturalHeight - cityElevation) * blend;
+  };
+  const network = buildRoadNetwork(roadConfig, baseHeightAt);
 
   const heightAt = (x: number, z: number): number => {
     const road = network.sample(x, z);
-    const baseHeight = base.heightAt(x, z);
+    const baseHeight = baseHeightAt(x, z);
     if (road === null) {
       return baseHeight;
     }
-    const influence = roadInfluence(roadConfig, road.distance);
+    const influence = roadInfluence(
+      roadConfig,
+      road.distance,
+      road.halfWidthMeters,
+      road.shoulderMeters,
+    );
     if (influence <= 0) {
       return baseHeight;
     }

@@ -1,18 +1,17 @@
 import { Group, Mesh, type BufferGeometry, type Material } from 'three';
+import { AOHARA_DISTRICT_CONFIG, AOHARA_JUNCTION_NODE_ID } from '../config/urban-district';
+import type { TierId } from '../config/tiers';
 import { RoadWorld } from './RoadWorld';
+import { UrbanNightWorld } from './urban-night';
 import { TerrainWorld } from './TerrainWorld';
 import { TownWorld } from './town';
 import { VegetationWorld } from './vegetation';
 import type { SceneContent, SceneContentContext } from './WorldContent';
 
 /**
- * The driving world: streamed procedural terrain, roads, vegetation and the town.
- *
- * Phase 4 replaced the flat Phase 1/2 ground plane with `TerrainWorld` behind this same
- * factory — the seam held, exactly as it was drawn in Phase 3. The Phase 2 reference
- * blocks this factory used to render retired with the round-7 wash-out fix: the world
- * config still carries an obstacle list (empty in the shipped game) so physics fixtures
- * keep their seam, but nothing placeholder stands in the landscape any more.
+ * The driving world: streamed terrain/vegetation, the seeded rural road graph, Yūhi Town, and
+ * the bounded Aohara Metropolis access grid/night block. Aohara shares the same terrain sampler,
+ * physics heightfield, prefetch window and floating-origin contract; the rural districts remain.
  */
 export function createDrivingWorld(context: SceneContentContext): SceneContent {
   const { terrainSampler } = context;
@@ -47,14 +46,39 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       : vegetation.adoptScanned(context.renderer).catch((error: unknown) => {
           console.warn('scanned vegetation unavailable:', (error as Error).message);
         });
-  // Yuhi Town + roadside poles (Increment 5b): static town, always resident.
+  // Yūhi Town + roadside poles (Increment 5b): static rural town, always resident.
   const town = new TownWorld(terrainSampler);
   root.add(town.root);
+
+  // Aohara's first 3×3 street grid and night block share the road graph above. The compact
+  // authored block is resident (no pop-in); the terrain and collision windows still use their
+  // normal prepare-ahead streamers. Roadless test samplers keep the rural-only fixture behavior.
+  const urbanNode = terrainSampler.roadNetwork?.nodeById(AOHARA_JUNCTION_NODE_ID) ?? null;
+  const tier: TierId =
+    context.qualityTier === 'A' || context.qualityTier === 'C' ? context.qualityTier : 'B';
+  const aohara =
+    urbanNode === null
+      ? null
+      : new UrbanNightWorld(tier, {
+          position: [
+            AOHARA_DISTRICT_CONFIG.centerX,
+            urbanNode.y + 0.57,
+            AOHARA_DISTRICT_CONFIG.centerZ,
+          ],
+          networkIntegrated: true,
+        });
+  if (aohara !== null) {
+    root.add(aohara.root);
+  }
 
   return {
     root,
     kind: 'driving',
-    setDaylight: (state) => vegetation.setDaylight(state),
+    setDaylight: (state) => {
+      vegetation.setDaylight(state);
+      aohara?.setDaylight(state);
+    },
+    update: (deltaSeconds) => aohara?.update(deltaSeconds),
     updateStreaming: (focus, velocity, deltaSeconds) => {
       terrain.updateStreaming(focus, velocity);
       vegetation.updateStreaming(focus, velocity, deltaSeconds ?? 0);
@@ -67,7 +91,10 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
         vegetation.prepareInitial(focus, velocity),
       ]);
     },
-    collideTown: (car, deltaSeconds) => town.collide(car, deltaSeconds),
+    collideTown: (car, deltaSeconds) => [
+      ...town.collide(car, deltaSeconds),
+      ...(aohara?.collide(car) ?? []),
+    ],
     applyVegetationHits: (events) => {
       vegetation.applyHits(events);
     },
@@ -85,12 +112,14 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       ...(roads === null ? {} : roads.getStats()),
       ...vegetation.getContentStats(),
       ...town.getContentStats(),
+      ...(aohara?.getContentStats() ?? {}),
     }),
     dispose(): void {
       terrain.dispose();
       roads?.dispose();
       vegetation.dispose();
       town.dispose();
+      aohara?.dispose();
       const geometries = new Set<BufferGeometry>();
       const materials = new Set<Material>();
       root.traverse((object) => {

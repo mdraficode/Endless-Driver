@@ -229,10 +229,10 @@ country-sized sprawl, everything visible from the road. One volcano silhouette (
 of the map and is the visual anchor at golden hour.
 
 **Additional owner decision (2026-10-19):** add the fictional **Aohara Metropolis** as a distinct, high-density Japanese
-city district; do not replace or urbanize any rural Hinode district. Its first look-dev block is bounded and separate
-from the driveable rural map while the city lighting is tuned. The later Phase 9 integration must connect it to Hinode
-through the road/streaming systems and measure any world-bound expansion before making it. A compact prototype is not
-being represented as a full megacity or a completed playable city.
+city district; do not replace or urbanize any rural Hinode district. The first bounded Aohara night block now has a
+starter grid and city-access connector wired into the main driving-world road/terrain composition, while `?scene=city`
+remains an orbit-only lighting preview. The local `npm run check` passes, but no browser/manual driving or owner-device visual/performance review was performed; this compact prototype is not being represented as a complete megacity, owner-device visual acceptance, or verified driving experience. Measure any
+world-bound expansion before broadening the district.
 
 | District                            | Road character                                                                          | What it is for                                                                             | Primary seasonal payoff                             |
 | ----------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------- |

@@ -104,7 +104,11 @@ export function generateChunkVegetation(
         continue;
       }
       const road = sampler.roadAt?.(x, z) ?? null;
-      if (road !== null && road.distance < config.roadClearanceMeters) {
+      if (
+        road !== null &&
+        road.distance <
+          Math.max(config.roadClearanceMeters, road.halfWidthMeters + road.shoulderMeters + 4.8)
+      ) {
         continue;
       }
       // Trail corridor: inside the clear band nothing grows at all (the route

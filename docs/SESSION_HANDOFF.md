@@ -1,9 +1,9 @@
 # Session Handoff — Endless Driver
 
-**Updated:** 2026-10-18  
-**Current stage:** Phase 4 built scope delivered; Phase 5 in progress; Phase 6 authorized after Phase 5 acceptance; Phase 3 code complete with named-hardware frame-budget validation still open  
-**Authorized development phases:** Phases 1–6, executed in order; Phases 7–8 remain gated  
-**Next action:** Continue the remaining Phase 5 work, including foliage lighting/ground cover and atmosphere; prepared terrain/vegetation streaming is now implemented. Obtain a stable, readable owner-device capture before claiming the white-ground or no-pop-in reports visually resolved. Do not begin Phase 6 before Phase 5 acceptance.
+**Updated:** 2026-10-19  
+**Current stage:** Phase 4 built scope delivered; Phase 5 in progress with owner-device visual acceptance open; Phase 6 is authorized after Phase 5 acceptance; Phase 9 Urban Systems is separately authorized and active in parallel; Phase 3 named-hardware frame-budget validation remains open  
+**Authorized development phases:** Phases 1–6, executed in order, plus Phase 9 in parallel; Phases 7–8 remain gated  
+**Next action:** Keep Phase 5 acceptance unresolved until stable, readable owner-device evidence is recorded. Continue the authorized Phase 9 Aohara track from its bounded road-grid/night-block integration; the local check has passed, but manual driving, visuals, and device performance remain unvalidated. Do not begin Phase 6 before Phase 5 acceptance or Phase 7–8 without new authorization.
 
 > **Re-plan (2026-10-14, decisions resolved):** the owner rejected the Phase 2 presentation and set a
 > Forza-Horizon-class visual target. Research and specification are complete and committed alongside
@@ -32,6 +32,7 @@
 | Reach “Forza Horizon level” visuals (realistic car, environment aesthetics, seasons, roads, terrain) | Re-plan complete 2026-10-14; implementation gated — see section 9                                                          |
 | Use only free/open premium assets, no payments; region = rural Japan                                 | Resolved 2026-10-14 — `docs/ASSET_SOURCES.md` (API-verified sources), ADR 0005, region brief in `docs/VISUAL_TARGET.md` §5 |
 | Work in phase order; Phases 5–6 authorized 2026-10-18, Phases 7–8 gated                              | Phase 5 in progress; complete it before starting Phase 6                                                                   |
+| Add a fictional Japanese megacity district with night lighting first; keep rural Hinode intact       | Phase 9 separately authorized 2026-10-19; Aohara grid/night block wired into the driving world; local checks passed        |
 
 Phase 2 was authorized with these constraints, all honored: Rapier **or** Cannon-es allowed (Rapier
 chosen — sole physics authority, never two solvers); the slip-friction/drift behaviour is an explicit
@@ -1589,8 +1590,25 @@ The owner explicitly authorized a new urban-systems track to begin immediately, 
 
 **Verification:** Fresh-clone `npm ci` installed 201 packages with 0 reported vulnerabilities. Final `npm run check` passed: Prettier, ESLint, the no-GLSL guard, both TypeScript checks, **50 test files / 455 tests**, 17-asset hash/licence verification (39,714,769 bytes), and production build. The new `urban-night.test.ts` has five tests. Existing non-blocking warnings remain: intentional missing-LOD fixture messages, vegetation `toNonIndexed()` notices, and Vite's large Rapier chunk warning.
 
-**Visual status:** No browser, WebGPU/WebGL screenshot, owner-device capture, performance measurement, or owner visual acceptance was performed for this increment. The city block is not yet connected to the driveable streamed map; AI pedestrians/vehicles, tunnels, bridges/flyovers, and highway integration remain planned Phase 9 work. Phase 5 acceptance remains unresolved.
+**Visual status at the first-slice checkpoint:** No browser, WebGPU/WebGL screenshot, owner-device capture, performance measurement, or owner visual acceptance was performed for that increment. At that checkpoint the city block was not yet connected to the main driving-world composition; AI pedestrians/vehicles, tunnels, bridges/flyovers, and highway integration remained planned Phase 9 work. Phase 5 acceptance was unresolved and remains so.
 
 **Remote status:** Implementation commit `0d677a6aa64f934c35150fbcb5b9a5552a9f5630` was pushed to `main`; `git ls-remote origin refs/heads/main` matched exactly at verification time. GitHub Validate run `39173654703` and Pages Deploy run `39173654614` both completed successfully for that SHA. The deployed page `https://mdraficode.github.io/Endless-Driver/?scene=city&time=23.5` returned HTTP 200; its bundle `assets/index-Dm-MkL2D.js` returned HTTP 200 and contains the Aohara night-world and Gaussian-diffraction markers. This proves deployment of the code, not that a browser rendered it correctly or that the owner visually accepted it.
 
-**Next:** perform visual review of the bounded `?scene=city` slice on an actual browser/device, then continue Phase 5 and the authorized Phase 9 work as parallel tracks. Phase 5 acceptance remains open; do not begin Phase 7 or Phase 8.
+**Next as of this first slice:** review the bounded `?scene=city` lighting on an actual browser/device. Phase 5 acceptance remains open; do not begin Phase 7 or Phase 8. The subsequent driving-world integration and its verification status are recorded in §52.
+
+## 52. Phase 9: bounded Aohara road-grid/night-block integration (2026-10-19)
+
+**Implementation:**
+
+- Added shared Aohara configuration centred at `(1250, -430)`: vegetation-free district, 3×3 road grid at 160 m spacing, 470 m city-access connector from the rural `east-plain` node, a 250 m-radius levelled core, and smooth return to seeded terrain by 430 m. The existing rural districts and no-white/snow gameplay-ground rule remain unchanged.
+- Added road classes and per-edge pavement/shoulder widths through the road graph, terrain carve, physics surface sampler and visual ribbons. Road geometry is batched into at most six material meshes, including a local, restrained urban-asphalt specular response; the city-night block does not overlay duplicate roadway slabs in integrated mode.
+- Added the `aohara-city` spawn. The Aohara night block is wired at the shared central junction, with the graph providing its roads and markings, integrated crosswalk/stop markings, daylight-gated lights/windows, timed signals, and high-rise footprint contacts using the existing collision-response seam. City content updates independent of camera mode and is disposed with the driving-world content; the compact authored block is resident while terrain and vegetation use the existing prepare-ahead streamers.
+- Added/updated tests for graph connectivity, road classes/widths, surface sampling, batched road-mesh count, plateau bounds/terrain restoration, vegetation exclusion, spawn selection, high-rise contact, and driving-world composition/daylight/disposal. Updated authorization/status documentation in `AGENTS.md`, `README.md`, `PROJECT_PLAN.md`, `docs/ARCHITECTURE.md`, `docs/VISUAL_TARGET.md`, `src/lab/README.md`, and `src/world/README.md`.
+
+**Local verification:** From the fresh `/tmp/endless-driver` clone based on `cbe7ec882ebe33efa442e7755e717362a5eb6d10`, `npm ci` installed 201 packages with 0 reported vulnerabilities. Final `npm run check` passed: Prettier, ESLint, the no-GLSL guard, both TypeScript checks, **51 test files / 461 tests**, asset verification (17 assets / 39,714,769 bytes), and the production build. The build emitted the existing large-chunk warning; test output also contains the known intentional missing-LOD fixture messages and repeated `toNonIndexed()` notices. No assets or dependencies were added to the project.
+
+**Driving/visual status:** Automated checks establish the code-level composition and sampler contracts only. No browser run, WebGPU/WebGL capture, manual drive test, owner-device visual review, mobile check, or performance measurement was performed for this increment. `?scene=city` remains an orbit-only look-dev preview; `?spawn=aohara-city&time=23.5` is configured for the main world but has not been manually validated. Do not claim verified driveability, visual acceptance, or performance. Phase 5 visual acceptance remains open; Phase 6 still follows that gate. AI traffic/pedestrians, the broader urban district, expressways, tunnels, bridges and flyovers remain future Phase 9 work.
+
+**Remote status:** Local checks are complete; the integration commit, remote SHA comparison and GitHub Actions status are pending.
+
+**Next:** commit and push the verified integration using the established GitHub-only workflow, compare `main` with the pushed SHA, and verify GitHub Validate/Pages Deploy. Then continue authorized Phase 9 within bounds while keeping Phase 5 visual acceptance unresolved until owner-device evidence arrives; Phases 7–8 remain gated.

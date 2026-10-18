@@ -9,6 +9,8 @@
  * Species ids are the vegetation vocabulary shared by the resolver
  * (src/world/districts.ts) and the instanced scatter (src/world/vegetation.ts).
  */
+import { AOHARA_DISTRICT_CONFIG } from './urban-district';
+
 export type VegetationSpecies = 'conifer' | 'broadleaf' | 'sakura' | 'bamboo' | 'rock';
 
 export interface DistrictConfig {
@@ -107,6 +109,17 @@ export const DISTRICTS: readonly DistrictConfig[] = [
     radiusMeters: 560,
     speciesDensity: { conifer: 0.7, broadleaf: 0.8, rock: 2.2 },
     groundTint: [0.99, 0.93, 0.79],
+  },
+  {
+    // Aohara Metropolis (青原): a new, bounded urban district east of rural Hinode.
+    // The core has no wild vegetation; its tower block and street kit live in urban-night.ts.
+    id: AOHARA_DISTRICT_CONFIG.id,
+    label: AOHARA_DISTRICT_CONFIG.label,
+    centerX: AOHARA_DISTRICT_CONFIG.centerX,
+    centerZ: AOHARA_DISTRICT_CONFIG.centerZ,
+    radiusMeters: AOHARA_DISTRICT_CONFIG.radiusMeters,
+    speciesDensity: { conifer: 0, broadleaf: 0, sakura: 0, bamboo: 0, rock: 0 },
+    groundTint: [1, 1, 1],
   },
 ];
 

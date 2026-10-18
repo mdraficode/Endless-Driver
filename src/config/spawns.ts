@@ -13,6 +13,8 @@
  * the road corridor's tree clearance and clear of buildings, on ground the
  * road carve has already flattened to a drivable grade.
  */
+import { AOHARA_DISTRICT_CONFIG } from './urban-district';
+
 export interface SpawnPoint {
   readonly id: string;
   /** Player-facing place name, reported in diagnostics. */
@@ -30,6 +32,13 @@ export const SPAWN_POINTS: readonly SpawnPoint[] = [
   { id: 'yuhi-town', label: 'Yūhi Town', x: 540, z: 300, yaw: -0.29 },
   { id: 'shirasagi-fields', label: 'Shirasagi Terraces', x: 60, z: 620, yaw: -1.29 },
   { id: 'west-highlands', label: 'West Highlands', x: -620, z: 330, yaw: -2.15 },
+  {
+    id: 'aohara-city',
+    label: 'Aohara Metropolis',
+    x: AOHARA_DISTRICT_CONFIG.centerX,
+    z: AOHARA_DISTRICT_CONFIG.centerZ,
+    yaw: 0,
+  },
 ];
 
 /**

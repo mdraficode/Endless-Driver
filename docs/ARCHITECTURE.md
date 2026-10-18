@@ -87,7 +87,7 @@ These are design requirements, not scaffold source implementations.
 - **QualityProfile:** pixel cap, draw/LOD/shadow/effect/particle limits and adaptation thresholds.
 - **Disposable:** an explicit idempotent disposal operation or equivalent ownership protocol.
 
-The inventory above began as a design checklist; it is not a statement that every listed contract is still unimplemented. The current scene-content seam is `src/world/WorldContent.ts`: `SceneManager` owns the environment and invokes optional content `setDaylight`/`update`/streaming hooks. Phase 9's `?scene=city` composition root shares the production renderer and daylight pipeline while mounting a bounded, non-driveable Aohara night block.
+The inventory above began as a design checklist; it is not a statement that every listed contract is still unimplemented. The current scene-content seam is `src/world/WorldContent.ts`: `SceneManager` owns the environment and invokes optional content `setDaylight`/`update`/streaming hooks. Phase 9's `?scene=city` composition root remains an orbit-only look-dev view. The same compact Aohara night block is also mounted at a node in the road graph used by the main driving-world composition; its terrain, road profile, physics heightfield and normal prepare-ahead terrain window share the production sampler. The recent driving-world integration passes the local check suite; manual driving and owner-device visual/performance review remain outstanding.
 
 ## 6. Physics and rendering boundary
 

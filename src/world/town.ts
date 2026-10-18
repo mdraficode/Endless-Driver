@@ -127,7 +127,11 @@ export function generateTownBuildings(
         continue; // empty lots, gardens, the odd car park
       }
       const road = sampler.roadAt?.(x, z) ?? null;
-      if (road !== null && road.distance < TOWN_CONFIG.roadClearanceMeters) {
+      if (
+        road !== null &&
+        road.distance <
+          Math.max(TOWN_CONFIG.roadClearanceMeters, road.halfWidthMeters + road.shoulderMeters + 3)
+      ) {
         continue;
       }
       if (sampler.normalAt(x, z).y < 0.93) {
@@ -174,6 +178,15 @@ export function generateRoadPoles(sampler: TerrainSampler, network: RoadNetwork)
   const poles: PolePlacement[] = [];
   const spacing = TOWN_CONFIG.poleSpacingMeters;
   network.edges.forEach((edge, edgeIndex) => {
+    // Urban streets use the Aohara luminaire kit, not rural utility poles. The access connector
+    // keeps poles but moves them beyond its wider shoulder.
+    if (edge.roadClass === 'urban-local' || edge.roadClass === 'urban-arterial') {
+      return;
+    }
+    const roadSideOffset = Math.max(
+      TOWN_CONFIG.poleOffsetMeters,
+      edge.halfWidthMeters + edge.shoulderMeters + 0.5,
+    );
     let sinceLast = spacing * 0.5;
     let poleIndex = 0;
     for (let index = 0; index + 1 < edge.points.length; index += 1) {
@@ -195,8 +208,8 @@ export function generateRoadPoles(sampler: TerrainSampler, network: RoadNetwork)
       const dirZ = (b.z - a.z) / segmentLength;
       const side = (edgeIndex + poleIndex) % 2 === 0 ? 1 : -1;
       poleIndex += 1;
-      const px = x + -dirZ * side * TOWN_CONFIG.poleOffsetMeters;
-      const pz = z + dirX * side * TOWN_CONFIG.poleOffsetMeters;
+      const px = x + -dirZ * side * roadSideOffset;
+      const pz = z + dirX * side * roadSideOffset;
       // Keep junctions walkable and poles off absurd slopes.
       let nearNode = false;
       for (const node of network.nodes) {

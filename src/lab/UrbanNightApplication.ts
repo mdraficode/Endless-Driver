@@ -41,7 +41,7 @@ export interface UrbanNightDiagnostics {
  *
  * It shares the production `Engine`, `SceneManager`, daylight controller and TSL post chain; it does
  * not load physics or claim that the city block is driveable. The dedicated route makes the night
- * effect inspectable before urban streaming and traffic AI are integrated into gameplay.
+ * effect inspectable while full-district streaming and traffic AI remain future work; local checks pass, while manual driving and owner-device review remain outstanding.
  */
 export class UrbanNightApplication {
   readonly #config: RenderConfig;

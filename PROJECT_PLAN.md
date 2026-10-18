@@ -759,12 +759,12 @@ settings, camera gestures/polish, and the final quality pass.
 
 **Authorization (2026-10-19):** the owner authorized this new track to begin immediately, despite the unresolved Phase 5 visual-acceptance gate. Phase 9 may proceed alongside Phases 5–6; Phase 6 still requires Phase 5 acceptance. This does **not** authorize Phase 7 weather/seasons or Phase 8 final polish.
 
-**District decision:** add a fictional Japanese megacity district to the existing fictional Hinode region. Preserve every rural Hinode district and its no-white-ground requirement; do not replace or urbanize the rural world. Aohara Metropolis is a bounded, vertically dense addition, connected to the rural road network by a future highway/expressway link. The dimensions and streaming footprint must be measured before expanding the world bounds.
+**District decision:** add a fictional Japanese megacity district to the existing fictional Hinode region. Preserve every rural Hinode district and its no-white-ground requirement; do not replace or urbanize the rural world. Aohara Metropolis is a bounded, vertically dense addition, connected to the existing rural road graph by a city-access connector; a separate highway/expressway link remains future work. The dimensions and streaming footprint must be measured before expanding the world bounds.
 
 **Deliverables, staged:**
 
-1. **First slice — night-lighting look-dev block.** An inspectable `?scene=city` preview with a short multi-lane avenue, a signalized intersection and marked crossing, high-rise massing and illuminated windows, streetlights, and a restrained dark pavement sheen. Night-only localized Gaussian halos and subtle radial starbursts provide soft glow plus diffraction without enabling scene-wide bloom; protect road/crosswalk readability. The first slice is not yet a driveable or streamed district.
-2. Integrate the district with the existing seeded road graph and prepare-ahead streaming; build connected urban streets, legible lane hierarchy, intersections, crosswalks, sidewalks, and highway access while keeping Hinode rural untouched.
+1. **First slice — night-lighting block.** An inspectable `?scene=city` preview with a short multi-lane avenue, signalized intersection and marked crossing, high-rise massing/windows, streetlights, and restrained pavement sheen. Night-only localized Gaussian halos and subtle radial starbursts provide soft glow plus diffraction without scene-wide bloom; protect road/crosswalk readability. This block is reused at a junction in the bounded driving-world grid; `?scene=city` itself remains a look-dev preview, not a full district.
+2. **Expand from the starter grid.** Extend the seeded road graph and district content within measured bounds; add sidewalks, broader street hierarchy, crossings, and future highway access while preserving prepare-ahead streaming and keeping Hinode rural untouched.
 3. Add modular, fictional/unbadged high-rise, mid-rise, transit, storefront, rooftop, utility, and street-furniture systems with bounded LOD/instance budgets.
 4. Add underground routes/tunnel portals, bridges, overpasses/flyovers, and highway sections only with tested grade, clearance, support, and collision envelopes; no decorative road may be non-drivable or misaligned with its collision path.
 5. Add deterministic, seeded, single-player vehicle and pedestrian agents: lane/path following, signal compliance, crossing right-of-way, safe spacing, bounded recovery, and density controls. Use the existing physics authority for collision truth; do not introduce a second physics solver or multiplayer/network layer.
@@ -778,9 +778,9 @@ settings, camera gestures/polish, and the final quality pass.
 - City road geometry, markings, intersections, signal timing, crossing paths, and collision/clearance envelopes agree; deterministic tests cover the road graph, signal phases and seeded agents.
 - Night lighting shows both a soft localized halo and restrained starburst, with readable driving lanes and no global washed-out haze; daylight gates and all tiers are covered by tests.
 - Streaming and object/agent budgets remain bounded; named-device performance and real-device mobile checks are recorded before claims of acceptance.
-- The `?scene=city` preview can judge the first lighting slice, but it is not evidence of a driveable district, owner-device acceptance, or completion of Phase 9.
+- The `?scene=city` orbit preview can judge the lighting slice only. Driveability must be checked in the main driving world; neither the preview nor automated checks establish owner-device visual acceptance, performance, or completion of Phase 9.
 
-**Current status:** Authorized and active; the first code increment is the night-lighting look-dev block. Later Phase 9 deliverables remain unimplemented until recorded as completed.
+**Current status:** Authorized and active. The first night-lighting look-dev block is implemented; the next bounded increment wires Aohara's 470 m access connector, 320 m 3×3 classed street grid, 500 m-diameter levelled core with smooth terrain return, city spawn and night block at the shared central junction into the driving-world composition. Terrain and road-heightfield collisions use the existing prepare-ahead streamer and shared sampler; high-rise contacts use the existing static-prop response path, and the compact authored block is always resident. Local `npm run check` passes; manual driving, owner-device visual review and performance measurement remain outstanding. The broader district, AI agents, expanded sidewalks/crossings, expressway, tunnels, bridges/flyovers, device visual acceptance and performance evidence remain incomplete.
 
 **Stop:** Do not start work outside this authorized Phase 9 scope; after Phase 9 completion, wait for new owner authorization.
 
@@ -824,7 +824,7 @@ CI verifies the checks actually present. A green scaffold CI does not certify ve
 | Phase 6 — hero car, materials, vehicle fidelity             | **Authorized 2026-10-18; after Phase 5 acceptance**                                                         |
 | Phase 7 — weather, seasons, surface behaviour               | Gated — requires explicit owner instruction                                                                 |
 | Phase 8 — mobile, HUD, cameras, settings, polish            | Gated — requires explicit owner instruction                                                                 |
-| Phase 9 — urban systems / Aohara Metropolis                 | **Authorized 2026-10-19; active in parallel; night-lighting slice first**                                   |
+| Phase 9 — urban systems / Aohara Metropolis                 | **Authorized 2026-10-19; bounded grid/night block wired into driving world; checks pending**                |
 
 See `docs/SESSION_HANDOFF.md` for the verified original commit, remote CI evidence, authentication limitations, and the next-session procedure.
 
@@ -953,4 +953,4 @@ References guide implementation; pinned package APIs must still be checked at th
 
 ---
 
-**Next permitted development action:** Continue the authorized Phase 5 remainder and the separately authorized Phase 9 urban-systems track (currently the night-lighting slice); Phase 6 remains blocked on Phase 5 acceptance. Phases 7–8 remain gated.
+**Next permitted development action:** Continue the independently authorized Phase 5 remainder and Phase 9 Aohara urban-systems track. Phase 5 visual acceptance remains open; Phase 6 remains sequenced after that acceptance. The current Aohara increment wires a bounded road grid/night block into the shared driving world; integration checks are pending, and AI pedestrians/vehicles, broader streets/sidewalks, and grade-separated links remain future work. Phases 7–8 remain gated.

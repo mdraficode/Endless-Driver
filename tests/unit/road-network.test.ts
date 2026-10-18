@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
-import { buildRoadNetwork, roadInfluence, type RoadNetwork } from '../../src/world/road-network';
+import { AOHARA_DISTRICT_CONFIG } from '../../src/config/urban-district';
+import { roadInfluence } from '../../src/world/road-network';
 import { createTerrainSampler } from '../../src/world/terrain-height';
 import { sampleTerrainSurface } from '../../src/world/terrain-surface';
+import { RoadWorld } from '../../src/world/RoadWorld';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
 
 /**
@@ -14,8 +16,12 @@ import { createWorldTerrainSampler } from '../../src/world/world-terrain';
  */
 
 const base = createTerrainSampler(TERRAIN_CONFIG);
-const network: RoadNetwork = buildRoadNetwork(ROAD_NETWORK_CONFIG, (x, z) => base.heightAt(x, z));
 const world = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
+const network =
+  world.roadNetwork ??
+  (() => {
+    throw new Error('world sampler must expose the road network used by terrain and physics');
+  })();
 
 function centreOf(edgeId: string): { x: number; z: number; y: number } {
   const edge = network.edges.find((candidate) => candidate.id === edgeId);
@@ -48,9 +54,44 @@ describe('road network graph', () => {
   });
 
   it('is deterministic: rebuilding yields the identical profile', () => {
-    const again = buildRoadNetwork(ROAD_NETWORK_CONFIG, (x, z) => base.heightAt(x, z));
+    const again = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG).roadNetwork;
+    if (again === undefined) {
+      throw new Error('rebuilt world sampler must expose its road network');
+    }
     expect(again.edges[0]?.points).toEqual(network.edges[0]?.points);
     expect([...again.nodes.values()]).toEqual([...network.nodes.values()]);
+  });
+
+  it('carries Aohara road classes and widths into visual and physics samples', () => {
+    const center = world.roadAt?.(AOHARA_DISTRICT_CONFIG.centerX, AOHARA_DISTRICT_CONFIG.centerZ);
+    expect(center?.roadClass).toBe('urban-arterial');
+    expect(center?.halfWidthMeters).toBe(AOHARA_DISTRICT_CONFIG.arterialHalfWidthMeters);
+    expect(
+      sampleTerrainSurface(
+        world,
+        AOHARA_DISTRICT_CONFIG.centerX + 9,
+        AOHARA_DISTRICT_CONFIG.centerZ + 40,
+      ).id,
+    ).toBe('asphalt');
+    expect(
+      sampleTerrainSurface(
+        world,
+        AOHARA_DISTRICT_CONFIG.centerX + 11,
+        AOHARA_DISTRICT_CONFIG.centerZ + 40,
+      ).id,
+    ).toBe('gravel');
+    const local = world.roadAt?.(
+      AOHARA_DISTRICT_CONFIG.centerX - AOHARA_DISTRICT_CONFIG.gridSpacingMeters / 2,
+      AOHARA_DISTRICT_CONFIG.centerZ - AOHARA_DISTRICT_CONFIG.gridSpacingMeters,
+    );
+    expect(local?.roadClass).toBe('urban-local');
+    expect(local?.halfWidthMeters).toBe(AOHARA_DISTRICT_CONFIG.localStreetHalfWidthMeters);
+  });
+
+  it('batches the complete mixed-width road network into a bounded material-batch set', () => {
+    const roads = new RoadWorld(network);
+    expect(roads.getStats().roadMeshes).toBeLessThanOrEqual(6);
+    roads.dispose();
   });
 
   it('pins every junction: edges meeting at a node share its elevation exactly', () => {
@@ -89,6 +130,29 @@ describe('terrain carve', () => {
         expect(world.heightAt(point.x, point.z)).toBeCloseTo(point.y, 6);
       }
     }
+  });
+
+  it('levels only the bounded Aohara core and returns to untouched seeded terrain outside', () => {
+    const cityElevation = base.heightAt(
+      AOHARA_DISTRICT_CONFIG.centerX,
+      AOHARA_DISTRICT_CONFIG.centerZ,
+    );
+    for (const [dx, dz] of [
+      [0, 0],
+      [200, 0],
+      [0, 200],
+      [-160, 160],
+    ] as const) {
+      expect(
+        world.heightAt(AOHARA_DISTRICT_CONFIG.centerX + dx, AOHARA_DISTRICT_CONFIG.centerZ + dz),
+      ).toBeCloseTo(cityElevation, 7);
+    }
+    const outsideX =
+      AOHARA_DISTRICT_CONFIG.centerX + AOHARA_DISTRICT_CONFIG.terrainBlendRadiusMeters + 1;
+    expect(world.roadAt?.(outsideX, AOHARA_DISTRICT_CONFIG.centerZ)).toBeNull();
+    expect(world.heightAt(outsideX, AOHARA_DISTRICT_CONFIG.centerZ)).toBe(
+      base.heightAt(outsideX, AOHARA_DISTRICT_CONFIG.centerZ),
+    );
   });
 
   it('flattens the full pavement width to the profile elevation', () => {

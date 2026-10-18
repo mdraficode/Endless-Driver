@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { DISTRICTS } from '../../src/config/districts';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
+import { AOHARA_DISTRICT_CONFIG } from '../../src/config/urban-district';
 import { districtAt, groundTintAt, speciesMultipliersAt } from '../../src/world/districts';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
 import { generateChunkVegetation } from '../../src/world/vegetation';
@@ -36,6 +37,19 @@ describe('district resolver', () => {
     expect(districtAt(cedar.centerX, cedar.centerZ)?.id).toBe('Kiri-cedar');
     expect(districtAt(4000, 4000)).toBeNull();
   });
+
+  it('adds vegetation-free Aohara beside the unchanged rural Sakura Avenue', () => {
+    const { centerX, centerZ, id } = AOHARA_DISTRICT_CONFIG;
+    expect(districtAt(centerX, centerZ)?.id).toBe(id);
+    expect(speciesMultipliersAt(centerX, centerZ)).toEqual({
+      conifer: 0,
+      broadleaf: 0,
+      sakura: 0,
+      bamboo: 0,
+      rock: 0,
+    });
+    expect(districtAt(620, -430)?.id).toBe('sakura-avenue');
+  });
 });
 
 describe('vegetation placement', () => {
@@ -58,6 +72,12 @@ describe('vegetation placement', () => {
     for (const placement of spawnChunk) {
       expect(Math.hypot(placement.x, placement.z)).toBeGreaterThanOrEqual(55);
     }
+    const cityChunk = generateChunkVegetation(
+      sampler,
+      Math.floor(AOHARA_DISTRICT_CONFIG.centerX / TERRAIN_CONFIG.chunkSizeMeters),
+      Math.floor(AOHARA_DISTRICT_CONFIG.centerZ / TERRAIN_CONFIG.chunkSizeMeters),
+    );
+    expect(cityChunk).toHaveLength(0);
   });
 
   it('keeps trees below the treeline on the volcano', () => {

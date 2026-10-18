@@ -1,13 +1,12 @@
 /**
- * Phase 4 road network definition: nodes and spline edges over the terrain.
- *
- * The layout is authored topology with deterministic placement — a junction south of the
- * spawn plateau, a mountain road climbing toward Hinode-dake, an eastern road to the town
- * site, and a southern loop — because a road network is a designed thing: pure noise
- * makes spaghetti, and the districts in `docs/VISUAL_TARGET.md` §5 need specific places
- * connected. The generator (road-network.ts) turns this into smoothed, grade-limited
- * profiles; the seed still owns the terrain the roads are carved into.
+ * Phase 4/9 road network definition: the original Hinode rural graph plus the bounded Aohara
+ * Metropolis access connector and 3×3 urban street grid. Road geometry, the terrain carve, physics
+ * surface response, and the minimap all consume the same solved graph.
  */
+import { AOHARA_DISTRICT_CONFIG } from './urban-district';
+
+export type RoadClass = 'rural' | 'city-access' | 'urban-local' | 'urban-arterial';
+
 export interface RoadNodeConfig {
   readonly id: string;
   readonly x: number;
@@ -19,6 +18,12 @@ export interface RoadEdgeConfig {
   readonly to: string;
   /** Intermediate spline control points (world x, z), in travel order. */
   readonly via?: readonly (readonly [number, number])[];
+  /** Omit to inherit the rural two-lane defaults. */
+  readonly roadClass?: RoadClass;
+  /** Per-edge pavement half-width; defaults to the network-wide rural width. */
+  readonly halfWidthMeters?: number;
+  /** Per-edge shoulder width; defaults to the network-wide rural shoulder. */
+  readonly shoulderMeters?: number;
 }
 
 export interface RoadNetworkConfig {
@@ -36,6 +41,60 @@ export interface RoadNetworkConfig {
   readonly edges: readonly RoadEdgeConfig[];
 }
 
+const GRID_ROWS = [
+  { id: 'north', offset: -1 },
+  { id: 'middle', offset: 0 },
+  { id: 'south', offset: 1 },
+] as const;
+const GRID_COLUMNS = [
+  { id: 'west', offset: -1 },
+  { id: 'center', offset: 0 },
+  { id: 'east', offset: 1 },
+] as const;
+
+const AOHARA_GRID_NODES: readonly RoadNodeConfig[] = GRID_ROWS.flatMap((row) =>
+  GRID_COLUMNS.map((column) => ({
+    id:
+      row.id === 'middle' && column.id === 'center'
+        ? 'aohara-center'
+        : `aohara-${row.id}-${column.id}`,
+    x: AOHARA_DISTRICT_CONFIG.centerX + column.offset * AOHARA_DISTRICT_CONFIG.gridSpacingMeters,
+    z: AOHARA_DISTRICT_CONFIG.centerZ + row.offset * AOHARA_DISTRICT_CONFIG.gridSpacingMeters,
+  })),
+);
+
+const localStreet = (from: string, to: string): RoadEdgeConfig => ({
+  from,
+  to,
+  roadClass: 'urban-local',
+  halfWidthMeters: AOHARA_DISTRICT_CONFIG.localStreetHalfWidthMeters,
+  shoulderMeters: AOHARA_DISTRICT_CONFIG.shoulderMeters,
+});
+
+const arterial = (from: string, to: string): RoadEdgeConfig => ({
+  from,
+  to,
+  roadClass: 'urban-arterial',
+  halfWidthMeters: AOHARA_DISTRICT_CONFIG.arterialHalfWidthMeters,
+  shoulderMeters: AOHARA_DISTRICT_CONFIG.shoulderMeters,
+});
+
+/** The core urban block: three connected parallel streets in each direction. */
+const AOHARA_GRID_EDGES: readonly RoadEdgeConfig[] = [
+  localStreet('aohara-north-west', 'aohara-north-center'),
+  localStreet('aohara-north-center', 'aohara-north-east'),
+  arterial('aohara-middle-west', 'aohara-center'),
+  arterial('aohara-center', 'aohara-middle-east'),
+  localStreet('aohara-south-west', 'aohara-south-center'),
+  localStreet('aohara-south-center', 'aohara-south-east'),
+  localStreet('aohara-north-west', 'aohara-middle-west'),
+  localStreet('aohara-middle-west', 'aohara-south-west'),
+  arterial('aohara-north-center', 'aohara-center'),
+  arterial('aohara-center', 'aohara-south-center'),
+  localStreet('aohara-north-east', 'aohara-middle-east'),
+  localStreet('aohara-middle-east', 'aohara-south-east'),
+];
+
 export const ROAD_NETWORK_CONFIG: RoadNetworkConfig = {
   halfWidthMeters: 5.5,
   shoulderMeters: 2.2,
@@ -51,6 +110,7 @@ export const ROAD_NETWORK_CONFIG: RoadNetworkConfig = {
     { id: 'town-site', x: 540, z: 300 },
     { id: 'south-fields', x: 60, z: 620 },
     { id: 'west-fields', x: -620, z: 330 },
+    ...AOHARA_GRID_NODES,
   ],
   edges: [
     { from: 'spawn-junction', to: 'north-bend', via: [[-30, -360]] },
@@ -62,5 +122,13 @@ export const ROAD_NETWORK_CONFIG: RoadNetworkConfig = {
     { from: 'south-fields', to: 'town-site', via: [[330, 540]] },
     { from: 'spawn-junction', to: 'west-fields', via: [[-330, 60]] },
     { from: 'west-fields', to: 'south-fields', via: [[-300, 540]] },
+    {
+      from: 'east-plain',
+      to: 'aohara-middle-west',
+      roadClass: 'city-access',
+      halfWidthMeters: AOHARA_DISTRICT_CONFIG.accessHalfWidthMeters,
+      shoulderMeters: AOHARA_DISTRICT_CONFIG.shoulderMeters,
+    },
+    ...AOHARA_GRID_EDGES,
   ],
 };

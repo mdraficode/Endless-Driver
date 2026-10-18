@@ -1,4 +1,4 @@
-import type { RoadNetworkConfig } from '../config/roads';
+import type { RoadClass, RoadNetworkConfig } from '../config/roads';
 
 /**
  * The road graph: splines over the terrain with smoothed, grade-limited profiles.
@@ -27,6 +27,9 @@ export interface RoadEdge {
   readonly id: string;
   readonly from: string;
   readonly to: string;
+  readonly roadClass: RoadClass;
+  readonly halfWidthMeters: number;
+  readonly shoulderMeters: number;
   readonly points: readonly RoadPoint[];
   readonly lengthMeters: number;
 }
@@ -45,6 +48,9 @@ export interface RoadSample {
   /** Road elevation at the nearest centreline point, metres. */
   readonly elevation: number;
   readonly edgeId: string;
+  readonly roadClass: RoadClass;
+  readonly halfWidthMeters: number;
+  readonly shoulderMeters: number;
 }
 
 export interface RoadNetwork {
@@ -139,9 +145,29 @@ export function buildRoadNetwork(
   baseHeightAt: (x: number, z: number) => number,
 ): RoadNetwork {
   const nodeConfig = new Map(config.nodes.map((node) => [node.id, node]));
-  const mutableEdges: { id: string; from: string; to: string; points: MutablePoint[] }[] = [];
+  const mutableEdges: {
+    id: string;
+    from: string;
+    to: string;
+    roadClass: RoadClass;
+    halfWidthMeters: number;
+    shoulderMeters: number;
+    points: MutablePoint[];
+  }[] = [];
 
   for (const edge of config.edges) {
+    const roadClass = edge.roadClass ?? 'rural';
+    const halfWidthMeters = edge.halfWidthMeters ?? config.halfWidthMeters;
+    const shoulderMeters = edge.shoulderMeters ?? config.shoulderMeters;
+    if (
+      !Number.isFinite(halfWidthMeters) ||
+      halfWidthMeters <= 0 ||
+      !Number.isFinite(shoulderMeters) ||
+      shoulderMeters < 0 ||
+      halfWidthMeters + shoulderMeters >= config.blendWidthMeters
+    ) {
+      throw new Error(`invalid road width for edge ${edge.from} -> ${edge.to}`);
+    }
     const from = nodeConfig.get(edge.from);
     const to = nodeConfig.get(edge.to);
     if (!from || !to) {
@@ -172,7 +198,15 @@ export function buildRoadNetwork(
     }
     const last = control[control.length - 1] as MutablePoint;
     points.push({ x: last.x, z: last.z, y: baseHeightAt(last.x, last.z) });
-    mutableEdges.push({ id: `${edge.from}->${edge.to}`, from: edge.from, to: edge.to, points });
+    mutableEdges.push({
+      id: `${edge.from}->${edge.to}`,
+      from: edge.from,
+      to: edge.to,
+      roadClass,
+      halfWidthMeters,
+      shoulderMeters,
+      points,
+    });
   }
 
   // Profile solving: smooth, pin junctions to one shared elevation, then clamp grades.
@@ -210,7 +244,16 @@ export function buildRoadNetwork(
       }
       return { x: point.x, z: point.z, y: point.y, alongMeters: length };
     });
-    return { id: edge.id, from: edge.from, to: edge.to, points, lengthMeters: length };
+    return {
+      id: edge.id,
+      from: edge.from,
+      to: edge.to,
+      roadClass: edge.roadClass,
+      halfWidthMeters: edge.halfWidthMeters,
+      shoulderMeters: edge.shoulderMeters,
+      points,
+      lengthMeters: length,
+    };
   });
   const nodes: RoadNode[] = config.nodes.map((node) => ({
     id: node.id,
@@ -230,6 +273,9 @@ export function buildRoadNetwork(
     readonly ay: number;
     readonly by: number;
     readonly edgeId: string;
+    readonly roadClass: RoadClass;
+    readonly halfWidthMeters: number;
+    readonly shoulderMeters: number;
   }
   const segments: Segment[] = [];
   const index = new Map<string, number[]>();
@@ -239,7 +285,18 @@ export function buildRoadNetwork(
       const a = edge.points[indexOfPoint] as RoadPoint;
       const b = edge.points[indexOfPoint + 1] as RoadPoint;
       const segmentIndex = segments.length;
-      segments.push({ ax: a.x, az: a.z, bx: b.x, bz: b.z, ay: a.y, by: b.y, edgeId: edge.id });
+      segments.push({
+        ax: a.x,
+        az: a.z,
+        bx: b.x,
+        bz: b.z,
+        ay: a.y,
+        by: b.y,
+        edgeId: edge.id,
+        roadClass: edge.roadClass,
+        halfWidthMeters: edge.halfWidthMeters,
+        shoulderMeters: edge.shoulderMeters,
+      });
       const expand = config.blendWidthMeters;
       const minCx = Math.floor((Math.min(a.x, b.x) - expand) / INDEX_CELL_METERS);
       const maxCx = Math.floor((Math.max(a.x, b.x) + expand) / INDEX_CELL_METERS);
@@ -284,6 +341,9 @@ export function buildRoadNetwork(
           distance,
           elevation: segment.ay + (segment.by - segment.ay) * t,
           edgeId: segment.edgeId,
+          roadClass: segment.roadClass,
+          halfWidthMeters: segment.halfWidthMeters,
+          shoulderMeters: segment.shoulderMeters,
         };
       }
     }
@@ -314,8 +374,13 @@ export function buildRoadNetwork(
  * How strongly the road profile owns the terrain height at a centreline distance:
  * fully flat across pavement + shoulder, then a smooth blend back to natural ground.
  */
-export function roadInfluence(config: RoadNetworkConfig, distance: number): number {
-  const flat = config.halfWidthMeters + config.shoulderMeters;
+export function roadInfluence(
+  config: RoadNetworkConfig,
+  distance: number,
+  halfWidthMeters = config.halfWidthMeters,
+  shoulderMeters = config.shoulderMeters,
+): number {
+  const flat = halfWidthMeters + shoulderMeters;
   if (distance <= flat) {
     return 1;
   }

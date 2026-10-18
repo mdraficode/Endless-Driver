@@ -694,8 +694,9 @@ export class Application {
       this.#chaseCamera.update(delta, pose, this.#car.telemetry);
     } else {
       this.#syncDebugCamera(pose);
-      this.#scene.update(delta);
     }
+    // Content-owned systems (Aohara signal phases, for example) advance regardless of camera mode.
+    this.#scene.update(delta);
 
     const activeCamera = this.#activeCamera();
     this.#syncShadowCamera(activeCamera);

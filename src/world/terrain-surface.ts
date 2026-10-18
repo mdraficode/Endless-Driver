@@ -1,4 +1,3 @@
-import { ROAD_NETWORK_CONFIG } from '../config/roads';
 import {
   terrainPatchAt,
   terrainSurfaceWeights,
@@ -47,7 +46,7 @@ export function sampleTerrainSurface(
   // tire model is tuned on, the gravel shoulder is looser and draggier than grass.
   const road = sampler.roadAt?.(x, z);
   if (road) {
-    if (road.distance <= ROAD_NETWORK_CONFIG.halfWidthMeters) {
+    if (road.distance <= road.halfWidthMeters) {
       return {
         id: 'asphalt',
         weights: [0, 0, 0, 0],
@@ -55,7 +54,7 @@ export function sampleTerrainSurface(
         rollingResistance: 0.015,
       };
     }
-    if (road.distance <= ROAD_NETWORK_CONFIG.halfWidthMeters + ROAD_NETWORK_CONFIG.shoulderMeters) {
+    if (road.distance <= road.halfWidthMeters + road.shoulderMeters) {
       return {
         id: 'gravel',
         weights: [0, 1, 0, 0],

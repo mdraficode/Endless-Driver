@@ -34,6 +34,7 @@ describe('session spawn points', () => {
   it('pins a requested start and otherwise spreads the pick across all starts', () => {
     expect(resolveSpawnPoint('Kiri-cedar', 0).id).toBe('Kiri-cedar');
     expect(resolveSpawnPoint('yuhi-town', 0.99).id).toBe('yuhi-town');
+    expect(resolveSpawnPoint('aohara-city', 0.5).id).toBe('aohara-city');
     const picked = new Set<string>();
     for (let step = 0; step < SPAWN_POINTS.length; step += 1) {
       picked.add(resolveSpawnPoint(undefined, step / SPAWN_POINTS.length).id);

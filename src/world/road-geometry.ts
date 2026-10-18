@@ -82,32 +82,41 @@ export function buildDashGeometry(network: RoadNetwork, yOffset: number): Buffer
   const halfWidth = 0.09;
   for (const edge of network.edges) {
     const { points } = edge;
-    for (let along = 12; along + dashLength < edge.lengthMeters - 12; along += cycle) {
-      const startIndex = Math.min(
-        points.length - 2,
-        Math.floor(along / network.config.sampleSpacingMeters),
-      );
-      const start = points[startIndex] as RoadPoint;
-      const end = points[startIndex + 1] as RoadPoint;
-      const tangent = tangentAt(points, startIndex);
-      const side = sideOf(tangent);
-      const base = positions.length / 3;
-      const corners: [number, number][] = [
-        [start.x - side.x * halfWidth, start.z - side.z * halfWidth],
-        [start.x + side.x * halfWidth, start.z + side.z * halfWidth],
-        [end.x - side.x * halfWidth, end.z - side.z * halfWidth],
-        [end.x + side.x * halfWidth, end.z + side.z * halfWidth],
-      ];
-      // Dash length follows the segment direction from the sampled start point.
-      const scale = dashLength / Math.max(1, Math.hypot(end.x - start.x, end.z - start.z));
-      const farX = start.x + (end.x - start.x) * scale;
-      const farZ = start.z + (end.z - start.z) * scale;
-      corners[2] = [farX - side.x * halfWidth, farZ - side.z * halfWidth];
-      corners[3] = [farX + side.x * halfWidth, farZ + side.z * halfWidth];
-      for (const [x, z] of corners) {
-        positions.push(x, start.y + yOffset, z);
+    // Rural/connector/local streets use one centre dash. The wider Aohara avenue has
+    // two same-direction lane dividers; its double amber centreline is batched separately.
+    const laneOffsets = edge.roadClass === 'urban-arterial' ? [-3.4, 3.4] : [0];
+    for (const laneOffset of laneOffsets) {
+      for (let along = 12; along + dashLength < edge.lengthMeters - 12; along += cycle) {
+        const startIndex = Math.min(
+          points.length - 2,
+          Math.floor(along / network.config.sampleSpacingMeters),
+        );
+        const start = points[startIndex] as RoadPoint;
+        const end = points[startIndex + 1] as RoadPoint;
+        const tangent = tangentAt(points, startIndex);
+        const side = sideOf(tangent);
+        const base = positions.length / 3;
+        const startX = start.x + side.x * laneOffset;
+        const startZ = start.z + side.z * laneOffset;
+        const endX = end.x + side.x * laneOffset;
+        const endZ = end.z + side.z * laneOffset;
+        const corners: [number, number][] = [
+          [startX - side.x * halfWidth, startZ - side.z * halfWidth],
+          [startX + side.x * halfWidth, startZ + side.z * halfWidth],
+          [endX - side.x * halfWidth, endZ - side.z * halfWidth],
+          [endX + side.x * halfWidth, endZ + side.z * halfWidth],
+        ];
+        // Dash length follows the segment direction from the sampled start point.
+        const scale = dashLength / Math.max(1, Math.hypot(end.x - start.x, end.z - start.z));
+        const farX = startX + (end.x - start.x) * scale;
+        const farZ = startZ + (end.z - start.z) * scale;
+        corners[2] = [farX - side.x * halfWidth, farZ - side.z * halfWidth];
+        corners[3] = [farX + side.x * halfWidth, farZ + side.z * halfWidth];
+        for (const [x, z] of corners) {
+          positions.push(x, start.y + yOffset, z);
+        }
+        indices.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
       }
-      indices.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
     }
   }
   const geometry = new BufferGeometry();
