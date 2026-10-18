@@ -3,7 +3,7 @@
 **Updated:** 2026-10-18  
 **Current stage:** Phase 4 built scope delivered; Phase 5 in progress; Phase 6 authorized after Phase 5 acceptance; Phase 3 code complete with named-hardware frame-budget validation still open  
 **Authorized development phases:** Phases 1–6, executed in order; Phases 7–8 remain gated  
-**Next action:** Obtain a stable, readable owner-device capture to confirm the gameplay terrain's appearance. The white-ground report remains unresolved until then. Continue the authorized Phase 5 remainder; do not begin Phase 6 before Phase 5 acceptance.
+**Next action:** Continue the authorized Phase 5 remainder, beginning with prepared vegetation/terrain streaming. Obtain a stable, readable owner-device capture before claiming the white-ground or no-pop-in reports visually resolved. Do not begin Phase 6 before Phase 5 acceptance.
 
 > **Re-plan (2026-10-14, decisions resolved):** the owner rejected the Phase 2 presentation and set a
 > Forza-Horizon-class visual target. Research and specification are complete and committed alongside
@@ -1540,3 +1540,20 @@ Owner instruction: "Remove all the white ground terrain. I have had enough of th
 **Visual status:** no stable readable owner-device capture is available. The previous black-frame/context-restoration captures do not prove terrain appearance. Do not call the owner's white-ground report visually fixed yet.
 
 **Next:** obtain a stable readable capture on the owner's device; then continue the authorized Phase 5 remainder. Phase 6 follows Phase 5 acceptance, and Phases 7–8 remain gated.
+
+## 49. Prepare terrain and vegetation ahead of the player (2026-10-18)
+
+Owner direction: “Ok carry on further development work.” Continued within the authorized Phase 5 scope; Phase 6 remains gated on Phase 5 acceptance.
+
+**Implementation:**
+
+- Terrain and vegetation now share the same deterministic, bounded velocity lead: 1.4 seconds of travel, capped at 112 m. The player's current chunk remains inside the foliage window while new chunks are planned ahead.
+- Added startup preparation for the full 11×11 terrain window and 7×7 vegetation window. Terrain worker/fallback batches and foliage placement batches yield while the loading screen remains up; the first frame is delayed until the initial world is prepared (with explicit 45 s terrain / 30 s vegetation safety ceilings).
+- Scanned tree adoption is awaited as part of first-world readiness, avoiding a late swap from authored to scanned models after driving starts. Runtime foliage generation stays capped at three chunks per frame.
+- Added pure planner tests, a terrain-preparation test, and a foliage-preparation test. Diagnostics expose desired/loaded/pending foliage chunk counts.
+
+**Verification:** Pending the unfiltered project check and remote CI for this increment; record the results and final remote SHA here after completion.
+
+**Still open:** No stable, readable owner-device capture confirms the terrain appearance or visible vegetation streaming. The report of tree pop-in, dark foliage, and weak HDR/ray-tracing effect remains open; do not claim visual acceptance. Phase 5 is still in progress and Phase 6 has not started.
+
+**Next:** Complete the remaining Phase 5 work and obtain stable visual evidence; only begin Phase 6 after Phase 5 acceptance. Phases 7–8 remain gated.

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { VEGETATION_CONFIG } from '../../src/config/districts';
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
@@ -12,12 +13,26 @@ import { generateChunkVegetation } from '../../src/world/vegetation-placement';
  * matrices are plain data until something draws them.
  */
 describe('vegetation destruction visuals', () => {
+  it('prepares every chunk in the starting foliage window before drawing', async () => {
+    const sampler = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
+    const world = new VegetationWorld(sampler, { ...VEGETATION_CONFIG, radiusChunks: 1 });
+
+    await world.prepareInitial({ x: -430, z: -1010 }, { x: 0, z: -50 });
+
+    const stats = world.getContentStats();
+    expect(stats.vegetationChunks).toBe(9);
+    expect(stats.vegetationChunksDesired).toBe(9);
+    expect(stats.vegetationChunksPending).toBe(0);
+    expect(stats.vegetationInstances).toBeGreaterThan(0);
+    world.dispose();
+  });
+
   it('turns snap/shatter events into stumps and debris', () => {
     const sampler = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
     const world = new VegetationWorld(sampler);
     const focus = { x: -430, z: -1010 };
     for (let frame = 0; frame < 40; frame += 1) {
-      world.updateStreaming(focus, 1 / 60);
+      world.updateStreaming(focus, { x: 0, z: 0 }, 1 / 60);
     }
     const before = world.getContentStats();
     expect(before.vegetationInstances).toBeGreaterThan(500);
@@ -51,7 +66,7 @@ describe('vegetation destruction visuals', () => {
     // The crown falls: after simulated seconds it is still tracked, then the
     // pool keeps it resting (age < lifetime), count stable.
     for (let frame = 0; frame < 120; frame += 1) {
-      world.updateStreaming(focus, 1 / 30);
+      world.updateStreaming(focus, { x: 0, z: 0 }, 1 / 30);
     }
     expect(world.getContentStats().vegetationDebris).toBe(1);
 

@@ -28,7 +28,13 @@ import {
   chunkGeometryFromData,
   type ChunkGeometryData,
 } from './terrain-geometry';
-import { chunkKey, planChunksAround, resolveWindowCenter, type ChunkCoord } from './terrain-chunks';
+import {
+  chunkKey,
+  planChunksAround,
+  predictPrefetchFocus,
+  resolveWindowCenter,
+  type ChunkCoord,
+} from './terrain-chunks';
 
 interface LoadedChunk {
   readonly mesh: Mesh;
@@ -360,17 +366,10 @@ export class TerrainWorld implements SceneContent {
     focus: { x: number; y: number; z: number },
     velocity: { x: number; z: number } = { x: 0, z: 0 },
   ): void {
-    // Velocity-aware prefetch: the window is planned around where the car is heading,
-    // capped so a fast car still keeps ground behind it; the build order stays sorted by
-    // distance to the car itself, so the ground under the wheels always wins the budget.
-    const speed = Math.hypot(velocity.x, velocity.z);
-    const bias =
-      speed > 0.01
-        ? Math.min(this.#config.prefetchMaxMeters, speed * this.#config.prefetchSeconds) / speed
-        : 0;
-    const biasedX = focus.x + velocity.x * bias;
-    const biasedZ = focus.z + velocity.z * bias;
-    this.#center = resolveWindowCenter(this.#center, this.#config, biasedX, biasedZ);
+    // The bounded lead is shared with vegetation: both windows move toward the route
+    // ahead, while the terrain plan keeps the actual focus as its ordering reference.
+    const predicted = predictPrefetchFocus(this.#config, focus, velocity);
+    this.#center = resolveWindowCenter(this.#center, this.#config, predicted.x, predicted.z);
     const plan = planChunksAround(this.#config, this.#center.cx, this.#center.cz, focus.x, focus.z);
     this.#desiredCount = plan.length;
     const desired = new Map(plan.map((chunk) => [chunkKey(chunk.cx, chunk.cz), chunk]));
@@ -458,6 +457,41 @@ export class TerrainWorld implements SceneContent {
     }
     if (this.#buildsLastFrame > 0) {
       this.#pendingBuilds -= this.#buildsLastFrame;
+    }
+  }
+
+  /**
+   * Fills the starting visual terrain window before the frame loop is allowed to render.
+   * Worker generation continues to run off-thread; in the synchronous fallback this yields
+   * between the same bounded upload batches instead of blocking the page in one long build.
+   */
+  async prepareInitial(
+    focus: { x: number; y: number; z: number },
+    velocity: { x: number; z: number } = { x: 0, z: 0 },
+  ): Promise<void> {
+    if (this.#disposed) {
+      return;
+    }
+    const deadline = Date.now() + 45_000;
+    this.updateStreaming(focus, velocity);
+    while (!this.#disposed) {
+      if (
+        this.#chunks.size === this.#desiredCount &&
+        this.#pendingBuilds === 0 &&
+        this.#generator.backlog === 0
+      ) {
+        return;
+      }
+      if (Date.now() >= deadline) {
+        console.warn(
+          `terrain: initial preparation timed out (${this.#chunks.size}/${this.#desiredCount} chunks loaded, ${this.#pendingBuilds} pending)`,
+        );
+        return;
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      if (!this.#disposed) {
+        this.updateStreaming(focus, velocity);
+      }
     }
   }
 

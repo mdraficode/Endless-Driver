@@ -38,14 +38,15 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
   const detailScale = context.qualityTier === 'C' ? 0.6 : context.qualityTier === 'B' ? 0.85 : 1;
   const vegetation = new VegetationWorld(terrainSampler, undefined, detailScale);
   root.add(vegetation.root);
-  // Scanned CC0 trees replace the authored species behind the same scatter (Phase 5). Adoption
-  // runs off the startup path: a slow asset server must not delay the first frame, and a failed
-  // one leaves the authored forest standing.
-  if (context.renderer !== undefined) {
-    vegetation.adoptScanned(context.renderer).catch((error: unknown) => {
-      console.warn('scanned vegetation unavailable:', (error as Error).message);
-    });
-  }
+  // Scanned CC0 trees replace the authored species behind the same scatter (Phase 5). Start
+  // loading immediately, then include it in first-world readiness so the forest is not swapped
+  // visibly after play begins; a failed asset leaves the authored species standing.
+  const scannedAssetsReady =
+    context.renderer === undefined
+      ? Promise.resolve()
+      : vegetation.adoptScanned(context.renderer).catch((error: unknown) => {
+          console.warn('scanned vegetation unavailable:', (error as Error).message);
+        });
   // Yuhi Town + roadside poles (Increment 5b): static town, always resident.
   const town = new TownWorld(terrainSampler);
   root.add(town.root);
@@ -55,8 +56,15 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
     kind: 'driving',
     updateStreaming: (focus, velocity, deltaSeconds) => {
       terrain.updateStreaming(focus, velocity);
-      vegetation.updateStreaming(focus, deltaSeconds ?? 0);
+      vegetation.updateStreaming(focus, velocity, deltaSeconds ?? 0);
       town.updateStreaming(focus, deltaSeconds ?? 0);
+    },
+    prepareInitial: async (focus, velocity = { x: 0, z: 0 }) => {
+      await Promise.all([
+        scannedAssetsReady,
+        terrain.prepareInitial(focus, velocity),
+        vegetation.prepareInitial(focus, velocity),
+      ]);
     },
     collideTown: (car, deltaSeconds) => town.collide(car, deltaSeconds),
     applyVegetationHits: (events) => {

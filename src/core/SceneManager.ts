@@ -519,6 +519,14 @@ export class SceneManager {
     this.#content.updateStreaming?.(focus, velocity, deltaSeconds);
   }
 
+  /** Resolves the initial streamed world window before the renderer starts its frame loop. */
+  async prepareInitialContent(
+    focus: Vec3,
+    velocity: { x: number; z: number } = { x: 0, z: 0 },
+  ): Promise<void> {
+    await this.#content.prepareInitial?.(focus, velocity);
+  }
+
   /** Town collision via the content, when it has a town. */
   collideTown(car: TownCarProbe, deltaSeconds: number): readonly TownHit[] {
     return this.#content.collideTown?.(car, deltaSeconds) ?? [];

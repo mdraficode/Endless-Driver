@@ -235,12 +235,8 @@ export class Application {
 
     const initialPose = this.#car.getInterpolatedPose(0);
     this.#physics.syncTerrain(initialPose.position);
-    // Pre-build the chunks under and around the car (the first budgeted calls happen here,
-    // before the loading veil lifts); the rest of the square streams in over the first
-    // seconds of driving, nearest first.
-    for (let i = 0; i < 6; i += 1) {
-      this.#scene.streamContent(initialPose.position);
-    }
+    // The complete initial terrain and foliage windows are prepared in `start()`, after
+    // renderer/assets are ready and before the first frame is submitted.
     this.#carVisual.sync(initialPose);
     this.#chaseCamera.snapTo(initialPose);
     this.#scene.focusSun(initialPose.position);
@@ -313,10 +309,10 @@ export class Application {
   /**
    * Starts the renderer and the frame loop.
    *
-   * Async because `WebGPURenderer` builds its device, backend, and node systems asynchronously, and
-   * the environment HDRI is fetched from the asset manifest after that. The first frame is only
-   * scheduled once both are ready, so the loop never renders against a renderer that is still
-   * initialising.
+   * Async because `WebGPURenderer` builds its device, backend, and node systems asynchronously;
+   * environment/surface assets and the initial terrain/vegetation windows also have to be ready.
+   * The first frame is scheduled only after those steps, so the player does not see the starting
+   * world materialise after control is handed over.
    */
   async start(): Promise<void> {
     if (!this.#engine.isInitialized) {
@@ -326,6 +322,20 @@ export class Application {
       await this.#loadLook();
       this.#shadowCamera = null;
       this.#syncShadowCamera(this.#activeCamera());
+
+      const initialPose = this.#car.getInterpolatedPose(0);
+      const yaw = yawFromQuat(initialPose.rotation);
+      const forwardSpeed = this.#car.telemetry.forwardSpeed;
+      const worldFocus = {
+        x: initialPose.position.x + this.#origin.offset.x,
+        y: initialPose.position.y,
+        z: initialPose.position.z + this.#origin.offset.z,
+      };
+      this.#setStatus('Preparing the terrain and tree line…');
+      await this.#scene.prepareInitialContent(worldFocus, {
+        x: -Math.sin(yaw) * forwardSpeed,
+        z: -Math.cos(yaw) * forwardSpeed,
+      });
     }
 
     this.#physics.resetAccumulator();

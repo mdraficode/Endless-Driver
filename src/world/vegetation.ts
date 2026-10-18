@@ -33,7 +33,8 @@ import { VEGETATION_SPECIES } from './districts';
 import { loadScannedSpecies, type ScannedSpecies } from './scanned-vegetation';
 import type { TreeHitEvent, TreeVisualState } from './tree-collision';
 import type { TerrainSampler } from './terrain-height';
-import { chunkKey, planChunksAround, resolveWindowCenter } from './terrain-chunks';
+import { chunkKey, type PlannedChunk } from './terrain-chunks';
+import { planVegetationWindow } from './vegetation-streaming';
 
 /**
  * District vegetation: deterministic, instanced scatter (Phase 4 Increment 5).
@@ -530,23 +531,20 @@ export class VegetationWorld {
     }
   }
 
-  /** Per-frame streaming hook, driven beside the terrain's own. */
-  updateStreaming(focus: { x: number; z: number }, deltaSeconds = 0): void {
-    if (this.#disposed) {
-      return;
-    }
-    this.#lastFocus = { x: focus.x, z: focus.z };
-    const terrainConfig = this.#sampler.config;
-    this.#center = resolveWindowCenter(this.#center, terrainConfig, focus.x, focus.z);
-    const planned = planChunksAround(
-      terrainConfig,
-      this.#center.cx,
-      this.#center.cz,
-      focus.x,
-      focus.z,
-    ).filter((chunk) => chunk.ring <= this.#config.radiusChunks);
-    const wanted = new Set(planned.map((chunk) => chunkKey(chunk.cx, chunk.cz)));
+  #planWindow(focus: { x: number; z: number }, velocity: { x: number; z: number }): PlannedChunk[] {
+    const plan = planVegetationWindow(
+      this.#sampler.config,
+      this.#config.radiusChunks,
+      this.#center,
+      focus,
+      velocity,
+    );
+    this.#center = plan.center;
+    return plan.chunks;
+  }
 
+  #retainPlannedChunks(planned: readonly PlannedChunk[]): boolean {
+    const wanted = new Set(planned.map((chunk) => chunkKey(chunk.cx, chunk.cz)));
     let changed = false;
     for (const key of [...this.#chunkPlacements.keys()]) {
       if (!wanted.has(key)) {
@@ -554,24 +552,91 @@ export class VegetationWorld {
         changed = true;
       }
     }
-    // Budgeted generation: nearest chunks first (planner order), ≤3 per frame.
+    return changed;
+  }
+
+  #generateMissingChunks(planned: readonly PlannedChunk[], budget: number): boolean {
     let generated = 0;
+    let changed = false;
     for (const chunk of planned) {
-      if (generated >= 3) {
+      if (generated >= budget) {
         break;
       }
       const key = chunkKey(chunk.cx, chunk.cz);
-      if (!this.#chunkPlacements.has(key)) {
-        this.#chunkPlacements.set(
-          key,
-          generateChunkVegetation(this.#sampler, chunk.cx, chunk.cz, this.#config),
-        );
-        this.#generatedChunks += 1;
-        generated += 1;
-        changed = true;
+      if (this.#chunkPlacements.has(key)) {
+        continue;
+      }
+      this.#chunkPlacements.set(
+        key,
+        generateChunkVegetation(this.#sampler, chunk.cx, chunk.cz, this.#config),
+      );
+      this.#generatedChunks += 1;
+      generated += 1;
+      changed = true;
+    }
+    return changed;
+  }
+
+  /**
+   * Prepares the full starting foliage window before the first rendered frame. Generation is
+   * split into short batches and yielded to the event loop; instance buffers are rebuilt once,
+   * after every planned chunk is ready, so no partial forest is exposed at startup.
+   */
+  async prepareInitial(
+    focus: { x: number; z: number },
+    velocity: { x: number; z: number } = { x: 0, z: 0 },
+  ): Promise<void> {
+    if (this.#disposed) {
+      return;
+    }
+    this.#lastFocus = { x: focus.x, z: focus.z };
+    const planned = this.#planWindow(focus, velocity);
+    let changed = this.#retainPlannedChunks(planned);
+    const batchSize = 8;
+    const deadline = Date.now() + 30_000;
+    let timedOut = false;
+    for (let start = 0; start < planned.length; start += batchSize) {
+      if (this.#disposed) {
+        return;
+      }
+      changed =
+        this.#generateMissingChunks(planned.slice(start, start + batchSize), batchSize) || changed;
+      if (start + batchSize < planned.length) {
+        if (Date.now() >= deadline) {
+          timedOut = true;
+          break;
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
       }
     }
+    if (this.#disposed) {
+      return;
+    }
     if (changed) {
+      this.#rebuildInstances(focus);
+    }
+    if (this.#chunkPlacements.size !== planned.length) {
+      const reason = timedOut ? 'preparation timed out' : 'window incomplete';
+      console.warn(
+        `vegetation: initial ${reason} (${this.#chunkPlacements.size}/${planned.length} chunks ready)`,
+      );
+    }
+  }
+
+  /** Per-frame streaming hook, driven beside terrain and using the same velocity-aware lead. */
+  updateStreaming(
+    focus: { x: number; z: number },
+    velocity: { x: number; z: number } = { x: 0, z: 0 },
+    deltaSeconds = 0,
+  ): void {
+    if (this.#disposed) {
+      return;
+    }
+    this.#lastFocus = { x: focus.x, z: focus.z };
+    const planned = this.#planWindow(focus, velocity);
+    const pruned = this.#retainPlannedChunks(planned);
+    const generated = this.#generateMissingChunks(planned, 3);
+    if (pruned || generated) {
       this.#rebuildInstances(focus);
     }
     this.#tick(deltaSeconds);
@@ -924,6 +989,11 @@ export class VegetationWorld {
     return {
       vegetationInstances: this.#totalInstances,
       vegetationChunks: this.#chunkPlacements.size,
+      vegetationChunksDesired: (2 * this.#config.radiusChunks + 1) ** 2,
+      vegetationChunksPending: Math.max(
+        0,
+        (2 * this.#config.radiusChunks + 1) ** 2 - this.#chunkPlacements.size,
+      ),
       vegetationChunksGenerated: this.#generatedChunks,
       vegetationBent: bent,
       vegetationSnapped: snapped,

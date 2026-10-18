@@ -35,6 +35,15 @@ export interface SceneContent {
     velocity?: { x: number; z: number },
     deltaSeconds?: number,
   ): void;
+  /**
+   * Optional startup preparation. Streamed content may await its initial visible window here;
+   * `Application` resolves it before starting the frame loop, so the player never sees the first
+   * terrain/foliage window materialise in front of the camera.
+   */
+  prepareInitial?(
+    focus: { x: number; y: number; z: number },
+    velocity?: { x: number; z: number },
+  ): Promise<void>;
   /** Vegetation destruction events from the collision field (driving world). */
   applyVegetationHits?(events: readonly TreeHitEvent[]): void;
   /** Town collision (buildings/poles), evaluated beside the tree field. */

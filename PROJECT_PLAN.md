@@ -632,6 +632,12 @@ owner's hardware frame-budget validation.
    screen-space contact shadows grounding props and foliage.
 5. Placement/debug tooling: seed preview, density scalers, and a diagnostics readout of instance counts per system.
 
+**Implemented Phase 5 increment (2026-10-18):** terrain and vegetation now share a bounded velocity lead (1.4 s,
+up to 112 m). The initial 11×11 terrain window and 7×7 foliage window are prepared before the first rendered frame;
+scanned tree adoption is included in readiness, and runtime foliage generation remains capped at three chunks per
+frame. This reduces last-second work ahead of the car but is not visual acceptance of the no-pop-in criterion;
+a stable readable capture is still required.
+
 **Acceptance**
 
 - Vegetation and prop instance counts, triangle counts, and draw calls stay inside the per-tier budgets in

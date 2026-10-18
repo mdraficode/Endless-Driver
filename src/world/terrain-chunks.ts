@@ -29,6 +29,28 @@ export function chunkIndexAt(position: number, chunkSizeMeters: number): number 
   return Math.floor(position / chunkSizeMeters);
 }
 
+/**
+ * Bounded velocity lead shared by terrain and vegetation streamers. The focus is projected
+ * forward by the lesser of `speed × prefetchSeconds` and `prefetchMaxMeters`; the planner still
+ * uses the real focus as its distance reference while only the window centre moves ahead.
+ */
+export function predictPrefetchFocus(
+  config: TerrainConfig,
+  focus: { readonly x: number; readonly z: number },
+  velocity: { readonly x: number; readonly z: number },
+): { readonly x: number; readonly z: number } {
+  const speed = Math.hypot(velocity.x, velocity.z);
+  if (!Number.isFinite(speed) || speed <= 0.01) {
+    return { x: focus.x, z: focus.z };
+  }
+  const leadMeters = Math.min(config.prefetchMaxMeters, speed * config.prefetchSeconds);
+  const leadSeconds = leadMeters / speed;
+  return {
+    x: focus.x + velocity.x * leadSeconds,
+    z: focus.z + velocity.z * leadSeconds,
+  };
+}
+
 /** LOD for a ring: the finest ring start the ring has reached wins. */
 export function segmentsForRing(config: TerrainConfig, ring: number): number {
   let segments = config.lodSegments[2];

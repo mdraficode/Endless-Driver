@@ -13,6 +13,7 @@ import { sampleTerrainSurface } from '../../src/world/terrain-surface';
 import {
   planChunks,
   planPhysicsChunks,
+  predictPrefetchFocus,
   resolveWindowCenter,
   segmentsForRing,
 } from '../../src/world/terrain-chunks';
@@ -222,6 +223,21 @@ describe('surface splat and driving response', () => {
 });
 
 describe('streaming planner', () => {
+  it('projects a bounded focus ahead of travel and leaves a stopped focus unchanged', () => {
+    expect(predictPrefetchFocus(TERRAIN_CONFIG, { x: 12, z: -8 }, { x: 0, z: 0 })).toEqual({
+      x: 12,
+      z: -8,
+    });
+    expect(predictPrefetchFocus(TERRAIN_CONFIG, { x: 12, z: -8 }, { x: 10, z: 0 })).toEqual({
+      x: 26,
+      z: -8,
+    });
+    expect(predictPrefetchFocus(TERRAIN_CONFIG, { x: 12, z: -8 }, { x: 0, z: -200 })).toEqual({
+      x: 12,
+      z: -120,
+    });
+  });
+
   it('plans the full (2r+1)^2 square, nearest first, finest at the centre', () => {
     const plan = planChunks(TERRAIN_CONFIG, 10, -20);
     expect(plan).toHaveLength((2 * TERRAIN_CONFIG.viewRadiusChunks + 1) ** 2);
