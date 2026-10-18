@@ -3,7 +3,7 @@
 **Updated:** 2026-10-18  
 **Current stage:** Phase 4 built scope delivered; Phase 5 in progress; Phase 6 authorized after Phase 5 acceptance; Phase 3 code complete with named-hardware frame-budget validation still open  
 **Authorized development phases:** Phases 1–6, executed in order; Phases 7–8 remain gated  
-**Next action:** Continue the authorized Phase 5 remainder, beginning with prepared vegetation/terrain streaming. Obtain a stable, readable owner-device capture before claiming the white-ground or no-pop-in reports visually resolved. Do not begin Phase 6 before Phase 5 acceptance.
+**Next action:** Continue the remaining Phase 5 work, including foliage lighting/ground cover and atmosphere; prepared terrain/vegetation streaming is now implemented. Obtain a stable, readable owner-device capture before claiming the white-ground or no-pop-in reports visually resolved. Do not begin Phase 6 before Phase 5 acceptance.
 
 > **Re-plan (2026-10-14, decisions resolved):** the owner rejected the Phase 2 presentation and set a
 > Forza-Horizon-class visual target. Research and specification are complete and committed alongside
