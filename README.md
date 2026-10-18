@@ -115,7 +115,7 @@ docs/             architecture, decisions, handoff, asset/Git policies
 | Stage                                                          | Status                                                                                                           |
 | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | Planning and project structure                                 | Complete and pushed to the public repository                                                                     |
-| Current verification                                           | White-ground removal implemented; test suite, formatting, typecheck, lint, full check, and build pending         |
+| Current verification                                           | `npm run check` passed 2026-10-18: 46 test files, 442 tests; owner-device visual verification remains open       |
 | Phase 1: engine, loop, camera, lighting                        | Implemented, verified, and pushed                                                                                |
 | Phase 2: vehicle physics, input, camera                        | Implemented and verified (unit, physics, integration, and browser gates)                                         |
 | Visual-fidelity research and re-plan                           | Complete 2026-10-14 (`docs/RESEARCH_AAA_FIDELITY.md`, `docs/VISUAL_TARGET.md`, ADR 0004)                         |

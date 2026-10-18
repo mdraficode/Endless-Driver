@@ -3,7 +3,7 @@
 **Updated:** 2026-10-18  
 **Current stage:** Phase 4 built scope delivered; Phase 5 in progress; Phase 6 authorized after Phase 5 acceptance; Phase 3 code complete with named-hardware frame-budget validation still open  
 **Authorized development phases:** Phases 1–6, executed in order; Phases 7–8 remain gated  
-**Next action:** Remove snow/white ground from gameplay terrain and validate the guardrails. The owner's visual report remains unresolved until a stable, readable owner-device capture confirms the result. Continue the authorized Phase 5 remainder; do not begin Phase 6 before Phase 5 acceptance.
+**Next action:** Obtain a stable, readable owner-device capture to confirm the gameplay terrain's appearance. The white-ground report remains unresolved until then. Continue the authorized Phase 5 remainder; do not begin Phase 6 before Phase 5 acceptance.
 
 > **Re-plan (2026-10-14, decisions resolved):** the owner rejected the Phase 2 presentation and set a
 > Forza-Horizon-class visual target. Research and specification are complete and committed alongside
@@ -1535,6 +1535,8 @@ Owner instruction: "Remove all the white ground terrain. I have had enough of th
 
 **Implementation:** gameplay terrain now uses only grass, soil, and rock. The snow asset is no longer loaded by `TerrainWorld`, the shader no longer samples snow albedo/normal/ARM/displacement, and the fourth splat channel is reserved and fixed at zero. High ground transitions to exposed rock/soil instead of a snow layer. Physics surface selection and grip mixing likewise only include grass/soil/rock. Tests now require zero snow weight across the full volcano footprint, every session-start view, and every generated terrain vertex; they also assert the far-field macro ground colour stays below the pale/white range.
 
-**Validation status:** code and tests are edited but not yet run in this fresh clone. No stable readable owner-device capture is available; do not call the owner's visual report fixed yet. The prior black-frame/context-restoration captures do not prove terrain appearance.
+**Validation:** `npm ci` succeeded. `npm run check` passed at commit `1f213c2`: Prettier, ESLint, the no-GLSL guard, both TypeScript checks, assets verification (17 assets), production build, and all tests (46 files, 442 tests). The build reports the existing large-Rapier-chunk warning; the vegetation test still emits existing `BufferGeometry.toNonIndexed()` warnings. Neither warning is from the snow-removal path.
 
-**Next:** install dependencies, run formatting and `npm run check`, fix any failures, then produce a stable readable capture on the owner's WebGL/WebGPU device before claiming visual acceptance. Continue the authorized Phase 5 remainder; Phase 6 follows Phase 5 acceptance, and Phases 7–8 remain gated.
+**Visual status:** no stable readable owner-device capture is available. The previous black-frame/context-restoration captures do not prove terrain appearance. Do not call the owner's white-ground report visually fixed yet.
+
+**Next:** obtain a stable readable capture on the owner's device; then continue the authorized Phase 5 remainder. Phase 6 follows Phase 5 acceptance, and Phases 7–8 remain gated.
