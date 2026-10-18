@@ -8,6 +8,16 @@
  * integer-hash based precisely so no platform's `Math.random` or float transcendental can
  * drift it.
  */
+/**
+ * PBR sets used by the default gameplay terrain splat. Snow is intentionally absent;
+ * winter snow is a gated Phase 7 feature, not part of the current ground material.
+ */
+export const ACTIVE_TERRAIN_SURFACE_ASSETS = [
+  'tex-leafy-grass-1k',
+  'tex-brown-mud-dry-1k',
+  'tex-rock-face-03-1k',
+] as const;
+
 export interface TerrainConfig {
   /** World seed. Change it and you change the prefecture. */
   readonly seed: number;
@@ -60,11 +70,10 @@ export interface TerrainConfig {
     readonly blendRadiusMeters: number;
   };
   /**
-   * Snowline: above this height the splat *starts* to hold snow, in patches.
-   * Kept high (the volcano peak is 300 m) so snow stays a small alpine cap on
-   * Hinode-dake rather than a biome: most of the prefecture never sees it.
+   * Altitude where gameplay ground transitions from lowland grass toward exposed alpine
+   * soil and rock. There is intentionally no snow layer in the current terrain renderer.
    */
-  readonly snowlineMeters: number;
+  readonly alpineRocklineMeters: number;
   /**
    * Near-tier parallax occlusion (Phase 4): the closest LOD ring raymarches the
    * splat's blended scanned displacement so close ground has real depth.
@@ -104,6 +113,6 @@ export const TERRAIN_CONFIG: TerrainConfig = {
     flatRadiusMeters: 45,
     blendRadiusMeters: 110,
   },
-  snowlineMeters: 190,
+  alpineRocklineMeters: 190,
   pom: { steps: 12, depthMeters: 0.09, fadeStartMeters: 16, fadeEndMeters: 42 },
 };

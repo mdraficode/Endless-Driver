@@ -18,7 +18,7 @@ import {
   vertexColor,
 } from 'three/tsl';
 
-import type { TerrainConfig } from '../config/terrain';
+import { ACTIVE_TERRAIN_SURFACE_ASSETS, type TerrainConfig } from '../config/terrain';
 import { loadMaterialTextureSet, type MaterialTextureSet } from '../assets/AssetManifest';
 import type { TerrainSampler } from './terrain-height';
 import type { SceneContent } from './WorldContent';
@@ -49,16 +49,6 @@ interface LoadedChunk {
 const GRASS_UV = 0.5; // leafy_grass: 2 m scan
 const SOIL_UV = 0.77; // brown_mud_dry: 1.3 m scan
 const ROCK_UV = 0.45; // rock_face_03: ~2.2 m face
-const SNOW_UV = 0.5; // snow_01: 2 m scan
-
-/** Manifest ids of the scanned CC0 sets, in splat order [grass, soil, rock, snow]. */
-const SURFACE_ASSETS = [
-  'tex-leafy-grass-1k',
-  'tex-brown-mud-dry-1k',
-  'tex-rock-face-03-1k',
-  'tex-snow-01-1k',
-] as const;
-
 /**
  * Streamed procedural terrain: the Phase 4 ground.
  *
@@ -75,7 +65,7 @@ const SURFACE_ASSETS = [
  * the closest LOD ring, which wears the near material whose sampling position is
  * raymarched through the blended scanned displacement (POM). Per-vertex data carries the splat weights and a macro
  * tint (hundred-metre variation + curvature occlusion); the scanned CC0 sets supply the
- * detail — grass/soil/rock/snow albedos with normal and packed AO/roughness maps, tiled
+ * detail — grass/soil/rock albedos with normal and packed AO/roughness maps, tiled
  * by world position, rock triplanar so cliffs do not stretch, all fading back to the
  * macro tint with distance so far LODs stay calm. The weights are the same numbers the
  * physics surface query mixes grip from (`terrain-surface.ts`): what a slope looks like
@@ -176,13 +166,15 @@ export class TerrainWorld implements SceneContent {
   }
 
   /**
-   * Loads the four scanned surface sets through the asset manifest and switches the
+   * Loads the three active scanned surface sets through the asset manifest and switches the
    * material to the textured splat. Called once by `Application.start` beside the HDRI
    * load; failures keep the flat material and are reported, never thrown — the game must
    * boot on a partial asset set.
    */
   async loadSurfaces(): Promise<void> {
-    const sets = await Promise.all(SURFACE_ASSETS.map((id) => loadMaterialTextureSet(id)));
+    const sets = await Promise.all(
+      ACTIVE_TERRAIN_SURFACE_ASSETS.map((id) => loadMaterialTextureSet(id)),
+    );
     if (sets.some((set) => set === null)) {
       for (const set of sets) {
         set?.dispose();
@@ -202,7 +194,7 @@ export class TerrainWorld implements SceneContent {
           set.dispose();
         }
         console.warn(
-          `terrain: surface "${SURFACE_ASSETS[i] ?? i}" decoded blank on this device; keeping the flat splat`,
+          `terrain: surface "${ACTIVE_TERRAIN_SURFACE_ASSETS[i] ?? i}" decoded blank on this device; keeping the flat splat`,
         );
         return;
       }
@@ -217,7 +209,7 @@ export class TerrainWorld implements SceneContent {
       }
     }
     this.#surfaceSets = loaded;
-    // POM is only honest with all four displacement maps; without them the near
+    // POM is only honest with all three active displacement maps; without them the near
     // material is the same splat, just on its own instance.
     this.#pomActive = loaded.every((set) => set.height !== null);
     this.#applySurfaceNodes(loaded, this.#material, false);
@@ -226,7 +218,7 @@ export class TerrainWorld implements SceneContent {
 
   /**
    * The textured splat: world-space tiling, triplanar rock, distance fade to macro tint.
-   * With `pom` (near tier only, all four displacement maps present) the sampling
+   * With `pom` (near tier only, all three active displacement maps present) the sampling
    * position is first raymarched through the splat-blended scanned displacement:
    * the ray starts on the relief's top plane and steps down until it meets the
    * heightfield, with one secant refinement across the crossing layer. The
@@ -238,8 +230,7 @@ export class TerrainWorld implements SceneContent {
     material: MeshStandardNodeMaterial,
     pom: boolean,
   ): void {
-    const [grass, soil, rock, snow] = sets as [
-      MaterialTextureSet,
+    const [grass, soil, rock] = sets as [
       MaterialTextureSet,
       MaterialTextureSet,
       MaterialTextureSet,
@@ -268,8 +259,7 @@ export class TerrainWorld implements SceneContent {
         texture(grass.height!, xz.mul(GRASS_UV))
           .r.mul(splat.x)
           .add(texture(soil.height!, xz.mul(SOIL_UV)).r.mul(splat.y))
-          .add(texture(rock.height!, xz.mul(0.22)).r.mul(splat.z))
-          .add(texture(snow.height!, xz.mul(0.5)).r.mul(splat.w));
+          .add(texture(rock.height!, xz.mul(0.22)).r.mul(splat.z));
       // The march is unrolled while the graph is built and the first crossing is
       // selected arithmetically (no shader loop or function boundary): texture
       // uniforms then stay in the main material program on both backends, which
@@ -320,10 +310,6 @@ export class TerrainWorld implements SceneContent {
     const grassLuma = grassRaw.dot(vec3(0.299, 0.587, 0.114));
     const grassAlbedo = mix(vec3(grassLuma), grassRaw, float(1.45)).mul(vec3(0.74, 1.12, 0.62));
     const soilAlbedo = texture(soil.diffuse, wxz.mul(SOIL_UV)).rgb;
-    // Shaded blue-grey grade: raw scanned snow under this sun sits near paper
-    // white and reads as fog against the pale horizon. The scan's sparkle and
-    // trample detail survive; only the luminance comes down.
-    const snowAlbedo = texture(snow.diffuse, wxz.mul(SNOW_UV)).rgb.mul(vec3(0.62, 0.7, 0.86));
     // Rock triplanar: three projections blended by the world normal, so a cliff face
     // samples the scan across its own plane instead of smearing the top-down tile.
     const axis = normalWorld.abs();
@@ -338,24 +324,18 @@ export class TerrainWorld implements SceneContent {
     const detailAlbedo = grassAlbedo
       .mul(splat.x)
       .add(soilAlbedo.mul(splat.y))
-      .add(rockAlbedo.mul(splat.z))
-      .add(snowAlbedo.mul(splat.w));
+      .add(rockAlbedo.mul(splat.z));
 
     const sampleArm = (set: MaterialTextureSet, uvScale: number) =>
       set.arm !== null ? texture(set.arm, wxz.mul(uvScale)) : null;
     const grassArm = sampleArm(grass, GRASS_UV);
     const soilArm = sampleArm(soil, SOIL_UV);
     const rockArm = sampleArm(rock, ROCK_UV);
-    const snowArm = sampleArm(snow, SNOW_UV);
     const mixArm = (channel: 'r' | 'g', fallback: number) => {
-      if (grassArm === null || soilArm === null || rockArm === null || snowArm === null) {
+      if (grassArm === null || soilArm === null || rockArm === null) {
         return float(fallback);
       }
-      return grassArm[channel]
-        .mul(splat.x)
-        .add(soilArm[channel].mul(splat.y))
-        .add(rockArm[channel].mul(splat.z))
-        .add(snowArm[channel].mul(splat.w));
+      return grassArm[channel].mul(splat.x).add(soilArm[channel].mul(splat.y)).add(rockArm[channel].mul(splat.z));
     };
 
     const macro = vertexColor();
@@ -369,8 +349,7 @@ export class TerrainWorld implements SceneContent {
     const detailNormal = texture(grass.normal, wxz.mul(GRASS_UV))
       .rgb.mul(splat.x)
       .add(texture(soil.normal, wxz.mul(SOIL_UV)).rgb.mul(splat.y))
-      .add(texture(rock.normal, wxz.mul(ROCK_UV)).rgb.mul(splat.z))
-      .add(texture(snow.normal, wxz.mul(SNOW_UV)).rgb.mul(splat.w));
+      .add(texture(rock.normal, wxz.mul(ROCK_UV)).rgb.mul(splat.z));
     material.normalNode = mix(flatNormal, detailNormal, detailFade.mul(0.85));
   }
 

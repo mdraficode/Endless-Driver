@@ -16,11 +16,11 @@ import { trailInfluenceAt } from './trails';
  * that looks like grass grips like grass because both systems asked the same question,
  * not because one of them looked at a picture of the other.
  */
-export type TerrainSurfaceId = 'grass' | 'soil' | 'rock' | 'snow' | 'asphalt' | 'gravel';
+export type TerrainSurfaceId = 'grass' | 'soil' | 'rock' | 'asphalt' | 'gravel';
 
 export interface TerrainSurfaceSample {
   readonly id: TerrainSurfaceId;
-  /** Normalised [grass, soil, rock, snow] weights the response was mixed from. */
+  /** Normalised [grass, soil, rock, reserved-zero] weights the response was mixed from. */
   readonly weights: readonly [number, number, number, number];
   /** Multiplier on the tire model's dry-asphalt friction coefficient. */
   readonly gripModifier: number;
@@ -28,15 +28,15 @@ export interface TerrainSurfaceSample {
   readonly rollingResistance: number;
 }
 
-const SURFACE_IDS: readonly TerrainSurfaceId[] = ['grass', 'soil', 'rock', 'snow'];
+const SURFACE_IDS: readonly TerrainSurfaceId[] = ['grass', 'soil', 'rock'];
 /**
  * Relative grip by surface: grass holds less than the asphalt the tire model is tuned on.
  * Soil is dry compacted dirt (~0.72-0.75 of asphalt): with soil patches now covering whole
  * fields, the old 0.64 put a slippery grip step under the tyres at every patch edge.
  */
-const GRIP: readonly [number, number, number, number] = [0.8, 0.74, 0.95, 0.4];
+const GRIP: readonly [number, number, number] = [0.8, 0.74, 0.95];
 /** Rolling resistance by surface: soft ground drinks momentum; rock barely resists. */
-const ROLLING: readonly [number, number, number, number] = [0.035, 0.05, 0.02, 0.08];
+const ROLLING: readonly [number, number, number] = [0.035, 0.05, 0.02];
 
 export function sampleTerrainSurface(
   sampler: TerrainSampler,
@@ -76,13 +76,13 @@ export function sampleTerrainSurface(
     trailInfluenceAt(x, z),
   );
   let dominant = 0;
-  for (let index = 1; index < 4; index += 1) {
+  for (let index = 1; index < 3; index += 1) {
     if ((weights[index] ?? 0) > (weights[dominant] ?? 0)) {
       dominant = index;
     }
   }
-  const mix = (table: readonly [number, number, number, number]): number =>
-    table[0] * weights[0] + table[1] * weights[1] + table[2] * weights[2] + table[3] * weights[3];
+  const mix = (table: readonly [number, number, number]): number =>
+    table[0] * weights[0] + table[1] * weights[1] + table[2] * weights[2];
   return {
     id: SURFACE_IDS[dominant] ?? 'grass',
     weights,

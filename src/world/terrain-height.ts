@@ -158,7 +158,9 @@ export function terrainPatchAt(config: TerrainConfig, x: number, z: number): num
 export type TerrainSplatWeights = readonly [number, number, number, number];
 
 /**
- * Which surfaces live at a point, as normalised [grass, soil, rock, snow] weights.
+ * Which surfaces live at a point, as normalised [grass, soil, rock, reserved] weights.
+ * The fourth component stays in the vertex layout for compatibility, but is deliberately
+ * fixed at zero: gameplay terrain has no snow material or white ground layer.
  *
  * This is the single source the renderer and the physics surface query both read: the
  * material blends scanned textures by these weights, and grip/rolling resistance are
@@ -173,50 +175,45 @@ export function terrainSurfaceWeights(
   patch = 0,
   trail = 0,
 ): TerrainSplatWeights {
-  // Snow is a patchy alpine cap, not a biome: the effective snowline wanders
-  // with the large and fine patch fields, wind-scoured slopes expose rock
-  // early, and even well above the line only snow-favoured patches hold a
-  // full snow weight — the rest is exposed alpine rock and soil. A summit
-  // therefore reads as broken grey-brown ground with snow in its hollows,
-  // never as a uniform white sheet.
-  const effectiveSnowline = config.snowlineMeters + variation * 22 + patch * 12;
-  const altitude = smoothstep(effectiveSnowline, effectiveSnowline + 55, height);
-  const snowPatch = 0.08 + 0.92 * smoothstep(0.05, 0.45, patch * 0.72 + variation * 0.48);
-  let snow = altitude * (1 - smoothstep(0.16, 0.36, slope)) * snowPatch;
-
+  // There is no snow layer in the gameplay world. Above the alpine transition the same
+  // high ground is exposed dark rock and soil instead, so neither distant macro colour nor
+  // near scanned textures can turn the terrain into a white field.
+  const altitude = smoothstep(
+    config.alpineRocklineMeters,
+    config.alpineRocklineMeters + 55,
+    height,
+  );
+  const alpineExposure = smoothstep(0.05, 0.45, patch * 0.72 + variation * 0.48);
   const rockSlope = smoothstep(0.22, 0.42, slope);
-  const alpineRock = altitude * (1 - snowPatch) * 0.62;
+  const alpineRock = altitude * (0.28 + (1 - alpineExposure) * 0.28);
   const rockOutcrop =
     smoothstep(0.32, 0.62, patch) * smoothstep(0.012, 0.045, slope) * (1 - altitude * 0.5) * 0.85;
   let rock = Math.min(1, Math.max(rockSlope, alpineRock, rockOutcrop));
 
-  // Dry soil patches break up the flat lowland grass at hectare scale, so a
-  // field is a patchwork the car can see (and feel), not one green carpet.
+  // Dry soil patches break up the flat lowland grass at hectare scale. On high ground,
+  // the alpine field adds exposed soil among the rock; no snow texture is involved.
   const soilSlope = smoothstep(0.07, 0.22, slope) * (1 - rockSlope);
   const drySoilPatch = smoothstep(0.02, 0.45, variation) * (1 - rock) * (1 - altitude) * 0.8;
-  const alpineSoil = altitude * (1 - snowPatch) * 0.22 * (1 - rock);
+  const alpineSoil = altitude * (0.12 + alpineExposure * 0.1) * (1 - rock);
   let soil = Math.min(1, Math.max(soilSlope, drySoilPatch) + alpineSoil);
 
-  // Grass fades with altitude so exposed high ground goes to rock/soil,
-  // never to green, when the snow patch field says "scoured".
-  let grass = Math.max(0, 1 - rock - soil - snow);
-  grass *= 1 - altitude * 0.65;
+  // Keep lowlands green; progressively expose soil and rock at high altitude.
+  let grass = Math.max(0, 1 - rock - soil);
+  grass *= 1 - altitude * 0.48;
   // Worn trail dirt: off-road routes read as a packed-earth band — soil-dominant
-  // in the middle, grass reclaiming the feathered edge, no snow or rock on the
-  // line. The same numbers feed physics (terrain-surface.ts), so the band a car
-  // sees is the dirt grip it feels.
+  // in the middle, grass reclaiming the feathered edge. The same numbers feed physics
+  // (terrain-surface.ts), so the band a car sees is the dirt grip it feels.
   if (trail > 0) {
     const packed = Math.min(1, trail);
     grass *= 1 - packed * 0.8;
     rock *= 1 - packed * 0.7;
-    snow *= 1 - packed;
     soil = Math.max(soil * (1 - packed), packed * 0.9);
   }
-  const total = grass + soil + rock + snow;
+  const total = grass + soil + rock;
   if (total <= 1e-6) {
     return [1, 0, 0, 0];
   }
-  return [grass / total, soil / total, rock / total, snow / total];
+  return [grass / total, soil / total, rock / total, 0];
 }
 
 /**
@@ -224,9 +221,9 @@ export function terrainSurfaceWeights(
  * a border colour their shared edge identically (the heights agree there by construction;
  * the colours must too, or the seam shows even when the geometry does not).
  *
- * The macro tint half of the Phase 4 splat: grass lowlands, soil on worked slopes, rock
- * where it is steep, pale snow-rock above the snowline. The scanned CC0 sets supply the
- * detail (see TerrainWorld); this tint carries the hundred-metre colour story and the
+ * The macro tint half of the Phase 4 splat: green grass lowlands, soil on worked slopes,
+ * and dark exposed rock at altitude or on steep ground. The scanned CC0 sets supply the
+ * near detail (see TerrainWorld); this tint carries the hundred-metre colour story and the
  * far-field blend, and both read the same weights from `terrainSurfaceWeights`.
  */
 export function terrainColorAt(
@@ -251,11 +248,8 @@ export function terrainColorAt(
   ];
   const soil: readonly [number, number, number] = [0.28, 0.19, 0.11];
   const rock: readonly [number, number, number] = [0.32, 0.31, 0.3];
-  // Blue-grey shaded snow, deliberately well below paper white: snow that
-  // sits at 0.9 luminance under a pale sky is indistinguishable from fog.
-  const snow: readonly [number, number, number] = [0.6, 0.67, 0.78];
 
-  const [grassWeight, soilWeight, rockWeight, snowWeight] = terrainSurfaceWeights(
+  const [grassWeight, soilWeight, rockWeight] = terrainSurfaceWeights(
     config,
     height,
     slope,
@@ -265,15 +259,9 @@ export function terrainColorAt(
   );
   const shade = Math.min(1.08, Math.max(0.8, occlusion));
   const color = [
-    (grass[0] * grassWeight + soil[0] * soilWeight + rock[0] * rockWeight + snow[0] * snowWeight) *
-      shade *
-      groundTint[0],
-    (grass[1] * grassWeight + soil[1] * soilWeight + rock[1] * rockWeight + snow[1] * snowWeight) *
-      shade *
-      groundTint[1],
-    (grass[2] * grassWeight + soil[2] * soilWeight + rock[2] * rockWeight + snow[2] * snowWeight) *
-      shade *
-      groundTint[2],
+    (grass[0] * grassWeight + soil[0] * soilWeight + rock[0] * rockWeight) * shade * groundTint[0],
+    (grass[1] * grassWeight + soil[1] * soilWeight + rock[1] * rockWeight) * shade * groundTint[1],
+    (grass[2] * grassWeight + soil[2] * soilWeight + rock[2] * rockWeight) * shade * groundTint[2],
   ] as const;
   return color;
 }

@@ -43,25 +43,20 @@ describe('session spawn points', () => {
     expect(resolveSpawnPoint('atlantis', 0).id).toBe(SPAWN_POINTS[0]!.id);
   });
 
-  describe('spawn views are not snow fields', () => {
-    // Owner acceptance (2026-10-17): no start may open onto 'nothing but snow'.
-    // A start's *point* being snow-free is not enough — the whole 360-degree view
-    // the camera sees must be snow-free too.
-    it('keeps snow-dominant ground under 5% within 250 m of every start', () => {
+  describe('spawn views contain no snow ground', () => {
+    // A start's point being snow-free is not enough: the whole 360-degree camera
+    // view must remain green/soil/rock. Snow is removed from gameplay terrain entirely.
+    it('keeps the reserved snow splat at zero within 250 m of every start', () => {
       const sampler = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
       for (const spawn of SPAWN_POINTS) {
-        let snow = 0;
-        let n = 0;
         for (let x = spawn.x - 250; x <= spawn.x + 250; x += 25) {
           for (let z = spawn.z - 250; z <= spawn.z + 250; z += 25) {
             const height = sampler.heightAt(x, z);
             const slope = 1 - sampler.normalAt(x, z).y;
             const weights = terrainSurfaceWeights(TERRAIN_CONFIG, height, slope, 0, 0);
-            if (weights[3] > 0.5) snow += 1;
-            n += 1;
+            expect(weights[3], `${spawn.id} at (${x}, ${z})`).toBe(0);
           }
         }
-        expect(snow / n, spawn.id).toBeLessThan(0.05);
       }
     });
   });

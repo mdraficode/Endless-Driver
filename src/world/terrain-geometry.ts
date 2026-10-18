@@ -79,8 +79,8 @@ export function buildChunkGeometryData(
   const positions = new Float32Array((gridCount + borderCount) * 3);
   const normals = new Float32Array((gridCount + borderCount) * 3);
   const colors = new Float32Array((gridCount + borderCount) * 3);
-  // [grass, soil, rock, snow] per vertex: the material blends scanned sets by these, and
-  // they are the same weights the physics surface query mixes grip from.
+  // [grass, soil, rock, reserved-zero] per vertex: the material blends the three active
+  // scanned sets by these, and they are the same weights the physics surface query uses.
   const splats = new Float32Array((gridCount + borderCount) * 4);
   // Macro tint around 1.0 (variation + curvature occlusion): the textured material
   // multiplies its detail by this, the flat material ignores it.

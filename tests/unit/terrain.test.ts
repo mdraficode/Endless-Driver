@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { TERRAIN_CONFIG } from '../../src/config/terrain';
-import { createTerrainSampler } from '../../src/world/terrain-height';
+import { ACTIVE_TERRAIN_SURFACE_ASSETS, TERRAIN_CONFIG } from '../../src/config/terrain';
+import {
+  createTerrainSampler,
+  terrainColorAt,
+  terrainPatchAt,
+  terrainSurfaceWeights,
+  terrainVariationAt,
+} from '../../src/world/terrain-height';
 import { buildChunkGeometry } from '../../src/world/terrain-geometry';
+import { groundTintAt } from '../../src/world/districts';
 import { sampleTerrainSurface } from '../../src/world/terrain-surface';
 import {
   planChunks,
@@ -114,6 +121,15 @@ describe('chunk geometry', () => {
 });
 
 describe('surface splat and driving response', () => {
+  it('loads no snow texture into gameplay terrain', () => {
+    expect(ACTIVE_TERRAIN_SURFACE_ASSETS).toEqual([
+      'tex-leafy-grass-1k',
+      'tex-brown-mud-dry-1k',
+      'tex-rock-face-03-1k',
+    ]);
+    expect(ACTIVE_TERRAIN_SURFACE_ASSETS.some((asset) => asset.includes('snow'))).toBe(false);
+  });
+
   it('writes normalised splat weights and a sane tint per vertex', () => {
     const sampler = createTerrainSampler(TERRAIN_CONFIG);
     const geometry = buildChunkGeometry(sampler, 3, -2, 8);
@@ -121,7 +137,7 @@ describe('surface splat and driving response', () => {
     const tint = geometry.getAttribute('tint');
     expect(splat.itemSize).toBe(4);
     expect(tint.count).toBe(splat.count);
-    for (let index = 0; index < splat.count; index += 25) {
+    for (let index = 0; index < splat.count; index += 1) {
       const sum =
         splat.getComponent(index, 0) +
         splat.getComponent(index, 1) +
@@ -130,47 +146,44 @@ describe('surface splat and driving response', () => {
       expect(sum).toBeCloseTo(1, 4);
       expect(tint.getComponent(index, 0)).toBeGreaterThan(0.6);
       expect(tint.getComponent(index, 0)).toBeLessThan(1.1);
+      expect(splat.getComponent(index, 3)).toBe(0);
     }
     geometry.dispose();
   });
 
-  it('keeps snow a small patchy alpine cap, never a lowland biome', () => {
+  it('never generates a snow layer or pale macro ground, including at the summit', () => {
     const sampler = createTerrainSampler(TERRAIN_CONFIG);
     const [vx, vz] = TERRAIN_CONFIG.volcano.position;
-    // Nothing below 150 m carries any snow weight, whatever the patch field says.
-    for (let dx = -1100; dx <= 1100; dx += 55) {
-      for (let dz = -1100; dz <= 1100; dz += 55) {
-        const x = vx + dx;
-        const z = vz + dz;
-        if (sampler.heightAt(x, z) < 150) {
-          expect(sampleTerrainSurface(sampler, x, z).weights[3]).toBe(0);
-        }
-      }
-    }
-    // Across the whole volcano footprint, snow-dominant ground is a minority.
-    let total = 0;
-    let snowDominant = 0;
-    for (let dx = -1100; dx <= 1100; dx += 55) {
-      for (let dz = -1100; dz <= 1100; dz += 55) {
-        total += 1;
-        if (sampleTerrainSurface(sampler, vx + dx, vz + dz).id === 'snow') {
-          snowDominant += 1;
-        }
-      }
-    }
-    expect(snowDominant / total).toBeLessThan(0.12);
-    // And the summit itself is broken ground: snow patches beside exposed rock.
     const summitKinds = new Set<string>();
-    for (let dx = -260; dx <= 260; dx += 40) {
-      for (let dz = -260; dz <= 260; dz += 40) {
+    for (let dx = -1100; dx <= 1100; dx += 55) {
+      for (let dz = -1100; dz <= 1100; dz += 55) {
         const x = vx + dx;
         const z = vz + dz;
-        if (sampler.heightAt(x, z) > 200) {
-          summitKinds.add(sampleTerrainSurface(sampler, x, z).id);
-        }
+        const height = sampler.heightAt(x, z);
+        const slope = 1 - sampler.normalAt(x, z).y;
+        const variation = terrainVariationAt(TERRAIN_CONFIG, x, z);
+        const patch = terrainPatchAt(TERRAIN_CONFIG, x, z);
+        const weights = terrainSurfaceWeights(TERRAIN_CONFIG, height, slope, variation, patch);
+        const surface = sampleTerrainSurface(sampler, x, z);
+        const macro = terrainColorAt(
+          TERRAIN_CONFIG,
+          height,
+          slope,
+          variation,
+          1,
+          groundTintAt(x, z),
+          patch,
+        );
+
+        // The fourth splat channel is reserved for compatibility, not snow.
+        expect(weights[3]).toBe(0);
+        expect(surface.weights[3]).toBe(0);
+        expect(surface.id).not.toBe('snow');
+        // The distance/macro colour can never become a white field or LOD seam.
+        expect(Math.max(...macro)).toBeLessThan(0.5);
+        if (height > 200) summitKinds.add(surface.id);
       }
     }
-    expect(summitKinds.has('snow')).toBe(true);
     expect(summitKinds.has('rock')).toBe(true);
   });
 
@@ -192,7 +205,7 @@ describe('surface splat and driving response', () => {
     expect(maxRockWeight).toBeGreaterThan(0.25);
   });
 
-  it('drives like grass on the spawn plateau and like rock/snow on the volcano', () => {
+  it('drives like grass on the spawn plateau and like exposed rock on the volcano', () => {
     const sampler = createTerrainSampler(TERRAIN_CONFIG);
     const plateau = sampleTerrainSurface(sampler, 10, -10);
     expect(plateau.id).toBe('grass');
@@ -201,7 +214,8 @@ describe('surface splat and driving response', () => {
     expect(plateau.rollingResistance).toBeGreaterThan(0.025);
     const [vx, vz] = TERRAIN_CONFIG.volcano.position;
     const summit = sampleTerrainSurface(sampler, vx, vz);
-    expect(['rock', 'snow']).toContain(summit.id);
+    expect(summit.weights[2]).toBeGreaterThan(0.25);
+    expect(summit.weights[3]).toBe(0);
     const flank = sampleTerrainSurface(sampler, vx + 420, vz + 260);
     expect(flank.gripModifier).not.toBeCloseTo(plateau.gripModifier, 2);
   });

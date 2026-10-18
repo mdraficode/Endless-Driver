@@ -48,9 +48,11 @@ owns it. "Tier" refers to §3.
 
 ### 2.2 Terrain and roads
 
+**Owner correction (2026-10-18):** gameplay terrain must not render white/snow ground. The active splat is grass, soil, and rock only; snow is not loaded or weighted in the current gameplay material. The owner-reported white ground remains unresolved until a stable, readable owner-device capture confirms the scene. Seasonal snow belongs to the gated Phase 7 scope and must not reappear in the default gameplay world.
+
 | Target                                                                                                          | Measurable check                                                                                                                         | Phase |
 | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----- |
-| Multi-layer splat terrain (≥ 4 materials) with height/AO-based blending, no visible tiling                      | At 2 m and 20 m viewing distance, no repeating pattern within a 50 m span; layer boundaries follow terrain features rather than UV seams | 4     |
+| Three-material summer-ground splat (grass, soil, rock), with height/AO blending and no visible tiling          | At 2 m and 20 m viewing distance, no repeating pattern within a 50 m span; layer boundaries follow terrain features rather than UV seams | 4     |
 | Parallax occlusion mapping for near-field ground relief (high tier)                                             | Road-edge gravel and kerb relief reads as depth, not a flat texture, when the camera is within ~8 m                                      | 4     |
 | Procedural road network with believable surfacing: asphalt layers, markings, kerbs, shoulders, cambered corners | A 500 m drive shows continuous asphalt with correct markings, no UV stretching on curves, shoulder material transitions                  | 4     |
 | Water: rivers/lakes with reflections and depth-based colour                                                     | Water reflects the sky and nearby geometry; shallow areas show bottom colour                                                             | 4     |

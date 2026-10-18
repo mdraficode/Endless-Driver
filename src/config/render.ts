@@ -559,7 +559,7 @@ export const RENDER_CONFIG: RenderConfig = {
     toneMapping: 'aces',
     // Baseline exposure, multiplied by the daylight phase (1 at noon). 0.94 put the
     // whole daytime frame at or past the top of the tone curve: grass, tree lines and
-    // the snow cap all compressed into the same near-white and read as fog (owner
+    // high-ground textures all compressed into the same near-white and read as fog (owner
     // report, 2026-10-17). 0.72 keeps mid-tones on the steep part of the curve.
     toneMappingExposure: 0.72,
   },

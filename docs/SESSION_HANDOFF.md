@@ -1,9 +1,9 @@
 # Session Handoff — Endless Driver
 
-**Updated:** 2026-10-15  
-**Current stage:** Phases 1–2 implemented, verified, and pushed; the visual-fidelity re-plan and the free-and-open asset strategy are written; region, brand, audio, and sourcing decisions are resolved  
-**Authorized development phase:** Phases 1–3 (Phase 3 authorized 2026-10-14)  
-**Next development instruction:** Owner authorizes Phase 3 (renderer, lighting, post, asset/material pipeline). The five re-plan questions are answered and recorded in ADR 0005; see section 9. No development is authorized until then.
+**Updated:** 2026-10-18  
+**Current stage:** Phase 4 built scope delivered; Phase 5 in progress; Phase 6 authorized after Phase 5 acceptance; Phase 3 code complete with named-hardware frame-budget validation still open  
+**Authorized development phases:** Phases 1–6, executed in order; Phases 7–8 remain gated  
+**Next action:** Remove snow/white ground from gameplay terrain and validate the guardrails. The owner's visual report remains unresolved until a stable, readable owner-device capture confirms the result. Continue the authorized Phase 5 remainder; do not begin Phase 6 before Phase 5 acceptance.
 
 > **Re-plan (2026-10-14, decisions resolved):** the owner rejected the Phase 2 presentation and set a
 > Forza-Horizon-class visual target. Research and specification are complete and committed alongside
@@ -31,11 +31,11 @@
 | Implement Phase 2 (vehicle physics, keyboard smoothing, dynamic chase camera)                        | Done — see sections 3–5                                                                                                    |
 | Reach “Forza Horizon level” visuals (realistic car, environment aesthetics, seasons, roads, terrain) | Re-plan complete 2026-10-14; implementation gated — see section 9                                                          |
 | Use only free/open premium assets, no payments; region = rural Japan                                 | Resolved 2026-10-14 — `docs/ASSET_SOURCES.md` (API-verified sources), ADR 0005, region brief in `docs/VISUAL_TARGET.md` §5 |
-| Do **not** start Phase 3 without explicit instruction                                                | Honored — no terrain, roads, streaming, or weather code exists                                                             |
+| Work in phase order; Phases 5–6 authorized 2026-10-18, Phases 7–8 gated                           | Phase 5 in progress; complete it before starting Phase 6                                                                  |
 
 Phase 2 was authorized with these constraints, all honored: Rapier **or** Cannon-es allowed (Rapier
 chosen — sole physics authority, never two solvers); the slip-friction/drift behaviour is an explicit
-requirement, not polish; keyboard only for now (touch stays in Phase 5); a placeholder/low-poly car
+requirement, not polish; touch driving controls were pulled forward from Phase 8 and delivered; a placeholder/low-poly car
 mesh is acceptable; wheels must visibly steer and roll from physics state.
 
 ## 2. Canonical repository and verified persistence
@@ -1527,4 +1527,14 @@ default back to `'auto'` is a one-line change once real-hardware captures exist.
 **Still open (carried):** tree-impact feel from round 5 remains rejected by the
 owner (criteria in §43); the remaining realism ceiling is asset-class — procedural
 cone trees and the box placeholder car — which is exactly what Phases 5-6 unlock
-(scanned CC0 trees, hero car). Owner decision pending on unlocking them.
+(scanned CC0 trees, hero car). At that 2026-10-17 checkpoint the authorization was pending; the owner authorized Phases 5–6 on 2026-10-18, in phase order.
+
+## 48. Remove snow from gameplay terrain (2026-10-18)
+
+Owner instruction: "Remove all the white ground terrain. I have had enough of this."
+
+**Implementation:** gameplay terrain now uses only grass, soil, and rock. The snow asset is no longer loaded by `TerrainWorld`, the shader no longer samples snow albedo/normal/ARM/displacement, and the fourth splat channel is reserved and fixed at zero. High ground transitions to exposed rock/soil instead of a snow layer. Physics surface selection and grip mixing likewise only include grass/soil/rock. Tests now require zero snow weight across the full volcano footprint, every session-start view, and every generated terrain vertex; they also assert the far-field macro ground colour stays below the pale/white range.
+
+**Validation status:** code and tests are edited but not yet run in this fresh clone. No stable readable owner-device capture is available; do not call the owner's visual report fixed yet. The prior black-frame/context-restoration captures do not prove terrain appearance.
+
+**Next:** install dependencies, run formatting and `npm run check`, fix any failures, then produce a stable readable capture on the owner's WebGL/WebGPU device before claiming visual acceptance. Continue the authorized Phase 5 remainder; Phase 6 follows Phase 5 acceptance, and Phases 7–8 remain gated.
