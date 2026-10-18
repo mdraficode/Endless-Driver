@@ -37,11 +37,11 @@ export function resolveFoliageBacklightStrength(sunIntensity: number, isNight: b
  * direction/colour, and adds to `materialEmissive` so existing GLTF emissive maps are retained.
  */
 export function createFoliageEmissiveNode(
-  foliageMask: Node,
-  sunDirection: Node,
-  sunTint: Node,
-  sunStrength: Node,
-): Node {
+  foliageMask: Node<'float'>,
+  sunDirection: Node<'vec3'>,
+  sunTint: Node<'vec3'>,
+  sunStrength: Node<'float'>,
+): Node<'vec3'> {
   const viewDirection = cameraPosition.sub(positionWorld).normalize();
   const facingCamera = normalWorld.dot(viewDirection).max(0);
   const sunBehindLeaf = normalWorld.dot(sunDirection).negate().max(0);
@@ -61,9 +61,9 @@ export function createFoliageEmissiveNode(
  */
 export function createScannedFoliageMaterial(
   source: MeshStandardMaterial,
-  sunDirection: Node,
-  sunTint: Node,
-  sunStrength: Node,
+  sunDirection: Node<'vec3'>,
+  sunTint: Node<'vec3'>,
+  sunStrength: Node<'float'>,
 ): MeshStandardNodeMaterial {
   const material = new MeshStandardNodeMaterial().copy(source);
   material.color.multiplyScalar(FOLIAGE_LIGHTING_CONFIG.albedoLift);
