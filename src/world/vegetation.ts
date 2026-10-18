@@ -8,11 +8,12 @@ import {
   IcosahedronGeometry,
   InstancedMesh,
   Object3D,
+  type Material,
   Quaternion,
   Vector3,
 } from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
-import { vertexColor } from 'three/tsl';
+import { attribute, uniform, vertexColor } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import {
@@ -20,6 +21,14 @@ import {
   type VegetationConfig,
   type VegetationSpecies,
 } from '../config/districts';
+import { FOLIAGE_LIGHTING_CONFIG } from '../config/foliage-lighting';
+import type { DaylightState } from '../environment/EnvironmentClock';
+import {
+  createFoliageEmissiveNode,
+  createScannedFoliageMaterial,
+  isFoliageMaterial,
+  resolveFoliageBacklightStrength,
+} from './foliage-lighting';
 import {
   generateChunkVegetation,
   hash01,
@@ -56,8 +65,11 @@ import { planVegetationWindow } from './vegetation-streaming';
 // variants for leafy species so a forest is not one flat colour.
 // ---------------------------------------------------------------------------
 
-function paint(geometry: BufferGeometry, hex: number): BufferGeometry {
+function paint(geometry: BufferGeometry, hex: number, foliage = false): BufferGeometry {
   const color = new Color(hex);
+  if (foliage) {
+    color.multiplyScalar(FOLIAGE_LIGHTING_CONFIG.albedoLift);
+  }
   const count = geometry.getAttribute('position').count;
   const colors = new Float32Array(count * 3);
   for (let index = 0; index < count; index += 1) {
@@ -66,6 +78,10 @@ function paint(geometry: BufferGeometry, hex: number): BufferGeometry {
     colors[index * 3 + 2] = color.b;
   }
   geometry.setAttribute('color', new BufferAttribute(colors, 3));
+  geometry.setAttribute(
+    'foliageMask',
+    new BufferAttribute(new Float32Array(count).fill(foliage ? 1 : 0), 1),
+  );
   return geometry;
 }
 
@@ -75,8 +91,9 @@ function part(
   x: number,
   y: number,
   z: number,
+  foliage = false,
 ): BufferGeometry {
-  const painted = paint(geometry.toNonIndexed(), hex);
+  const painted = paint(geometry.toNonIndexed(), hex, foliage);
   painted.translate(x, y, z);
   return painted;
 }
@@ -93,23 +110,23 @@ export function buildSpeciesGeometry(species: VegetationSpecies, variant: number
     case 'conifer':
       return mergeGeometries([
         part(new CylinderGeometry(0.13, 0.24, 2.3, 5), 0x6b4a33, 0, 0.85, 0),
-        part(new ConeGeometry(1.55, 2.7, 7), tint[0], 0, 2.4, 0),
-        part(new ConeGeometry(1.18, 2.3, 7), tint[0], 0, 3.6, 0),
-        part(new ConeGeometry(0.78, 1.9, 7), tint[0], 0, 4.7, 0),
+        part(new ConeGeometry(1.55, 2.7, 7), tint[0], 0, 2.4, 0, true),
+        part(new ConeGeometry(1.18, 2.3, 7), tint[0], 0, 3.6, 0, true),
+        part(new ConeGeometry(0.78, 1.9, 7), tint[0], 0, 4.7, 0, true),
       ])!;
     case 'broadleaf':
       return mergeGeometries([
         part(new CylinderGeometry(0.15, 0.27, 2.6, 5), 0x6e4f36, 0, 1.0, 0),
-        part(new IcosahedronGeometry(1.55, 0), tint[1], 0, 3.1, 0),
-        part(new IcosahedronGeometry(1.0, 0), tint[1], 0.95, 2.55, 0.3),
-        part(new IcosahedronGeometry(0.92, 0), tint[1], -0.85, 2.7, -0.25),
+        part(new IcosahedronGeometry(1.55, 0), tint[1], 0, 3.1, 0, true),
+        part(new IcosahedronGeometry(1.0, 0), tint[1], 0.95, 2.55, 0.3, true),
+        part(new IcosahedronGeometry(0.92, 0), tint[1], -0.85, 2.7, -0.25, true),
       ])!;
     case 'sakura':
       return mergeGeometries([
         part(new CylinderGeometry(0.14, 0.25, 2.5, 5), 0x574233, 0, 0.95, 0),
-        part(new IcosahedronGeometry(1.5, 0), tint[2], 0, 3.0, 0),
-        part(new IcosahedronGeometry(0.95, 0), tint[2], 0.9, 2.5, -0.2),
-        part(new IcosahedronGeometry(0.88, 0), tint[2], -0.8, 2.6, 0.3),
+        part(new IcosahedronGeometry(1.5, 0), tint[2], 0, 3.0, 0, true),
+        part(new IcosahedronGeometry(0.95, 0), tint[2], 0.9, 2.5, -0.2, true),
+        part(new IcosahedronGeometry(0.88, 0), tint[2], -0.8, 2.6, 0.3, true),
       ])!;
     case 'bamboo': {
       const parts: BufferGeometry[] = [];
@@ -121,7 +138,7 @@ export function buildSpeciesGeometry(species: VegetationSpecies, variant: number
       ];
       for (const [cx, cz] of culms) {
         parts.push(part(new CylinderGeometry(0.045, 0.06, 5.4, 4), 0x7fae56, cx, 2.4, cz));
-        parts.push(part(new ConeGeometry(0.55, 1.5, 5), 0x8fbc62, cx, 5.2, cz));
+        parts.push(part(new ConeGeometry(0.55, 1.5, 5), 0x8fbc62, cx, 5.2, cz, true));
       }
       return mergeGeometries(parts)!;
     }
@@ -157,21 +174,21 @@ export function buildCrownGeometry(species: VegetationSpecies, variant: number):
     case 'conifer':
       return mergeGeometries([
         part(new CylinderGeometry(0.09, 0.13, 1.7, 5), 0x6b4a33, 0, 0.6, 0),
-        part(new ConeGeometry(1.55, 2.7, 7), tint[0], 0, 2.4 + lift, 0),
-        part(new ConeGeometry(1.18, 2.3, 7), tint[0], 0, 3.6 + lift, 0),
-        part(new ConeGeometry(0.78, 1.9, 7), tint[0], 0, 4.7 + lift, 0),
+        part(new ConeGeometry(1.55, 2.7, 7), tint[0], 0, 2.4 + lift, 0, true),
+        part(new ConeGeometry(1.18, 2.3, 7), tint[0], 0, 3.6 + lift, 0, true),
+        part(new ConeGeometry(0.78, 1.9, 7), tint[0], 0, 4.7 + lift, 0, true),
       ])!;
     case 'broadleaf':
       return mergeGeometries([
-        part(new IcosahedronGeometry(1.55, 0), tint[1], 0, 3.1 + lift, 0),
-        part(new IcosahedronGeometry(1.0, 0), tint[1], 0.95, 2.55 + lift, 0.3),
-        part(new IcosahedronGeometry(0.92, 0), tint[1], -0.85, 2.7 + lift, -0.25),
+        part(new IcosahedronGeometry(1.55, 0), tint[1], 0, 3.1 + lift, 0, true),
+        part(new IcosahedronGeometry(1.0, 0), tint[1], 0.95, 2.55 + lift, 0.3, true),
+        part(new IcosahedronGeometry(0.92, 0), tint[1], -0.85, 2.7 + lift, -0.25, true),
       ])!;
     case 'sakura':
       return mergeGeometries([
-        part(new IcosahedronGeometry(1.5, 0), tint[2], 0, 3.0 + lift, 0),
-        part(new IcosahedronGeometry(0.95, 0), tint[2], 0.9, 2.5 + lift, -0.2),
-        part(new IcosahedronGeometry(0.88, 0), tint[2], -0.8, 2.6 + lift, 0.3),
+        part(new IcosahedronGeometry(1.5, 0), tint[2], 0, 3.0 + lift, 0, true),
+        part(new IcosahedronGeometry(0.95, 0), tint[2], 0.9, 2.5 + lift, -0.2, true),
+        part(new IcosahedronGeometry(0.88, 0), tint[2], -0.8, 2.6 + lift, 0.3, true),
       ])!;
     case 'bamboo': {
       const parts: BufferGeometry[] = [];
@@ -183,7 +200,7 @@ export function buildCrownGeometry(species: VegetationSpecies, variant: number):
       ];
       for (const [cx, cz] of culms) {
         parts.push(part(new CylinderGeometry(0.045, 0.055, 3.55, 4), 0x7fae56, cx, 1.78, cz));
-        parts.push(part(new ConeGeometry(0.55, 1.5, 5), 0x8fbc62, cx, 5.2 + lift, cz));
+        parts.push(part(new ConeGeometry(0.55, 1.5, 5), 0x8fbc62, cx, 5.2 + lift, cz, true));
       }
       return mergeGeometries(parts)!;
     }
@@ -210,6 +227,7 @@ export function buildShardGeometry(kind: ShardKind): BufferGeometry {
   return paint(
     new IcosahedronGeometry(0.42, 0).toNonIndexed(),
     kind === 'leaf' ? 0x3a6b35 : 0xe8a7bf,
+    true,
   );
 }
 
@@ -289,6 +307,9 @@ interface BentAnimation {
 
 export class VegetationWorld {
   readonly root = new Group();
+  readonly #foliageSunDirection = uniform(new Vector3(0, 1, 0));
+  readonly #foliageSunTint = uniform(new Vector3(1, 1, 1));
+  readonly #foliageBacklightStrength = uniform(0);
   readonly #sampler: TerrainSampler;
   readonly #config: VegetationConfig;
   readonly #detail: number;
@@ -328,6 +349,12 @@ export class VegetationWorld {
 
     const material = new MeshStandardNodeMaterial();
     material.colorNode = vertexColor();
+    material.emissiveNode = createFoliageEmissiveNode(
+      attribute('foliageMask', 'float'),
+      this.#foliageSunDirection,
+      this.#foliageSunTint,
+      this.#foliageBacklightStrength,
+    );
     material.roughness = 0.95;
     for (const species of VEGETATION_SPECIES) {
       const variants = TREE_SPECIES.has(species) ? 3 : species === 'bamboo' ? 2 : 2;
@@ -386,6 +413,21 @@ export class VegetationWorld {
     }
   }
 
+  /** Updates the leaf backlight from the same resolved direction, colour and clock phase as the sun. */
+  setDaylight(state: DaylightState): void {
+    this.#foliageSunDirection.value.set(
+      state.sunDirection.x,
+      state.sunDirection.y,
+      state.sunDirection.z,
+    );
+    const tint = new Color(state.sunColorHex);
+    this.#foliageSunTint.value.set(tint.r, tint.g, tint.b);
+    this.#foliageBacklightStrength.value = resolveFoliageBacklightStrength(
+      state.sunIntensity,
+      state.isNight,
+    );
+  }
+
   /** Wires the collision field's truth into rebuilds (bent leans, stumps). */
   setStateProvider(provider: ((key: string) => TreeVisualState | undefined) | null): void {
     this.#stateProvider = provider;
@@ -418,10 +460,35 @@ export class VegetationWorld {
         }
       }),
     );
-    for (const { key, species } of results) {
-      if (species === null || this.#scanned.has(key)) {
+    const foliageMaterials = new Map<Material, Material>();
+    for (const { key, species: loadedSpecies } of results) {
+      if (loadedSpecies === null || this.#scanned.has(key)) {
         continue;
       }
+      // The same leaf material can be shared by several meshes and LODs. Clone it once so its
+      // albedo/backlight treatment is consistent without multiplying the albedo repeatedly.
+      const species: ScannedSpecies = {
+        ...loadedSpecies,
+        lods: loadedSpecies.lods.map((lod) => ({
+          ...lod,
+          parts: lod.parts.map((part) => {
+            if (!isFoliageMaterial(part.material)) {
+              return part;
+            }
+            let material = foliageMaterials.get(part.material);
+            if (material === undefined) {
+              material = createScannedFoliageMaterial(
+                part.material,
+                this.#foliageSunDirection,
+                this.#foliageSunTint,
+                this.#foliageBacklightStrength,
+              );
+              foliageMaterials.set(part.material, material);
+            }
+            return { ...part, material };
+          }),
+        })),
+      };
       const comma = key.indexOf(':');
       const speciesName = key.slice(0, comma) as VegetationSpecies;
       const variants = TREE_SPECIES.has(speciesName) ? 3 : 2;
@@ -1023,6 +1090,21 @@ export class VegetationWorld {
     if (this.#stumpMesh !== null) {
       this.#stumpMesh.geometry.dispose();
       this.#stumpMesh.dispose();
+    }
+    const scannedGeometries = new Set<BufferGeometry>();
+    const scannedMaterials = new Set<Material>();
+    for (const mesh of this.#scannedCounts.keys()) {
+      scannedGeometries.add(mesh.geometry);
+      for (const material of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+        scannedMaterials.add(material);
+      }
+      mesh.dispose();
+    }
+    for (const geometry of scannedGeometries) {
+      geometry.dispose();
+    }
+    for (const material of scannedMaterials) {
+      material.dispose();
     }
     this.#sharedMaterial.dispose();
     this.root.removeFromParent();

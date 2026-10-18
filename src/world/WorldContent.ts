@@ -1,5 +1,6 @@
 import type { Object3D } from 'three';
 import type { RenderConfig } from '../config/render';
+import type { DaylightState } from '../environment/EnvironmentClock';
 import type { WorldConfig } from '../config/world';
 import type { TerrainSampler } from './terrain-height';
 import type { TreeHitEvent, TreeVisualState } from './tree-collision';
@@ -24,6 +25,8 @@ export interface SceneContent {
   readonly root: Object3D;
   /** Label for diagnostics: what kind of content this is. */
   readonly kind: string;
+  /** Resolved clock/sun state for content-owned effects such as leaf backlighting. */
+  setDaylight?(state: DaylightState): void;
   /**
    * Per-frame streaming hook (Phase 4 terrain): the focus is the vehicle position. Content
    * without streaming ignores it. Called with a scratch-free fresh object each frame by

@@ -437,6 +437,7 @@ export class SceneManager {
       this.scene.backgroundIntensity = environmentIntensity;
     }
     this.#daylight = state;
+    this.#content.setDaylight?.(state);
   }
 
   /**
@@ -508,6 +509,9 @@ export class SceneManager {
     this.#content = content;
     this.scene.add(content.root);
     content.root.position.set(-this.#worldOffsetX, 0, -this.#worldOffsetZ);
+    if (this.#daylight !== null) {
+      content.setDaylight?.(this.#daylight);
+    }
   }
 
   /**

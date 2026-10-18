@@ -638,6 +638,12 @@ scanned tree adoption is included in readiness, and runtime foliage generation r
 frame. This reduces last-second work ahead of the car but is not visual acceptance of the no-pop-in criterion;
 a stable readable capture is still required.
 
+**Implemented Phase 5 increment (2026-10-18):** authored and scanned leaf materials now receive a small linear
+albedo lift and a restrained, sun-coloured backlight approximation driven by the same `DaylightState` as the scene
+sun. The shader preserves existing GLTF emissive values, only targets named leaf/twig/needle materials, and leaves
+bark/dead branches untouched; authored geometry carries a per-vertex foliage mask. This is not a claim of true
+translucency, ray tracing, or visual acceptance: owner-device foliage readability remains unverified.
+
 **Acceptance**
 
 - Vegetation and prop instance counts, triangle counts, and draw calls stay inside the per-tier budgets in

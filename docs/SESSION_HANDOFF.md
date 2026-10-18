@@ -1557,3 +1557,20 @@ Owner direction: “Ok carry on further development work.” Continued within th
 **Still open:** No stable, readable owner-device capture confirms the terrain appearance or visible vegetation streaming. The report of tree pop-in, dark foliage, and weak HDR/ray-tracing effect remains open; do not claim visual acceptance. Phase 5 is still in progress and Phase 6 has not started.
 
 **Next:** Complete the remaining Phase 5 work and obtain stable visual evidence; only begin Phase 6 after Phase 5 acceptance. Phases 7–8 remain gated.
+
+## 50. Lift dark foliage with daylight-driven leaf backlighting (2026-10-18)
+
+Owner report: foliage is too dark. Continued only within the authorized Phase 5 work; Phase 6 remains gated.
+
+**Implementation:**
+
+- Added a restrained linear albedo lift for authored leaf geometry and named scanned foliage materials (`leaf`, `leaves`, `twig`, `needle`, `foliage`). Bark and dead branches are not selected.
+- Added a per-vertex foliage mask for authored geometry and a small TSL backlight term: leaves facing the camera and turned away from the sun receive a capped tint based on the resolved sun direction, sun colour, and daylight phase. It is an inexpensive transmission approximation, not true translucency or ray tracing.
+- Existing GLTF alpha settings, maps, sidedness, and emissive contribution are retained when scanned foliage materials are copied to node materials. Shared source materials are cloned once across repeated LOD parts.
+- The same `DaylightState` that lights the scene is forwarded to the driving content; backlighting is disabled at night. Scanned instance materials/geometries are also explicitly released with the vegetation world.
+
+**Verification:** pending at this pushed source checkpoint; full project checks have not yet run. The code includes unit coverage for authored foliage masks/albedo, scanned material preservation, and daylight/night strength. Record the exact check result and remote CI status in this section after validation.
+
+**Visual status:** no stable readable owner-device capture is available. This is a targeted code-level response to dark foliage, not proof that the owner's appearance report is fixed. Terrain must remain non-white, and HDR/ray-tracing expectations remain open and must be described honestly. Phase 5 acceptance remains open; Phase 6 has not started.
+
+**Next:** push the implementation checkpoint before running the full check suite, then record validation and remote status. Obtain stable owner-device visual evidence before calling foliage accepted or starting Phase 6. Phases 7–8 remain gated.

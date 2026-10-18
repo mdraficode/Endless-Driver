@@ -54,6 +54,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
   return {
     root,
     kind: 'driving',
+    setDaylight: (state) => vegetation.setDaylight(state),
     updateStreaming: (focus, velocity, deltaSeconds) => {
       terrain.updateStreaming(focus, velocity);
       vegetation.updateStreaming(focus, velocity, deltaSeconds ?? 0);
