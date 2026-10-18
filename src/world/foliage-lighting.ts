@@ -66,6 +66,9 @@ export function createScannedFoliageMaterial(
   sunStrength: Node<'float'>,
 ): MeshStandardNodeMaterial {
   const material = new MeshStandardNodeMaterial().copy(source);
+  // Material stores this behind `_alphaTest`, which NodeMaterial.copy deliberately skips as a
+  // private field. Copy the public value explicitly so cutout foliage keeps its silhouette.
+  material.alphaTest = source.alphaTest;
   material.color.multiplyScalar(FOLIAGE_LIGHTING_CONFIG.albedoLift);
   material.emissiveNode = createFoliageEmissiveNode(
     // Each scanned part is a foliage material, so it does not need an extra geometry attribute.
