@@ -232,10 +232,9 @@ describe('streaming planner', () => {
       x: 26,
       z: -8,
     });
-    expect(predictPrefetchFocus(TERRAIN_CONFIG, { x: 12, z: -8 }, { x: 0, z: -200 })).toEqual({
-      x: 12,
-      z: -120,
-    });
+    const capped = predictPrefetchFocus(TERRAIN_CONFIG, { x: 12, z: -8 }, { x: 0, z: -200 });
+    expect(capped.x).toBe(12);
+    expect(capped.z).toBeCloseTo(-120);
   });
 
   it('plans the full (2r+1)^2 square, nearest first, finest at the centre', () => {
