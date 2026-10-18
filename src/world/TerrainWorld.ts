@@ -131,6 +131,7 @@ export class TerrainWorld implements SceneContent {
   #buildsLastFrame = 0;
   #totalBuilds = 0;
   #triangles = 0;
+  #disposed = false;
 
   constructor(sampler: TerrainSampler) {
     this.#sampler = sampler;
@@ -366,6 +367,9 @@ export class TerrainWorld implements SceneContent {
     focus: { x: number; y: number; z: number },
     velocity: { x: number; z: number } = { x: 0, z: 0 },
   ): void {
+    if (this.#disposed) {
+      return;
+    }
     // The bounded lead is shared with vegetation: both windows move toward the route
     // ahead, while the terrain plan keeps the actual focus as its ordering reference.
     const predicted = predictPrefetchFocus(this.#config, focus, velocity);
@@ -514,6 +518,10 @@ export class TerrainWorld implements SceneContent {
   }
 
   dispose(): void {
+    if (this.#disposed) {
+      return;
+    }
+    this.#disposed = true;
     this.#generator.dispose();
     for (const loaded of this.#chunks.values()) {
       loaded.mesh.geometry.dispose();
