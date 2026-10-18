@@ -2,17 +2,17 @@
 
 A cross-platform, procedural 3D web driving game built with **Three.js, Rapier, TypeScript, Vite, and Tailwind CSS**.
 
-> **Current state (2026-10-18): Phase 4 built scope is delivered; Phase 5 is in progress; Phase 6 is authorized after Phase 5 acceptance. Phases 7–8 remain gated. Phase 3 code is complete, with named-hardware frame-budget validation still open.**
+> **Current state (2026-10-19): Phase 4 built scope is delivered; Phase 5 remains in progress with owner-device visual acceptance open; Phase 6 is authorized after Phase 5 acceptance; a separate Phase 9 urban-systems track is authorized and active in parallel. Phases 7–8 remain gated. Phase 3 code is complete, with named-hardware frame-budget validation still open.**
 >
 > The game now has seeded terrain, roads, vegetation and town detail alongside the raycast car, tire model, smoothed keyboard/touch input, and chase camera. The hero car remains a placeholder. The owner's target is “almost life like”; the roadmap was rearranged (ADR 0004):
 >
 > - [`docs/RESEARCH_AAA_FIDELITY.md`](docs/RESEARCH_AAA_FIDELITY.md) — what Forza actually does, the verified Three.js r186 capability audit, a 20-row gap analysis, legal asset sourcing, and six explicit non-promises.
-> - [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) — the visual contract: five pillars, per-system quality bars, tier matrix (C/B/A), look-dev workflow, and the **rural-Japan region brief** ("Hinode Prefecture").
+> - [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) — the visual contract: five pillars, per-system quality bars, tier matrix (C/B/A), look-dev workflow, rural Hinode, and the separately authorized **Aohara Metropolis** addition.
 > - [`docs/ASSET_SOURCES.md`](docs/ASSET_SOURCES.md) — the verified **free-and-open** asset register: Poly Haven and ambientCG (API-checked on 2026-10-14), Sonniss GDC game audio, Freesound CC0, CC0 cars, open-source authoring tools — and exactly where free sourcing reaches its ceiling.
 >
-> **Owner decisions (2026-10-14, [ADR 0005](docs/decisions/0005-free-and-open-asset-strategy.md)):** free and open assets only, no purchases; unbadged fictional brand; the fictional rural-Japan region; audio from free sample libraries plus a project-owned engine synth; photo mode in scope for Phase 8.
+> **Owner decisions:** free and open assets only, no purchases; unbadged fictional branding; rural Hinode remains the base setting. On 2026-10-19, [ADR 0006](docs/decisions/0006-urban-systems-and-city-night-lighting.md) records authorization for a new fictional Japanese megacity district, with night lighting first (localized soft glow plus subtle starbursts). Phase 9 may proceed alongside Phase 5; this does not authorize Phases 7–8. Audio and photo-mode scope remains as recorded in [ADR 0005](docs/decisions/0005-free-and-open-asset-strategy.md).
 >
-> Open scope: Phase 5's vegetation readiness/streaming, grass and ground cover, foliage wind/backlighting, atmosphere, and tree-impact feel; then Phase 6's hero car and vehicle fidelity. Weather/seasons and final polish remain gated in Phases 7–8. Gameplay terrain no longer includes a snow layer, but the owner's white-ground report is not considered visually resolved until a stable, readable owner-device capture confirms it. The renderer uses HDRI image-based lighting, ACES tone mapping, and screen-space effects—not hardware ray tracing.
+> Open scope: Phase 5's vegetation readiness/streaming, grass and ground cover, foliage wind/backlighting, atmosphere, tree-impact feel, and owner-device visual acceptance; Phase 6's hero car follows only after Phase 5 acceptance. The newly authorized Phase 9 begins with a bounded city-night lighting slice; full driveable city integration, AI pedestrians/vehicles, and grade-separated roads remain future Phase 9 work. Weather/seasons and final polish remain gated in Phases 7–8. Gameplay terrain must remain non-white and snow-free; the owner's white-ground report is not visually resolved until stable, readable owner-device evidence confirms it. The renderer uses HDRI image-based lighting, ACES tone mapping, and screen-space effects—not hardware ray tracing.
 
 ## Canonical repository
 
@@ -23,7 +23,7 @@ The public repository is the durable source of truth. Repository creation and ea
 
 ## Read these first
 
-1. [`PROJECT_PLAN.md`](PROJECT_PLAN.md) — requirements, technical decisions, eight-phase instructions, acceptance gates, and risks.
+1. [`PROJECT_PLAN.md`](PROJECT_PLAN.md) — requirements, technical decisions, phase instructions, acceptance gates, and risks.
 2. [`AGENTS.md`](AGENTS.md) — mandatory working rules for future sessions.
 3. [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md) — actual progress, verification evidence, blockers, and the next authorized action.
 4. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — ownership, coordinates, timing, lifecycle, and module dependencies.
@@ -103,7 +103,7 @@ src/
   environment/    solar model, time-of-day clock, daylight curves; seasons/weather in Phase 7
   shaders/        TSL node materials: atmosphere sky, post chain, vignette
   assets/         pinned fetch pipeline, loaders, manifest, licence register
-  lab/            look-dev studio (?scene=studio), prop inspector (?scene=props), validation route (?scene=route) (Phase 3)
+  lab/            material studio (?scene=studio), prop inspector (?scene=props), validation route (?scene=route), Aohara night block (?scene=city)
   workers/        bounded terrain generation jobs (Phase 4)
 public/assets/    licensed CC0-first HDRI, surface, model and look assets
 tests/            unit, physics, integration and asset-pipeline checks
@@ -145,7 +145,7 @@ No open-source distribution license has been selected, so project metadata remai
 
 Continue the owner-authorized Phase 5 remainder in order: prepare terrain/vegetation before gameplay, eliminate visible tree pop-in, improve foliage lighting, and finish grass/ground cover, atmosphere, and tree-impact feel. Phase 6 is authorized but begins only after Phase 5 acceptance; Phases 7–8 remain gated. Phase 3 code is complete, but named-hardware frame-budget validation remains open. The white-ground, tree-pop, dark-foliage, and imperceptible-lighting reports remain unresolved until stable, readable owner-device captures confirm the visible result. Gameplay terrain now has no snow splat or snow texture; this code-level removal is not a verified visual fix yet. See [`PROJECT_PLAN.md`](PROJECT_PLAN.md) and [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md).
 
-**Try it:** <https://mdraficode.github.io/Endless-Driver/> supports keyboard driving and touch controls on touch-capable devices. Add `?scene=studio` for the look-dev grid, `?scene=props` for the derived-model inspector, `?time=6.5` / `?time=18.5` for dawn and night, `?tier=a|b|c` to force a quality tier, and `?backend=webgl` to force the fallback path. `?lut=none` removes the colour look, `?lutmix=0.5` trims it, and `?dof=1&bokeh=17` forces depth of field at a chosen aperture. The temporal path has its own switches, because it is the one system whose job is invisible in a still frame: `?taa=0` turns it off (falling back to SMAA), `?aa=smaa|fxaa|none|taa` names a strategy outright, `?res=0.7` fixes the render scale, `?mblur=0` removes motion blur and `?mb=0.5` shortens the shutter. The route scene takes `?bookmark=start-noon` (3 stations × dawn/noon/dusk/night), and the atmosphere has comparison switches: `?hfog=0` changes height-falloff handling, `?godrays=1` forces light shafts on, and `?grain=0` / `?clouds=0` hold per-frame confounds still for captures. `?contact=0` removes the contact shadows, `?ssgi=1` forces bounced light on anywhere, and `?tonemap=agx` replays the frame through the AgX tone curve instead of ACES. The HUD's `Temporal` row reports the scale the scene is currently drawn at (`taa @ 84%`).
+**Try it:** <https://mdraficode.github.io/Endless-Driver/> supports keyboard driving and touch controls on touch-capable devices. Add `?scene=studio` for the look-dev grid, `?scene=props` for the derived-model inspector, `?scene=city` for the Aohara Metropolis night-lighting preview (a bounded look-dev slice, not yet driveable), `?scene=route` for fixed validation bookmarks, `?time=6.5` / `?time=18.5` for dawn and night, `?tier=a|b|c` to force a quality tier, and `?backend=webgl` to force the fallback path. `?lut=none` removes the colour look, `?lutmix=0.5` trims it, and `?dof=1&bokeh=17` forces depth of field at a chosen aperture. The temporal path has its own switches, because it is the one system whose job is invisible in a still frame: `?taa=0` turns it off (falling back to SMAA), `?aa=smaa|fxaa|none|taa` names a strategy outright, `?res=0.7` fixes the render scale, `?mblur=0` removes motion blur and `?mb=0.5` shortens the shutter. The route scene takes `?bookmark=start-noon` (3 stations × dawn/noon/dusk/night), and the atmosphere has comparison switches: `?hfog=0` changes height-falloff handling, `?godrays=1` forces light shafts on, and `?grain=0` / `?clouds=0` hold per-frame confounds still for captures. `?contact=0` removes the contact shadows, `?ssgi=1` forces bounced light on anywhere, and `?tonemap=agx` replays the frame through the AgX tone curve instead of ACES. The HUD's `Temporal` row reports the scale the scene is currently drawn at (`taa @ 84%`).
 
 Phase 2 verification evidence, measured handling numbers, and the exact browser checks that were run are recorded in [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md). How the project intends to reach a look
 that holds up next to a console racing game — levers ranked by what actually changes how real the image feels, and

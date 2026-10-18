@@ -1,15 +1,15 @@
 # Endless Driver — Project Plan and Implementation Instructions
 
-**Planning baseline:** 2026-10-13 · **Visual-fidelity revision:** 2026-10-14 · **Status updated:** 2026-10-18  
-**Project stage:** Phase 4 built scope delivered; Phase 5 in progress; Phase 6 authorized after Phase 5 acceptance; Phases 7–8 gated  
-**Development authorization:** Phases 1–6 authorized in phase order; Phase 3 code complete with named-hardware frame-budget validation open  
-**Visual target:** [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) — the owner requires Forza-Horizon-class presentation; the evidence, feasibility boundaries, and rearranged roadmap are in [`docs/RESEARCH_AAA_FIDELITY.md`](docs/RESEARCH_AAA_FIDELITY.md)  
+**Planning baseline:** 2026-10-13 · **Visual-fidelity revision:** 2026-10-14 · **Status updated:** 2026-10-19  
+**Project stage:** Phase 4 built scope delivered; Phase 5 in progress; Phase 6 authorized after Phase 5 acceptance; Phase 9 urban-systems track authorized and active; Phases 7–8 gated  
+**Development authorization:** Phases 1–6 remain sequenced as recorded; Phase 9 is separately authorized to proceed in parallel with the open Phase 5 visual gate. Phase 3 code complete with named-hardware frame-budget validation open.  
+**Visual target:** [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) — rural Hinode remains; a fictional megacity district is an authorized addition. Forza-Horizon-class presentation remains an engineering target, with evidence and feasibility boundaries in [`docs/RESEARCH_AAA_FIDELITY.md`](docs/RESEARCH_AAA_FIDELITY.md)  
 **GitHub destination:** Public [`mdraficode/Endless-Driver`](https://github.com/mdraficode/Endless-Driver), branch `main`  
 **Remote synchronization:** Scaffold, documentation, Phase 1, and Phase 2 pushed and verified on `main`; CI runs on each push
 
 The original requested technical scope is retained in [`docs/PROJECT_BRIEF.md`](docs/PROJECT_BRIEF.md).
 
-> This is the implementation specification, not a claim that the game is complete. Phases 1–4 provide the runtime, vehicle foundation, renderer/asset pipeline, terrain/roads, and initial world systems. Phase 5 remains in progress; Phase 6 is authorized but sequenced after Phase 5 acceptance. White ground, tree pop-in, dark foliage, and imperceptible screen-space/HDR lighting remain owner-reported and unverified; do not describe them as fixed without a stable readable owner-device capture. Gameplay terrain must not contain white/snow ground. Rendering is Three.js + Rapier with HDRI image-based lighting, ACES tone mapping, and screen-space approximations—not hardware ray tracing.
+> This is the implementation specification, not a claim that the game is complete. Phases 1–4 provide the runtime, vehicle foundation, renderer/asset pipeline, terrain/roads, and initial world systems. Phase 5 remains in progress; Phase 6 is authorized after Phase 5 acceptance; a separate Phase 9 urban-systems track was authorized on 2026-10-19 and may proceed in parallel. Phases 7–8 remain gated. White ground, tree pop-in, dark foliage, and imperceptible screen-space/HDR lighting remain owner-reported and unverified; do not describe them as fixed without a stable readable owner-device capture. Gameplay terrain must not contain white/snow ground. Rendering is Three.js + Rapier with HDRI image-based lighting, ACES tone mapping, and screen-space approximations—not hardware ray tracing.
 
 ## Contents
 
@@ -48,9 +48,10 @@ Build a browser-based, single-player 3D driving experience with convincing vehic
 - “Infinite” means procedurally addressable world space with finite active memory, not infinitely allocated terrain.
 - “AAA look” is an engineering target, not a marketing claim: [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) defines per-system quality bars, tier contracts, and measurable checks. It never promises parity with a AAA production's asset depth, licensed vehicles, or console-hardware effects.
 - **Content is free and open** ([`docs/ASSET_SOURCES.md`](docs/ASSET_SOURCES.md), ADR 0005): CC0-first — Poly Haven, ambientCG, Sonniss GDC audio, Freesound CC0, Kenney, Quaternius, CC0 Sketchfab, open fonts — with CC-BY as an attributed exception. **No purchases are ever requested or required**, nothing account-gated or redistribution-restricted is used, and every asset is fetched by a pinned, reproducible script with a licence record.
-- **The region is a fictional composite of rural Japan** (the “Hinode Prefecture” brief, `docs/VISUAL_TARGET.md` §5): authored from CC0 materials and in-house props, never presented as a replica of a real location, and free of manufacturer names, badges, or trade dress.
+- **The region is a fictional composite of rural Japan** (the “Hinode Prefecture” brief, `docs/VISUAL_TARGET.md` §5). The owner explicitly authorized an additional fictional Japanese megacity district on 2026-10-19; it must extend, not replace or urbanize, the existing rural districts. Neither is presented as a replica of a real location, and both remain free of manufacturer names, badges, or trade dress.
 - Target 60 FPS on agreed reference hardware. Slower devices may use lower quality or a stable 30 FPS fallback. No universal 60+ FPS guarantee is possible before profiling.
-- Multiplayer, accounts, traffic AI, races, monetization, multiplayer determinism, and server persistence are not part of these eight phases.
+- **Single-player traffic and pedestrian AI are authorized only within Phase 9.** Multiplayer, accounts, races, monetization, network determinism, and server persistence remain outside scope.
+- Weather/seasons (Phase 7) and final polish (Phase 8) remain separately gated; the Phase 9 authorization is not permission to begin either.
 - Do not implement the complete game in one file. Keep feature modules small, typed, independently testable, and explicitly disposable.
 - Do not start any development phase until the user authorizes it. Completing one phase does not automatically authorize the next.
 
@@ -396,7 +397,7 @@ valid and are extended, not replaced.
 | 1     | Engine, loop, resize/DPR handling, orbit debug camera, reference lighting, diagnostics, disposal (ADR 0002)                                                      | `fbb48a4`, CI green                                            |
 | 2     | Rapier world + custom raycast force layer, slip-friction drift, smoothed keyboard input, damped chase camera, placeholder car meshes bound to physics (ADR 0003) | `b85c8ba`, `307efaa`, CI green; evidence in `/phase2-evidence` |
 
-**Phases 1–4 are implemented; Phase 5 is in progress; Phase 6 is authorized after Phase 5 acceptance. Phases 7–8 remain gated. Phase 3 code is complete; named-hardware frame-budget validation is still open.**
+**Phases 1–4 are implemented; Phase 5 is in progress with visual acceptance still open; Phase 6 is authorized after Phase 5 acceptance; Phase 9 is separately authorized and active. Phases 7–8 remain gated. Phase 3 code is complete; named-hardware frame-budget validation is still open.**
 
 ### Phase 3 — Renderer migration, lighting, post-processing, asset and material pipeline
 
@@ -614,7 +615,7 @@ owner's hardware frame-budget validation.
 
 **Owner correction (2026-10-18):** gameplay terrain has no snow layer: the reserved fourth splat channel is zero, snow is not loaded by the terrain material, and high ground uses exposed rock/soil. This is a code-level safeguard, not a claim that the owner's white-ground report is visually resolved; acceptance requires a stable, readable owner-device capture.
 
-**Current gate:** Phase 5 was authorized on 2026-10-18 and remains in progress. Phase 6 is authorized but must follow Phase 5 acceptance.
+**Current gates (2026-10-19):** Phase 5 remains in progress and lacks stable owner-device visual acceptance; Phase 6 is authorized only after Phase 5 acceptance. Phase 9 Urban Systems is separately authorized and may proceed now in parallel. Phases 7–8 remain gated.
 
 ### Phase 5 — Environment detail: vegetation, props, atmosphere
 
@@ -752,7 +753,36 @@ settings, camera gestures/polish, and the final quality pass.
 - Multi-touch verified on real Android and iOS hardware; no stuck controls when pointers are cancelled.
 - Recorded frame-time percentiles on named devices meet or miss the stated target explicitly — never silently.
 
-**Stop:** Project complete; further work needs new authorization.
+**Stop:** Stop Phase 8 when it is authorized and complete; the separate Phase 9 authorization below remains its own track.
+
+### Phase 9 — Urban Systems: Aohara Metropolis
+
+**Authorization (2026-10-19):** the owner authorized this new track to begin immediately, despite the unresolved Phase 5 visual-acceptance gate. Phase 9 may proceed alongside Phases 5–6; Phase 6 still requires Phase 5 acceptance. This does **not** authorize Phase 7 weather/seasons or Phase 8 final polish.
+
+**District decision:** add a fictional Japanese megacity district to the existing fictional Hinode region. Preserve every rural Hinode district and its no-white-ground requirement; do not replace or urbanize the rural world. Aohara Metropolis is a bounded, vertically dense addition, connected to the rural road network by a future highway/expressway link. The dimensions and streaming footprint must be measured before expanding the world bounds.
+
+**Deliverables, staged:**
+
+1. **First slice — night-lighting look-dev block.** An inspectable `?scene=city` preview with a short multi-lane avenue, a signalized intersection and marked crossing, high-rise massing and illuminated windows, streetlights, and a restrained dark pavement sheen. Night-only localized Gaussian halos and subtle radial starbursts provide soft glow plus diffraction without enabling scene-wide bloom; protect road/crosswalk readability. The first slice is not yet a driveable or streamed district.
+2. Integrate the district with the existing seeded road graph and prepare-ahead streaming; build connected urban streets, legible lane hierarchy, intersections, crosswalks, sidewalks, and highway access while keeping Hinode rural untouched.
+3. Add modular, fictional/unbadged high-rise, mid-rise, transit, storefront, rooftop, utility, and street-furniture systems with bounded LOD/instance budgets.
+4. Add underground routes/tunnel portals, bridges, overpasses/flyovers, and highway sections only with tested grade, clearance, support, and collision envelopes; no decorative road may be non-drivable or misaligned with its collision path.
+5. Add deterministic, seeded, single-player vehicle and pedestrian agents: lane/path following, signal compliance, crossing right-of-way, safe spacing, bounded recovery, and density controls. Use the existing physics authority for collision truth; do not introduce a second physics solver or multiplayer/network layer.
+6. Scale urban detail, lights, windows, traffic and pedestrians by C/B/A tier; cap active agents, draw calls, shadows, lights and streaming work. Keep touch controls and driving visibility intact on mobile.
+
+**Rendering constraints:** TSL node materials only, both WebGPU and WebGL2 backends checked where the sandbox permits, no manufacturer/trademark branding, and no purchased/closed assets. Keep glare source-local: prior global-bloom testing washed out gameplay. Local specular sheen is not SSR, ray tracing, rain, or a weather system; those claims remain prohibited unless the corresponding implementation and validation exist.
+
+**Acceptance:**
+
+- The city is a genuinely additional district and the rural Hinode world remains present and recognizably rural.
+- City road geometry, markings, intersections, signal timing, crossing paths, and collision/clearance envelopes agree; deterministic tests cover the road graph, signal phases and seeded agents.
+- Night lighting shows both a soft localized halo and restrained starburst, with readable driving lanes and no global washed-out haze; daylight gates and all tiers are covered by tests.
+- Streaming and object/agent budgets remain bounded; named-device performance and real-device mobile checks are recorded before claims of acceptance.
+- The `?scene=city` preview can judge the first lighting slice, but it is not evidence of a driveable district, owner-device acceptance, or completion of Phase 9.
+
+**Current status:** Authorized and active; the first code increment is the night-lighting look-dev block. Later Phase 9 deliverables remain unimplemented until recorded as completed.
+
+**Stop:** Do not start work outside this authorized Phase 9 scope; after Phase 9 completion, wait for new owner authorization.
 
 ## 10. Testing and phase acceptance
 
@@ -790,10 +820,11 @@ CI verifies the checks actually present. A green scaffold CI does not certify ve
 | Free-and-open sourcing, region, brand, audio, photo mode    | Resolved 2026-10-14: `docs/ASSET_SOURCES.md`, `CREDITS.md`, ADR 0005, region brief (§6/§9 references)       |
 | Phase 3 — renderer, lighting, post, asset/material pipeline | Code complete; named-hardware frame-budget validation remains open                                          |
 | Phase 4 — terrain, roads, streaming                         | Built scope delivered 2026-10-15; bridges/tunnels deferred                                                  |
-| Phase 5 — vegetation, props, atmosphere                     | **Authorized 2026-10-18; in progress**                                                                      |
+| Phase 5 — vegetation, props, atmosphere                     | **Authorized 2026-10-18; in progress; owner-device visual acceptance open**                                 |
 | Phase 6 — hero car, materials, vehicle fidelity             | **Authorized 2026-10-18; after Phase 5 acceptance**                                                         |
 | Phase 7 — weather, seasons, surface behaviour               | Gated — requires explicit owner instruction                                                                 |
 | Phase 8 — mobile, HUD, cameras, settings, polish            | Gated — requires explicit owner instruction                                                                 |
+| Phase 9 — urban systems / Aohara Metropolis                 | **Authorized 2026-10-19; active in parallel; night-lighting slice first**                                   |
 
 See `docs/SESSION_HANDOFF.md` for the verified original commit, remote CI evidence, authentication limitations, and the next-session procedure.
 
@@ -922,4 +953,4 @@ References guide implementation; pinned package APIs must still be checked at th
 
 ---
 
-**Next permitted development action:** Continue the authorized Phase 5 remainder; begin Phase 6 only after Phase 5 acceptance. Phases 7–8 remain gated.
+**Next permitted development action:** Continue the authorized Phase 5 remainder and the separately authorized Phase 9 urban-systems track (currently the night-lighting slice); Phase 6 remains blocked on Phase 5 acceptance. Phases 7–8 remain gated.

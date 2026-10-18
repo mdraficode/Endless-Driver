@@ -282,6 +282,7 @@ export class SceneManager {
     if (this.controls.enabled) {
       this.controls.update(delta);
     }
+    this.#content.update?.(delta);
   }
 
   /** Enables or disables the debug orbit camera and its input handling. */

@@ -15,12 +15,18 @@ import {
 import { StudioApplication, type StudioDiagnostics } from './lab/StudioApplication';
 import { PropLabApplication, type PropLabDiagnostics } from './lab/PropLabApplication';
 import { RouteApplication, type RouteDiagnostics } from './lab/RouteApplication';
+import { UrbanNightApplication, type UrbanNightDiagnostics } from './lab/UrbanNightApplication';
 import type { DiagnosticsSnapshot } from './ui/DiagnosticsOverlay';
 import { Minimap } from './ui/Minimap';
 import { yawFromQuat } from './shared/vector';
 
 export interface EndlessDriverDebugHandle {
-  getDiagnostics(): DiagnosticsSnapshot | StudioDiagnostics | PropLabDiagnostics | RouteDiagnostics;
+  getDiagnostics():
+    | DiagnosticsSnapshot
+    | StudioDiagnostics
+    | PropLabDiagnostics
+    | RouteDiagnostics
+    | UrbanNightDiagnostics;
   pause(): void;
   resume(): void;
   /** Driving scene only: instantly place the car at a world (x, z) for captures. */
@@ -45,7 +51,7 @@ function readTimeRequest(search: string): number | null {
 }
 
 /**
- * Reads the `?scene=` switch: `drive` (the default), `studio`, or `props`.
+ * Reads the `?scene=` switch: `drive` (the default), `studio`, `props`, `route`, or `city`.
  *
  * Each look-dev scene is a separate composition root rather than a mode on the driving application.
  * The studio has no vehicle and the prop inspector has no track; pretending otherwise would mean
@@ -58,9 +64,9 @@ function readSpawnRequest(search: string): string | undefined {
   return id === null || id === '' ? undefined : id;
 }
 
-function readSceneRequest(search: string): 'drive' | 'studio' | 'props' | 'route' {
+function readSceneRequest(search: string): 'drive' | 'studio' | 'props' | 'route' | 'city' {
   const scene = new URLSearchParams(search).get('scene');
-  if (scene === 'studio' || scene === 'props' || scene === 'route') {
+  if (scene === 'studio' || scene === 'props' || scene === 'route' || scene === 'city') {
     return scene;
   }
   return 'drive';
@@ -386,6 +392,57 @@ async function startProps(): Promise<void> {
 }
 
 /**
+ * Boots the bounded Aohara Metropolis night-lighting slice (`?scene=city`).
+ *
+ * This look-dev scene has its own orbit camera and production lighting/post chain, but deliberately
+ * no vehicle or physics. It is a visual prototype, not evidence that the city is already driveable.
+ */
+async function startCityNightScene(): Promise<void> {
+  if (!canvas) {
+    reportStartupFailure(new Error('missing #viewport-canvas element'));
+    return;
+  }
+
+  if (overlayRoot) {
+    overlayRoot.hidden = true;
+  }
+  if (studioPanelRoot) {
+    studioPanelRoot.hidden = true;
+  }
+  setStatus('Loading the Aohara city night-lighting preview…', 'info');
+
+  let application: UrbanNightApplication;
+  try {
+    const { config, tier } = resolveRenderConfig();
+    const startHour = readTimeRequest(window.location.search);
+    application = await UrbanNightApplication.create({
+      canvas,
+      config,
+      tier,
+      ...(startHour === null ? {} : { hourOverride: startHour }),
+    });
+  } catch (error) {
+    reportStartupFailure(error);
+    return;
+  }
+
+  setStatus(null);
+  window.addEventListener('resize', () => {
+    application.resize();
+  });
+
+  if (isDebugEnabled()) {
+    window.__ENDLESS_DRIVER__ = {
+      getDiagnostics: () => application.getDiagnostics(),
+      pause: () => {
+        application.dispose();
+      },
+      resume: () => undefined,
+    };
+  }
+}
+
+/**
  * Boots the validation route: the 2 km strip under one of its fixed camera bookmarks.
  *
  * No Rapier and no vehicle, for the same reason the other look-dev scenes are separate
@@ -451,6 +508,9 @@ async function start(): Promise<void> {
       return;
     case 'route':
       await startRoute();
+      return;
+    case 'city':
+      await startCityNightScene();
       return;
     default:
       await startDrivingScene();

@@ -1,6 +1,6 @@
 # Visual target: the look we are building toward, and how we will know we got there
 
-**Status:** specification, 2026-10-14 · **region and sourcing decisions resolved 2026-10-14**  
+**Status:** specification, updated 2026-10-19 · **rural region and sourcing decisions resolved 2026-10-14; additional fictional megacity district authorized 2026-10-19**  
 **Companion documents:** [`docs/RESEARCH_AAA_FIDELITY.md`](RESEARCH_AAA_FIDELITY.md) (evidence and feasibility),
 [`docs/ASSET_SOURCES.md`](ASSET_SOURCES.md) (the verified free-and-open asset register backing every claim here),
 [`PROJECT_PLAN.md`](../PROJECT_PLAN.md) §6–§11 (the phased plan),
@@ -42,6 +42,7 @@ owns it. "Tier" refers to §3.
 | Physically plausible sky driven by sun position; sunset/sunrise colour, night with stars and a moon  | At 06:00/12:00/18:00/00:00 the same camera position yields visibly distinct, plausible lighting; no hand-authored colour steps | 3     |
 | HDRI image-based lighting on all materials, PMREM-processed, switched per time-of-day/weather preset | Materials show coloured specular from the environment; turning IBL off visibly flattens the scene (A/B screenshot)             | 3     |
 | Exposure control that survives dawn/dusk/night transitions                                           | No clipping of the sky or crushed shadows across a 24 h sweep at fixed camera; histogram spread stays inside bounds            | 3     |
+| Urban night sources: soft Gaussian halation plus subtle diffraction/starbursts, gated by darkness    | At night each flare remains confined to its lamp/signal; daylight gates it off; road markings stay legible with no global veil | 9     |
 | Cascaded shadows: sharp and stable near camera, extended range at distance                           | Shadow map resolution ≥ 1024 per near cascade, ≤ 1 px shimmer when the camera moves 1 m laterally, no visible cascade seams    | 3     |
 | Aerial perspective + distance fog consistent with sky colour                                         | Distant hills desaturate toward sky colour; toggling aerial perspective off is immediately obvious                             | 3, 5  |
 | God rays / light shafts at low sun on the high tier                                                  | Visible under tree canopies and through gaps at sun elevation < 15°, no banding, disabled below the high tier                  | 3, 7  |
@@ -108,20 +109,21 @@ owns it. "Tier" refers to §3.
 Tiers are **explicit contracts**, not "auto magic". The tier system must be visible in the HUD/debug overlay and
 recorded in every performance claim.
 
-| System            | Tier C: mobile/low             | Tier B: desktop balanced          | Tier A: desktop high                                  |
-| ----------------- | ------------------------------ | --------------------------------- | ----------------------------------------------------- |
-| Renderer path     | WebGL2 backend                 | WebGPU (WebGL2 fallback)          | WebGPU                                                |
-| Resolution        | DPR ≤ 1.0, no dynamic scale    | DPR ≤ 1.5, dynamic scale 0.67–1.0 | DPR ≤ 2.0 with resolution cap, dynamic scale 0.75–1.0 |
-| Anti-aliasing     | FXAA (SMAA by switch)          | TAAU + dynamic resolution         | TAAU + dynamic resolution, higher scale floor         |
-| Shadows           | 1–2 cascades, 1024             | 3 cascades, 2048                  | 4 cascades, 2048–4096                                 |
-| Ambient occlusion | Off or baked                   | GTAO (half res)                   | GTAO full res                                         |
-| Reflections       | Cubemap probes                 | SSR (half res) + probes           | SSR + probes + wet-road layer                         |
-| Terrain layers    | 2                              | 3                                 | 4 + POM                                               |
-| Vegetation        | Impostors, ≤ 20k instances     | LOD1–2, ≤ 80k                     | Full LOD0 near, ≤ 200k                                |
-| Clouds/atmosphere | HDRI sky + fog                 | Sky + layered clouds + fog        | Sky + volumetric cloud/light shafts where enabled     |
-| Particles         | Capped, short-lived            | Moderate                          | Full, lit                                             |
-| Post stack        | Tone map + grade + light bloom | + GTAO + DOF + motion blur + TAAU | + SSR (pending) + grain + anamorphic                  |
-| Target frame      | 30–60 FPS                      | 60 FPS                            | 60+ FPS where hardware permits                        |
+| System             | Tier C: mobile/low                                     | Tier B: desktop balanced                                       | Tier A: desktop high                                       |
+| ------------------ | ------------------------------------------------------ | -------------------------------------------------------------- | ---------------------------------------------------------- |
+| Renderer path      | WebGL2 backend                                         | WebGPU (WebGL2 fallback)                                       | WebGPU                                                     |
+| Resolution         | DPR ≤ 1.0, no dynamic scale                            | DPR ≤ 1.5, dynamic scale 0.67–1.0                              | DPR ≤ 2.0 with resolution cap, dynamic scale 0.75–1.0      |
+| Anti-aliasing      | FXAA (SMAA by switch)                                  | TAAU + dynamic resolution                                      | TAAU + dynamic resolution, higher scale floor              |
+| Shadows            | 1–2 cascades, 1024                                     | 3 cascades, 2048                                               | 4 cascades, 2048–4096                                      |
+| Ambient occlusion  | Off or baked                                           | GTAO (half res)                                                | GTAO full res                                              |
+| Reflections        | Cubemap probes                                         | SSR (half res) + probes                                        | SSR + probes + wet-road layer                              |
+| Terrain layers     | 2                                                      | 3                                                              | 4 + POM                                                    |
+| Vegetation         | Impostors, ≤ 20k instances                             | LOD1–2, ≤ 80k                                                  | Full LOD0 near, ≤ 200k                                     |
+| Clouds/atmosphere  | HDRI sky + fog                                         | Sky + layered clouds + fog                                     | Sky + volumetric cloud/light shafts where enabled          |
+| Urban night lights | Faint local halo + 2-axis starburst, few active lights | Soft halo + restrained 4-axis starburst, capped lights/windows | Full local halo + subtle 4-axis starburst, source-isolated |
+| Particles          | Capped, short-lived                                    | Moderate                                                       | Full, lit                                                  |
+| Post stack         | Tone map + grade; no global bloom                      | + GTAO + DOF + TAAU; no global bloom                           | + SSR (pending) + grain; no global bloom                   |
+| Target frame       | 30–60 FPS                                              | 60 FPS                                                         | 60+ FPS where hardware permits                             |
 
 Budgets from `PROJECT_PLAN.md` §8 remain the reference; every tier gate is validated on **named hardware** with
 recorded resolution and settings. The dev sandbox (SwiftShader) may only validate correctness, never frame rate.
@@ -160,6 +162,10 @@ order, and every effect is individually toggleable through configuration:
 | Display-referred        | look LUT, chromatic aberration, sharpening (RCAS), grain, vignette                                           | Shipped |
 | Post-sRGB               | FXAA                                                                                                         | Shipped |
 | Pending                 | screen-space reflections (SSR) — tier-declared; its first real surface is the Phase 6 car / Phase 7 wet road | Not yet |
+
+Global bloom is currently disabled in gameplay at all tiers. The earlier global bloom A/B washed out the frame
+and made the horizon read like fog; Phase 9 therefore adds only source-local Gaussian halos and subtle diffraction
+sprites around city lights. Those local effects are not a reason to re-enable whole-frame bloom.
 
 The velocity attachment that feeds the temporal resolve and the motion blur is requested only when one of them is
 in the chain: it is written by every material in the scene, so an unused motion-vector buffer is a cost paid per
@@ -218,22 +224,29 @@ not a particular landmark — and props we author in-house, so the look stays co
 
 ### Shape of the world
 
-A compact, dense prefecture: roughly **8 × 8 km** of drivable road network (a few minutes end-to-end at speed), no
+A compact, dense rural prefecture: roughly **8 × 8 km** of drivable road network (a few minutes end-to-end at speed), no
 country-sized sprawl, everything visible from the road. One volcano silhouette (**Hinode-dake**) is visible from most
 of the map and is the visual anchor at golden hour.
 
-| District                            | Road character                                                    | What it is for                                                       | Primary seasonal payoff                          |
-| ----------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------ |
-| **Kaiun Coast** (海運海岸)          | Fast coastal expressway, sweepers, a long causeway                | Speed, sea horizon, wide skies, sunset runs                          | Summer haze, winter storm swell                  |
-| **Hinode Harbour**                  | Harbour loop, container port, fish market lanes                   | Water reflections, industrial light at night                         | Rain-slick neon, fog                             |
-| **Yūhi Town** (夕陽町)              | Tight grid of narrow lanes, crossings, alleys                     | The everyday Japan look: vending machines, wires, konbini, izakaya   | Rain, snow, matsuri lanterns                     |
-| **Take-no-Michi** (竹の道)          | Narrow lane through a bamboo grove toward a shrine                | Landmark moment: torii, stone lanterns, moss, stepping-stone shadows | Green all year; snow on bamboo in winter         |
-| **Chiyo River & Sakura Avenue**     | River road lined with sakura, two bridges                         | The postcard: blossom tunnels, petals on asphalt                     | Spring, overwhelmingly                           |
-| **Momiji Gorge** (紅葉峡)           | Winding gorge road, river, waterfalls, short tunnels              | Technical corners, tunnels, canyon light                             | Autumn maple colour, leaf litter, wet road       |
-| **Kiri Pass** (霧峠)                | Classic touge: hairpins, guardrails, convex mirrors, morning mist | The drift road; canyon walls of sugi cedar                           | Mud, falling leaves, first snow                  |
-| **Shirasagi Terraces** (白鷺の棚田) | Single-lane farm roads between paddies, raised beds               | Open sky, mirror-flat water, rice green/gold                         | Flooded-spring mirror, harvest gold, snow fields |
-| **Hokuto Highlands** (北斗高原)     | Open plateau sweepers, susuki grass, volcanic ash                 | Big sky, wind, dirt pull-offs, rally-ish routes                      | Silver grass, frost, deep snow                   |
-| **Ginzan Onsen** (銀山温泉)         | Snow-country village lanes, steep approach road                   | Winter hub: lanterns, steam, wooden buildings                        | Heavy snow, ice, night glow                      |
+**Additional owner decision (2026-10-19):** add the fictional **Aohara Metropolis** as a distinct, high-density Japanese
+city district; do not replace or urbanize any rural Hinode district. Its first look-dev block is bounded and separate
+from the driveable rural map while the city lighting is tuned. The later Phase 9 integration must connect it to Hinode
+through the road/streaming systems and measure any world-bound expansion before making it. A compact prototype is not
+being represented as a full megacity or a completed playable city.
+
+| District                            | Road character                                                                          | What it is for                                                                             | Primary seasonal payoff                             |
+| ----------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| **Kaiun Coast** (海運海岸)          | Fast coastal expressway, sweepers, a long causeway                                      | Speed, sea horizon, wide skies, sunset runs                                                | Summer haze, winter storm swell                     |
+| **Hinode Harbour**                  | Harbour loop, container port, fish market lanes                                         | Water reflections, industrial light at night                                               | Rain-slick neon, fog                                |
+| **Yūhi Town** (夕陽町)              | Tight grid of narrow lanes, crossings, alleys                                           | The everyday Japan look: vending machines, wires, konbini, izakaya                         | Rain, snow, matsuri lanterns                        |
+| **Aohara Metropolis**               | Dense multi-lane avenues, signalized intersections, elevated and underground connectors | Added high-rise skyline, urban traffic and pedestrian systems; never replaces rural Hinode | Night windows, local street-light glow, reflections |
+| **Take-no-Michi** (竹の道)          | Narrow lane through a bamboo grove toward a shrine                                      | Landmark moment: torii, stone lanterns, moss, stepping-stone shadows                       | Green all year; snow on bamboo in winter            |
+| **Chiyo River & Sakura Avenue**     | River road lined with sakura, two bridges                                               | The postcard: blossom tunnels, petals on asphalt                                           | Spring, overwhelmingly                              |
+| **Momiji Gorge** (紅葉峡)           | Winding gorge road, river, waterfalls, short tunnels                                    | Technical corners, tunnels, canyon light                                                   | Autumn maple colour, leaf litter, wet road          |
+| **Kiri Pass** (霧峠)                | Classic touge: hairpins, guardrails, convex mirrors, morning mist                       | The drift road; canyon walls of sugi cedar                                                 | Mud, falling leaves, first snow                     |
+| **Shirasagi Terraces** (白鷺の棚田) | Single-lane farm roads between paddies, raised beds                                     | Open sky, mirror-flat water, rice green/gold                                               | Flooded-spring mirror, harvest gold, snow fields    |
+| **Hokuto Highlands** (北斗高原)     | Open plateau sweepers, susuki grass, volcanic ash                                       | Big sky, wind, dirt pull-offs, rally-ish routes                                            | Silver grass, frost, deep snow                      |
+| **Ginzan Onsen** (銀山温泉)         | Snow-country village lanes, steep approach road                                         | Winter hub: lanterns, steam, wooden buildings                                              | Heavy snow, ice, night glow                         |
 
 **Events layer (presentation, not gameplay scope):** seasonal set-dressing that turns the same roads into different
 places — _Hanami_ (spring blossom), _Matsuri_ (summer festival: lantern strings, yukata props, fireworks over the

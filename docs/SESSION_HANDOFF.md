@@ -1574,3 +1574,23 @@ Owner report: foliage is too dark. Continued only within the authorized Phase 5 
 **Visual status:** no stable readable owner-device capture is available. This is a targeted code-level response to dark foliage, not proof that the owner's appearance report is fixed. Terrain must remain non-white, and HDR/ray-tracing expectations remain open and must be described honestly. Phase 5 acceptance remains open; Phase 6 has not started.
 
 **Next:** obtain stable owner-device visual evidence before calling foliage accepted or starting Phase 6. The source-level brightness/backlight change is not visual acceptance; the no-white-ground, prepared-ahead streaming, tree-collision, and HDR/ray-tracing reports also remain subject to their existing acceptance evidence. Phase 5 stays in progress; Phases 7–8 remain gated.
+
+## 51. Owner-authorized Phase 9: Aohara city night-lighting slice (2026-10-19)
+
+The owner explicitly authorized a new urban-systems track to begin immediately, in parallel with the still-open Phase 5 visual gate. Scope decisions: add a fictional Japanese megacity district while retaining rural Hinode; prioritize night lighting; include both soft glow/halation and subtle diffraction/starbursts. This authorization is Phase 9 only; Phase 6 still waits on Phase 5 acceptance, and Phases 7–8 remain gated. ADR 0006 and `PROJECT_PLAN.md` §9 record the scope.
+
+**Implementation:**
+
+- Added a dedicated `?scene=city` composition root using the production `Engine`, `SceneManager`, daylight controller, and post chain. It opens at 23:30 by default; `?time=<hours>` and `?tier=C|B|A` remain available. The scene has an orbit camera but intentionally no Rapier, player car, or claim of driveability.
+- Added a bounded Aohara avenue block with an intersection, lane markings, zebra crossings, two timed opposing traffic signals, eight high-rise masses, deterministic lit windows, instanced lamp posts, tier-budgeted point lights, and a dark specular pavement material.
+- Light sources use local TSL Gaussian halo/diffraction sprites, faded by solar elevation. The global bloom path remains disabled in gameplay to avoid the previously measured fog-like washout. The surface highlight is a basic material-lighting approximation, not SSR, ray tracing, rain, or a weather simulation.
+- Added `SceneContent.update(deltaSeconds)` and routed the engine's clamped frame delta to content, so the two demo signals animate without a timer or new physics system. Tests cover the night fade, safe opposing signal phases, C/B/A budgets, and scene construction.
+- Added Phase 9 authorization/acceptance documentation to `AGENTS.md`, `PROJECT_PLAN.md`, `README.md`, `docs/VISUAL_TARGET.md`, `docs/ARCHITECTURE.md`, `src/lab/README.md`, and `src/world/README.md`; added ADR 0006. No external assets or dependencies were added.
+
+**Verification:** Fresh-clone `npm ci` installed 201 packages with 0 reported vulnerabilities. Final `npm run check` passed: Prettier, ESLint, the no-GLSL guard, both TypeScript checks, **50 test files / 455 tests**, 17-asset hash/licence verification (39,714,769 bytes), and production build. The new `urban-night.test.ts` has five tests. Existing non-blocking warnings remain: intentional missing-LOD fixture messages, vegetation `toNonIndexed()` notices, and Vite's large Rapier chunk warning.
+
+**Visual status:** No browser, WebGPU/WebGL screenshot, owner-device capture, performance measurement, or owner visual acceptance was performed for this increment. The city block is not yet connected to the driveable streamed map; AI pedestrians/vehicles, tunnels, bridges/flyovers, and highway integration remain planned Phase 9 work. Phase 5 acceptance remains unresolved.
+
+**Remote status:** Code/docs/handoff changes are implemented and locally validated but not yet committed or pushed at the time of this entry. Update this section with the exact commit, verified remote SHA, and CI/Pages results after synchronization; do not imply a deployment before those checks complete.
+
+**Next:** commit/push through the established fresh-clone GitHub workflow, verify the remote SHA and CI, then obtain visual feedback on the bounded `?scene=city` slice. Continue Phase 5 and the authorized Phase 9 work as parallel tracks; do not begin Phase 7 or Phase 8.

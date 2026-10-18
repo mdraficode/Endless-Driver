@@ -1,9 +1,6 @@
 # Procedural world
 
-**Status:** Phase 4 in progress (authorized 2026-10-15). Terrain foundation and the spline
-road network have landed — seeded heightfield, chunked LOD streaming, heightfield
-colliders, carved roads with scanned surfaces, worker generation, floating origin,
-destructible vegetation, and the Yūhi Town build-out.
+**Status:** Phase 4 built scope was delivered on 2026-10-15. Phase 5 remains in progress; the separately authorized Phase 9 has begun with a bounded Aohara Metropolis night-lighting look-dev slice. The existing seeded terrain, chunked LOD, road graph, rural districts and Yūhi Town remain intact.
 
 ## Responsibility
 
@@ -14,7 +11,7 @@ origin — and the pluggable definition of what a scene is made of.
 
 | File                      | Responsibility                                                                                                                                                                               |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `WorldContent.ts`         | `SceneContent`, the seam between the environment and what stands in it, with the optional `updateStreaming`/`getContentStats`/`collideTown` hooks Phase 4 streams through                    |
+| `WorldContent.ts`         | `SceneContent`, the seam between the environment and scene content, with optional daylight, frame-update, streaming, statistics and collision hooks                                          |
 | `terrain-height.ts`       | The one height function: integer-hash deterministic fBm hills + the Hinode-dake cone + the exactly-flat spawn plateau, plus the height/slope splat colours. Pure; everything samples it      |
 | `terrain-chunks.ts`       | The pure streaming planner: chunk coordinates, LOD-by-ring, the visual plan and the physics window. No three.js, no Rapier, so the plan is unit-testable                                     |
 | `terrain-geometry.ts`     | Chunk mesh building: halo-sampled grid normals (bit-identical shared borders), vertex-colour splat, skirts against LOD cracks                                                                |
@@ -34,6 +31,7 @@ origin — and the pluggable definition of what a scene is made of.
 | `road-geometry.ts`        | Ribbon geometry (pavement, shoulders, edge lines) and centre-dash generation from solved profiles                                                                                            |
 | `RoadWorld.ts`            | The visual road network: whole-network ribbon meshes, junction discs, async CC0 asphalt/gravel surfaces, road stats                                                                          |
 | `RouteWorld.ts`           | The Phase 3 validation route (fixed vista for the SSIM baseline)                                                                                                                             |
+| `urban-night.ts`          | Phase 9's bounded Aohara city block: tier-capped street lights/windows, local Gaussian-diffraction sprites, specular road surface, crossing and timed signals; not yet driveable or streamed |
 
 The seam exists because the project needs more than one answer to "what is the scene made of?" —
 the studio look-dev grid in `src/lab/` wants identical lighting and post-processing over entirely
@@ -41,8 +39,6 @@ different content. Phase 4's terrain arrived behind the same interface, as drawn
 
 ## Planned work
 
-Bridges/tunnels where a future generator needs them, worker-side generation in
-`src/workers/`, `FloatingOrigin.ts`, scanned-CC0 splat detail, and the §5 district build-out —
-all this phase, behind the same `SceneContent` interface.
+Phase 4 bridges/tunnels remain deferred. Phase 9 will integrate Aohara into the bounded streamed world, add the full urban road graph and grade-separated links, then implement deterministic single-player vehicle/pedestrian traffic. Weather/seasons and unrelated final polish remain separately gated.
 
 See [the project plan](../../PROJECT_PLAN.md) and [architecture](../../docs/ARCHITECTURE.md).

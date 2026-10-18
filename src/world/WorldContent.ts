@@ -27,6 +27,8 @@ export interface SceneContent {
   readonly kind: string;
   /** Resolved clock/sun state for content-owned effects such as leaf backlighting. */
   setDaylight?(state: DaylightState): void;
+  /** Optional content-owned simulation/update hook, driven with the engine's clamped frame delta. */
+  update?(deltaSeconds: number): void;
   /**
    * Per-frame streaming hook (Phase 4 terrain): the focus is the vehicle position. Content
    * without streaming ignores it. Called with a scratch-free fresh object each frame by

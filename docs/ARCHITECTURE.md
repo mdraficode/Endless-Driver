@@ -1,7 +1,7 @@
 # Architecture — Endless Driver
 
-**State:** Phases 1–2 implemented (core runtime and scene foundation; Rapier vehicle physics, keyboard input smoothing, chase camera); the visual-fidelity re-plan and free-and-open asset strategy are written (ADRs 0004–0005); Phases 3–8 (rearranged) remain design contracts.  
-**Related:** [Project plan](../PROJECT_PLAN.md) §9 (phases) and §6 (rendering architecture), [visual target](VISUAL_TARGET.md), [AAA fidelity research](RESEARCH_AAA_FIDELITY.md), [engine/physics decision](decisions/0001-engine-and-physics.md), [renderer decision](decisions/0002-renderer-three-js.md), [vehicle physics decision](decisions/0003-vehicle-physics-and-camera.md), [visual fidelity and rendering pipeline decision](decisions/0004-visual-fidelity-and-rendering-pipeline.md).
+**State:** Architecture reference; implementation has progressed beyond the original Phase 1–2 baseline below. Current delivery, visual acceptance, and authorization status are tracked in [`README.md`](../README.md), [`PROJECT_PLAN.md`](../PROJECT_PLAN.md), and [`SESSION_HANDOFF.md`](SESSION_HANDOFF.md). Phase 9 urban systems was separately authorized on 2026-10-19; Phase 5 visual acceptance remains open and Phases 7–8 remain gated.  
+**Related:** [Project plan](../PROJECT_PLAN.md) §9 (phases) and §6 (rendering architecture), [visual target](VISUAL_TARGET.md), [AAA fidelity research](RESEARCH_AAA_FIDELITY.md), [engine/physics decision](decisions/0001-engine-and-physics.md), [renderer decision](decisions/0002-renderer-three-js.md), [vehicle physics decision](decisions/0003-vehicle-physics-and-camera.md), [visual fidelity and rendering pipeline decision](decisions/0004-visual-fidelity-and-rendering-pipeline.md), [urban-systems decision](decisions/0006-urban-systems-and-city-night-lighting.md).
 
 ## 1. Composition and data flow
 
@@ -87,7 +87,7 @@ These are design requirements, not scaffold source implementations.
 - **QualityProfile:** pixel cap, draw/LOD/shadow/effect/particle limits and adaptation thresholds.
 - **Disposable:** an explicit idempotent disposal operation or equivalent ownership protocol.
 
-Add these contracts as the relevant phase begins, not as speculative code now.
+The inventory above began as a design checklist; it is not a statement that every listed contract is still unimplemented. The current scene-content seam is `src/world/WorldContent.ts`: `SceneManager` owns the environment and invokes optional content `setDaylight`/`update`/streaming hooks. Phase 9's `?scene=city` composition root shares the production renderer and daylight pipeline while mounting a bounded, non-driveable Aohara night block.
 
 ## 6. Physics and rendering boundary
 
