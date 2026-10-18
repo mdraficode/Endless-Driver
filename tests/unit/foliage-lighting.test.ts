@@ -38,11 +38,15 @@ describe('foliage light response', () => {
   });
 
   it('keeps backlighting directional, daylight-scaled, and off at night', () => {
-    expect(resolveFoliageBacklightStrength(1, false)).toBe(FOLIAGE_LIGHTING_CONFIG.backlightStrength);
+    expect(resolveFoliageBacklightStrength(1, false)).toBe(
+      FOLIAGE_LIGHTING_CONFIG.backlightStrength,
+    );
     expect(resolveFoliageBacklightStrength(0.5, false)).toBeCloseTo(
       FOLIAGE_LIGHTING_CONFIG.backlightStrength / 2,
     );
-    expect(resolveFoliageBacklightStrength(3, false)).toBe(FOLIAGE_LIGHTING_CONFIG.backlightStrength);
+    expect(resolveFoliageBacklightStrength(3, false)).toBe(
+      FOLIAGE_LIGHTING_CONFIG.backlightStrength,
+    );
     expect(resolveFoliageBacklightStrength(-1, false)).toBe(0);
     expect(resolveFoliageBacklightStrength(Number.NaN, false)).toBe(0);
     expect(resolveFoliageBacklightStrength(1, true)).toBe(0);
