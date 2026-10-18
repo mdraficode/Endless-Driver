@@ -1552,7 +1552,7 @@ Owner direction: “Ok carry on further development work.” Continued within th
 - Scanned tree adoption is awaited as part of first-world readiness, avoiding a late swap from authored to scanned models after driving starts. Runtime foliage generation stays capped at three chunks per frame.
 - Added pure planner tests, a terrain-preparation test, and a foliage-preparation test. Diagnostics expose desired/loaded/pending foliage chunk counts.
 
-**Verification:** Pending the unfiltered project check and remote CI for this increment; record the results and final remote SHA here after completion.
+**Verification:** `npm run check` passed at source checkpoint `33d54f680e46d8384c66f582d76f1f926c251978`: formatting, ESLint, GLSL guard, both TypeScript checks, **48 test files / 447 tests**, 17-asset hash/licence verification (39,714,769 bytes), and production build. GitHub Validate run `39161617071` and Pages Deploy run `39161616954` both succeeded; local `HEAD` matched `origin/main`. The live Pages bundle (`assets/index-CSm3oqHR.js`) contains the startup-readiness and vegetation-prefetch code. Existing warnings remain: test models intentionally lack some LOD nodes, vegetation emits `toNonIndexed()` notices, and Vite reports the large Rapier chunk.
 
 **Still open:** No stable, readable owner-device capture confirms the terrain appearance or visible vegetation streaming. The report of tree pop-in, dark foliage, and weak HDR/ray-tracing effect remains open; do not claim visual acceptance. Phase 5 is still in progress and Phase 6 has not started.
 
