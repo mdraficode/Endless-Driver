@@ -335,7 +335,10 @@ export class TerrainWorld implements SceneContent {
       if (grassArm === null || soilArm === null || rockArm === null) {
         return float(fallback);
       }
-      return grassArm[channel].mul(splat.x).add(soilArm[channel].mul(splat.y)).add(rockArm[channel].mul(splat.z));
+      return grassArm[channel]
+        .mul(splat.x)
+        .add(soilArm[channel].mul(splat.y))
+        .add(rockArm[channel].mul(splat.z));
     };
 
     const macro = vertexColor();

@@ -31,7 +31,7 @@
 | Implement Phase 2 (vehicle physics, keyboard smoothing, dynamic chase camera)                        | Done — see sections 3–5                                                                                                    |
 | Reach “Forza Horizon level” visuals (realistic car, environment aesthetics, seasons, roads, terrain) | Re-plan complete 2026-10-14; implementation gated — see section 9                                                          |
 | Use only free/open premium assets, no payments; region = rural Japan                                 | Resolved 2026-10-14 — `docs/ASSET_SOURCES.md` (API-verified sources), ADR 0005, region brief in `docs/VISUAL_TARGET.md` §5 |
-| Work in phase order; Phases 5–6 authorized 2026-10-18, Phases 7–8 gated                           | Phase 5 in progress; complete it before starting Phase 6                                                                  |
+| Work in phase order; Phases 5–6 authorized 2026-10-18, Phases 7–8 gated                              | Phase 5 in progress; complete it before starting Phase 6                                                                   |
 
 Phase 2 was authorized with these constraints, all honored: Rapier **or** Cannon-es allowed (Rapier
 chosen — sole physics authority, never two solvers); the slip-friction/drift behaviour is an explicit
