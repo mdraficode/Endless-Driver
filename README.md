@@ -126,7 +126,7 @@ docs/             architecture, decisions, handoff, asset/Git policies
 | Phase 6: hero car, materials, vehicle fidelity                 | **Authorized 2026-10-18; sequenced after Phase 5 acceptance**                                                            |
 | Phase 7: weather, seasons, surface behaviour                   | Gated — requires explicit owner instruction                                                                              |
 | Phase 8: final mobile/HUD/camera/polish pass                   | Gated — requires explicit owner instruction                                                                              |
-| Phase 9: Aohara Metropolis urban systems                       | **Authorized 2026-10-19; 5×5 grid/default city start; wet-night visual pass locally checked; visual acceptance open**    |
+| Phase 9: Aohara Metropolis urban systems                       | **Authorized 2026-10-19; 5×5 grid/default city start; wet-night pass pushed, CI/Pages green; visual acceptance open**    |
 
 Verification detail — including how browser checks were performed, the device/tooling used, and what remains unverified — is recorded in [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md). Green checks do **not** prove realistic vehicle physics, device support, or a 60 FPS guarantee on a given machine.
 
