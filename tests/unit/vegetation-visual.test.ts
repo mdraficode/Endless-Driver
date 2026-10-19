@@ -25,7 +25,9 @@ describe('vegetation destruction visuals', () => {
     const leafyMesh = world.root.getObjectByName('vegetation-broadleaf-0');
     expect(leafyMesh).toBeInstanceOf(InstancedMesh);
     expect((leafyMesh as InstancedMesh).material).toBeInstanceOf(MeshStandardNodeMaterial);
-    expect(((leafyMesh as InstancedMesh).material as MeshStandardNodeMaterial).positionNode).not.toBeNull();
+    expect(
+      ((leafyMesh as InstancedMesh).material as MeshStandardNodeMaterial).positionNode,
+    ).not.toBeNull();
     expect(stats.vegetationWindAmplitudeMeters).toBe(0.065);
     expect(stats.vegetationChunks).toBe(9);
     expect(stats.vegetationChunksDesired).toBe(9);
@@ -40,7 +42,9 @@ describe('vegetation destruction visuals', () => {
     const leafyMesh = world.root.getObjectByName('vegetation-broadleaf-0');
 
     expect(leafyMesh).toBeInstanceOf(InstancedMesh);
-    expect(((leafyMesh as InstancedMesh).material as MeshStandardNodeMaterial).positionNode).toBeNull();
+    expect(
+      ((leafyMesh as InstancedMesh).material as MeshStandardNodeMaterial).positionNode,
+    ).toBeNull();
     expect(world.getContentStats().vegetationWindAmplitudeMeters).toBe(0);
     world.dispose();
   });

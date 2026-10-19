@@ -1,13 +1,5 @@
 import type { Node } from 'three/webgpu';
-import {
-  float,
-  positionGeometry,
-  positionLocal,
-  sin,
-  smoothstep,
-  time,
-  vec3,
-} from 'three/tsl';
+import { float, positionGeometry, positionLocal, sin, smoothstep, time, vec3 } from 'three/tsl';
 
 import { FOLIAGE_WIND_CONFIG } from '../config/foliage-wind';
 import type { TierId } from '../config/tiers';
@@ -44,9 +36,7 @@ export function createFoliageWindPositionNode(
   );
   const sway = sin(phase).mul(amplitude).mul(heightGate).mul(foliageMask);
 
-  return positionLocal.add(
-    vec3(sway, float(0), sway.mul(FOLIAGE_WIND_CONFIG.lateralRatio)),
-  );
+  return positionLocal.add(vec3(sway, float(0), sway.mul(FOLIAGE_WIND_CONFIG.lateralRatio)));
 }
 
 /** Resolves the maximum authored canopy displacement used by diagnostics and tests. */
