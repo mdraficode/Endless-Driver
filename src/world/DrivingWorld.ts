@@ -51,6 +51,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
   // Yūhi Town + roadside poles (Increment 5b): static rural town, always resident.
   const town = new TownWorld(terrainSampler);
   root.add(town.root);
+  vegetation.setGroundCoverBlockers(town.buildings);
 
   // Aohara's connected 5×5 street grid, sidewalks, crossings and night block share the graph above.
   // The compact, instanced city kit is resident; terrain and collision still use their normal

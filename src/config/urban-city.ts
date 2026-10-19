@@ -84,6 +84,10 @@ export interface UrbanNightTierBudget {
   /** The building, billboard, venue and decorative share of `pointLights`. */
   readonly architecturalPointLights: number;
   readonly litWindowInstances: number;
+  /** Static tinted facade panes/frames; separate from the small night-emission window cap. */
+  readonly facadeWindowInstances: number;
+  /** Structural facade/roof-detail instances, excluding building shells and light emitters. */
+  readonly facadeDetailInstances: number;
   /** Cardinal (horizontal/vertical) Gaussian streak weight. */
   readonly cardinalStarburst: number;
   /** Diagonal streak weight; kept off on tier C. */
@@ -101,6 +105,8 @@ export const URBAN_NIGHT_TIER_BUDGET: Readonly<Record<TierId, UrbanNightTierBudg
     streetPointLights: 4,
     architecturalPointLights: 2,
     litWindowInstances: 160,
+    facadeWindowInstances: 2_400,
+    facadeDetailInstances: 512,
     cardinalStarburst: 0.035,
     diagonalStarburst: 0,
   },
@@ -109,6 +115,8 @@ export const URBAN_NIGHT_TIER_BUDGET: Readonly<Record<TierId, UrbanNightTierBudg
     streetPointLights: 6,
     architecturalPointLights: 2,
     litWindowInstances: 320,
+    facadeWindowInstances: 4_800,
+    facadeDetailInstances: 1_024,
     cardinalStarburst: 0.05,
     diagonalStarburst: 0.018,
   },
@@ -117,6 +125,8 @@ export const URBAN_NIGHT_TIER_BUDGET: Readonly<Record<TierId, UrbanNightTierBudg
     streetPointLights: 8,
     architecturalPointLights: 4,
     litWindowInstances: 512,
+    facadeWindowInstances: 7_200,
+    facadeDetailInstances: 1_600,
     cardinalStarburst: 0.06,
     diagonalStarburst: 0.026,
   },

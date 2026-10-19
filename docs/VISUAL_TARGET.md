@@ -70,6 +70,8 @@ owns it. "Tier" refers to §3.
 | Contact/screen-space shadows beneath small props and foliage                          | Rocks and grass clumps are visually anchored (no floating), shadow contact density scales with tier                         | 3, 5  |
 | Props: rocks, barriers, signs, poles, fences with correct scale and material response | Scale check against the car (1.8 m tall reference); no intersected/oversized props in the drive route                       | 5     |
 
+**Implementation note (2026-10-20):** the initial ground-cover batch has fixed instance-pool caps of 16k / 42k / 100k for C/B/A and is reported separately from tree/prop instances. The cap is not proof that a given streaming window reaches 100k, that the cover is continuous, or that it meets frame budgets; actual counts, LOD/pop-in, fixed-bookmark appearance, and owner-device performance remain to be validated. Its TSL wind/backlight uses the existing daylight and tier pipeline. New building surfaces use the current HDRI image-based lighting and ACES tone mapping with TSL PBR variation; this does not add SSR or hardware ray tracing. Phase 5 visual acceptance remains open.
+
 ### 2.4 The car (Phase 6)
 
 | Target                                                                                           | Measurable check                                                                                                       | Phase |
@@ -128,6 +130,7 @@ recorded in every performance claim.
 | Vegetation                  | Impostors, ≤ 20k; TSL sway off                         | LOD1–2, ≤ 80k; TSL sway ≤ 0.035 m                               | Full LOD0 near, ≤ 200k; TSL sway ≤ 0.065 m                      |
 | Clouds/atmosphere           | HDRI sky + fog                                         | Sky + layered clouds + fog                                      | Sky + volumetric cloud/light shafts where enabled               |
 | Urban night lights          | Faint local halo + 2-axis starburst, few active lights | Soft halo + restrained 4-axis starburst, capped lights/windows  | Full local halo + subtle 4-axis starburst, source-isolated      |
+| Aohara facade panes/frames + structure details | 2,400 / 512 | 4,800 / 1,024 | 7,200 / 1,600 |
 | Vehicle particles / shutter | ≤ 32 smoke, 6 sparks, 4 airflow marks; no blur         | ≤ 64 smoke, 10 sparks, 10 airflow marks; 0–0.28 high-speed blur | ≤ 88 smoke, 14 sparks, 16 airflow marks; 0–0.36 high-speed blur |
 | Post stack                  | Tone map + grade; no global bloom                      | + GTAO + DOF + TAAU; no global bloom                            | + SSR (pending) + grain; no global bloom                        |
 | Target frame                | 30–60 FPS                                              | 60 FPS                                                          | 60+ FPS where hardware permits                                  |

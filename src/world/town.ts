@@ -11,8 +11,7 @@ import {
   Quaternion,
   Vector3,
 } from 'three';
-import { MeshStandardNodeMaterial } from 'three/webgpu';
-import { vertexColor } from 'three/tsl';
+import { MeshPhysicalNodeMaterial } from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { BUILDING_ARCHETYPES, TOWN_CONFIG } from '../config/town';
@@ -20,6 +19,7 @@ import { DISTRICTS } from '../config/districts';
 import type { TerrainSampler } from './terrain-height';
 import type { RoadNetwork } from './road-network';
 import { districtAt } from './districts';
+import { createArchitecturalMaterial, createVertexColorArchitecturalMaterial } from './architectural-materials';
 import { generateChunkVegetation } from './vegetation-placement';
 import { hash01 } from './vegetation-placement';
 
@@ -267,51 +267,184 @@ function box(
 const WALL_COLORS = [0xe8e0cc, 0xdfe5ea, 0xe6d3b8] as const;
 const ROOF_COLORS = [0x3d4450, 0x7a4a38, 0x54443a] as const;
 
+interface TownWindowPlacement {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly yaw: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+function buildTownWindowPlacements(archetype: number): TownWindowPlacement[] {
+  const spec = BUILDING_ARCHETYPES[archetype]!;
+  const windowHeight = archetype === 1 ? 1.45 : archetype === 2 ? 1.18 : 1.15;
+  const floorYs = archetype === 2 ? [1.55, 3.9] : [archetype === 1 ? 1.8 : 1.72];
+  const faces = [
+    { id: 'front', length: spec.width, x: 0, z: spec.depth / 2 + 0.055, yaw: -Math.PI / 2, along: 'x' as const },
+    { id: 'back', length: spec.width, x: 0, z: -spec.depth / 2 - 0.055, yaw: Math.PI / 2, along: 'x' as const },
+    { id: 'right', length: spec.depth, x: spec.width / 2 + 0.055, z: 0, yaw: 0, along: 'z' as const },
+    { id: 'left', length: spec.depth, x: -spec.width / 2 - 0.055, z: 0, yaw: Math.PI, along: 'z' as const },
+  ];
+  const windows: TownWindowPlacement[] = [];
+  for (const face of faces) {
+    const columns = Math.max(1, Math.floor((face.length - 1.6) / (archetype === 1 ? 2.6 : 2.3)));
+    const spacing = Math.min(archetype === 1 ? 2.8 : 2.55, (face.length - 1.5) / columns);
+    const width = Math.min(archetype === 1 ? 1.8 : 1.28, spacing * 0.67);
+    for (let column = 0; column < columns; column += 1) {
+      const along = (column - (columns - 1) / 2) * spacing;
+      const x = face.x + (face.along === 'x' ? along : 0);
+      const z = face.z + (face.along === 'z' ? along : 0);
+      if (face.id === 'front' && Math.abs(x + spec.width * 0.28) < 1.05) {
+        continue; // keep the existing entrance and its trim unobstructed
+      }
+      for (const y of floorYs) {
+        windows.push({ x, y, z, yaw: face.yaw, width, height: windowHeight });
+      }
+    }
+  }
+  return windows;
+}
+
+function buildWindowFrameGeometry(window: TownWindowPlacement, trimHex: number): BufferGeometry {
+  const bar = 0.075;
+  const depth = 0.1;
+  const parts = [
+    box(depth, window.height + bar * 2, bar, trimHex, 0, 0, -window.width / 2),
+    box(depth, window.height + bar * 2, bar, trimHex, 0, 0, window.width / 2),
+    box(depth, bar, window.width + bar * 2, trimHex, 0, -window.height / 2, 0),
+    box(depth, bar, window.width + bar * 2, trimHex, 0, window.height / 2, 0),
+    box(depth, window.height, bar * 0.6, trimHex, 0, 0, 0),
+    box(depth * 1.35, bar, window.width + 0.2, trimHex, 0.02, -window.height / 2 - bar * 0.8, 0),
+  ];
+  for (const part of parts) {
+    part.rotateY(window.yaw);
+    part.translate(window.x, window.y, window.z);
+  }
+  const merged = mergeGeometries(parts, false);
+  for (const part of parts) {
+    part.dispose();
+  }
+  if (merged === null) {
+    throw new Error('could not assemble Yūhi Town window frame');
+  }
+  return merged;
+}
+
+function buildWindowGeometry(archetype: number): { readonly geometry: BufferGeometry; readonly count: number } {
+  const windows = buildTownWindowPlacements(archetype);
+  const panes = windows.map((window) => {
+    const pane = new BoxGeometry(0.055, window.height - 0.16, window.width - 0.16);
+    pane.translate(0.075, 0, 0);
+    pane.rotateY(window.yaw);
+    pane.translate(window.x, window.y, window.z);
+    return pane;
+  });
+  const merged = mergeGeometries(panes, false);
+  for (const pane of panes) {
+    pane.dispose();
+  }
+  if (merged === null) {
+    throw new Error(`could not assemble Yūhi Town glazing for archetype ${archetype}`);
+  }
+  merged.name = `yuhi-town-glazing-${archetype}`;
+  return { geometry: merged, count: windows.length };
+}
+
 function buildWallGeometry(archetype: number): BufferGeometry {
   const spec = BUILDING_ARCHETYPES[archetype]!;
+  const trimHex = archetype === 1 ? 0x3e4547 : 0x57483a;
+  const doorX = -spec.width * 0.28;
+  const frontZ = spec.depth / 2 + 0.045;
   const parts = [
     box(spec.width, spec.height, spec.depth, WALL_COLORS[archetype]!, 0, spec.height / 2, 0),
-    // Window band: dark insets on the street face, door below.
-    box(spec.width * 0.62, 0.85, 0.08, 0x39434f, 0, spec.height * 0.62, spec.depth / 2 + 0.03),
-    box(0.9, 1.9, 0.08, 0x4c3a2a, -spec.width * 0.28, 0.95, spec.depth / 2 + 0.03),
+    box(spec.width * 0.98, 0.32, spec.depth * 0.98, 0x736b5e, 0, 0.16, 0),
+    box(spec.width + 0.24, 0.11, spec.depth + 0.24, 0x3d454b, 0, spec.height + 0.035, 0),
+    box(0.9, 1.86, 0.075, 0x49382c, doorX, 0.93, frontZ),
+    box(0.095, 2.02, 0.12, trimHex, doorX - 0.5, 1.01, frontZ + 0.045),
+    box(0.095, 2.02, 0.12, trimHex, doorX + 0.5, 1.01, frontZ + 0.045),
+    box(1.08, 0.12, 0.12, trimHex, doorX, 1.98, frontZ + 0.045),
+    box(1.12, 0.09, 0.28, 0x4b4b47, doorX, 0.045, frontZ + 0.12),
+    box(0.045, 0.19, 0.045, 0xb08b50, doorX + 0.31, 1.02, frontZ + 0.1),
   ];
+  for (const window of buildTownWindowPlacements(archetype)) {
+    parts.push(buildWindowFrameGeometry(window, trimHex));
+  }
   if (archetype === 1) {
-    // Shop: sign band + awning strip.
+    // Shop: unbranded sign panel, projecting awning and two support brackets.
     parts.push(
-      box(spec.width * 0.92, 0.55, 0.1, 0xb8452e, 0, spec.height - 0.45, spec.depth / 2 + 0.05),
+      box(spec.width * 0.92, 0.48, 0.1, 0xb8452e, 0, spec.height - 0.44, spec.depth / 2 + 0.07),
     );
     parts.push(
-      box(spec.width * 0.8, 0.08, 1.1, 0x2e4a5e, 0, spec.height * 0.52, spec.depth / 2 + 0.5),
+      box(spec.width * 0.82, 0.1, 1.0, 0x315365, 0, spec.height * 0.52, spec.depth / 2 + 0.48),
+    );
+    parts.push(
+      box(0.09, 0.48, 0.1, 0x35464c, -spec.width * 0.31, spec.height * 0.52, spec.depth / 2 + 0.35),
+    );
+    parts.push(
+      box(0.09, 0.48, 0.1, 0x35464c, spec.width * 0.31, spec.height * 0.52, spec.depth / 2 + 0.35),
     );
   }
   if (archetype === 2) {
-    parts.push(
-      box(spec.width * 0.6, 0.8, 0.08, 0x39434f, 0, spec.height * 0.3, spec.depth / 2 + 0.03),
-    );
+    // The taller home has stronger vertical corner boards to break up the broad plaster faces.
+    for (const sideX of [-1, 1] as const) {
+      for (const sideZ of [-1, 1] as const) {
+        parts.push(
+          box(0.16, spec.height, 0.16, 0x73736c, sideX * (spec.width / 2 - 0.08), spec.height / 2, sideZ * (spec.depth / 2 - 0.08)),
+        );
+      }
+    }
   }
-  return mergeGeometries(parts)!;
+  const merged = mergeGeometries(parts, false);
+  for (const part of parts) {
+    part.dispose();
+  }
+  if (merged === null) {
+    throw new Error(`could not assemble Yūhi Town wall kit ${archetype}`);
+  }
+  merged.name = `yuhi-town-wall-kit-${archetype}`;
+  return merged;
 }
 
 function buildRoofGeometry(archetype: number): BufferGeometry {
   const spec = BUILDING_ARCHETYPES[archetype]!;
   const roof = paint(
-    new ConeGeometry(0.74, spec.roofHeight, 4).toNonIndexed(),
+    new ConeGeometry(0.72, spec.roofHeight, 4).toNonIndexed(),
     ROOF_COLORS[archetype]!,
   );
   roof.rotateY(Math.PI / 4);
-  roof.scale(spec.width, 1, spec.depth);
+  roof.scale(spec.width * 0.62, 1, spec.depth * 0.62);
   roof.translate(0, spec.height + spec.roofHeight / 2 - 0.04, 0);
-  // Ridge cap.
-  const cap = box(
-    spec.width * 0.5,
-    0.12,
-    0.3,
-    0x2c3138,
-    0,
-    spec.height + spec.roofHeight - 0.02,
-    0,
-  );
-  return mergeGeometries([roof, cap])!;
+  const parts = [
+    roof,
+    box(spec.width + 0.24, 0.13, spec.depth + 0.24, 0x343b41, 0, spec.height + 0.035, 0),
+    box(spec.width * 0.5, 0.12, 0.3, 0x2c3138, 0, spec.height + spec.roofHeight - 0.02, 0),
+  ];
+  if (archetype === 0) {
+    parts.push(
+      box(0.48, 0.92, 0.5, 0x785f4b, spec.width * 0.2, spec.height + spec.roofHeight * 0.52, -spec.depth * 0.15),
+      box(0.58, 0.1, 0.58, 0x3f4140, spec.width * 0.2, spec.height + spec.roofHeight * 0.98, -spec.depth * 0.15),
+    );
+  } else if (archetype === 1) {
+    parts.push(
+      box(0.72, 0.72, 0.72, 0x465258, spec.width * 0.18, spec.height + 0.46, -spec.depth * 0.14),
+      box(0.25, 0.92, 0.25, 0x59656b, -spec.width * 0.2, spec.height + 0.54, spec.depth * 0.16),
+    );
+  } else {
+    parts.push(
+      box(0.52, 1.42, 0.52, 0x5e6666, -spec.width * 0.18, spec.height + 0.82, -spec.depth * 0.16),
+      box(0.68, 0.18, 0.68, 0x454d51, spec.width * 0.18, spec.height + 0.24, spec.depth * 0.15),
+    );
+  }
+  const merged = mergeGeometries(parts, false);
+  for (const part of parts) {
+    part.dispose();
+  }
+  if (merged === null) {
+    throw new Error(`could not assemble Yūhi Town roof kit ${archetype}`);
+  }
+  merged.name = `yuhi-town-roof-kit-${archetype}`;
+  return merged;
 }
 
 function buildPoleGeometry(): BufferGeometry {
@@ -368,6 +501,9 @@ export class TownWorld {
   readonly #poleRecords = new Map<string, PoleRecord>();
   readonly #poleMesh: InstancedMesh;
   readonly #poleIndex = new Map<string, number>();
+  readonly #material: MeshPhysicalNodeMaterial;
+  readonly #glassMaterial: MeshPhysicalNodeMaterial;
+  #facadeWindowCount = 0;
   #polesDown = 0;
   #time = 0;
   #disposed = false;
@@ -378,9 +514,23 @@ export class TownWorld {
     this.buildings = generateTownBuildings(sampler, network);
     this.poles = network === null ? [] : generateRoadPoles(sampler, network);
 
-    const material = new MeshStandardNodeMaterial();
-    material.colorNode = vertexColor();
-    material.roughness = 0.9;
+    const material = createVertexColorArchitecturalMaterial({
+      name: 'yuhi-town-weathered-plaster-roof-and-wood-pbr',
+      roughness: 0.86,
+      metalness: 0.025,
+      detailAmplitude: 0.022,
+      clearcoat: 0.075,
+      clearcoatRoughness: 0.4,
+    });
+    const glassMaterial = createArchitecturalMaterial({
+      name: 'yuhi-town-hdri-tinted-glazing',
+      colorHex: 0x1b3039,
+      roughness: 0.26,
+      metalness: 0.15,
+      detailAmplitude: 0.012,
+      clearcoat: 0.68,
+      clearcoatRoughness: 0.14,
+    });
 
     const dummy = new Object3D();
     for (let archetype = 0; archetype < BUILDING_ARCHETYPES.length; archetype += 1) {
@@ -405,6 +555,28 @@ export class TownWorld {
         mesh.instanceMatrix.needsUpdate = true;
         this.root.add(mesh);
       }
+
+      const glazing = buildWindowGeometry(archetype);
+      const glassMesh = new InstancedMesh(
+        glazing.geometry,
+        glassMaterial,
+        Math.max(1, placed.length),
+      );
+      glassMesh.castShadow = false;
+      glassMesh.receiveShadow = true;
+      glassMesh.frustumCulled = false;
+      glassMesh.count = placed.length;
+      glassMesh.name = `town-glazing-${archetype}`;
+      placed.forEach((building, index) => {
+        dummy.position.set(building.x, building.y, building.z);
+        dummy.quaternion.setFromAxisAngle(UP, building.yaw);
+        dummy.scale.setScalar(building.scale);
+        dummy.updateMatrix();
+        glassMesh.setMatrixAt(index, dummy.matrix);
+      });
+      glassMesh.instanceMatrix.needsUpdate = true;
+      this.root.add(glassMesh);
+      this.#facadeWindowCount += glazing.count * placed.length;
     }
 
     const poleMesh = new InstancedMesh(
@@ -428,9 +600,8 @@ export class TownWorld {
     this.root.add(poleMesh);
     this.#poleMesh = poleMesh;
     this.#material = material;
+    this.#glassMaterial = glassMaterial;
   }
-
-  readonly #material: MeshStandardNodeMaterial;
 
   /**
    * Tests the car (two plan circles) against buildings and standing poles.
@@ -613,6 +784,7 @@ export class TownWorld {
   getContentStats(): Readonly<Record<string, number>> {
     return {
       townBuildings: this.buildings.length,
+      townFacadeWindows: this.#facadeWindowCount,
       townPoles: this.poles.length,
       townPolesDown: this.#polesDown,
     };
@@ -630,6 +802,7 @@ export class TownWorld {
       }
     });
     this.#material.dispose();
+    this.#glassMaterial.dispose();
     this.root.removeFromParent();
   }
 }

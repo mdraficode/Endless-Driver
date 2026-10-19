@@ -157,6 +157,10 @@ describe('Aohara city night-lighting rules', () => {
     expect(balanced.architecturalPointLights).toBeLessThan(high.architecturalPointLights);
     expect(low.litWindowInstances).toBeLessThan(balanced.litWindowInstances);
     expect(balanced.litWindowInstances).toBeLessThan(high.litWindowInstances);
+    expect(low.facadeWindowInstances).toBeLessThan(balanced.facadeWindowInstances);
+    expect(balanced.facadeWindowInstances).toBeLessThan(high.facadeWindowInstances);
+    expect(low.facadeDetailInstances).toBeLessThan(balanced.facadeDetailInstances);
+    expect(balanced.facadeDetailInstances).toBeLessThan(high.facadeDetailInstances);
     expect(low.cardinalStarburst).toBeGreaterThan(0);
     expect(low.diagonalStarburst).toBe(0);
     expect(balanced.diagonalStarburst).toBeGreaterThan(0);
@@ -204,6 +208,23 @@ describe('Aohara city night-lighting rules', () => {
     expect(lowStats.illuminatedWindows).toBeLessThanOrEqual(
       URBAN_NIGHT_TIER_BUDGET.C.litWindowInstances,
     );
+    expect(lowStats.facadeWindowInstances).toBeGreaterThan(0);
+    expect(lowStats.facadeWindowInstances).toBeLessThanOrEqual(
+      URBAN_NIGHT_TIER_BUDGET.C.facadeWindowInstances,
+    );
+    expect(highStats.facadeWindowInstances).toBeGreaterThanOrEqual(lowStats.facadeWindowInstances);
+    expect(lowStats.facadeDetailInstances).toBeGreaterThan(0);
+    expect(lowStats.facadeDetailInstances).toBeLessThanOrEqual(
+      URBAN_NIGHT_TIER_BUDGET.C.facadeDetailInstances,
+    );
+    const glazing = cityC.root.getObjectByName('aohara-facade-glazing');
+    expect(glazing).toBeInstanceOf(Mesh);
+    if (!(glazing instanceof Mesh)) {
+      throw new Error('Aohara facades should include tier-capped tinted glazing');
+    }
+    expect(glazing.material).toBeInstanceOf(MeshPhysicalNodeMaterial);
+    expect((glazing.material as MeshPhysicalNodeMaterial).clearcoatNode).not.toBeNull();
+    expect(cityC.root.getObjectByName('aohara-facade-window-frames')).toBeInstanceOf(Mesh);
     expect(highStats.streetLightPointLights).toBe(URBAN_NIGHT_TIER_BUDGET.A.streetPointLights);
     expect(highStats.architecturalPointLights).toBe(
       URBAN_NIGHT_TIER_BUDGET.A.architecturalPointLights,

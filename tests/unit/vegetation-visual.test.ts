@@ -1,8 +1,9 @@
-import { InstancedMesh } from 'three';
+import { DoubleSide, InstancedMesh } from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 
 import { VEGETATION_CONFIG } from '../../src/config/districts';
+import { GROUND_COVER_CONFIG } from '../../src/config/ground-cover';
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
@@ -33,6 +34,18 @@ describe('vegetation destruction visuals', () => {
     expect(stats.vegetationChunksDesired).toBe(9);
     expect(stats.vegetationChunksPending).toBe(0);
     expect(stats.vegetationInstances).toBeGreaterThan(0);
+    const groundCover = world.root.getObjectByName('ground-cover-grass');
+    expect(groundCover).toBeInstanceOf(InstancedMesh);
+    if (!(groundCover instanceof InstancedMesh)) {
+      throw new Error('ground-cover scatter should be one instanced mesh');
+    }
+    expect(groundCover.count).toBeGreaterThan(0);
+    expect(groundCover.count).toBeLessThanOrEqual(
+      GROUND_COVER_CONFIG.instanceBudgetByTier.A,
+    );
+    expect((groundCover.material as MeshStandardNodeMaterial).side).toBe(DoubleSide);
+    expect((groundCover.material as MeshStandardNodeMaterial).positionNode).not.toBeNull();
+    expect(stats.groundCoverInstances).toBe(groundCover.count);
     world.dispose();
   });
 
@@ -45,6 +58,15 @@ describe('vegetation destruction visuals', () => {
     expect(
       ((leafyMesh as InstancedMesh).material as MeshStandardNodeMaterial).positionNode,
     ).toBeNull();
+    const groundCover = world.root.getObjectByName('ground-cover-grass');
+    expect(groundCover).toBeInstanceOf(InstancedMesh);
+    if (!(groundCover instanceof InstancedMesh)) {
+      throw new Error('ground-cover scatter should be one instanced mesh');
+    }
+    expect((groundCover.material as MeshStandardNodeMaterial).positionNode).toBeNull();
+    expect(world.getContentStats().groundCoverInstanceBudget).toBe(
+      GROUND_COVER_CONFIG.instanceBudgetByTier.C,
+    );
     expect(world.getContentStats().vegetationWindAmplitudeMeters).toBe(0);
     world.dispose();
   });

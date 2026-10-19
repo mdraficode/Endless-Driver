@@ -4,6 +4,7 @@ import {
   Color,
   ConeGeometry,
   CylinderGeometry,
+  DoubleSide,
   Group,
   IcosahedronGeometry,
   InstancedMesh,
@@ -22,6 +23,7 @@ import {
   type VegetationSpecies,
 } from '../config/districts';
 import { FOLIAGE_LIGHTING_CONFIG } from '../config/foliage-lighting';
+import { GROUND_COVER_CONFIG } from '../config/ground-cover';
 import type { TierId } from '../config/tiers';
 import type { DaylightState } from '../environment/EnvironmentClock';
 import {
@@ -30,6 +32,12 @@ import {
   isFoliageMaterial,
   resolveFoliageBacklightStrength,
 } from './foliage-lighting';
+import {
+  buildGroundCoverGeometry,
+  generateChunkGroundCover,
+  type GroundCoverBuildingBlocker,
+  type GroundCoverPlacement,
+} from './ground-cover';
 import { createFoliageWindPositionNode, resolveFoliageWindAmplitude } from './foliage-wind';
 import {
   generateChunkVegetation,
@@ -318,6 +326,11 @@ export class VegetationWorld {
   readonly #tier: TierId;
   readonly #meshes: { species: VegetationSpecies; variant: number; mesh: InstancedMesh }[] = [];
   readonly #chunkPlacements = new Map<string, VegetationPlacement[]>();
+  readonly #groundCoverByChunk = new Map<string, GroundCoverPlacement[]>();
+  #groundCoverBlockers: readonly GroundCoverBuildingBlocker[] = [];
+  #groundCoverInstances = 0;
+  readonly #groundCoverMesh: InstancedMesh;
+  readonly #groundCoverMaterial: MeshStandardNodeMaterial;
   #center: { cx: number; cz: number } | null = null;
   #totalInstances = 0;
   #generatedChunks = 0;
@@ -383,8 +396,43 @@ export class VegetationWorld {
         this.#meshes.push({ species, variant, mesh });
       }
     }
-    // One shared material instance across all instanced meshes.
+    // One shared material instance across all instanced tree/prop meshes.
     this.#sharedMaterial = material;
+
+    // Phase 5 ground cover: one fixed-capacity, double-sided grass-clump batch. It reuses the
+    // existing sun/backlight uniforms and tier-gated TSL wind, but owns a separate material so
+    // the tree and prop batches keep their front-face lighting cost.
+    const groundCoverMaterial = new MeshStandardNodeMaterial();
+    groundCoverMaterial.colorNode = vertexColor();
+    groundCoverMaterial.emissiveNode = createFoliageEmissiveNode(
+      attribute('foliageMask', 'float'),
+      this.#foliageSunDirection,
+      this.#foliageSunTint,
+      this.#foliageBacklightStrength,
+    );
+    const groundCoverWind = createFoliageWindPositionNode(
+      attribute('foliageMask', 'float'),
+      tier,
+    );
+    if (groundCoverWind !== null) {
+      groundCoverMaterial.positionNode = groundCoverWind;
+    }
+    groundCoverMaterial.roughness = 0.96;
+    groundCoverMaterial.side = DoubleSide;
+    groundCoverMaterial.name = 'phase5-ground-cover-wind-backlight';
+    const groundCover = new InstancedMesh(
+      buildGroundCoverGeometry(),
+      groundCoverMaterial,
+      GROUND_COVER_CONFIG.instanceBudgetByTier[tier],
+    );
+    groundCover.castShadow = false;
+    groundCover.receiveShadow = false;
+    groundCover.frustumCulled = false;
+    groundCover.count = 0;
+    groundCover.name = 'ground-cover-grass';
+    this.root.add(groundCover);
+    this.#groundCoverMaterial = groundCoverMaterial;
+    this.#groundCoverMesh = groundCover;
 
     // Destruction meshes: falling crowns per species/variant, one stump mesh,
     // and three shard pools (splinters, leaf clumps, blossom clumps).
@@ -440,6 +488,11 @@ export class VegetationWorld {
   /** Wires the collision field's truth into rebuilds (bent leans, stumps). */
   setStateProvider(provider: ((key: string) => TreeVisualState | undefined) | null): void {
     this.#stateProvider = provider;
+  }
+
+  /** Keeps decorative grass outside Yūhi Town's existing static building footprints. */
+  setGroundCoverBlockers(blockers: readonly GroundCoverBuildingBlocker[]): void {
+    this.#groundCoverBlockers = blockers;
   }
 
   readonly #sharedMaterial: MeshStandardNodeMaterial;
@@ -626,6 +679,7 @@ export class VegetationWorld {
     for (const key of [...this.#chunkPlacements.keys()]) {
       if (!wanted.has(key)) {
         this.#chunkPlacements.delete(key);
+        this.#groundCoverByChunk.delete(key);
         changed = true;
       }
     }
@@ -643,9 +697,18 @@ export class VegetationWorld {
       if (this.#chunkPlacements.has(key)) {
         continue;
       }
-      this.#chunkPlacements.set(
+      const plants = generateChunkVegetation(this.#sampler, chunk.cx, chunk.cz, this.#config);
+      this.#chunkPlacements.set(key, plants);
+      this.#groundCoverByChunk.set(
         key,
-        generateChunkVegetation(this.#sampler, chunk.cx, chunk.cz, this.#config),
+        generateChunkGroundCover(
+          this.#sampler,
+          chunk.cx,
+          chunk.cz,
+          this.#tier,
+          this.#groundCoverBlockers,
+          plants,
+        ),
       );
       this.#generatedChunks += 1;
       generated += 1;
@@ -789,7 +852,7 @@ export class VegetationWorld {
         const cx = Number(key.slice(0, comma));
         const cz = Number(key.slice(comma + 1));
         const distance = Math.hypot(cx * terrainSize - focus.x, cz * terrainSize - focus.z);
-        return { distance, placements };
+        return { key, distance, placements };
       })
       .sort((a, b) => a.distance - b.distance);
 
@@ -805,7 +868,20 @@ export class VegetationWorld {
     this.#instanceByKey.clear();
     let total = 0;
     let stumps = 0;
-    for (const { placements } of ordered) {
+    let groundCoverCount = 0;
+    const groundCoverCapacity = this.#groundCoverMesh.instanceMatrix.count;
+    for (const { key, placements } of ordered) {
+      for (const clump of this.#groundCoverByChunk.get(key) ?? []) {
+        if (groundCoverCount >= groundCoverCapacity) {
+          break;
+        }
+        dummy.position.set(clump.x, clump.y, clump.z);
+        dummy.rotation.set(0, clump.rotationY, 0);
+        dummy.scale.setScalar(clump.scale);
+        dummy.updateMatrix();
+        this.#groundCoverMesh.setMatrixAt(groundCoverCount, dummy.matrix);
+        groundCoverCount += 1;
+      }
       for (const placement of placements) {
         this.#placementByKey.set(placement.key, placement);
         const state = this.#stateProvider?.(placement.key) ?? this.#states.get(placement.key);
@@ -890,6 +966,9 @@ export class VegetationWorld {
         pool.mesh.instanceMatrix.needsUpdate = true;
       }
     }
+    this.#groundCoverMesh.count = groundCoverCount;
+    this.#groundCoverMesh.instanceMatrix.needsUpdate = true;
+    this.#groundCoverInstances = groundCoverCount;
     this.#stumpCount = stumps;
     this.#totalInstances = total;
   }
@@ -1065,6 +1144,8 @@ export class VegetationWorld {
     }
     return {
       vegetationInstances: this.#totalInstances,
+      groundCoverInstances: this.#groundCoverInstances,
+      groundCoverInstanceBudget: this.#groundCoverMesh.instanceMatrix.count,
       vegetationWindAmplitudeMeters: resolveFoliageWindAmplitude(this.#tier),
       vegetationChunks: this.#chunkPlacements.size,
       vegetationChunksDesired: (2 * this.#config.radiusChunks + 1) ** 2,
@@ -1098,6 +1179,9 @@ export class VegetationWorld {
       mesh.geometry.dispose();
       mesh.dispose();
     }
+    this.#groundCoverMesh.geometry.dispose();
+    this.#groundCoverMesh.dispose();
+    this.#groundCoverMaterial.dispose();
     if (this.#stumpMesh !== null) {
       this.#stumpMesh.geometry.dispose();
       this.#stumpMesh.dispose();

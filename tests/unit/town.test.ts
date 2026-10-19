@@ -1,3 +1,5 @@
+import { InstancedMesh } from 'three';
+import { MeshPhysicalNodeMaterial } from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
@@ -34,6 +36,32 @@ describe('town placement', () => {
         expect(Math.hypot(a[i]!.x - a[j]!.x, a[i]!.z - a[j]!.z)).toBeGreaterThan(10);
       }
     }
+  });
+
+  it('details every rural archetype with reflective glazing and TSL PBR surfaces', () => {
+    const world = new TownWorld(sampler);
+    const stats = world.getContentStats();
+    expect(stats.townFacadeWindows).toBeGreaterThan(world.buildings.length);
+    for (let archetype = 0; archetype < 3; archetype += 1) {
+      const glazing = world.root.getObjectByName(`town-glazing-${archetype}`);
+      const walls = world.root.getObjectByName(`town-walls-${archetype}`);
+      const roofs = world.root.getObjectByName(`town-roofs-${archetype}`);
+      expect(glazing).toBeInstanceOf(InstancedMesh);
+      expect(walls).toBeInstanceOf(InstancedMesh);
+      expect(roofs).toBeInstanceOf(InstancedMesh);
+      if (!(glazing instanceof InstancedMesh) || !(walls instanceof InstancedMesh)) {
+        throw new Error(`town archetype ${archetype} should include facade and glazing batches`);
+      }
+      expect(glazing.count).toBe(
+        world.buildings.filter((building) => building.archetype === archetype).length,
+      );
+      expect(glazing.material).toBeInstanceOf(MeshPhysicalNodeMaterial);
+      expect((glazing.material as MeshPhysicalNodeMaterial).clearcoatNode).not.toBeNull();
+      expect(walls.material).toBeInstanceOf(MeshPhysicalNodeMaterial);
+      expect((walls.material as MeshPhysicalNodeMaterial).colorNode).not.toBeNull();
+      expect(walls.geometry.getAttribute('position').count).toBeGreaterThan(100);
+    }
+    world.dispose();
   });
 
   it('marches poles along the network at roadside offset', () => {

@@ -13,6 +13,7 @@ import { float, mix, texture, uniform, uv, vec2, vec4 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { loadMaterialTextureSet } from '../assets/AssetManifest';
+import { createArchitecturalMaterial } from './architectural-materials';
 import { resolveUrbanWetness, URBAN_CITY_CONFIG } from '../config/urban-city';
 import type { DaylightState } from '../environment/EnvironmentClock';
 import type { RoadNetwork } from './road-network';
@@ -320,11 +321,15 @@ export class RoadWorld {
       (urbanJunction ? urbanAsphaltGeometries : asphaltGeometries).push(asphalt);
     }
 
-    const sidewalkMaterial = new MeshStandardNodeMaterial();
-    sidewalkMaterial.color.set(0x454d53);
-    sidewalkMaterial.roughness = 0.88;
-    sidewalkMaterial.metalness = 0;
-    sidewalkMaterial.name = 'aohara-sidewalk-concrete';
+    const sidewalkMaterial = createArchitecturalMaterial({
+      name: 'aohara-sidewalk-pbr-aggregate',
+      colorHex: 0x454d53,
+      roughness: 0.88,
+      metalness: 0.015,
+      detailAmplitude: 0.018,
+      clearcoat: 0.04,
+      clearcoatRoughness: 0.48,
+    });
     const urbanMarkings = createUrbanIntersectionMarkings(network, markingMaterial);
     this.#urbanSidewalkEdges = urbanSidewalkEdges;
     this.#urbanCrosswalkIntersections = urbanMarkings.intersectionCount;

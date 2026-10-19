@@ -41,6 +41,7 @@ import {
 import type { TierId } from '../config/tiers';
 import type { DaylightState } from '../environment/EnvironmentClock';
 import { collideCarWithStaticBoxes, type StaticBuildingBox } from './static-building-collision';
+import { createArchitecturalMaterial } from './architectural-materials';
 import type { RoadNetwork } from './road-network';
 import type { TownCarProbe, TownHit } from './town';
 import type { SceneContent, SceneContentContext } from './WorldContent';
@@ -462,48 +463,98 @@ function createWindowMaterial(
   return material;
 }
 
-function createWindowInstances(
-  root: Group,
-  nightGain: UniformNode<'float', number>,
-  budget: number,
+interface WindowCandidate extends TransformSpec {
+  readonly rank: number;
+  readonly tone: 'warm' | 'cool';
+}
+
+function buildWindowCandidates(
   towers: readonly TowerSpec[],
-  extraBuildings: readonly CityBuildingSpec[] = [],
-): number {
-  const candidates: Array<
-    TransformSpec & { readonly rank: number; readonly tone: 'warm' | 'cool' }
-  > = [];
+  extraBuildings: readonly CityBuildingSpec[],
+): WindowCandidate[] {
+  const candidates: WindowCandidate[] = [];
+  const { facadeMarginMeters, columnSpacingMeters, floorSpacingMeters } = URBAN_CITY_CONFIG.window;
+  const add = (
+    position: readonly [number, number, number],
+    yaw: number,
+    rank: number,
+    toneSeed: number,
+  ): void => {
+    candidates.push({
+      x: position[0],
+      y: position[1],
+      z: position[2],
+      yaw,
+      rank,
+      tone: stableUnit(toneSeed, Math.floor(rank * 1_000_000), 227) < 0.74 ? 'warm' : 'cool',
+    });
+  };
+
   for (let towerIndex = 0; towerIndex < towers.length; towerIndex += 1) {
     const tower = towers[towerIndex]!;
-    const side = tower.x < 0 ? -1 : 1;
-    const faceX = tower.x - side * (tower.width / 2 + 0.08);
-    const floors = Math.floor((tower.height - 6) / URBAN_CITY_CONFIG.window.floorSpacingMeters);
-    const columns = Math.max(
+    const floors = Math.floor((tower.height - 6) / floorSpacingMeters);
+    const xFaceColumns = Math.max(
       2,
-      Math.floor(
-        (tower.depth - 2 * URBAN_CITY_CONFIG.window.facadeMarginMeters) /
-          URBAN_CITY_CONFIG.window.columnSpacingMeters,
-      ),
+      Math.floor((tower.depth - 2 * facadeMarginMeters) / columnSpacingMeters),
     );
-    for (let floor = 1; floor < floors; floor += 1) {
-      for (let column = 0; column < columns; column += 1) {
-        const on = stableUnit(towerIndex, floor * 31 + column, 17);
-        if (on < 0.31) {
-          continue;
+    const zFaceColumns = Math.max(
+      2,
+      Math.floor((tower.width - 2 * facadeMarginMeters) / columnSpacingMeters),
+    );
+    const sides = [
+      {
+        x: tower.x - tower.width / 2 - 0.1,
+        z: tower.z,
+        yaw: Math.PI,
+        columns: xFaceColumns,
+        along: 'z' as const,
+        length: tower.depth,
+      },
+      {
+        x: tower.x + tower.width / 2 + 0.1,
+        z: tower.z,
+        yaw: 0,
+        columns: xFaceColumns,
+        along: 'z' as const,
+        length: tower.depth,
+      },
+      {
+        x: tower.x,
+        z: tower.z - tower.depth / 2 - 0.1,
+        yaw: Math.PI / 2,
+        columns: zFaceColumns,
+        along: 'x' as const,
+        length: tower.width,
+      },
+      {
+        x: tower.x,
+        z: tower.z + tower.depth / 2 + 0.1,
+        yaw: -Math.PI / 2,
+        columns: zFaceColumns,
+        along: 'x' as const,
+        length: tower.width,
+      },
+    ];
+    for (let sideIndex = 0; sideIndex < sides.length; sideIndex += 1) {
+      const side = sides[sideIndex]!;
+      for (let floor = 1; floor < floors; floor += 1) {
+        for (let column = 0; column < side.columns; column += 1) {
+          if (stableUnit(towerIndex, floor * 31 + column, sideIndex + 17) < 0.31) {
+            continue;
+          }
+          const along =
+            (column - (side.columns - 1) / 2) *
+            Math.min(columnSpacingMeters, (side.length - 2 * facadeMarginMeters) / side.columns);
+          const x = side.x + (side.along === 'x' ? along : 0);
+          const z = side.z + (side.along === 'z' ? along : 0);
+          const rank = stableUnit(towerIndex * 101 + floor, column + sideIndex * 29, 59);
+          add(
+            [x, WORLD_BASE_Y + 3.1 + floor * floorSpacingMeters, z],
+            side.yaw,
+            rank,
+            towerIndex * 97 + sideIndex,
+          );
         }
-        const rank = stableUnit(towerIndex * 101 + floor, column, 59);
-        const z =
-          tower.z -
-          tower.depth / 2 +
-          URBAN_CITY_CONFIG.window.facadeMarginMeters +
-          column * URBAN_CITY_CONFIG.window.columnSpacingMeters;
-        const y = WORLD_BASE_Y + 3.1 + floor * URBAN_CITY_CONFIG.window.floorSpacingMeters;
-        candidates.push({
-          x: faceX,
-          y,
-          z,
-          rank,
-          tone: stableUnit(towerIndex, floor + column, 83) < 0.7 ? 'warm' : 'cool',
-        });
       }
     }
   }
@@ -511,39 +562,127 @@ function createWindowInstances(
   for (let buildingIndex = 0; buildingIndex < extraBuildings.length; buildingIndex += 1) {
     const building = extraBuildings[buildingIndex]!;
     const yaw = building.yaw ?? 0;
+    const cos = Math.cos(yaw);
+    const sin = Math.sin(yaw);
     const floors = Math.max(1, Math.floor((building.height - 1.5) / 2.8));
-    const columns = Math.max(2, Math.floor((building.depth - 2) / 3.2));
-    const facadeDistance = building.width / 2 + 0.12;
-    const faceX = building.x + Math.cos(yaw) * facadeDistance;
-    const faceZ = building.z - Math.sin(yaw) * facadeDistance;
-    for (let floor = 0; floor < floors; floor += 1) {
-      for (let column = 0; column < columns; column += 1) {
-        const alongFacade = (column - (columns - 1) / 2) * 3.1;
-        const rank = stableUnit(buildingIndex + 701, floor * 19 + column, 223);
-        candidates.push({
-          x: faceX + Math.sin(yaw) * alongFacade,
-          y: WORLD_BASE_Y + 1.7 + floor * 2.6,
-          z: faceZ + Math.cos(yaw) * alongFacade,
-          yaw,
-          rank,
-          tone: stableUnit(buildingIndex, floor + column, 227) < 0.78 ? 'warm' : 'cool',
-        });
+    const xFaceColumns = Math.max(1, Math.floor((building.depth - 2) / 3.2));
+    const zFaceColumns = Math.max(1, Math.floor((building.width - 2) / 3.2));
+    const sides = [
+      { localX: -building.width / 2 - 0.14, localZ: 0, yaw: yaw + Math.PI, columns: xFaceColumns, along: 'z' as const, length: building.depth },
+      { localX: building.width / 2 + 0.14, localZ: 0, yaw, columns: xFaceColumns, along: 'z' as const, length: building.depth },
+      { localX: 0, localZ: -building.depth / 2 - 0.14, yaw: yaw + Math.PI / 2, columns: zFaceColumns, along: 'x' as const, length: building.width },
+      { localX: 0, localZ: building.depth / 2 + 0.14, yaw: yaw - Math.PI / 2, columns: zFaceColumns, along: 'x' as const, length: building.width },
+    ];
+    for (let sideIndex = 0; sideIndex < sides.length; sideIndex += 1) {
+      const side = sides[sideIndex]!;
+      for (let floor = 0; floor < floors; floor += 1) {
+        for (let column = 0; column < side.columns; column += 1) {
+          const spacing = Math.min(3.1, (side.length - 2.2) / side.columns);
+          const along = (column - (side.columns - 1) / 2) * spacing;
+          const localX = side.localX + (side.along === 'x' ? along : 0);
+          const localZ = side.localZ + (side.along === 'z' ? along : 0);
+          const rank = stableUnit(buildingIndex + 701, floor * 19 + column + sideIndex * 23, 223);
+          add(
+            [building.x + cos * localX + sin * localZ, WORLD_BASE_Y + 1.7 + floor * 2.6, building.z - sin * localX + cos * localZ],
+            side.yaw,
+            rank,
+            buildingIndex * 13 + sideIndex,
+          );
+        }
       }
     }
   }
+  return candidates;
+}
 
-  const selected = candidates.sort((a, b) => a.rank - b.rank).slice(0, budget);
-  const geometry = new BoxGeometry(
+function buildFacadeWindowFrameGeometry(): BufferGeometry {
+  const width = URBAN_CITY_CONFIG.window.widthMeters;
+  const height = URBAN_CITY_CONFIG.window.heightMeters;
+  const bar = 0.075;
+  const depth = 0.09;
+  const parts = [
+    new BoxGeometry(depth, height + bar * 2, bar).translate(0, 0, -width / 2),
+    new BoxGeometry(depth, height + bar * 2, bar).translate(0, 0, width / 2),
+    new BoxGeometry(depth, bar, width + bar * 2).translate(0, -height / 2, 0),
+    new BoxGeometry(depth, bar, width + bar * 2).translate(0, height / 2, 0),
+    new BoxGeometry(depth, height, bar * 0.65),
+    new BoxGeometry(depth * 1.35, bar, width + 0.18).translate(depth * 0.14, -height / 2 - bar * 0.8, 0),
+  ];
+  const merged = mergeGeometries(parts, false);
+  for (const part of parts) {
+    part.dispose();
+  }
+  if (merged === null) {
+    throw new Error('could not assemble Aohara facade window frame');
+  }
+  merged.name = 'aohara-facade-window-frame-geometry';
+  return merged;
+}
+
+function createWindowInstances(
+  root: Group,
+  nightGain: UniformNode<'float', number>,
+  litBudget: number,
+  facadeBudget: number,
+  towers: readonly TowerSpec[],
+  extraBuildings: readonly CityBuildingSpec[] = [],
+): { readonly illuminatedWindows: number; readonly facadeWindows: number } {
+  const candidates = buildWindowCandidates(towers, extraBuildings);
+  const ranked = [...candidates].sort((a, b) => a.rank - b.rank);
+  const staticWindows = ranked.slice(0, facadeBudget);
+  if (staticWindows.length > 0) {
+    const paneGeometry = new BoxGeometry(0.055, 1.17, 1.12);
+    const glazing = createArchitecturalMaterial({
+      name: 'aohara-hdri-tinted-facade-glazing',
+      colorHex: 0x1a2a38,
+      roughness: 0.24,
+      metalness: 0.18,
+      detailAmplitude: 0.012,
+      clearcoat: 0.72,
+      clearcoatRoughness: 0.12,
+    });
+    const frames = createArchitecturalMaterial({
+      name: 'aohara-anodized-window-frames',
+      colorHex: 0x2e3942,
+      roughness: 0.48,
+      metalness: 0.28,
+      detailAmplitude: 0.012,
+      clearcoat: 0.12,
+      clearcoatRoughness: 0.32,
+    });
+    const paneTransforms = staticWindows.map((window) => ({
+      ...window,
+      x: window.x + Math.cos(window.yaw ?? 0) * 0.06,
+      z: window.z - Math.sin(window.yaw ?? 0) * 0.06,
+    }));
+    addInstancedBoxes(
+      root,
+      paneGeometry,
+      glazing,
+      paneTransforms,
+      'aohara-facade-glazing',
+    ).receiveShadow = true;
+    addInstancedBoxes(
+      root,
+      buildFacadeWindowFrameGeometry(),
+      frames,
+      staticWindows,
+      'aohara-facade-window-frames',
+    ).castShadow = true;
+  }
+
+  const litWindows = ranked.slice(0, litBudget);
+  const lightGeometry = new BoxGeometry(
     0.14,
     URBAN_CITY_CONFIG.window.heightMeters,
     URBAN_CITY_CONFIG.window.widthMeters,
   );
-  const warm = selected.filter((window) => window.tone === 'warm');
-  const cool = selected.filter((window) => window.tone === 'cool');
+  const warm = litWindows.filter((window) => window.tone === 'warm');
+  const cool = litWindows.filter((window) => window.tone === 'cool');
   if (warm.length > 0) {
     addInstancedBoxes(
       root,
-      geometry,
+      lightGeometry,
       createWindowMaterial([1.0, 0.56, 0.25], nightGain, 'aohara-warm-window-light'),
       warm,
       'aohara-warm-windows',
@@ -552,13 +691,13 @@ function createWindowInstances(
   if (cool.length > 0) {
     addInstancedBoxes(
       root,
-      geometry,
+      lightGeometry,
       createWindowMaterial([0.43, 0.66, 1.0], nightGain, 'aohara-cool-window-light'),
       cool,
       'aohara-cool-windows',
     );
   }
-  return selected.length;
+  return { illuminatedWindows: litWindows.length, facadeWindows: staticWindows.length };
 }
 
 function createLampGeometry(): BufferGeometry {
@@ -767,6 +906,8 @@ export class UrbanNightWorld implements SceneContent {
   readonly #activeArchitecturalCandidates: ArchitecturalLightCandidate[] = [];
   readonly #signalHeads: SignalHead[] = [];
   readonly #windowInstances: number;
+  readonly #facadeWindowInstances: number;
+  readonly #facadeDetailInstances: number;
   readonly #flareCount: number;
   readonly #buildingColliders: StaticBuildingBox[] = [];
   readonly #cityTypologyStats: CityTypologyStats;
@@ -852,13 +993,21 @@ export class UrbanNightWorld implements SceneContent {
     this.#buildTowers(this.#towers);
     const additionalBuildings = buildCityBuildingSpecs(this.#networkIntegrated);
     const typologyCounts = this.#buildCityTypologies(additionalBuildings);
-    this.#windowInstances = createWindowInstances(
+    this.#facadeDetailInstances = this.#buildFacadeDetails(
+      this.#towers,
+      additionalBuildings,
+      budget.facadeDetailInstances,
+    );
+    const windowStats = createWindowInstances(
       this.root,
       this.#nightGain,
       budget.litWindowInstances,
+      budget.facadeWindowInstances,
       this.#towers,
       additionalBuildings,
     );
+    this.#windowInstances = windowStats.illuminatedWindows;
+    this.#facadeWindowInstances = windowStats.facadeWindows;
     const streetStats = this.#buildStreetLights(
       budget.streetPointLights,
       warmFlare,
@@ -957,6 +1106,8 @@ export class UrbanNightWorld implements SceneContent {
       districtBanners: this.#cityTypologyStats.districtBanners,
       decorativeLights: this.#cityTypologyStats.decorativeLights,
       illuminatedWindows: this.#windowInstances,
+      facadeWindowInstances: this.#facadeWindowInstances,
+      facadeDetailInstances: this.#facadeDetailInstances,
       opticalFlares: this.#flareCount,
       trafficSignals: this.#signalHeads.length,
       wetSurfaceIntensity: Number(this.#wetness.value.toFixed(3)),
@@ -1156,11 +1307,15 @@ export class UrbanNightWorld implements SceneContent {
     const transform = new Object3D();
     let paletteIndex = 0;
     for (const [color, group] of groups) {
-      const wall = new MeshStandardNodeMaterial();
-      wall.color.setHex(color);
-      wall.roughness = 0.72;
-      wall.metalness = 0.16;
-      wall.name = `aohara-tower-facade-${paletteIndex}`;
+      const wall = createArchitecturalMaterial({
+        name: `aohara-tower-facade-pbr-${paletteIndex}`,
+        colorHex: color,
+        roughness: 0.72,
+        metalness: 0.16,
+        detailAmplitude: 0.028,
+        clearcoat: 0.16,
+        clearcoatRoughness: 0.32,
+      });
       const mesh = new InstancedMesh(unitBox, wall, group.length);
       mesh.name = `aohara-high-rise-facades-${paletteIndex}`;
       mesh.castShadow = true;
@@ -1178,10 +1333,15 @@ export class UrbanNightWorld implements SceneContent {
       paletteIndex += 1;
     }
 
-    const roofMaterial = new MeshStandardNodeMaterial();
-    roofMaterial.color.setHex(0x10161e);
-    roofMaterial.roughness = 0.86;
-    roofMaterial.name = 'aohara-rooftop-caps';
+    const roofMaterial = createArchitecturalMaterial({
+      name: 'aohara-rooftop-caps-pbr',
+      colorHex: 0x10161e,
+      roughness: 0.86,
+      metalness: 0.08,
+      detailAmplitude: 0.018,
+      clearcoat: 0.08,
+      clearcoatRoughness: 0.42,
+    });
     const roofs = new InstancedMesh(unitBox, roofMaterial, towers.length);
     roofs.name = 'aohara-rooftop-caps';
     roofs.frustumCulled = false;
@@ -1194,6 +1354,146 @@ export class UrbanNightWorld implements SceneContent {
     });
     roofs.instanceMatrix.needsUpdate = true;
     this.root.add(roofs);
+  }
+
+  /** Bounded instanced ribs, floor bands, plinths and rooftop plant across all current city buildings. */
+  #buildFacadeDetails(
+    towers: readonly TowerSpec[],
+    buildings: readonly CityBuildingSpec[],
+    budget: number,
+  ): number {
+    const unitBox = new BoxGeometry(1, 1, 1);
+    const foundationAndRibTransforms: TransformSpec[] = [];
+    const floorBandCandidates: Array<TransformSpec & { readonly rank: number }> = [];
+    const rooftopCandidates: TransformSpec[] = [];
+
+    towers.forEach((tower, towerIndex) => {
+      for (const sideX of [-1, 1] as const) {
+        for (const sideZ of [-1, 1] as const) {
+          foundationAndRibTransforms.push({
+            x: tower.x + sideX * (tower.width / 2 - 0.11),
+            y: WORLD_BASE_Y + tower.height / 2,
+            z: tower.z + sideZ * (tower.depth / 2 - 0.11),
+            scale: [0.22, tower.height, 0.22],
+          });
+        }
+      }
+      const floors = Math.floor((tower.height - 6) / URBAN_CITY_CONFIG.window.floorSpacingMeters);
+      for (let floor = 1; floor < floors; floor += 1) {
+        floorBandCandidates.push({
+          x: tower.x,
+          y: WORLD_BASE_Y + 3.1 + (floor - 0.5) * URBAN_CITY_CONFIG.window.floorSpacingMeters,
+          z: tower.z,
+          scale: [tower.width + 0.24, 0.11, tower.depth + 0.24],
+          rank: stableUnit(towerIndex, floor, 641),
+        });
+      }
+      for (const side of [-1, 1] as const) {
+        rooftopCandidates.push({
+          x: tower.x + side * tower.width * 0.19,
+          y: WORLD_BASE_Y + tower.height + 0.62,
+          z: tower.z,
+          scale: [1.55, 1.08, 1.35],
+        });
+        rooftopCandidates.push({
+          x: tower.x,
+          y: WORLD_BASE_Y + tower.height + 0.55,
+          z: tower.z + side * tower.depth * 0.18,
+          scale: [0.78, 1.2, 0.82],
+        });
+      }
+    });
+
+    buildings.forEach((building, index) => {
+      const yaw = building.yaw ?? 0;
+      const pitched = building.kind === 'house' || building.kind === 'mansion';
+      foundationAndRibTransforms.push({
+        x: building.x,
+        y: WORLD_BASE_Y + 0.2,
+        z: building.z,
+        yaw,
+        scale: [building.width * 0.96, 0.38, building.depth * 0.96],
+      });
+      foundationAndRibTransforms.push({
+        x: building.x,
+        y: WORLD_BASE_Y + building.height - (pitched ? 0.02 : 0.16),
+        z: building.z,
+        yaw,
+        scale: [building.width + 0.25, pitched ? 0.12 : 0.2, building.depth + 0.25],
+      });
+      if (!pitched) {
+        rooftopCandidates.push({
+          x: building.x + Math.cos(yaw) * building.width * 0.18,
+          y: WORLD_BASE_Y + building.height + 0.55,
+          z: building.z - Math.sin(yaw) * building.width * 0.18,
+          yaw,
+          scale: [1.2, 0.72, 0.92],
+        });
+      } else if (index % 2 === 0) {
+        rooftopCandidates.push({
+          x: building.x - Math.sin(yaw) * building.width * 0.18,
+          y: WORLD_BASE_Y + building.height + 0.86,
+          z: building.z + Math.cos(yaw) * building.width * 0.18,
+          yaw,
+          scale: [0.52, 1.3, 0.52],
+        });
+      }
+    });
+
+    const selectedRoof = rooftopCandidates.slice(
+      0,
+      Math.min(rooftopCandidates.length, Math.floor(budget * 0.14)),
+    );
+    const structuralCapacity = Math.max(0, budget - selectedRoof.length);
+    const structuralBase = foundationAndRibTransforms.slice(0, structuralCapacity);
+    const remaining = Math.max(0, structuralCapacity - structuralBase.length);
+    const selectedBands = floorBandCandidates
+      .sort((a, b) => a.rank - b.rank)
+      .slice(0, remaining)
+      .map(({ rank: _rank, ...transform }) => transform);
+    const structural = [...structuralBase, ...selectedBands];
+
+    if (structural.length > 0) {
+      const material = createArchitecturalMaterial({
+        name: 'aohara-facade-ribs-and-cornices-pbr',
+        colorHex: 0x34414a,
+        roughness: 0.54,
+        metalness: 0.26,
+        detailAmplitude: 0.014,
+        clearcoat: 0.14,
+        clearcoatRoughness: 0.31,
+      });
+      const mesh = addInstancedBoxes(
+        this.root,
+        unitBox,
+        material,
+        structural,
+        'aohara-facade-ribs-cornices-and-plinths',
+      );
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+    }
+    if (selectedRoof.length > 0) {
+      const roofMaterial = createArchitecturalMaterial({
+        name: 'aohara-rooftop-mechanical-units-pbr',
+        colorHex: 0x49535a,
+        roughness: 0.48,
+        metalness: 0.34,
+        detailAmplitude: 0.018,
+        clearcoat: 0.2,
+        clearcoatRoughness: 0.28,
+      });
+      const mesh = addInstancedBoxes(
+        this.root,
+        unitBox,
+        roofMaterial,
+        selectedRoof,
+        'aohara-rooftop-hvac-and-vents',
+      );
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+    }
+    return structural.length + selectedRoof.length;
   }
 
   #buildCityTypologies(buildings: readonly CityBuildingSpec[]): CityTypologyStats {
@@ -1236,11 +1536,15 @@ export class UrbanNightWorld implements SceneContent {
     }
 
     for (const [index, [color, transforms]] of [...wallGroups].entries()) {
-      const material = new MeshStandardNodeMaterial();
-      material.color.setHex(color);
-      material.roughness = 0.77;
-      material.metalness = 0.06;
-      material.name = `aohara-low-rise-facade-${index}`;
+      const material = createArchitecturalMaterial({
+        name: `aohara-low-rise-facade-pbr-${index}`,
+        colorHex: color,
+        roughness: 0.77,
+        metalness: 0.06,
+        detailAmplitude: 0.025,
+        clearcoat: 0.1,
+        clearcoatRoughness: 0.38,
+      });
       const mesh = addInstancedBoxes(
         this.root,
         unitBox,
@@ -1252,19 +1556,28 @@ export class UrbanNightWorld implements SceneContent {
       mesh.receiveShadow = true;
     }
     for (const [index, [color, transforms]] of [...flatRoofGroups].entries()) {
-      const material = new MeshStandardNodeMaterial();
-      material.color.setHex(color);
-      material.roughness = 0.82;
-      material.metalness = 0.08;
-      material.name = `aohara-flat-roof-${index}`;
+      const material = createArchitecturalMaterial({
+        name: `aohara-flat-roof-pbr-${index}`,
+        colorHex: color,
+        roughness: 0.82,
+        metalness: 0.08,
+        detailAmplitude: 0.02,
+        clearcoat: 0.08,
+        clearcoatRoughness: 0.42,
+      });
       addInstancedBoxes(this.root, unitBox, material, transforms, `aohara-flat-roofs-${index}`);
     }
     const pitchedRoofGeometry = new ConeGeometry(1, 1, 4);
     for (const [index, [color, transforms]] of [...pitchedRoofGroups].entries()) {
-      const material = new MeshStandardNodeMaterial();
-      material.color.setHex(color);
-      material.roughness = 0.86;
-      material.name = `aohara-hip-roof-${index}`;
+      const material = createArchitecturalMaterial({
+        name: `aohara-hip-roof-pbr-${index}`,
+        colorHex: color,
+        roughness: 0.86,
+        metalness: 0.04,
+        detailAmplitude: 0.018,
+        clearcoat: 0.06,
+        clearcoatRoughness: 0.46,
+      });
       addInstancedBoxes(
         this.root,
         pitchedRoofGeometry,
@@ -1277,11 +1590,15 @@ export class UrbanNightWorld implements SceneContent {
     const stadium = this.#networkIntegrated
       ? { x: 0, z: 460, width: 90, depth: 70, height: 14 }
       : { x: 60, z: -88, width: 30, depth: 24, height: 8 };
-    const stadiumWallMaterial = new MeshStandardNodeMaterial();
-    stadiumWallMaterial.color.setHex(0x3b4650);
-    stadiumWallMaterial.roughness = 0.68;
-    stadiumWallMaterial.metalness = 0.12;
-    stadiumWallMaterial.name = 'aohara-stadium-shell';
+    const stadiumWallMaterial = createArchitecturalMaterial({
+      name: 'aohara-stadium-concrete-and-steel-shell-pbr',
+      colorHex: 0x3b4650,
+      roughness: 0.68,
+      metalness: 0.12,
+      detailAmplitude: 0.022,
+      clearcoat: 0.12,
+      clearcoatRoughness: 0.34,
+    });
     const stadiumThickness = this.#networkIntegrated ? 8 : 2.2;
     const stadiumWalls: TransformSpec[] = [
       {
