@@ -85,6 +85,14 @@ interface TransformSpec {
   readonly scale?: readonly [number, number, number];
 }
 
+interface RankedFacadeBand {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly scale: readonly [number, number, number];
+  readonly rank: number;
+}
+
 type CityBuildingKind = 'house' | 'townhouse' | 'mansion' | 'shop' | 'casino';
 
 interface CityBuildingSpec {
@@ -1400,7 +1408,7 @@ export class UrbanNightWorld implements SceneContent {
   ): number {
     const unitBox = new BoxGeometry(1, 1, 1);
     const foundationAndRibTransforms: TransformSpec[] = [];
-    const floorBandCandidates: Array<TransformSpec & { readonly rank: number }> = [];
+    const floorBandCandidates: RankedFacadeBand[] = [];
     const rooftopCandidates: TransformSpec[] = [];
 
     towers.forEach((tower, towerIndex) => {
@@ -1486,7 +1494,7 @@ export class UrbanNightWorld implements SceneContent {
     const selectedBands = floorBandCandidates
       .sort((a, b) => a.rank - b.rank)
       .slice(0, remaining)
-      .map(({ x, y, z, yaw, scale }) => ({ x, y, z, yaw, scale }));
+      .map(({ x, y, z, scale }) => ({ x, y, z, scale }));
     const structural = [...structuralBase, ...selectedBands];
 
     if (structural.length > 0) {
