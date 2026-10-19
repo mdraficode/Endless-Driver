@@ -10,6 +10,7 @@ import { OrbitGesture } from '../../src/input/orbit-gesture';
  */
 class FakeSurface extends EventTarget {
   readonly id = 'viewport-canvas';
+  readonly clientWidth = 400;
 
   captures: number[] = [];
 
@@ -46,9 +47,9 @@ function pointer(
 
 function setup() {
   const surface = new FakeSurface();
-  const swipes: [number, number][] = [];
+  const swipes: [number, number, number][] = [];
   const gesture = new OrbitGesture(surface as unknown as HTMLElement, {
-    onSwipe: (dx, dy) => swipes.push([dx, dy]),
+    onSwipe: (dx, dy, viewportWidth) => swipes.push([dx, dy, viewportWidth]),
   });
   return { surface, swipes, gesture };
 }
@@ -60,8 +61,8 @@ describe('free-space orbit gesture', () => {
     surface.dispatchEvent(pointer('pointermove', 1, 130, 90));
     surface.dispatchEvent(pointer('pointermove', 1, 150, 90));
     expect(swipes).toEqual([
-      [30, -10],
-      [20, 0],
+      [30, -10, 400],
+      [20, 0, 400],
     ]);
   });
 
@@ -74,7 +75,7 @@ describe('free-space orbit gesture', () => {
     surface.dispatchEvent(pointer('pointerup', 1, 40, 10));
     expect(gesture.active).toBe(false);
     surface.dispatchEvent(pointer('pointermove', 1, 90, 10));
-    expect(swipes).toEqual([[30, 0]]);
+    expect(swipes).toEqual([[30, 0, 400]]);
   });
 
   it('orbits with one pointer at a time', () => {
@@ -84,7 +85,7 @@ describe('free-space orbit gesture', () => {
     surface.dispatchEvent(pointer('pointermove', 2, 260, 100));
     expect(swipes).toHaveLength(0);
     surface.dispatchEvent(pointer('pointermove', 1, 120, 100));
-    expect(swipes).toEqual([[20, 0]]);
+    expect(swipes).toEqual([[20, 0, 400]]);
   });
 
   it('ignores mouse drags that are not the primary button', () => {

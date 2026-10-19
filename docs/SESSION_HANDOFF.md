@@ -1697,3 +1697,21 @@ The owner chose to continue the authorized Phase 5 remainder. This does not cons
 **Remote status:** Source commit `683cc8fffe814ceaac5eb74591ba67fd7c58de1f` and formatting follow-up `f6ebf1c1b71c826a192133d542f580fff6dfd317` were pushed to `main`; at verification, `git ls-remote origin refs/heads/main` matched the latter SHA and the tree was clean. The intermediate Validate run for `683cc8f` was cancelled after the follow-up push; final GitHub Validate run `39273113617` and Pages Deploy run `39273113604` both succeeded for `f6ebf1c`. The deployed Pages root returned HTTP 200 (1,779 bytes); bundle `/Endless-Driver/assets/index-BOIMAoqV.js` returned HTTP 200 (1,432,725 bytes) and contains `vegetationWindAmplitudeMeters`. This verifies the deployed static bundle only—not runtime shader compilation, browser rendering, manual driveability, owner-device acceptance, or performance.
 
 **Next:** obtain owner-device visual evidence for Phase 5: check gameplay ground colour, tree streaming/pop-in, foliage readability and restrained wind at the intended quality tiers; record browser/device, resolution, tier and daylight conditions. Separately continue authorized Phase 9 review of `?scene=city&time=23.5` and manual night driving at `?spawn=aohara-city&time=23.5`. Do not equate checks or deployment with visual acceptance. Phase 6 remains gated on Phase 5 acceptance; Phases 7–8 remain gated.
+
+## 58. Full-circle swipe orbit and drive-start recenter (2026-10-19)
+
+The owner requested a full 360° free-look orbit and an automatic return to the car-centered chase framing as driving begins. This is a narrow follow-up to the existing swipe-to-orbit behavior, not authorization for the broader gated Phase 8 camera-polish scope.
+
+**Implementation:**
+
+- Horizontal swipe is normalized to the canvas width: one canvas-width drag covers 360°. Azimuth remains unwrapped while easing, so a quick full-width gesture completes the whole turn rather than reversing toward the neutral angle; repeated gestures can continue orbiting. Pitch retains its ground/sky limits.
+- The chase camera and its look target orbit together, preserving the car's existing screen-space framing. A fresh smoothed throttle or brake/reverse input resets the orbit to neutral with the existing 0.12 s easing. Touch and mouse gestures remain on the free canvas; separate captured control pointers still work simultaneously. Explicit camera snaps/reset also restore neutral orbit.
+- Added unit coverage for normalized 360° turns, continuous yaw, safe pitch, car framing, recenter easing, drive-start edge detection and gesture viewport width. README and camera-module guidance updated.
+
+**Local verification:** Pending. `npm ci` succeeded in fresh clone `/tmp/endless-driver-camera-20261019` (201 packages, 0 vulnerabilities). Push this increment before running `npm run check` per `WORKFLOW.md`.
+
+**Visual/device status:** No browser render, manual drive, owner-device/mobile review, or performance measurement has been performed. Tests verify the math, wiring and intended reset transition—not camera feel, real-device touch behavior, shader/backend compatibility, or visual acceptance. No broader Phase 8 work is included.
+
+**Remote status:** Pending commit, push, remote-SHA verification and GitHub workflow results.
+
+**Next:** push the camera increment, run the full check, and record actual outcomes here. Owner-device review should confirm the car stays comfortably framed during a full surroundings sweep and returns to the authored chase view on throttle/reverse. Keep Phase 5 acceptance open; do not infer authorization for Phases 6–8 beyond the user's requested camera behavior.

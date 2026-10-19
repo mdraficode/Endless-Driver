@@ -1,6 +1,10 @@
 export interface OrbitGestureOptions {
-  /** Called with each swipe movement in pixels while a free-space drag is live. */
-  readonly onSwipe: (deltaXPixels: number, deltaYPixels: number) => void;
+  /** Called with each swipe movement and current canvas width while a free-space drag is live. */
+  readonly onSwipe: (
+    deltaXPixels: number,
+    deltaYPixels: number,
+    viewportWidthPixels: number,
+  ) => void;
 }
 
 /**
@@ -77,7 +81,7 @@ export class OrbitGesture {
     this.#lastX = event.clientX;
     this.#lastY = event.clientY;
     if (dx !== 0 || dy !== 0) {
-      this.#options.onSwipe(dx, dy);
+      this.#options.onSwipe(dx, dy, Math.max(1, this.#surface.clientWidth || 1));
     }
   };
 

@@ -286,7 +286,7 @@ describe('swipe-to-orbit framing', () => {
   const settle = (camera: ChaseCamera, swipe?: [number, number]) => {
     camera.update(1 / 60, pose(), telemetry());
     if (swipe !== undefined) {
-      camera.orbitBySwipe(swipe[0], swipe[1]);
+      camera.orbitBySwipe(swipe[0], swipe[1], 400);
     }
     for (let i = 0; i < 180; i += 1) {
       camera.update(1 / 60, pose(), telemetry());
@@ -296,7 +296,7 @@ describe('swipe-to-orbit framing', () => {
 
   it('moves the camera sideways around a stationary car', () => {
     const plain = settle(new ChaseCamera());
-    const orbited = settle(new ChaseCamera(), [300, 0]);
+    const orbited = settle(new ChaseCamera(), [100, 0]);
     expect(orbited.x).toBeGreaterThan(plain.x + 2);
     // Framing distance is preserved: an orbit is a rotation, not a dolly.
     const distance = (p: { x: number; y: number; z: number }) => Math.hypot(p.x, p.y - 0.6, p.z);
@@ -312,16 +312,54 @@ describe('swipe-to-orbit framing', () => {
   it('eases towards the swipe instead of cutting', () => {
     const camera = new ChaseCamera();
     camera.update(1 / 60, pose(), telemetry());
-    camera.orbitBySwipe(300, 0);
+    camera.orbitBySwipe(100, 0, 400);
     camera.update(1 / 60, pose(), telemetry());
-    expect(Math.abs(camera.orbit.yaw)).toBeLessThan(camera.orbitTarget.yaw);
+    expect(Math.abs(camera.orbit.yaw)).toBeLessThan(Math.abs(camera.orbitTarget.yaw));
     expect(Math.abs(camera.orbit.yaw)).toBeGreaterThan(0);
   });
 
-  it('clamps the orbit so thumbs cannot bury the camera', () => {
+  it('supports repeated full azimuth turns while keeping pitch safe for a thumb swipe', () => {
     const camera = new ChaseCamera();
-    camera.orbitBySwipe(100000, -100000);
-    expect(camera.orbitTarget.yaw).toBeLessThanOrEqual(1.4);
+    camera.orbitBySwipe(100000, -100000, 400);
+    expect(camera.orbitTarget.yaw).toBeCloseTo(500 * Math.PI);
     expect(camera.orbitTarget.pitch).toBeGreaterThanOrEqual(-0.2);
+  });
+
+  it('eases back to the authored chase framing when driving starts', () => {
+    const camera = new ChaseCamera();
+    camera.setView('normal');
+    camera.snapTo(pose());
+    camera.orbitBySwipe(100, 50, 400);
+    advance(camera, 1, pose());
+    expect(Math.abs(camera.orbit.yaw)).toBeGreaterThan(1);
+    expect(camera.orbit.pitch).toBeGreaterThan(0.1);
+
+    camera.resetOrbit();
+    expect(camera.orbitTarget).toEqual({ yaw: 0, pitch: 0 });
+    advance(camera, 1, pose());
+    expect(camera.orbit.yaw).toBeCloseTo(0, 2);
+    expect(camera.orbit.pitch).toBeCloseTo(0, 2);
+  });
+
+  it('keeps the car at the same screen position throughout the orbit', () => {
+    const projectCarCenter = (camera: ChaseCamera): Vector3 => {
+      camera.camera.updateMatrixWorld(true);
+      return new Vector3(0, 0.6, 0).project(camera.camera);
+    };
+    const neutral = new ChaseCamera();
+    neutral.setView('normal');
+    neutral.snapTo(pose());
+    advance(neutral, 1, pose());
+    const neutralScreenPosition = projectCarCenter(neutral);
+
+    const orbited = new ChaseCamera();
+    orbited.setView('normal');
+    orbited.snapTo(pose());
+    orbited.orbitBySwipe(100, 0, 400);
+    advance(orbited, 2, pose());
+    const orbitedScreenPosition = projectCarCenter(orbited);
+
+    expect(orbitedScreenPosition.x).toBeCloseTo(neutralScreenPosition.x, 5);
+    expect(orbitedScreenPosition.y).toBeCloseTo(neutralScreenPosition.y, 5);
   });
 });

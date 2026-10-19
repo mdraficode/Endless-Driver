@@ -76,6 +76,7 @@ Vite binds to `0.0.0.0` and accepts the Arena `.e2b.app` preview domain. Browser
 | `Space`              | Handbrake — cuts rear lateral grip for handbrake turns and slides                |
 | `R`                  | Reset the car to the spawn pose                                                  |
 | `C`                  | Cycle camera views: Close → Normal → Far chase distances → debug orbit → Close   |
+| Free-canvas swipe/drag | Orbit the chase camera through the surroundings; one canvas-width drag is 360°, and throttle/brake smoothly recenters the view |
 
 Touch-capable devices show a virtual steering joystick, gas/brake pedals, handbrake, camera/reset, and fullscreen/landscape controls. Independent touch points support simultaneous steering and acceleration; final real-device checks and polish remain part of the gated Phase 8 scope.
 

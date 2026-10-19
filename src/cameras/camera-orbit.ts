@@ -1,18 +1,7 @@
 /**
- * Swipe-to-orbit: the pure mapping from screen-space drag to a chase-camera orbit
- * offset (owner request 2026-10-17: "the camera should move when swiping on the
- * free spaces on the screen").
- *
- * The offset is an angle pair around the car, not a position: yaw swings the camera
- * sideways around the car, pitch raises or lowers it. Keeping it relative to the
- * car's heading is what lets the player look at the car's side or grab a higher
- * angle while driving, and still have the view follow the car through the next
- * corner.
- *
- * Convention is "grab the world": the point under the finger travels with the
- * finger. Swiping right swings the camera around to the car's left side; swiping
- * down lifts the camera into a higher, more top-down angle. Limits keep the camera
- * out of the ground and behind the windshield-level view the chase framing needs.
+ * Swipe-to-orbit: maps a free-space drag to a chase-camera orbit around the car.
+ * One horizontal swipe across the canvas spans a complete 360-degree revolution;
+ * yaw wraps continuously so repeated swipes can keep circling without a hard stop.
  */
 
 /** Orbit offset around the car, radians. Zero is the authored chase framing. */
@@ -26,12 +15,12 @@ export interface OrbitOffset {
 export const NEUTRAL_ORBIT: OrbitOffset = { yaw: 0, pitch: 0 };
 
 export interface ChaseOrbitConfig {
-  /** Radians of yaw per pixel of horizontal swipe. */
-  readonly yawRadiansPerPixel: number;
+  /** Radians of yaw covered by a horizontal swipe the width of the canvas. */
+  readonly yawRadiansPerViewportWidth: number;
   /** Radians of pitch per pixel of vertical swipe. */
   readonly pitchRadiansPerPixel: number;
-  /** Hard yaw limit either side of the authored framing, radians. */
-  readonly maxYawRadians: number;
+  /** Minimum smoothed throttle or brake intent treated as the start of driving. */
+  readonly driveInputThreshold: number;
   /** Pitch limits relative to the view's own elevation, radians. */
   readonly maxPitchUpRadians: number;
   readonly maxPitchDownRadians: number;
@@ -43,11 +32,9 @@ export interface ChaseOrbitConfig {
 }
 
 export const CHASE_ORBIT_CONFIG: ChaseOrbitConfig = {
-  // A ~220 px swipe across a phone screen swings the camera ~78 degrees around
-  // the car: one thumb stroke from dead-astern to nearly broadside.
-  yawRadiansPerPixel: 0.0062,
+  yawRadiansPerViewportWidth: Math.PI * 2,
   pitchRadiansPerPixel: 0.0045,
-  maxYawRadians: 1.35,
+  driveInputThreshold: 0.025,
   maxPitchUpRadians: 0.5,
   maxPitchDownRadians: 0.12,
   minElevationRadians: 0.06,
@@ -55,38 +42,66 @@ export const CHASE_ORBIT_CONFIG: ChaseOrbitConfig = {
   smoothingSeconds: 0.12,
 };
 
-/** Clamps an orbit offset into the configured box. */
+/** Wraps an azimuth to [-π, π), preserving a continuous circular camera orbit. */
+export function wrapOrbitYaw(yaw: number): number {
+  if (!Number.isFinite(yaw)) {
+    return 0;
+  }
+  const turn = Math.PI * 2;
+  return (((yaw + Math.PI) % turn) + turn) % turn - Math.PI;
+}
+
+/** Clamps vertical movement; yaw stays unwrapped so a full turn animates without reversing. */
 export function clampOrbit(offset: OrbitOffset, config: ChaseOrbitConfig): OrbitOffset {
   return {
-    yaw: Math.min(config.maxYawRadians, Math.max(-config.maxYawRadians, offset.yaw)),
+    yaw: offset.yaw,
     pitch: Math.min(config.maxPitchUpRadians, Math.max(-config.maxPitchDownRadians, offset.pitch)),
   };
 }
 
 /**
- * Applies one swipe movement (in pixels) to an orbit offset and clamps the result.
- * Pure: the DOM gesture and the camera both funnel through here, so the feel a
- * test measures is the feel a thumb gets.
+ * Applies one swipe movement in pixels. A drag across the current canvas width is 360°;
+ * pitch remains pixel-based and clamped so the camera cannot be swiped into the ground.
  */
 export function applyOrbitSwipe(
   offset: OrbitOffset,
   deltaXPixels: number,
   deltaYPixels: number,
+  viewportWidthPixels: number,
   config: ChaseOrbitConfig,
 ): OrbitOffset {
+  const viewportWidth = Math.max(1, viewportWidthPixels || 1);
   return clampOrbit(
     {
-      yaw: offset.yaw + deltaXPixels * config.yawRadiansPerPixel,
+      yaw: offset.yaw + (deltaXPixels / viewportWidth) * config.yawRadiansPerViewportWidth,
       pitch: offset.pitch + deltaYPixels * config.pitchRadiansPerPixel,
     },
     config,
   );
 }
 
+/** True when a fresh throttle or brake/reverse input should recenter the chase camera. */
+export function isDriveInputActive(
+  throttle: number,
+  brake: number,
+  config: ChaseOrbitConfig = CHASE_ORBIT_CONFIG,
+): boolean {
+  return throttle >= config.driveInputThreshold || brake >= config.driveInputThreshold;
+}
+
+/** True only on the transition from neutral controls to a new driving input. */
+export function shouldRecenterOrbitForDriveStart(
+  wasDriveInputActive: boolean,
+  throttle: number,
+  brake: number,
+  config: ChaseOrbitConfig = CHASE_ORBIT_CONFIG,
+): boolean {
+  return !wasDriveInputActive && isDriveInputActive(throttle, brake, config);
+}
+
 /**
  * Re-expresses a car-space chase offset with an orbit applied: the offset keeps its
- * length (the view's framing distance) while its azimuth swings by `orbit.yaw` and
- * its elevation rises by `orbit.pitch`, inside the absolute elevation band.
+ * length (the view's framing distance) while its azimuth swings and elevation changes.
  */
 export function orbitOffsetVec3(
   offset: { readonly x: number; readonly y: number; readonly z: number },
@@ -100,7 +115,7 @@ export function orbitOffsetVec3(
   if (radius === 0) {
     return offset;
   }
-  const azimuth = Math.atan2(offset.x, offset.z) + orbit.yaw;
+  const azimuth = Math.atan2(offset.x, offset.z) + wrapOrbitYaw(orbit.yaw);
   const elevation = Math.min(
     config.maxElevationRadians,
     Math.max(

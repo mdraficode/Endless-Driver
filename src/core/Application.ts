@@ -22,6 +22,11 @@ import { Car } from '../vehicles/Car';
 import { CarVisual } from '../vehicles/CarVisual';
 import type { VehiclePose, VehicleTelemetry } from '../vehicles/types';
 import { ChaseCamera } from '../cameras/ChaseCamera';
+import {
+  CHASE_ORBIT_CONFIG,
+  isDriveInputActive,
+  shouldRecenterOrbitForDriveStart,
+} from '../cameras/camera-orbit';
 import { InputManager } from '../input/InputManager';
 import { OrbitGesture } from '../input/orbit-gesture';
 import { TouchControls } from '../input/TouchControls';
@@ -134,6 +139,8 @@ export class Application {
    * computes far from an origin in float32.
    */
   readonly #origin = new OriginManager(ORIGIN_CONFIG);
+  /** Rising-edge guard so one driving start triggers one camera recenter. */
+  #driveInputActive = false;
   /** Vegetation collision/destruction truth (visuals mirror it via the scene). */
   readonly #treeField: TreeCollisionField;
   /** This session's start: chosen once, and where the reset key returns to. */
@@ -202,7 +209,7 @@ export class Application {
     // every on-screen control captures its own pointers, so thumbs on the joystick
     // and pedals never fight a finger looking around (owner request 2026-10-17).
     this.#orbitGesture = new OrbitGesture(options.canvas, {
-      onSwipe: (dx, dy) => this.#chaseCamera.orbitBySwipe(dx, dy),
+      onSwipe: (dx, dy, viewportWidth) => this.#chaseCamera.orbitBySwipe(dx, dy, viewportWidth),
     });
     this.#input = new InputManager();
     this.#input.attach();
@@ -340,6 +347,7 @@ export class Application {
 
     this.#physics.resetAccumulator();
     this.#input.reset();
+    this.#driveInputActive = false;
     this.#engine.start();
 
     if (!this.#firstFrameRendered) {
@@ -353,6 +361,7 @@ export class Application {
 
   stop(): void {
     this.#input.reset();
+    this.#driveInputActive = false;
     this.#engine.stop();
   }
 
@@ -582,7 +591,24 @@ export class Application {
 
     // 1. Input becomes intent. Smoothing runs on frame time; the vehicle consumes it per step.
     this.#input.update(delta);
-    this.#car.setActions(this.#input.actions);
+    const actions = this.#input.actions;
+    this.#car.setActions(actions);
+    const driveInputActive = isDriveInputActive(
+      actions.throttle,
+      actions.brake,
+      CHASE_ORBIT_CONFIG,
+    );
+    if (
+      shouldRecenterOrbitForDriveStart(
+        this.#driveInputActive,
+        actions.throttle,
+        actions.brake,
+        CHASE_ORBIT_CONFIG,
+      )
+    ) {
+      this.#chaseCamera.resetOrbit();
+    }
+    this.#driveInputActive = driveInputActive;
 
     const commands = this.#input.consumeCommands();
     if (commands.toggleCamera) {

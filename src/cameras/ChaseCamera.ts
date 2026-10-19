@@ -9,6 +9,7 @@ import {
   CHASE_ORBIT_CONFIG,
   NEUTRAL_ORBIT,
   orbitOffsetVec3,
+  wrapOrbitYaw,
   type ChaseOrbitConfig,
   type OrbitOffset,
 } from './camera-orbit';
@@ -163,16 +164,24 @@ export class ChaseCamera {
   }
 
   /**
-   * Applies one free-space swipe (pixels) to the orbit target. Clamped by the pure
-   * orbit model, so the camera can never be swiped into the ground or behind the car.
+   * Applies one free-space swipe to the orbit target. A full canvas-width horizontal
+   * drag is a complete revolution; pitch is clamped away from the ground.
    */
-  orbitBySwipe(deltaXPixels: number, deltaYPixels: number): void {
+  orbitBySwipe(deltaXPixels: number, deltaYPixels: number, viewportWidthPixels: number): void {
     this.#orbitTarget = applyOrbitSwipe(
       this.#orbitTarget,
       deltaXPixels,
       deltaYPixels,
+      viewportWidthPixels,
       this.#orbitConfig,
     );
+  }
+
+  /** Eases the gameplay view back to its authored, car-centered chase framing. */
+  resetOrbit(): void {
+    // Remove completed turns without changing the visible angle, then ease to neutral.
+    this.#orbit = { ...this.#orbit, yaw: wrapOrbitYaw(this.#orbit.yaw) };
+    this.#orbitTarget = { ...NEUTRAL_ORBIT };
   }
 
   /** Places the camera immediately at the ideal pose (spawn, reset, teleports). */
@@ -193,6 +202,7 @@ export class ChaseCamera {
     });
     this.#currentFovDelta = view.fovDelta;
     this.#yaw = yawFromQuat(pose.rotation);
+    this.resetOrbit();
     this.#orbit = { ...this.#orbitTarget };
     this.#computeDesired(pose);
     copyVec3(this.#position, this.#desiredPosition);
@@ -305,14 +315,15 @@ export class ChaseCamera {
     const heading: Quat = { x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) };
     const worldOffset = rotateVec3ByQuat(this.#offset, this.#offset, heading);
     const worldLookOffset = rotateVec3ByQuat(this.#lookOffset, this.#lookOffset, heading);
-    // Swipe-to-orbit: swing the framed offset around the car, keeping the view's
-    // distance. The look point stays on the car, so orbiting re-aims by construction.
+    // Rotate the camera and look target together around the car. This preserves the
+    // authored car framing while exposing the full surroundings through a 360° swipe.
     const orbited = orbitOffsetVec3(worldOffset, this.#orbit, this.#orbitConfig);
+    const orbitedLookOffset = orbitOffsetVec3(worldLookOffset, this.#orbit, this.#orbitConfig);
     this.#desiredPosition.x = pose.position.x;
     this.#desiredPosition.y = pose.position.y;
     this.#desiredPosition.z = pose.position.z;
     addVec3(this.#desiredPosition, this.#desiredPosition, orbited);
-    addVec3(this.#desiredLook, pose.position, worldLookOffset);
+    addVec3(this.#desiredLook, pose.position, orbitedLookOffset);
 
     // Feed-forward (see #velocity): with the desired point one lag-interval ahead,
     // the exponential follow settles exactly on the view's offset at any speed.
