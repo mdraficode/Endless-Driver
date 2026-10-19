@@ -19,7 +19,9 @@ import type { RapierModule } from '../physics/RapierModule';
 import { yawFromQuat, type Vec3 } from '../shared/vector';
 import { DiagnosticsOverlay, type DiagnosticsSnapshot } from '../ui/DiagnosticsOverlay';
 import { Car } from '../vehicles/Car';
+import { CarEffects } from '../vehicles/CarEffects';
 import { CarVisual } from '../vehicles/CarVisual';
+import { resolveHighSpeedMotionBlurIntensity } from '../vehicles/vehicle-effects';
 import type { VehiclePose, VehicleTelemetry } from '../vehicles/types';
 import { ChaseCamera } from '../cameras/ChaseCamera';
 import {
@@ -102,6 +104,7 @@ export class Application {
 
   readonly #terrainSampler: TerrainSampler;
   readonly #carVisual: CarVisual;
+  readonly #carEffects: CarEffects;
   readonly #input: InputManager;
 
   #touchControls: TouchControls | null = null;
@@ -226,6 +229,8 @@ export class Application {
       : null;
     this.#statusElement = options.statusElement ?? null;
     this.#tier = options.tier ?? { id: 'B', reason: 'unresolved' };
+    this.#carEffects = new CarEffects(this.#tier.id);
+    this.#scene.addObject(this.#carEffects.root);
     this.#clock = new EnvironmentClock(options.clock);
     this.#daylightController = new DaylightController(this.#clock);
 
@@ -391,6 +396,7 @@ export class Application {
   teleportCar(x: number, z: number, yaw = 0): void {
     const y = this.#terrainSampler.heightAt(x, z);
     this.#car.reset([x - this.#origin.offset.x, y + 0.7, z - this.#origin.offset.z], yaw);
+    this.#carEffects.reset();
     this.#physics.resetAccumulator();
     const pose = this.#car.getInterpolatedPose(0);
     this.#chaseCamera.snapTo(pose);
@@ -577,6 +583,8 @@ export class Application {
     this.#touchControls = null;
     this.#input.detach();
     this.#car.dispose();
+    this.#scene.removeObject(this.#carEffects.root);
+    this.#carEffects.dispose();
     this.#scene.removeObject(this.#carVisual.root);
     this.#carVisual.dispose();
     this.#chaseCamera.dispose();
@@ -624,6 +632,7 @@ export class Application {
         ],
         spawn.yaw,
       );
+      this.#carEffects.reset();
       this.#physics.resetAccumulator();
       const pose = this.#car.getInterpolatedPose(0);
       this.#chaseCamera.snapTo(pose);
@@ -683,6 +692,7 @@ export class Application {
     const shift = this.#origin.update(this.#car.position.x, this.#car.position.z);
     if (shift !== null) {
       this.#car.shiftBy(shift.dx, shift.dz);
+      this.#carEffects.shiftBy(shift.dx, shift.dz);
       this.#physics.setOriginOffset(this.#origin.offset.x, this.#origin.offset.z);
       this.#scene.setWorldOffset(this.#origin.offset.x, this.#origin.offset.z);
       const settled = this.#car.getInterpolatedPose(0);
@@ -725,6 +735,21 @@ export class Application {
     this.#scene.update(delta);
 
     const activeCamera = this.#activeCamera();
+    const telemetry = this.#car.telemetry;
+    this.#carEffects.update(
+      delta,
+      pose,
+      telemetry,
+      this.#car.wheels,
+      this.#car.body.linvel(),
+      activeCamera,
+    );
+    this.#engine.setMotionBlurIntensity(
+      resolveHighSpeedMotionBlurIntensity(
+        telemetry.speedKph,
+        this.#config.postProcessing.motionBlur.intensity,
+      ),
+    );
     this.#syncShadowCamera(activeCamera);
     this.#scene.followCamera(activeCamera.position);
     this.#engine.render(this.#scene.scene, activeCamera);

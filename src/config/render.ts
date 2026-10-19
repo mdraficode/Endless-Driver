@@ -659,13 +659,13 @@ export const RENDER_CONFIG: RenderConfig = {
       focusSmoothingSeconds: 0.35,
     },
     antiAliasing: 'taa',
-    // Roughly a 200-degree shutter: enough to read speed clearly at driving speed, short enough that the
-    // car and the road immediately around it stay sharp. Both are live: the samples are fixed at build
-    // time, the intensity is a uniform.
+    // A restrained high-speed shutter. Application holds this uniform at zero through normal road
+    // speeds, then eases toward the configured maximum above 120 km/h. Samples are fixed at build time;
+    // intensity is a live uniform.
     motionBlur: {
       enabled: true,
       samples: 12,
-      intensity: 0.55,
+      intensity: 0.32,
     },
     temporalAntiAliasing: {
       enabled: true,

@@ -9,6 +9,7 @@ import {
   type Material,
 } from 'three';
 import { VEHICLE_CONFIG, type VehicleConfig } from '../config/vehicle';
+import { VEHICLE_EFFECTS_CONFIG } from '../config/vehicle-effects';
 import type { VehiclePose } from './types';
 
 const PAINT_COLOR = 0x2359a8;
@@ -93,6 +94,25 @@ export class CarVisual {
       );
       headlight.position.set(side * halfWidth * 0.55, halfHeight * 0.25, -halfLength);
       this.root.add(headlight);
+    }
+
+    const exhaustSteel = this.#track(
+      new MeshStandardMaterial({ color: 0x77818a, metalness: 0.72, roughness: 0.32 }),
+    );
+    const exhaustInterior = this.#track(
+      new MeshStandardMaterial({ color: 0x11151a, metalness: 0.1, roughness: 0.92 }),
+    );
+    const exhaustGeometry = this.#track(new CylinderGeometry(0.066, 0.078, 0.28, 8));
+    exhaustGeometry.rotateX(Math.PI / 2);
+    const exhaustOpeningGeometry = this.#track(new CylinderGeometry(0.041, 0.041, 0.006, 8));
+    exhaustOpeningGeometry.rotateX(Math.PI / 2);
+    for (const outlet of VEHICLE_EFFECTS_CONFIG.exhaust.outlets) {
+      const pipe = new Mesh(exhaustGeometry, exhaustSteel);
+      pipe.position.set(outlet.x, outlet.y, outlet.z - 0.14);
+      pipe.castShadow = true;
+      const opening = new Mesh(exhaustOpeningGeometry, exhaustInterior);
+      opening.position.set(outlet.x, outlet.y, outlet.z + 0.002);
+      this.root.add(pipe, opening);
     }
 
     // Wheels are a pivot (steering, yaw) holding a spinner (rolling, pitch), so the two never fight.

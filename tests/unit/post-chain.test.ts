@@ -179,7 +179,8 @@ describe('post stack per tier', () => {
     expect(tierB.renderer.antialias).toBe(false);
     expect(tierB.renderer.samples).toBe(0);
     expect(resolvePostEffects(tierB)).toContain('taa');
-    expect(resolvePostEffects(tierB)).not.toContain('motionBlur');
+    expect(resolvePostEffects(tierB)).toContain('motionBlur');
+    expect(tierB.postProcessing.motionBlur.enabled).toBe(true);
     expect(resolvePostEffects(tierB)).not.toContain('smaa');
     expect(resolvePostEffects(tierB)).not.toContain('fxaa');
     expect(tierB.postProcessing.ambientOcclusion.enabled).toBe(true);
@@ -193,7 +194,10 @@ describe('post stack per tier', () => {
       expect(resolvePostEffects(tier)).toContain('grade');
     }
 
-    // Tier A: ambient occlusion at full resolution, with more samples, plus grain.
+    // Tier A: ambient occlusion at full resolution, with more samples, plus grain and a restrained
+    // high-speed motion-blur ceiling (the runtime keeps it exactly off at ordinary speeds).
+    expect(tierA.postProcessing.motionBlur.enabled).toBe(true);
+    expect(resolvePostEffects(tierA)).toContain('motionBlur');
     expect(tierA.postProcessing.ambientOcclusion.resolutionScale).toBe(1);
     expect(tierA.postProcessing.ambientOcclusion.samples).toBeGreaterThan(
       tierB.postProcessing.ambientOcclusion.samples,
@@ -516,7 +520,8 @@ describe('contact shadows and SSGI', () => {
     const effects = resolvePostEffects(applyTier(RENDER_CONFIG, 'A'));
     expect(effects.indexOf('ssgi')).toBeLessThan(effects.indexOf('contactShadows'));
     expect(effects.indexOf('contactShadows')).toBeLessThan(effects.indexOf('taa'));
-    expect(effects).not.toContain('motionBlur'); // gameplay: no motion blur (2026-10-16)
+    expect(effects).toContain('motionBlur'); // the live intensity remains zero until high road speed
+    expect(resolvePostEffects(applyTier(RENDER_CONFIG, 'C'))).not.toContain('motionBlur');
   });
 
   it('replaces GTAO with SSGI on the high tier instead of stacking both occlusion terms', () => {

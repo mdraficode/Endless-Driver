@@ -124,6 +124,8 @@ export class Engine {
   readonly #resizeObserver: ResizeObserver | null;
   readonly #listensToWindow: boolean;
   #chain: ReturnType<typeof buildPostChain> | null = null;
+  /** Set before the lazy chain build so speed-gated shutter strength is correct on the first frame. */
+  #motionBlurIntensity: number | null = null;
   #godraysLight: DirectionalLight | null = null;
   readonly #resolution: DynamicResolutionController;
   #renderScale = 1;
@@ -272,11 +274,14 @@ export class Engine {
    * off switch without taking the effect out of the chain.
    */
   setMotionBlurIntensity(intensity: number): void {
-    const chain = this.#chain;
-    if (chain === null || !Number.isFinite(intensity)) {
+    if (!Number.isFinite(intensity)) {
       return;
     }
-    chain.motionBlurIntensity.value = Math.max(0, intensity);
+    const resolved = Math.max(0, intensity);
+    this.#motionBlurIntensity = resolved;
+    if (this.#chain !== null) {
+      this.#chain.motionBlurIntensity.value = resolved;
+    }
   }
 
   /**
@@ -602,6 +607,9 @@ export class Engine {
         config: this.#config,
         godraysLight: this.#godraysLight,
       });
+      if (this.#motionBlurIntensity !== null) {
+        this.#chain.motionBlurIntensity.value = this.#motionBlurIntensity;
+      }
       this.#pipelineScene = scene;
       this.#pipelineCamera = camera;
       // The look may already be loaded and waiting; now there is a texture to put it in.

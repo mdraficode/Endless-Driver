@@ -152,6 +152,25 @@ describe('vehicle physics (headless Rapier)', () => {
     expect(heading(rig)).toBeGreaterThan(turnRight + 0.1);
   });
 
+  it('gives extra steering authority to countersteer, not to steer deeper into a slide', () => {
+    const makeAuthority = (steer: number): number => {
+      const rig = createRig();
+      drive(rig, 1.5, NEUTRAL_ACTIONS);
+      rig.car.body.setLinvel({ x: 6, y: 0, z: -20 }, true);
+      rig.car.setActions(actions({ steer }));
+      rig.physics.update(FIXED_STEP);
+      const authority = Math.abs(rig.car.telemetry.steerAngle);
+      rig.car.dispose();
+      rig.physics.dispose();
+      return authority;
+    };
+
+    // +X velocity is a slide to the right. Negative steering is opposite lock; positive steers into it.
+    const counterSteering = makeAuthority(-0.5);
+    const steeringIntoTheSlide = makeAuthority(0.5);
+    expect(counterSteering).toBeGreaterThan(steeringIntoTheSlide + 0.05);
+  });
+
   it('holds a planted line through a moderate corner', () => {
     const rig = createRig();
     drive(rig, 1, NEUTRAL_ACTIONS);

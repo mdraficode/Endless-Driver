@@ -1724,4 +1724,6 @@ The owner requested exhaust and tire smoke, short gear-change sparks emitted at 
 
 **Scope guard:** this specific request does not constitute Phase 5 acceptance, start the broader Phase 6 hero-car work, or authorize weather/seasons or general Phase 8 polish. Phase gates and all unrelated open acceptance items remain unchanged.
 
-**Baseline:** fresh clone `/tmp/endless-driver-effects-20261019` began clean at remote `main` SHA `400b9618faff0dc7e1c8799d2e516ee59e623660`; `npm ci` succeeded (201 packages, 0 vulnerabilities). The existing vehicle physics and stability suites passed as a baseline (2 files / 26 tests). Implementation, full-check results, commits, remote workflows, and manual-review gaps are pending.
+**Baseline:** fresh clone `/tmp/endless-driver-effects-20261019` began clean at remote `main` SHA `400b9618faff0dc7e1c8799d2e516ee59e623660`; `npm ci` succeeded (201 packages, 0 vulnerabilities). The existing vehicle physics and stability suites passed as a baseline (2 files / 26 tests).
+
+**Implementation prepared for its first push:** added bounded procedural instanced smoke/spark/airflow pools by tier, exhaust tips, speed-triggered motion blur for B/A while C remains off, and arcade handling adjustments including a countersteer-sign correction. Added helper/effect tests and a controlled-sliding regression. Full `npm run check`, remote workflow results, and visual/manual review remain pending; no owner-device validation is claimed.

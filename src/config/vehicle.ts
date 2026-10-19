@@ -2,9 +2,9 @@
  * Phase 2 vehicle tuning.
  *
  * All handling numbers live here, never inline in the controller, so handling can be tuned
- * (and regression-tested) without touching simulation code. Values aim at a genre-typical
- * "sim-cade" balance: a 1200 kg rear-drive car that accelerates, brakes and corners plausibly
- * while remaining deliberately loose enough to slide under power or handbrake.
+ * (and regression-tested) without touching simulation code. The selected target is forgiving arcade:
+ * a 1200 kg rear-drive car that accelerates, brakes and corners plausibly while remaining predictable
+ * under ordinary steering and easy to recover when the rear steps out.
  *
  * Loads and forces are in SI units. Forward is -Z, up is +Y, right is +X (see docs/ARCHITECTURE.md).
  */
@@ -241,14 +241,14 @@ export const VEHICLE_CONFIG: VehicleConfig = {
     maxForceRatePerSecond: 420_000,
   },
   tires: {
-    frictionCoefficient: 1.15,
+    frictionCoefficient: 1.25,
     loadSensitivity: 0.12,
     lateralStiffness: 9.5,
     lateralShape: 1.55,
     lateralCurvature: 0.15,
     slipAngleReferenceSpeed: 1.5,
     relaxationLengthMeters: 0.45,
-    handbrakeGripScale: 0.5,
+    handbrakeGripScale: 0.58,
     rollingResistance: 0.015,
     longitudinalSaturation: 0.98,
     holdSpeed: 0.6,
@@ -286,14 +286,14 @@ export const VEHICLE_CONFIG: VehicleConfig = {
     handbrakeForce: 2600,
   },
   stability: {
-    yawResponsePerSecond: 3.8,
+    yawResponsePerSecond: 5.6,
     minSpeedMps: 4,
     airborneGravityScale: 0.6,
   },
   steering: {
     maxAngle: 0.55,
     minAngle: 0.015,
-    gripBudgetFactor: 1.35,
+    gripBudgetFactor: 1.25,
     slipReliefFactor: 0.7,
     ackermann: 0.25,
   },

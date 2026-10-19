@@ -5,8 +5,8 @@
  * `core/QualityTier.ts`), applied as an overlay on the baseline render configuration, and reported
  * in the HUD, so every performance or quality statement can name the tier it was made under.
  *
- * Only settings that exist today are listed under `render`; everything a tier is contracted to
- * control *once implemented* (reflections, terrain layers, vegetation density, particles) is listed under
+ * Only settings that exist today are listed under `render`; world systems still contracted to be
+ * implemented (reflection probes, terrain layers, additional vegetation density) remain under
  * `pending`. Nothing in `pending` affects rendering yet, and nothing here pretends it does.
  *
  * The anti-aliasing strategy and motion blur moved out of `pending` when they landed: a tier now states
@@ -212,10 +212,9 @@ const TIER_B: TierDefinition = {
     },
     postProcessing: {
       antiAliasing: 'taa',
-      // Motion blur is off for gameplay (owner report, 2026-10-16): the
-      // cinematic stack was smearing the driving image. It stays implemented
-      // for photo mode / tier comparisons via config, not deleted.
-      motionBlur: { enabled: false },
+      // The shutter is live only above the high-speed gate in Application; ordinary road speed remains
+      // crisp, while the balanced desktop tier pays for the velocity attachment when speed warrants it.
+      motionBlur: { enabled: true, intensity: 0.28 },
       temporalAntiAliasing: { enabled: true, dynamicResolution: true },
       bloom: { strength: 0.16, radius: 0.4 },
       // A slightly tighter aperture than the baseline: this tier renders at 1.5x, and the blur is a
@@ -273,7 +272,8 @@ const TIER_A: TierDefinition = {
       // defaulted on, so a frame can always name what it paid for them.
       contactShadows: { enabled: true, steps: 16 },
       ssgi: { enabled: true },
-      motionBlur: { enabled: false },
+      // Stronger high-speed shutter than B, still zero below the same gameplay speed threshold.
+      motionBlur: { enabled: true, intensity: 0.36 },
       // A higher floor than the balanced tier: this tier is for hardware that was measured to hold its
       // frame budget, so the controller has less reason to trade resolution away. It still adapts — the
       // cost of not adapting is a stutter, and the schedule in `docs/REALISM_PLAN.md` §5 is what decides

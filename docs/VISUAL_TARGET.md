@@ -81,6 +81,13 @@ owns it. "Tier" refers to §3.
 | Dirt, dust, rain, and snow accumulation masks that respond to the world                          | After driving through rain/mud/snow, the car visibly changes; wipers/lights interact with the water layer              | 6, 7  |
 | Reflection quality on the bodywork (SSR high tier, probes lower tiers)                           | Reflections land on the correct surface regions without swimming artefacts                                             | 6, 7  |
 
+**Narrow gameplay increment authorized 2026-10-19 (not Phase 6 asset work):** add procedural exhaust/tire
+smoke, brief sparks on forward gear changes, and restrained wind marks above 90 km/h. These visuals do not
+change grip or gameplay physics. Keep effect pools tier-capped and localized, with no global bloom. The existing car should handle as forgiving arcade: predictable steering,
+less abrupt rear-grip loss, and clear countersteer recovery. The high-speed shutter is exactly zero through
+120 km/h, eases to the tier maximum by 195 km/h on B/A, and remains disabled on C. This limited increment
+does not start the hero-car, weather, or broader Phase 8 work.
+
 ### 2.5 Weather and seasons (Phase 7)
 
 | Target                                                                                                  | Measurable check                                                                                                   | Phase |
@@ -96,7 +103,7 @@ owns it. "Tier" refers to §3.
 | Target                                                                                                                     | Measurable check                                                                         | Phase |
 | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ----- |
 | Tone mapping + colour grading pipeline (ACES/AgX + LUT) applied exactly once                                               | No double tone mapping (grey/washed look); grading LUT visible in the look-dev scene     | 3     |
-| Bloom, GTAO/SSAO, SSR, DOF (photography), motion blur (camera), grain, chromatic aberration, vignette as one ordered chain | Each effect individually toggleable with a visible-on/off reference; ordering documented | 3     |
+| Bloom, GTAO/SSAO, SSR, DOF (photography), speed-gated motion blur (camera), grain, chromatic aberration, vignette as one ordered chain | Each effect individually toggleable with a visible-on/off reference; motion blur stays exactly zero through 120 km/h and ramps by 195 km/h on B/A | 3     |
 | Temporal AA / upscaling with dynamic resolution                                                                            | Edges resolve cleanly at 0.7× scale; no persistent ghosting on fast camera pans          | 3     |
 | Contact shadows grounding props against the sun                                                                            | Contact darkening at surface junctions on the sun side; median frame pixel untouched     | 3     |
 | Bounced diffuse light (SSGI, high tier)                                                                                    | Shadowed sides lift with neighbour colour; replaces (never stacks on) GTAO               | 3     |
@@ -121,7 +128,7 @@ recorded in every performance claim.
 | Vegetation         | Impostors, ≤ 20k; TSL sway off                         | LOD1–2, ≤ 80k; TSL sway ≤ 0.035 m                              | Full LOD0 near, ≤ 200k; TSL sway ≤ 0.065 m                 |
 | Clouds/atmosphere  | HDRI sky + fog                                         | Sky + layered clouds + fog                                     | Sky + volumetric cloud/light shafts where enabled          |
 | Urban night lights | Faint local halo + 2-axis starburst, few active lights | Soft halo + restrained 4-axis starburst, capped lights/windows | Full local halo + subtle 4-axis starburst, source-isolated |
-| Particles          | Capped, short-lived                                    | Moderate                                                       | Full, lit                                                  |
+| Vehicle particles / shutter | ≤ 32 smoke, 6 sparks, 4 airflow marks; no blur | ≤ 64 smoke, 10 sparks, 10 airflow marks; 0–0.28 high-speed blur | ≤ 88 smoke, 14 sparks, 16 airflow marks; 0–0.36 high-speed blur |
 | Post stack         | Tone map + grade; no global bloom                      | + GTAO + DOF + TAAU; no global bloom                           | + SSR (pending) + grain; no global bloom                   |
 | Target frame       | 30–60 FPS                                              | 60 FPS                                                         | 60+ FPS where hardware permits                             |
 
