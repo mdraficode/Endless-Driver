@@ -1486,7 +1486,7 @@ export class UrbanNightWorld implements SceneContent {
     const selectedBands = floorBandCandidates
       .sort((a, b) => a.rank - b.rank)
       .slice(0, remaining)
-      .map(({ rank: _rank, ...transform }) => transform);
+      .map(({ x, y, z, yaw, scale }) => ({ x, y, z, yaw, scale }));
     const structural = [...structuralBase, ...selectedBands];
 
     if (structural.length > 0) {
