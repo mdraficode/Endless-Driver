@@ -48,7 +48,7 @@ export function wrapOrbitYaw(yaw: number): number {
     return 0;
   }
   const turn = Math.PI * 2;
-  return (((yaw + Math.PI) % turn) + turn) % turn - Math.PI;
+  return ((((yaw + Math.PI) % turn) + turn) % turn) - Math.PI;
 }
 
 /** Clamps vertical movement; yaw stays unwrapped so a full turn animates without reversing. */
