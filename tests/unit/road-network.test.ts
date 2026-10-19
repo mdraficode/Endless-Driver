@@ -1,8 +1,12 @@
+import { Mesh } from 'three';
+import { MeshPhysicalNodeMaterial } from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 
+import { resolveUrbanWetness, URBAN_CITY_CONFIG } from '../../src/config/urban-city';
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
 import { AOHARA_DISTRICT_CONFIG } from '../../src/config/urban-district';
+import { EnvironmentClock } from '../../src/environment/EnvironmentClock';
 import { roadInfluence } from '../../src/world/road-network';
 import { createTerrainSampler } from '../../src/world/terrain-height';
 import { sampleTerrainSurface } from '../../src/world/terrain-surface';
@@ -118,6 +122,21 @@ describe('road network graph', () => {
     expect(stats.urbanCrosswalkIntersections).toBe(25);
     expect(roads.object.getObjectByName('aohara-sidewalks')).not.toBeNull();
     expect(roads.object.getObjectByName('aohara-crosswalks-and-stop-lines')).not.toBeNull();
+    const urbanAsphalt = roads.object.getObjectByName('road-urban-asphalt');
+    expect(urbanAsphalt).toBeInstanceOf(Mesh);
+    if (!(urbanAsphalt instanceof Mesh)) {
+      throw new Error('Aohara road batch should exist');
+    }
+    expect(urbanAsphalt.material).toBeInstanceOf(MeshPhysicalNodeMaterial);
+    const asphaltMaterial = urbanAsphalt.material as MeshPhysicalNodeMaterial;
+    expect(asphaltMaterial.clearcoatNode).not.toBeNull();
+    expect(asphaltMaterial.clearcoatRoughnessNode).not.toBeNull();
+    expect(roads.getStats().urbanWetLook).toBe(URBAN_CITY_CONFIG.wetRoad.wetnessDay);
+    const daylight = new EnvironmentClock({ startHour: 23.5 }).daylight();
+    roads.setDaylight(daylight);
+    expect(roads.getStats().urbanWetLook).toBeCloseTo(
+      resolveUrbanWetness(daylight.sunElevationDegrees),
+    );
     roads.dispose();
   });
 

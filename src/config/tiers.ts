@@ -285,7 +285,7 @@ const TIER_A: TierDefinition = {
     },
   },
   pending: [
-    'SSR + probes + wet roads',
+    'SSR + reflection probes',
     '4 terrain layers + POM',
     'LOD0 vegetation',
     'volumetric clouds',

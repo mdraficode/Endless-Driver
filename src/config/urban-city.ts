@@ -33,6 +33,28 @@ export const URBAN_CITY_CONFIG = {
     pointLightIntensity: 28,
     pointLightDistanceMeters: 26,
     haloScaleMeters: 2.5,
+    /** Keep dynamic point lights around the player inside the bounded city, then fade them out. */
+    activeLightFadeStartMeters: 500,
+    activeLightRangeMeters: 620,
+    activeLightRefreshDistanceMeters: 12,
+  },
+  wetRoad: {
+    /** Art-directed Aohara-only wet look; this is not weather, standing water, or traction state. */
+    wetnessDay: 0.12,
+    wetnessNight: 0.9,
+    dryRoughness: 0.58,
+    wetRoughness: 0.17,
+    dryClearcoat: 0.16,
+    wetClearcoat: 0.78,
+    dryClearcoatRoughness: 0.28,
+    wetClearcoatRoughness: 0.075,
+  },
+  optics: {
+    gaussianHaloStrength: 0.16,
+    broadHaloStrength: 0.022,
+    apertureRingStrength: 0.009,
+    coreStrength: 0.13,
+    maximumOpacity: 0.38,
   },
   window: {
     floorSpacingMeters: 3.35,
@@ -98,6 +120,35 @@ export function resolveUrbanNightGain(sunElevationDegrees: number): number {
   const t = Math.min(1, Math.max(0, (sunElevationDegrees + 4) / 8));
   const daylight = t * t * (3 - 2 * t);
   return 1 - daylight;
+}
+
+/**
+ * Aohara-only art direction for a damp-looking road finish. It has no weather/physics coupling;
+ * the city becomes glossier toward night, while the rural road material remains unchanged.
+ */
+export function resolveUrbanWetness(sunElevationDegrees: number): number {
+  const night = resolveUrbanNightGain(sunElevationDegrees);
+  return (
+    URBAN_CITY_CONFIG.wetRoad.wetnessDay * (1 - night) +
+    URBAN_CITY_CONFIG.wetRoad.wetnessNight * night
+  );
+}
+
+/** Smoothly fade expensive local streetlights as the car leaves Aohara's bounded footprint. */
+export function resolveUrbanStreetLightCoverage(distanceFromCenterMeters: number): number {
+  if (!Number.isFinite(distanceFromCenterMeters) || distanceFromCenterMeters < 0) {
+    return 0;
+  }
+  const { activeLightFadeStartMeters: fadeStart, activeLightRangeMeters: range } =
+    URBAN_CITY_CONFIG.streetLamp;
+  if (distanceFromCenterMeters <= fadeStart) {
+    return 1;
+  }
+  if (distanceFromCenterMeters >= range) {
+    return 0;
+  }
+  const t = (range - distanceFromCenterMeters) / (range - fadeStart);
+  return t * t * (3 - 2 * t);
 }
 
 /** Deterministic fixed-cycle demo signal; phase offset makes the cross street oppose the avenue. */

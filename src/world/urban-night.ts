@@ -15,16 +15,19 @@ import {
 } from 'three';
 import {
   MeshBasicNodeMaterial,
+  MeshPhysicalNodeMaterial,
   MeshStandardNodeMaterial,
   SpriteNodeMaterial,
   type UniformNode,
 } from 'three/webgpu';
-import { abs, exp, uniform, uv, vec3, vec4 } from 'three/tsl';
+import { abs, exp, float, mix, uniform, uv, vec3, vec4 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import {
   resolveTrafficSignalAspect,
   resolveUrbanNightGain,
+  resolveUrbanStreetLightCoverage,
+  resolveUrbanWetness,
   URBAN_CITY_CONFIG,
   URBAN_NIGHT_TIER_BUDGET,
   type TrafficSignalAspect,
@@ -211,6 +214,7 @@ function createFlareMaterial(
   cardinalStrength: number,
   diagonalStrength: number,
   name: string,
+  spatialGain?: UniformNode<'float', number>,
 ): SpriteNodeMaterial {
   const material = new SpriteNodeMaterial();
   material.name = name;
@@ -226,8 +230,15 @@ function createFlareMaterial(
   const x2 = x.mul(x);
   const y2 = y.mul(y);
   const radiusSquared = x2.add(y2);
-  const halo = exp(radiusSquared.mul(-5.2)).mul(0.16);
-  const core = exp(radiusSquared.mul(-42)).mul(0.13);
+  // A compact PSF approximation: a soft source-local halo, a wide low-energy Gaussian tail,
+  // a faint aperture ring, and a sharp center. This stays attached to each lamp—never whole-frame bloom.
+  const halo = exp(radiusSquared.mul(-5.2)).mul(URBAN_CITY_CONFIG.optics.gaussianHaloStrength);
+  const broadHalo = exp(radiusSquared.mul(-1.75)).mul(URBAN_CITY_CONFIG.optics.broadHaloStrength);
+  const ringOffset = radiusSquared.sub(0.22);
+  const apertureRing = exp(ringOffset.mul(ringOffset).mul(-92)).mul(
+    URBAN_CITY_CONFIG.optics.apertureRingStrength,
+  );
+  const core = exp(radiusSquared.mul(-42)).mul(URBAN_CITY_CONFIG.optics.coreStrength);
   const horizontalRay = exp(y2.mul(-155)).mul(exp(abs(x).mul(-1.65)));
   const verticalRay = exp(x2.mul(-155)).mul(exp(abs(y).mul(-1.65)));
   const diagonalDelta = x.sub(y);
@@ -242,7 +253,15 @@ function createFlareMaterial(
   );
   const cardinal = horizontalRay.add(verticalRay).mul(cardinalStrength);
   const diagonal = diagonalA.add(diagonalB).mul(diagonalStrength);
-  const opacity = halo.add(core).add(cardinal).add(diagonal).mul(nightGain).clamp(0, 0.42);
+  const opacity = halo
+    .add(broadHalo)
+    .add(apertureRing)
+    .add(core)
+    .add(cardinal)
+    .add(diagonal)
+    .mul(nightGain)
+    .mul(spatialGain ?? 1)
+    .clamp(0, URBAN_CITY_CONFIG.optics.maximumOpacity);
   const color = new Color(colorHex);
   material.colorNode = vec4(color.r, color.g, color.b, 1);
   material.opacityNode = opacity;
@@ -422,15 +441,21 @@ function createStreetLampPlacements(
   return placements;
 }
 
-function selectSpread<T>(items: readonly T[], count: number): T[] {
-  const selectedCount = Math.min(items.length, count);
-  if (selectedCount === 0) {
-    return [];
-  }
-  return Array.from({ length: selectedCount }, (_, index) => {
-    const sourceIndex = Math.floor(((index + 0.5) * items.length) / selectedCount);
-    return items[sourceIndex]!;
-  });
+function selectNearestStreetLights(
+  positions: readonly (readonly [number, number, number])[],
+  count: number,
+  focusX: number,
+  focusZ: number,
+): (readonly [number, number, number])[] {
+  return positions
+    .map((position, index) => ({
+      position,
+      index,
+      distanceSquared: (position[0] - focusX) ** 2 + (position[2] - focusZ) ** 2,
+    }))
+    .sort((a, b) => a.distanceSquared - b.distanceSquared || a.index - b.index)
+    .slice(0, Math.min(positions.length, count))
+    .map(({ position }) => position);
 }
 
 function createSignalHead(
@@ -500,7 +525,11 @@ export class UrbanNightWorld implements SceneContent {
   readonly kind = 'aohara-city-night';
   readonly #tier: TierId;
   readonly #nightGain = uniform(0);
+  readonly #wetness = uniform(URBAN_CITY_CONFIG.wetRoad.wetnessDay);
+  readonly #streetLightGain = uniform(1);
   readonly #streetLights: PointLight[] = [];
+  readonly #streetLightFlares: Sprite[] = [];
+  readonly #streetLightCandidates: (readonly [number, number, number])[] = [];
   readonly #signalHeads: SignalHead[] = [];
   readonly #windowInstances: number;
   readonly #flareCount: number;
@@ -509,6 +538,11 @@ export class UrbanNightWorld implements SceneContent {
   readonly #towers: readonly TowerSpec[];
   readonly #cityBlockCount: number;
   readonly #streetLightPoleCount: number;
+  readonly #cityOriginX: number;
+  readonly #cityOriginZ: number;
+  readonly #streetLightBudget: number;
+  #streetLightSpatialGain = 1;
+  #lastStreetLightFocus: { x: number; z: number } | null = null;
   #signalSeconds = 0;
   #disposed = false;
 
@@ -516,6 +550,8 @@ export class UrbanNightWorld implements SceneContent {
     this.#tier = tier;
     this.#networkIntegrated = options.networkIntegrated ?? false;
     const [originX, originY, originZ] = options.position ?? [0, 0, 0];
+    this.#cityOriginX = originX;
+    this.#cityOriginZ = originZ;
     this.root.position.set(originX, originY, originZ);
     this.#towers = this.#networkIntegrated ? AOHARA_CITY_TOWERS : LOOKDEV_TOWERS;
     this.#cityBlockCount = this.#networkIntegrated
@@ -530,12 +566,14 @@ export class UrbanNightWorld implements SceneContent {
     }));
     this.root.name = 'AoharaNightLightingBlock';
     const budget = URBAN_NIGHT_TIER_BUDGET[tier];
+    this.#streetLightBudget = budget.pointLights;
     const warmFlare = createFlareMaterial(
       0xffd19a,
       this.#nightGain,
       budget.cardinalStarburst,
       budget.diagonalStarburst,
       'aohara-warm-gaussian-diffraction',
+      this.#streetLightGain,
     );
     const signalFlares: Readonly<Record<TrafficSignalAspect, SpriteNodeMaterial>> = {
       red: createFlareMaterial(
@@ -582,11 +620,50 @@ export class UrbanNightWorld implements SceneContent {
   }
 
   setDaylight(state: DaylightState): void {
-    const gain = resolveUrbanNightGain(state.sunElevationDegrees);
-    this.#nightGain.value = gain;
-    for (const light of this.#streetLights) {
-      light.intensity = URBAN_CITY_CONFIG.streetLamp.pointLightIntensity * gain;
+    this.#nightGain.value = resolveUrbanNightGain(state.sunElevationDegrees);
+    this.#wetness.value = resolveUrbanWetness(state.sunElevationDegrees);
+    this.#setStreetLightIntensity();
+  }
+
+  /** Keep only the nearest tier-budgeted Aohara point lights active around the streamed focus. */
+  updateStreaming(focus: { readonly x: number; readonly y: number; readonly z: number }): void {
+    if (this.#disposed || !this.#networkIntegrated || this.#streetLightCandidates.length === 0) {
+      return;
     }
+    const localX = focus.x - this.#cityOriginX;
+    const localZ = focus.z - this.#cityOriginZ;
+    const distanceFromCenter = Math.hypot(localX, localZ);
+    const coverage = resolveUrbanStreetLightCoverage(distanceFromCenter);
+    const previous = this.#lastStreetLightFocus;
+    if (
+      previous !== null &&
+      Math.hypot(localX - previous.x, localZ - previous.z) <
+        URBAN_CITY_CONFIG.streetLamp.activeLightRefreshDistanceMeters &&
+      Math.abs(coverage - this.#streetLightSpatialGain) < 0.015
+    ) {
+      return;
+    }
+
+    this.#lastStreetLightFocus = { x: localX, z: localZ };
+    this.#streetLightSpatialGain = coverage;
+    this.#streetLightGain.value = coverage;
+    const nearest = selectNearestStreetLights(
+      this.#streetLightCandidates,
+      this.#streetLightBudget,
+      localX,
+      localZ,
+    );
+    nearest.forEach((position, index) => {
+      const light = this.#streetLights[index];
+      const flare = this.#streetLightFlares[index];
+      if (light === undefined || flare === undefined) {
+        return;
+      }
+      light.position.set(...position);
+      flare.position.set(...position);
+      flare.visible = coverage > 0;
+    });
+    this.#setStreetLightIntensity();
   }
 
   update(deltaSeconds: number): void {
@@ -611,6 +688,8 @@ export class UrbanNightWorld implements SceneContent {
       illuminatedWindows: this.#windowInstances,
       opticalFlares: this.#flareCount,
       trafficSignals: this.#signalHeads.length,
+      wetSurfaceIntensity: Number(this.#wetness.value.toFixed(3)),
+      streetLightFocusGain: Number(this.#streetLightSpatialGain.toFixed(3)),
       qualityTierCode: this.#tier === 'C' ? 0 : this.#tier === 'B' ? 1 : 2,
     };
   }
@@ -645,11 +724,26 @@ export class UrbanNightWorld implements SceneContent {
     );
 
     if (!this.#networkIntegrated) {
-      const asphalt = new MeshStandardNodeMaterial();
+      const asphalt = new MeshPhysicalNodeMaterial();
       asphalt.color.setHex(0x1d252e);
-      asphalt.roughness = 0.24;
-      asphalt.metalness = 0.08;
-      asphalt.name = 'aohara-dark-asphalt-local-specular';
+      asphalt.roughness = URBAN_CITY_CONFIG.wetRoad.dryRoughness;
+      asphalt.metalness = 0.025;
+      asphalt.roughnessNode = mix(
+        float(URBAN_CITY_CONFIG.wetRoad.dryRoughness),
+        float(URBAN_CITY_CONFIG.wetRoad.wetRoughness),
+        this.#wetness,
+      );
+      asphalt.clearcoatNode = mix(
+        float(URBAN_CITY_CONFIG.wetRoad.dryClearcoat),
+        float(URBAN_CITY_CONFIG.wetRoad.wetClearcoat),
+        this.#wetness,
+      );
+      asphalt.clearcoatRoughnessNode = mix(
+        float(URBAN_CITY_CONFIG.wetRoad.dryClearcoatRoughness),
+        float(URBAN_CITY_CONFIG.wetRoad.wetClearcoatRoughness),
+        this.#wetness,
+      );
+      asphalt.name = 'aohara-dark-asphalt-wet-look-clearcoat';
       addPlane(
         this.root,
         URBAN_CITY_CONFIG.avenue.widthMeters,
@@ -871,6 +965,7 @@ export class UrbanNightWorld implements SceneContent {
     emitter.name = 'aohara-street-lamp-emitter';
     const emitterGeometry = new SphereGeometry(0.25, 10, 8);
     const bulbPositions = placements.map((placement) => placement.bulb);
+    this.#streetLightCandidates.push(...bulbPositions);
     if (bulbPositions.length > 0) {
       addInstancedBoxes(
         this.root,
@@ -881,14 +976,16 @@ export class UrbanNightWorld implements SceneContent {
       );
     }
 
-    const budgetedPositions =
-      this.#networkIntegrated && roadNetwork !== undefined
-        ? selectSpread(bulbPositions, pointLightBudget)
-        : bulbPositions.slice(0, pointLightBudget);
+    const defaultSpawnZ = -AOHARA_DISTRICT_CONFIG.gridSpacingMeters / 2;
+    const budgetedPositions = this.#networkIntegrated
+      ? selectNearestStreetLights(bulbPositions, pointLightBudget, 0, defaultSpawnZ)
+      : bulbPositions.slice(0, pointLightBudget);
     budgetedPositions.forEach(([x, y, z], index) => {
       const light = new PointLight(
         0xffc27a,
-        URBAN_CITY_CONFIG.streetLamp.pointLightIntensity,
+        URBAN_CITY_CONFIG.streetLamp.pointLightIntensity *
+          this.#nightGain.value *
+          this.#streetLightSpatialGain,
         URBAN_CITY_CONFIG.streetLamp.pointLightDistanceMeters,
         2,
       );
@@ -901,8 +998,10 @@ export class UrbanNightWorld implements SceneContent {
       const flare = new Sprite(flareMaterial);
       flare.position.set(x, y, z);
       flare.scale.setScalar(URBAN_CITY_CONFIG.streetLamp.haloScaleMeters);
+      flare.visible = this.#streetLightSpatialGain > 0;
       flare.name = `aohara-streetlight-gaussian-flare-${index + 1}`;
       this.root.add(flare);
+      this.#streetLightFlares.push(flare);
     });
     return placements.length;
   }
@@ -929,6 +1028,16 @@ export class UrbanNightWorld implements SceneContent {
         `aohara-signal-${index === 0 ? 'avenue' : 'cross-street'}`,
       );
       this.#signalHeads.push(head);
+    }
+  }
+
+  #setStreetLightIntensity(): void {
+    const intensity =
+      URBAN_CITY_CONFIG.streetLamp.pointLightIntensity *
+      this.#nightGain.value *
+      this.#streetLightSpatialGain;
+    for (const light of this.#streetLights) {
+      light.intensity = intensity;
     }
   }
 

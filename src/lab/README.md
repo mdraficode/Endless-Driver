@@ -34,10 +34,11 @@ The city lighting preview is reached with `?scene=city` (defaults to 23:30; `?ti
 - **Layout and material values are asserted in Node.** `tests/unit/studio-config.test.ts` checks that
   the grid fits the frame, that spheres stand on the floor, that the panel does not cover the grid,
   and that the materials are physically plausible. `tests/unit/urban-night.test.ts` covers the city
-  lights' darkness gate, opposing signal phases and tier budgets; these checks do not replace a visual review.
+  lights' darkness gate, opposing signal phases, tier budgets, wet-look material and player-local light
+  coverage; these checks do not replace a visual review.
 - **The city optics are source-local.** Each lamp/signal has a bounded Gaussian halo and restrained streak pattern;
-  whole-frame bloom remains disabled after the earlier washout A/B. Pavement sheen is a simple material-lighting
-  approximation, not SSR, ray tracing or a weather/wetness simulation.
+  whole-frame bloom remains disabled after the earlier washout A/B. Aohara-only wet-look clearcoat responds to the
+  HDRI and local lights; it is visual PBR, not SSR, ray tracing, standing water, weather, or traction.
 
 ## Planned work
 

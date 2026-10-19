@@ -116,7 +116,7 @@ recorded in every performance claim.
 | Anti-aliasing      | FXAA (SMAA by switch)                                  | TAAU + dynamic resolution                                      | TAAU + dynamic resolution, higher scale floor              |
 | Shadows            | 1–2 cascades, 1024                                     | 3 cascades, 2048                                               | 4 cascades, 2048–4096                                      |
 | Ambient occlusion  | Off or baked                                           | GTAO (half res)                                                | GTAO full res                                              |
-| Reflections        | Cubemap probes                                         | SSR (half res) + probes                                        | SSR + probes + wet-road layer                              |
+| Reflections        | Environment IBL + Aohara local clearcoat               | SSR (half res) + probes (pending)                              | SSR + probes (pending); Aohara wet-look is local PBR       |
 | Terrain layers     | 2                                                      | 3                                                              | 4 + POM                                                    |
 | Vegetation         | Impostors, ≤ 20k instances                             | LOD1–2, ≤ 80k                                                  | Full LOD0 near, ≤ 200k                                     |
 | Clouds/atmosphere  | HDRI sky + fog                                         | Sky + layered clouds + fog                                     | Sky + volumetric cloud/light shafts where enabled          |
@@ -249,6 +249,8 @@ This bounded prototype is not represented as a completed megacity or verified dr
 | **Shirasagi Terraces** (白鷺の棚田) | Single-lane farm roads between paddies, raised beds                                     | Open sky, mirror-flat water, rice green/gold                                               | Flooded-spring mirror, harvest gold, snow fields    |
 | **Hokuto Highlands** (北斗高原)     | Open plateau sweepers, susuki grass, volcanic ash                                       | Big sky, wind, dirt pull-offs, rally-ish routes                                            | Silver grass, frost, deep snow                      |
 | **Ginzan Onsen** (銀山温泉)         | Snow-country village lanes, steep approach road                                         | Winter hub: lanterns, steam, wooden buildings                                              | Heavy snow, ice, night glow                         |
+
+**Aohara wet-night scope (owner follow-up, 2026-10-19):** A static, city-only wet-look clearcoat may respond more strongly at night and reflect the existing HDRI/local streetlights. This is visual PBR only—not SSR, rain, puddles, weather/seasons or traction. Full wet-surface behaviour remains gated to Phase 7.
 
 **Events layer (presentation, not gameplay scope):** seasonal set-dressing that turns the same roads into different
 places — _Hanami_ (spring blossom), _Matsuri_ (summer festival: lantern strings, yukata props, fireworks over the

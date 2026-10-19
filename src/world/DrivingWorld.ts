@@ -78,6 +78,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
     kind: 'driving',
     setDaylight: (state) => {
       vegetation.setDaylight(state);
+      roads?.setDaylight(state);
       aohara?.setDaylight(state);
     },
     update: (deltaSeconds) => aohara?.update(deltaSeconds),
@@ -85,8 +86,10 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       terrain.updateStreaming(focus, velocity);
       vegetation.updateStreaming(focus, velocity, deltaSeconds ?? 0);
       town.updateStreaming(focus, deltaSeconds ?? 0);
+      aohara?.updateStreaming(focus);
     },
     prepareInitial: async (focus, velocity = { x: 0, z: 0 }) => {
+      aohara?.updateStreaming(focus);
       await Promise.all([
         scannedAssetsReady,
         terrain.prepareInitial(focus, velocity),

@@ -8,12 +8,13 @@ import {
   RepeatWrapping,
   type BufferGeometry,
 } from 'three';
-import { MeshStandardNodeMaterial } from 'three/webgpu';
-import { texture, uv, vec2 } from 'three/tsl';
+import { MeshPhysicalNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
+import { float, mix, texture, uniform, uv, vec2, vec4 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { loadMaterialTextureSet } from '../assets/AssetManifest';
-import { URBAN_CITY_CONFIG } from '../config/urban-city';
+import { resolveUrbanWetness, URBAN_CITY_CONFIG } from '../config/urban-city';
+import type { DaylightState } from '../environment/EnvironmentClock';
 import type { RoadNetwork } from './road-network';
 import { buildDashGeometry, buildRibbonGeometry } from './road-geometry';
 
@@ -23,6 +24,8 @@ export interface RoadWorldStats {
   urbanSidewalkEdges: number;
   urbanCrosswalkIntersections: number;
   roadSurfacesLoaded: 0 | 1;
+  /** Current Aohara-only visual wet-look blend; not a physical surface condition. */
+  urbanWetLook: number;
 }
 
 // Stand-offs above the carved profile, in metres. The terrain underneath is flattened to
@@ -190,7 +193,9 @@ export class RoadWorld {
 
   readonly #shoulderMaterial: MeshStandardNodeMaterial;
 
-  readonly #urbanAsphaltMaterial: MeshStandardNodeMaterial;
+  readonly #urbanAsphaltMaterial: MeshPhysicalNodeMaterial;
+
+  readonly #urbanWetness = uniform(URBAN_CITY_CONFIG.wetRoad.wetnessDay);
 
   readonly #urbanSidewalkEdges: number;
 
@@ -211,13 +216,29 @@ export class RoadWorld {
     this.#shoulderMaterial.roughness = 1;
     this.#shoulderMaterial.metalness = 0;
 
-    // Urban pavement keeps a restrained, local specular response under its streetlamps; this is
-    // ordinary PBR lighting, not SSR or a weather/wetness simulation.
-    this.#urbanAsphaltMaterial = new MeshStandardNodeMaterial();
+    // Aohara's static wet-look is a bounded PBR material response: night raises clearcoat and
+    // lowers roughness so the existing HDRI and nearby streetlights create local glints. It does
+    // not add rain, puddles, a weather state, SSR, or a traction change.
+    this.#urbanAsphaltMaterial = new MeshPhysicalNodeMaterial();
     this.#urbanAsphaltMaterial.color.set(0x222a32);
-    this.#urbanAsphaltMaterial.roughness = 0.42;
-    this.#urbanAsphaltMaterial.metalness = 0.035;
-    this.#urbanAsphaltMaterial.name = 'aohara-urban-asphalt-local-sheen';
+    this.#urbanAsphaltMaterial.roughness = URBAN_CITY_CONFIG.wetRoad.dryRoughness;
+    this.#urbanAsphaltMaterial.metalness = 0.025;
+    this.#urbanAsphaltMaterial.roughnessNode = mix(
+      float(URBAN_CITY_CONFIG.wetRoad.dryRoughness),
+      float(URBAN_CITY_CONFIG.wetRoad.wetRoughness),
+      this.#urbanWetness,
+    );
+    this.#urbanAsphaltMaterial.clearcoatNode = mix(
+      float(URBAN_CITY_CONFIG.wetRoad.dryClearcoat),
+      float(URBAN_CITY_CONFIG.wetRoad.wetClearcoat),
+      this.#urbanWetness,
+    );
+    this.#urbanAsphaltMaterial.clearcoatRoughnessNode = mix(
+      float(URBAN_CITY_CONFIG.wetRoad.dryClearcoatRoughness),
+      float(URBAN_CITY_CONFIG.wetRoad.wetClearcoatRoughness),
+      this.#urbanWetness,
+    );
+    this.#urbanAsphaltMaterial.name = 'aohara-urban-asphalt-wet-look-clearcoat';
 
     const markingMaterial = new MeshStandardNodeMaterial();
     markingMaterial.color.set(0xe9e6da);
@@ -364,6 +385,11 @@ export class RoadWorld {
     this.object = group;
   }
 
+  /** Adjust the Aohara-only visual road sheen with the existing dusk/night lighting gate. */
+  setDaylight(state: DaylightState): void {
+    this.#urbanWetness.value = resolveUrbanWetness(state.sunElevationDegrees);
+  }
+
   /**
    * Async CC0 surfaces: scanned asphalt and sandy gravel at 1k. Until they arrive the roads render
    * with flat colours (already correct in shape and lighting); a failure keeps that fallback.
@@ -401,6 +427,22 @@ export class RoadWorld {
         this.#asphaltMaterial.aoNode = texture(asphalt.arm, roadUv).r;
       }
       this.#asphaltMaterial.needsUpdate = true;
+
+      // Reuse the already-loaded CC0 asphalt maps for the Aohara road mesh. The texture-backed
+      // micro-roughness remains visible under clearcoat, especially in the local streetlamp glints.
+      this.#urbanAsphaltMaterial.colorNode = texture(asphalt.diffuse, roadUv).mul(
+        vec4(0.72, 0.77, 0.83, 1),
+      );
+      this.#urbanAsphaltMaterial.normalNode = texture(asphalt.normal, roadUv);
+      if (asphalt.arm !== null) {
+        this.#urbanAsphaltMaterial.roughnessNode = mix(
+          texture(asphalt.arm, roadUv).g,
+          float(URBAN_CITY_CONFIG.wetRoad.wetRoughness),
+          this.#urbanWetness,
+        );
+        this.#urbanAsphaltMaterial.aoNode = texture(asphalt.arm, roadUv).r;
+      }
+      this.#urbanAsphaltMaterial.needsUpdate = true;
       this.#shoulderMaterial.colorNode = texture(gravel.diffuse, roadUv);
       this.#shoulderMaterial.normalNode = texture(gravel.normal, roadUv);
       if (gravel.arm !== null) {
@@ -420,6 +462,7 @@ export class RoadWorld {
       urbanSidewalkEdges: this.#urbanSidewalkEdges,
       urbanCrosswalkIntersections: this.#urbanCrosswalkIntersections,
       roadSurfacesLoaded: this.#surfacesLoaded,
+      urbanWetLook: Number(this.#urbanWetness.value.toFixed(3)),
     };
   }
 

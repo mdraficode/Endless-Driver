@@ -23,5 +23,5 @@ The existing global bloom path was previously measured to wash out gameplay into
 
 - Phase 9 may proceed in parallel with the incomplete Phase 5 visual-acceptance work; the existing Phase 5 acceptance record is unchanged.
 - A bounded `?scene=city` look-dev slice may be used before the city is integrated into the driveable, streamed world. Such a preview is not evidence that the full district is driveable or complete.
-- City light effects must remain source-local and darkness-gated. Pavement highlights may use the existing material-lighting path, but this ADR does not authorize a weather, rain, standing-water or traction system.
+- City light effects must remain source-local and darkness-gated. A later narrow owner request (2026-10-19) permits an Aohara-only, static wet-look clearcoat using the existing HDRI and local streetlights; it is strictly visual and does not authorize rain, standing water, weather/seasons, spray, or traction changes.
 - The eventual district must preserve the no-white-ground, streaming, mobile-tier and licensing constraints already recorded in `AGENTS.md`, `PROJECT_PLAN.md` and the asset policy.

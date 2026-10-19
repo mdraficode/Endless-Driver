@@ -345,21 +345,21 @@ Automatic transmission is the default. The brief allows Shift for nitro or shift
 
 These are **initial budgets to validate**, not measured results. The tier definitions and per-system gates are normative in [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) §3; this table adds the geometric and memory budgets. Reference device models, browser versions, display resolution, and the measurement procedure are frozen in Phase 3, when the renderer and effect stack actually exist.
 
-| Budget                                    | Low/mobile                      | Balanced                        | High/desktop                           |
-| ----------------------------------------- | ------------------------------- | ------------------------------- | -------------------------------------- |
-| Frame target                              | 60 FPS goal; 30 fallback        | 60 FPS                          | 60+ where hardware permits             |
-| Device-pixel-ratio cap                    | 1.0 initially                   | 1.5 initially                   | 2.0 maximum, subject to resolution cap |
-| Render radius                             | 2 chunks                        | 3 chunks                        | 3–4 after profiling                    |
-| Draw calls, indicative ceiling            | 200                             | 350                             | 500                                    |
-| Visible triangles, indicative ceiling     | 250k                            | 600k                            | 1M                                     |
-| Texture GPU allocation, estimated ceiling | 128 MB                          | 192 MB                          | 256 MB                                 |
-| Shadows                                   | Small map/single cascade or off | Limited cascades                | Profiled CSM                           |
-| Bloom                                     | Off or lightweight              | Lightweight                     | On, bounded buffers                    |
-| SSAO / motion blur                        | Off / off                       | Optional / off                  | Optional / opt-in                      |
-| Weather/foliage particles                 | Strongly capped                 | Moderate                        | Higher but bounded                     |
-| Anti-aliasing                             | FXAA/SMAA                       | TAAU                            | TAAU/TRAA                              |
-| Reflections                               | Cubemap probes                  | SSR half-res + probes           | SSR + wet-road layer                   |
-| Volumetrics                               | Fog only                        | Height/depth fog + light shafts | Volumetric fog/dust, god rays          |
+| Budget                                    | Low/mobile                         | Balanced                        | High/desktop                                         |
+| ----------------------------------------- | ---------------------------------- | ------------------------------- | ---------------------------------------------------- |
+| Frame target                              | 60 FPS goal; 30 fallback           | 60 FPS                          | 60+ where hardware permits                           |
+| Device-pixel-ratio cap                    | 1.0 initially                      | 1.5 initially                   | 2.0 maximum, subject to resolution cap               |
+| Render radius                             | 2 chunks                           | 3 chunks                        | 3–4 after profiling                                  |
+| Draw calls, indicative ceiling            | 200                                | 350                             | 500                                                  |
+| Visible triangles, indicative ceiling     | 250k                               | 600k                            | 1M                                                   |
+| Texture GPU allocation, estimated ceiling | 128 MB                             | 192 MB                          | 256 MB                                               |
+| Shadows                                   | Small map/single cascade or off    | Limited cascades                | Profiled CSM                                         |
+| Bloom                                     | Off or lightweight                 | Lightweight                     | On, bounded buffers                                  |
+| SSAO / motion blur                        | Off / off                          | Optional / off                  | Optional / opt-in                                    |
+| Weather/foliage particles                 | Strongly capped                    | Moderate                        | Higher but bounded                                   |
+| Anti-aliasing                             | FXAA/SMAA                          | TAAU                            | TAAU/TRAA                                            |
+| Reflections                               | Environment IBL + Aohara clearcoat | SSR half-res + probes (pending) | SSR + probes (pending); Aohara wet-look is local PBR |
+| Volumetrics                               | Fog only                           | Height/depth fog + light shafts | Volumetric fog/dust, god rays                        |
 
 - A 60 FPS frame is approximately 16.7 ms total. CPU and GPU overlap; do not add overlapping timings as if they were independent serial costs.
 - Begin with a 2 ms per-frame streaming/upload work budget and measure its impact. The budget may need subdivision or idle scheduling.
@@ -770,7 +770,7 @@ settings, camera gestures/polish, and the final quality pass.
 5. Add deterministic, seeded, single-player vehicle and pedestrian agents: lane/path following, signal compliance, crossing right-of-way, safe spacing, bounded recovery, and density controls. Use the existing physics authority for collision truth; do not introduce a second physics solver or multiplayer/network layer.
 6. Scale urban detail, lights, windows, traffic and pedestrians by C/B/A tier; cap active agents, draw calls, shadows, lights and streaming work. Keep touch controls and driving visibility intact on mobile.
 
-**Rendering constraints:** TSL node materials only, both WebGPU and WebGL2 backends checked where the sandbox permits, no manufacturer/trademark branding, and no purchased/closed assets. Keep glare source-local: prior global-bloom testing washed out gameplay. Local specular sheen is not SSR, ray tracing, rain, or a weather system; those claims remain prohibited unless the corresponding implementation and validation exist.
+**Rendering constraints:** TSL node materials only, both WebGPU and WebGL2 backends checked where the sandbox permits, no manufacturer/trademark branding, and no purchased/closed assets. Keep glare source-local: prior global-bloom testing washed out gameplay. The later narrow owner request permits Aohara-only static wet-look clearcoat driven by existing HDRI/local-light PBR; it is not SSR, ray tracing, puddles, rain, weather, or a traction change. Keep full weather/wet-surface behaviour in the still-gated Phase 7 scope.
 
 **Acceptance:**
 
@@ -781,6 +781,8 @@ settings, camera gestures/polish, and the final quality pass.
 - The `?scene=city` orbit preview can judge the lighting slice only. Driveability must be checked in the main driving world; neither the preview nor automated checks establish owner-device visual acceptance, performance, or completion of Phase 9.
 
 **Progress (2026-10-19, grid expansion and default city start):** Aohara now has a 310 m rural access connector, a 5×5 640 m classed grid (40 urban edges), 16 city blocks, 32 instanced high-rises, graph-aligned sidewalks and crossings at all 25 intersections, and 160 instanced streetlamp poles with C/B/A-capped point lights/windows. The 500 m-radius levelled core blends back to seeded terrain by 620 m; all roads, sidewalks and heightfield collision share the existing prepare-ahead sampler. Aohara Central Avenue is the default start; explicit rural starts and `?spawn=random` remain available. `npm run check` passed locally: 51 test files / 463 tests, asset verification (17 assets / 39,714,769 bytes) and production build, plus formatting, lint, GLSL and TypeScript checks. Remote `main` matches the pushed commit; GitHub Validate and Pages Deploy succeeded. The default page, night-start URL and main bundle returned HTTP 200 with expected Aohara markers. No manual drive, owner-device visual review or performance measurement was performed; automated checks do not establish any of those. Further urban districts, AI agents, expressway access, tunnels, bridges/flyovers and device evidence remain incomplete.
+
+**Progress (2026-10-19, Aohara wet-night optics):** Aohara urban asphalt now uses a city-only physical clearcoat/roughness blend that grows glossier toward night and reuses the existing CC0 asphalt maps; reflections come from current HDRI/direct local lamp lighting, not SSR or ray tracing. The 4/6/8 tier-budgeted point lights and their Gaussian flares follow the driver's nearest streetlamp within the city and fade outside the 500–620 m district radius; all static bulb emitters remain instanced. The Gaussian source profile adds a wide low-energy tail and faint aperture ring under a 0.38 opacity cap. No rain, standing water, weather state, grip/traction changes, asset, or dependency was added. `npm run check` passed locally: 51 test files / 465 tests, 17 assets verified, and production build; formatting, lint, GLSL guard and both TypeScript checks also passed. No browser/device visual review, owner-device acceptance or performance measurement was performed; commit, remote SHA and CI/deploy status are recorded in the session handoff.
 
 **Stop:** Do not start work outside this authorized Phase 9 scope; after Phase 9 completion, wait for new owner authorization.
 
@@ -953,4 +955,4 @@ References guide implementation; pinned package APIs must still be checked at th
 
 ---
 
-**Next permitted development action:** Continue the independently authorized Phase 5 remainder and Phase 9 Aohara urban-systems track. Phase 5 visual acceptance remains open; Phase 6 remains sequenced after that acceptance. The current Aohara increment expands the district to a 5×5 road/sidewalk/crossing grid and makes Central Avenue the default start; manual driving, owner-device visuals and device performance remain unvalidated. AI pedestrians/vehicles, further city expansion and grade-separated/highway links remain future work. Phases 7–8 remain gated.
+**Next permitted development action:** Continue the independently authorized Phase 5 remainder and Phase 9 Aohara track. The latest Aohara increment adds visual-only night-responsive wet-look clearcoat, nearest-player local lamp selection/fading and bounded Gaussian halo/ring optics; the default Central Avenue start, curated `?spawn=<id>` overrides and explicit `?spawn=random` remain unchanged. Arrange owner review of `?scene=city&time=23.5` and a manual night drive from `?spawn=aohara-city&time=23.5`; no visual/device/performance acceptance has been performed. Phase 5 visual acceptance remains open; Phase 6 remains sequenced after that acceptance; Phases 7–8 remain gated. AI pedestrians/vehicles, further city expansion and grade-separated/highway links remain future work.
