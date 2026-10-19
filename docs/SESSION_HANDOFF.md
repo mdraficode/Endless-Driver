@@ -3,7 +3,7 @@
 **Updated:** 2026-10-19  
 **Current stage:** Phase 4 built scope delivered; Phase 5 in progress with owner-device visual acceptance open; Phase 6 is authorized after Phase 5 acceptance; Phase 9 Urban Systems is separately authorized and active in parallel; Phase 3 named-hardware frame-budget validation remains open  
 **Authorized development phases:** Phases 1–6, executed in order, plus Phase 9 in parallel; Phases 7–8 remain gated  
-**Next action:** Keep Phase 5 acceptance unresolved until stable, readable owner-device evidence is recorded. Continue the authorized Phase 9 Aohara track from its bounded road-grid/night-block integration; the local check has passed, but manual driving, visuals, and device performance remain unvalidated. Do not begin Phase 6 before Phase 5 acceptance or Phase 7–8 without new authorization.
+**Next action:** Commit/push the Phase 9 grid expansion and default Aohara start from the fresh `/tmp/endless-driver-city` clone; verify remote SHA plus GitHub Validate/Pages Deploy. The full local check has passed (51 test files / 463 tests). Then arrange actual-browser/owner-device driving and visual review; no manual drive, visual acceptance, mobile check or performance measurement has been performed. Keep Phase 5 acceptance unresolved; do not begin Phase 6 before it or Phase 7–8 without new authorization.
 
 > **Re-plan (2026-10-14, decisions resolved):** the owner rejected the Phase 2 presentation and set a
 > Forza-Horizon-class visual target. Research and specification are complete and committed alongside
@@ -1612,3 +1612,20 @@ The owner explicitly authorized a new urban-systems track to begin immediately, 
 **Remote status:** Integration commit `bfd4ba77c227c0486c6c7511f351d97523e6d723` is pushed to `main`; `git ls-remote origin refs/heads/main` matched exactly. GitHub Validate run `39178732061` and Pages Deploy run `39178732107` both succeeded for this SHA. The deployed spawn URL `https://mdraficode.github.io/Endless-Driver/?spawn=aohara-city&time=23.5` and its bundle `assets/index-pXVMAwQV.js` returned HTTP 200; the bundle contains Aohara-world, urban-asphalt, city-spawn and central-junction markers. This verifies the deployed artifact, not browser rendering, manual driveability, owner-device acceptance or performance.
 
 **Next:** manually inspect/test `?spawn=aohara-city&time=23.5` on an actual browser/device and record owner-device visual/performance evidence. Automated checks and deployment are not visual acceptance or proof of driving behavior. Phase 5 acceptance remains open; continue the separately authorized Phase 9 work within scope; Phases 7–8 remain gated.
+
+## 53. Phase 9: Aohara grid expansion and default city start (2026-10-19)
+
+**Implementation:**
+
+- Expanded the Aohara network from the initial 3×3 starter to a connected 5×5 orthogonal grid: 40 urban edges over 640 m, with two continuous arterial spines, local streets and a 310 m connector from rural `east-plain`. Expanded the levelled plateau to a 500 m radius with seeded-terrain blending by 620 m; the vegetation-free core now covers all road-grid corners. Rural Hinode remains in place.
+- Added 3.2 m sidewalk ribbons to every urban edge and one instanced city marking pass for zebra crossings at all 25 intersections plus signal-junction stop lines. Material batching keeps the road, sidewalk and crossing set within eight meshes.
+- Extended Aohara's resident night kit to 16 blocks and 32 instanced high-rises. The urban road graph now places 160 streetlamp poles/emitters along sidewalks; only the existing tier-capped 4/6/8 point lights and localized glow/starburst effects are active. Building-window, road, collision and prepare-ahead terrain/physics paths reuse existing systems.
+- Changed the default game start to Aohara Central Avenue, halfway along the north central arterial rather than in the junction. `?spawn=<id>` still pins any curated rural start; explicit `?spawn=random` retains the old district rotation. No assets or dependencies were added.
+
+**Local verification:** In fresh shallow clone `/tmp/endless-driver-city` at the prior `main` checkpoint `66568e3c2024b7127868b47580eb83ac9447fc6b`, `npm ci` installed 201 packages with 0 reported vulnerabilities. `npm run check` passed: Prettier, ESLint, the GLSL guard, both TypeScript checks, **51 test files / 463 tests**, asset verification (17 assets / 39,714,769 bytes), and production build. The build emitted the existing large-chunk warning; tests emitted the known missing-LOD fixture messages and `toNonIndexed()` notices. The main bundle is 1,418.16 kB and the Rapier bundle 4,335.10 kB.
+
+**Driving/visual status:** Spawn resolution, grid connectivity/classes, plateau bounds, urban vegetation exclusion, sidewalk/crosswalk composition, object counts and tier light caps are covered by automated checks. No browser play, manual drive test, owner-device visual review, mobile review or device-performance measurement was performed for this increment. Do not treat this code/test status as driveability, visual acceptance or performance evidence. Phase 5 visual acceptance remains open; Phase 6 remains sequenced after it; Phases 7–8 remain gated. AI traffic/pedestrians, further urban expansion and expressway/tunnel/bridge/flyover links remain future Phase 9 work.
+
+**Remote status:** Pending commit, push, remote-SHA comparison and GitHub Validate/Pages Deploy verification.
+
+**Next:** verify the pushed deployment, then let the owner test the default Aohara start and the night start (`?spawn=aohara-city&time=23.5`) on an actual browser/device. Continue Phase 9 within the existing authorization while keeping all visual/performance claims honest.

@@ -29,9 +29,15 @@ import {
   URBAN_NIGHT_TIER_BUDGET,
   type TrafficSignalAspect,
 } from '../config/urban-city';
+import {
+  AOHARA_DISTRICT_CONFIG,
+  AOHARA_GRID_COLUMNS,
+  AOHARA_GRID_ROWS,
+} from '../config/urban-district';
 import type { TierId } from '../config/tiers';
 import type { DaylightState } from '../environment/EnvironmentClock';
 import { collideCarWithStaticBoxes, type StaticBuildingBox } from './static-building-collision';
+import type { RoadNetwork } from './road-network';
 import type { TownCarProbe, TownHit } from './town';
 import type { SceneContent, SceneContentContext } from './WorldContent';
 
@@ -44,16 +50,16 @@ interface TowerSpec {
   readonly color: number;
 }
 
-/** Compact skyline for the first lighting block; later Phase 9 work will stream full district blocks. */
-const TOWERS: readonly TowerSpec[] = [
-  { x: -31, z: -56, width: 22, depth: 26, height: 58, color: 0x27323d },
-  { x: -31, z: -25, width: 22, depth: 25, height: 82, color: 0x202c39 },
-  { x: -31, z: 25, width: 23, depth: 27, height: 68, color: 0x303440 },
-  { x: -31, z: 56, width: 24, depth: 27, height: 100, color: 0x222b36 },
-  { x: 31, z: -55, width: 23, depth: 26, height: 74, color: 0x29323c },
-  { x: 31, z: -24, width: 25, depth: 25, height: 96, color: 0x202a35 },
-  { x: 31, z: 25, width: 22, depth: 27, height: 54, color: 0x343541 },
-  { x: 31, z: 56, width: 24, depth: 28, height: 86, color: 0x26313c },
+/** Compact skyline retained by the standalone night-lighting look-dev block. */
+const LOOKDEV_TOWERS: readonly TowerSpec[] = [
+  { x: -31, z: -56, width: 22, depth: 26, height: 58, color: 0x27333e },
+  { x: -31, z: -25, width: 22, depth: 25, height: 82, color: 0x202b36 },
+  { x: -31, z: 25, width: 23, depth: 27, height: 68, color: 0x30343e },
+  { x: -31, z: 56, width: 24, depth: 27, height: 100, color: 0x202b36 },
+  { x: 31, z: -55, width: 23, depth: 26, height: 74, color: 0x27333e },
+  { x: 31, z: -24, width: 25, depth: 25, height: 96, color: 0x202b36 },
+  { x: 31, z: 25, width: 22, depth: 27, height: 54, color: 0x30343e },
+  { x: 31, z: 56, width: 24, depth: 28, height: 86, color: 0x27333e },
 ];
 
 const SIGNAL_ASPECTS: readonly TrafficSignalAspect[] = ['red', 'amber', 'green'];
@@ -91,6 +97,47 @@ function stableUnit(a: number, b: number, salt: number): number {
   value ^= value >>> 13;
   return (value >>> 0) / 0x1_0000_0000;
 }
+
+const CITY_FACADE_PALETTE = [0x202b36, 0x27333e, 0x30343e, 0x3a3735] as const;
+const CITY_TOWER_HEIGHTS = [34, 44, 58, 72, 90, 116, 142] as const;
+
+function buildAoharaTowerSpecs(): readonly TowerSpec[] {
+  const towers: TowerSpec[] = [...LOOKDEV_TOWERS];
+  for (let rowIndex = 0; rowIndex < AOHARA_GRID_ROWS.length - 1; rowIndex += 1) {
+    const row = AOHARA_GRID_ROWS[rowIndex]!;
+    const nextRow = AOHARA_GRID_ROWS[rowIndex + 1]!;
+    for (let columnIndex = 0; columnIndex < AOHARA_GRID_COLUMNS.length - 1; columnIndex += 1) {
+      // The four central blocks already carry the original eight authored high-rises.
+      if ((rowIndex === 1 || rowIndex === 2) && (columnIndex === 1 || columnIndex === 2)) {
+        continue;
+      }
+      const column = AOHARA_GRID_COLUMNS[columnIndex]!;
+      const nextColumn = AOHARA_GRID_COLUMNS[columnIndex + 1]!;
+      const blockCenterX =
+        ((column.offset + nextColumn.offset) / 2) * AOHARA_DISTRICT_CONFIG.gridSpacingMeters;
+      const blockCenterZ =
+        ((row.offset + nextRow.offset) / 2) * AOHARA_DISTRICT_CONFIG.gridSpacingMeters;
+      for (const side of [-1, 1] as const) {
+        const seed = rowIndex * 37 + columnIndex * 11;
+        const xJitter = (stableUnit(seed, side, 109) - 0.5) * 6;
+        const zJitter = (stableUnit(seed, side, 127) - 0.5) * 8;
+        const heightIndex = Math.floor(stableUnit(seed, side, 149) * CITY_TOWER_HEIGHTS.length);
+        const colorIndex = Math.floor(stableUnit(seed, side, 173) * CITY_FACADE_PALETTE.length);
+        towers.push({
+          x: blockCenterX + side * 35 + xJitter,
+          z: blockCenterZ + zJitter,
+          width: 28 + stableUnit(seed, side, 191) * 8,
+          depth: 30 + stableUnit(seed, side, 211) * 10,
+          height: CITY_TOWER_HEIGHTS[heightIndex] ?? CITY_TOWER_HEIGHTS[0],
+          color: CITY_FACADE_PALETTE[colorIndex] ?? CITY_FACADE_PALETTE[0],
+        });
+      }
+    }
+  }
+  return towers;
+}
+
+const AOHARA_CITY_TOWERS = buildAoharaTowerSpecs();
 
 function createBasicMaterial(color: number, name: string): MeshBasicNodeMaterial {
   const material = new MeshBasicNodeMaterial();
@@ -218,12 +265,13 @@ function createWindowInstances(
   root: Group,
   nightGain: UniformNode<'float', number>,
   budget: number,
+  towers: readonly TowerSpec[],
 ): number {
   const candidates: Array<
     TransformSpec & { readonly rank: number; readonly tone: 'warm' | 'cool' }
   > = [];
-  for (let towerIndex = 0; towerIndex < TOWERS.length; towerIndex += 1) {
-    const tower = TOWERS[towerIndex]!;
+  for (let towerIndex = 0; towerIndex < towers.length; towerIndex += 1) {
+    const tower = towers[towerIndex]!;
     const side = tower.x < 0 ? -1 : 1;
     const faceX = tower.x - side * (tower.width / 2 + 0.08);
     const floors = Math.floor((tower.height - 6) / URBAN_CITY_CONFIG.window.floorSpacingMeters);
@@ -306,6 +354,85 @@ function createLampGeometry(): BufferGeometry {
   return merged;
 }
 
+interface StreetLampPlacement {
+  readonly pole: TransformSpec;
+  readonly bulb: readonly [number, number, number];
+}
+
+function roadPositionAt(
+  edge: RoadNetwork['edges'][number],
+  distanceMeters: number,
+): { readonly x: number; readonly z: number; readonly sideX: number; readonly sideZ: number } {
+  let nextIndex = 1;
+  while (
+    nextIndex < edge.points.length - 1 &&
+    (edge.points[nextIndex]?.alongMeters ?? Number.POSITIVE_INFINITY) < distanceMeters
+  ) {
+    nextIndex += 1;
+  }
+  const start = edge.points[nextIndex - 1]!;
+  const end = edge.points[nextIndex]!;
+  const span = Math.max(0.001, end.alongMeters - start.alongMeters);
+  const t = Math.min(1, Math.max(0, (distanceMeters - start.alongMeters) / span));
+  const tangentX = end.x - start.x;
+  const tangentZ = end.z - start.z;
+  const tangentLength = Math.hypot(tangentX, tangentZ) || 1;
+  return {
+    x: start.x + (end.x - start.x) * t,
+    z: start.z + (end.z - start.z) * t,
+    sideX: tangentZ / tangentLength,
+    sideZ: -tangentX / tangentLength,
+  };
+}
+
+function createStreetLampPlacements(
+  network: RoadNetwork,
+  originX: number,
+  originZ: number,
+): readonly StreetLampPlacement[] {
+  const placements: StreetLampPlacement[] = [];
+  const spacing = URBAN_CITY_CONFIG.streetLamp.spacingMeters;
+  const y = WORLD_BASE_Y;
+  const bulbY = WORLD_BASE_Y + URBAN_CITY_CONFIG.streetLamp.heightMeters - 0.4;
+  for (const edge of network.edges) {
+    if (edge.roadClass !== 'urban-local' && edge.roadClass !== 'urban-arterial') {
+      continue;
+    }
+    const sidewalkOffset =
+      edge.halfWidthMeters +
+      edge.shoulderMeters +
+      URBAN_CITY_CONFIG.streetLamp.sidewalkWidthMeters / 2;
+    for (let along = spacing / 2; along < edge.lengthMeters - spacing / 2; along += spacing) {
+      const point = roadPositionAt(edge, along);
+      for (const side of [-1, 1] as const) {
+        const outwardX = point.sideX * side;
+        const outwardZ = point.sideZ * side;
+        const inwardX = -outwardX;
+        const inwardZ = -outwardZ;
+        const yaw = Math.atan2(-inwardZ, inwardX);
+        const x = point.x - originX + outwardX * sidewalkOffset;
+        const z = point.z - originZ + outwardZ * sidewalkOffset;
+        placements.push({
+          pole: { x, y, z, yaw },
+          bulb: [x + Math.cos(yaw) * 1.88, bulbY, z - Math.sin(yaw) * 1.88],
+        });
+      }
+    }
+  }
+  return placements;
+}
+
+function selectSpread<T>(items: readonly T[], count: number): T[] {
+  const selectedCount = Math.min(items.length, count);
+  if (selectedCount === 0) {
+    return [];
+  }
+  return Array.from({ length: selectedCount }, (_, index) => {
+    const sourceIndex = Math.floor(((index + 0.5) * items.length) / selectedCount);
+    return items[sourceIndex]!;
+  });
+}
+
 function createSignalHead(
   root: Group,
   position: readonly [number, number, number],
@@ -357,7 +484,9 @@ function applySignalAspect(head: SignalHead, aspect: TrafficSignalAspect): void 
 export interface UrbanNightWorldOptions {
   /** World-space root position; omitted for the standalone look-dev scene at the origin. */
   readonly position?: readonly [number, number, number];
-  /** Road ribbons/lanes come from RoadWorld; keep only this block's crossing and stop lines. */
+  /** Shared solved graph supplies the integrated city's sidewalk-aligned street-light placements. */
+  readonly roadNetwork?: RoadNetwork;
+  /** Road ribbons/lanes/sidewalks/crossings come from RoadWorld in the driving composition. */
   readonly networkIntegrated?: boolean;
 }
 
@@ -377,6 +506,9 @@ export class UrbanNightWorld implements SceneContent {
   readonly #flareCount: number;
   readonly #buildingColliders: readonly StaticBuildingBox[];
   readonly #networkIntegrated: boolean;
+  readonly #towers: readonly TowerSpec[];
+  readonly #cityBlockCount: number;
+  readonly #streetLightPoleCount: number;
   #signalSeconds = 0;
   #disposed = false;
 
@@ -385,7 +517,11 @@ export class UrbanNightWorld implements SceneContent {
     this.#networkIntegrated = options.networkIntegrated ?? false;
     const [originX, originY, originZ] = options.position ?? [0, 0, 0];
     this.root.position.set(originX, originY, originZ);
-    this.#buildingColliders = TOWERS.map((tower) => ({
+    this.#towers = this.#networkIntegrated ? AOHARA_CITY_TOWERS : LOOKDEV_TOWERS;
+    this.#cityBlockCount = this.#networkIntegrated
+      ? (AOHARA_GRID_ROWS.length - 1) * (AOHARA_GRID_COLUMNS.length - 1)
+      : 1;
+    this.#buildingColliders = this.#towers.map((tower) => ({
       x: originX + tower.x,
       z: originZ + tower.z,
       yaw: 0,
@@ -426,13 +562,20 @@ export class UrbanNightWorld implements SceneContent {
     };
 
     this.#buildStreetAndCrossing();
-    this.#buildTowers();
+    this.#buildTowers(this.#towers);
     this.#windowInstances = createWindowInstances(
       this.root,
       this.#nightGain,
       budget.litWindowInstances,
+      this.#towers,
     );
-    this.#buildStreetLights(budget.pointLights, warmFlare);
+    this.#streetLightPoleCount = this.#buildStreetLights(
+      budget.pointLights,
+      warmFlare,
+      options.roadNetwork,
+      originX,
+      originZ,
+    );
     this.#buildSignals(signalFlares);
     this.#flareCount = this.#streetLights.length + this.#signalHeads.length * SIGNAL_ASPECTS.length;
     this.#synchronizeSignals();
@@ -461,7 +604,9 @@ export class UrbanNightWorld implements SceneContent {
 
   getContentStats(): Readonly<Record<string, number>> {
     return {
-      highRiseBuildings: TOWERS.length,
+      cityBlocks: this.#cityBlockCount,
+      highRiseBuildings: this.#towers.length,
+      streetLightPoles: this.#streetLightPoleCount,
       streetLightPointLights: this.#streetLights.length,
       illuminatedWindows: this.#windowInstances,
       opticalFlares: this.#flareCount,
@@ -482,6 +627,11 @@ export class UrbanNightWorld implements SceneContent {
   }
 
   #buildStreetAndCrossing(): void {
+    // The driving world owns all road, sidewalk and crossing geometry from the shared graph.
+    // The orbit-only look-dev composition keeps its small standalone roadway below.
+    if (this.#networkIntegrated) {
+      return;
+    }
     const deckMaterial = new MeshStandardNodeMaterial();
     deckMaterial.color.setHex(0x121923);
     deckMaterial.roughness = 0.82;
@@ -623,70 +773,118 @@ export class UrbanNightWorld implements SceneContent {
     );
   }
 
-  #buildTowers(): void {
-    for (let index = 0; index < TOWERS.length; index += 1) {
-      const tower = TOWERS[index]!;
+  #buildTowers(towers: readonly TowerSpec[]): void {
+    const unitBox = new BoxGeometry(1, 1, 1);
+    const groups = new Map<number, TowerSpec[]>();
+    for (const tower of towers) {
+      const group = groups.get(tower.color) ?? [];
+      group.push(tower);
+      groups.set(tower.color, group);
+    }
+
+    const transform = new Object3D();
+    let paletteIndex = 0;
+    for (const [color, group] of groups) {
       const wall = new MeshStandardNodeMaterial();
-      wall.color.setHex(tower.color);
+      wall.color.setHex(color);
       wall.roughness = 0.72;
       wall.metalness = 0.16;
-      wall.name = `aohara-tower-facade-${index}`;
-      const mesh = new Mesh(new BoxGeometry(tower.width, tower.height, tower.depth), wall);
-      mesh.position.set(tower.x, WORLD_BASE_Y + tower.height / 2, tower.z);
-      mesh.name = `aohara-high-rise-${index + 1}`;
+      wall.name = `aohara-tower-facade-${paletteIndex}`;
+      const mesh = new InstancedMesh(unitBox, wall, group.length);
+      mesh.name = `aohara-high-rise-facades-${paletteIndex}`;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
+      mesh.frustumCulled = false;
+      group.forEach((tower, index) => {
+        transform.position.set(tower.x, WORLD_BASE_Y + tower.height / 2, tower.z);
+        transform.scale.set(tower.width, tower.height, tower.depth);
+        transform.rotation.set(0, 0, 0);
+        transform.updateMatrix();
+        mesh.setMatrixAt(index, transform.matrix);
+      });
+      mesh.instanceMatrix.needsUpdate = true;
       this.root.add(mesh);
-
-      const roofMaterial = new MeshStandardNodeMaterial();
-      roofMaterial.color.setHex(0x10161e);
-      roofMaterial.roughness = 0.86;
-      roofMaterial.name = `aohara-rooftop-${index}`;
-      addBox(
-        this.root,
-        [tower.width + 0.5, 0.7, tower.depth + 0.5],
-        [tower.x, WORLD_BASE_Y + tower.height + 0.35, tower.z],
-        roofMaterial,
-        `aohara-rooftop-cap-${index + 1}`,
-      );
+      paletteIndex += 1;
     }
+
+    const roofMaterial = new MeshStandardNodeMaterial();
+    roofMaterial.color.setHex(0x10161e);
+    roofMaterial.roughness = 0.86;
+    roofMaterial.name = 'aohara-rooftop-caps';
+    const roofs = new InstancedMesh(unitBox, roofMaterial, towers.length);
+    roofs.name = 'aohara-rooftop-caps';
+    roofs.frustumCulled = false;
+    towers.forEach((tower, index) => {
+      transform.position.set(tower.x, WORLD_BASE_Y + tower.height + 0.35, tower.z);
+      transform.scale.set(tower.width + 0.5, 0.7, tower.depth + 0.5);
+      transform.rotation.set(0, 0, 0);
+      transform.updateMatrix();
+      roofs.setMatrixAt(index, transform.matrix);
+    });
+    roofs.instanceMatrix.needsUpdate = true;
+    this.root.add(roofs);
   }
 
-  #buildStreetLights(pointLightBudget: number, flareMaterial: SpriteNodeMaterial): void {
+  #buildStreetLights(
+    pointLightBudget: number,
+    flareMaterial: SpriteNodeMaterial,
+    roadNetwork: RoadNetwork | undefined,
+    originX: number,
+    originZ: number,
+  ): number {
     const poleMaterial = new MeshStandardNodeMaterial();
     poleMaterial.color.setHex(0x39414a);
     poleMaterial.roughness = 0.52;
     poleMaterial.metalness = 0.68;
     poleMaterial.name = 'aohara-lamp-pole-metal';
-    const positions: TransformSpec[] = [];
-    const pointPositions: Array<readonly [number, number, number]> = [];
-    for (let index = 0; index < URBAN_CITY_CONFIG.streetLamp.spacingPositionsZ.length; index += 1) {
-      const z = URBAN_CITY_CONFIG.streetLamp.spacingPositionsZ[index]!;
-      for (const side of [-1, 1]) {
-        const x = side * URBAN_CITY_CONFIG.streetLamp.sideXMeters;
-        positions.push({ x, y: WORLD_BASE_Y, z, yaw: side < 0 ? 0 : Math.PI });
-        const lampX = x + (side < 0 ? 1.88 : -1.88);
-        pointPositions.push([
-          lampX,
-          WORLD_BASE_Y + URBAN_CITY_CONFIG.streetLamp.heightMeters - 0.4,
-          z,
-        ]);
-      }
+
+    let placements: readonly StreetLampPlacement[];
+    if (this.#networkIntegrated && roadNetwork !== undefined) {
+      placements = createStreetLampPlacements(roadNetwork, originX, originZ);
+    } else {
+      placements = URBAN_CITY_CONFIG.streetLamp.spacingPositionsZ.flatMap((z) =>
+        ([-1, 1] as const).map((side) => {
+          const x = side * URBAN_CITY_CONFIG.streetLamp.sideXMeters;
+          const yaw = side < 0 ? 0 : Math.PI;
+          const bulbY = WORLD_BASE_Y + URBAN_CITY_CONFIG.streetLamp.heightMeters - 0.4;
+          return {
+            pole: { x, y: WORLD_BASE_Y, z, yaw },
+            bulb: [x + (side < 0 ? 1.88 : -1.88), bulbY, z] as const,
+          };
+        }),
+      );
     }
-    addInstancedBoxes(
-      this.root,
-      createLampGeometry(),
-      poleMaterial,
-      positions,
-      'aohara-street-lamp-poles',
-    );
+
+    if (placements.length > 0) {
+      addInstancedBoxes(
+        this.root,
+        createLampGeometry(),
+        poleMaterial,
+        placements.map((placement) => placement.pole),
+        'aohara-street-lamp-poles',
+      );
+    }
 
     const emitter = new MeshBasicNodeMaterial();
     emitter.colorNode = vec4(vec3(1, 0.76, 0.47).mul(this.#nightGain), 1);
     emitter.toneMapped = false;
     emitter.name = 'aohara-street-lamp-emitter';
     const emitterGeometry = new SphereGeometry(0.25, 10, 8);
-    const budgetedPositions = pointPositions.slice(0, pointLightBudget);
+    const bulbPositions = placements.map((placement) => placement.bulb);
+    if (bulbPositions.length > 0) {
+      addInstancedBoxes(
+        this.root,
+        emitterGeometry,
+        emitter,
+        bulbPositions.map(([x, y, z]) => ({ x, y, z })),
+        'aohara-street-lamp-emitters',
+      );
+    }
+
+    const budgetedPositions =
+      this.#networkIntegrated && roadNetwork !== undefined
+        ? selectSpread(bulbPositions, pointLightBudget)
+        : bulbPositions.slice(0, pointLightBudget);
     budgetedPositions.forEach(([x, y, z], index) => {
       const light = new PointLight(
         0xffc27a,
@@ -700,17 +898,13 @@ export class UrbanNightWorld implements SceneContent {
       this.root.add(light);
       this.#streetLights.push(light);
 
-      const bulb = new Mesh(emitterGeometry, emitter);
-      bulb.position.set(x, y, z);
-      bulb.name = `aohara-streetlight-emitter-${index + 1}`;
-      this.root.add(bulb);
-
       const flare = new Sprite(flareMaterial);
       flare.position.set(x, y, z);
       flare.scale.setScalar(URBAN_CITY_CONFIG.streetLamp.haloScaleMeters);
       flare.name = `aohara-streetlight-gaussian-flare-${index + 1}`;
       this.root.add(flare);
     });
+    return placements.length;
   }
 
   #buildSignals(signalFlares: Readonly<Record<TrafficSignalAspect, SpriteNodeMaterial>>): void {

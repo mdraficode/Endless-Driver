@@ -21,11 +21,16 @@ describe('Aohara driving-world integration', () => {
     expect(content.kind).toBe('driving');
     expect(content.root.getObjectByName('AoharaNightLightingBlock')).not.toBeNull();
     expect(content.getContentStats?.()).toMatchObject({
-      highRiseBuildings: 8,
+      cityBlocks: 16,
+      highRiseBuildings: 32,
+      streetLightPoles: 160,
       trafficSignals: 2,
       streetLightPointLights: 4,
-      roadMeshes: 6,
+      urbanSidewalkEdges: 40,
+      urbanCrosswalkIntersections: 25,
+      roadMeshes: 8,
     });
+    expect(content.root.getObjectByName('aohara-ground-deck')).toBeUndefined();
 
     const night: DaylightState = {
       sunDirection: { x: 0, y: -1, z: 0 },

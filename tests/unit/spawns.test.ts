@@ -1,16 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
-import { SPAWN_POINTS, resolveSpawnPoint } from '../../src/config/spawns';
+import { AOHARA_DISTRICT_CONFIG } from '../../src/config/urban-district';
+import { DEFAULT_SPAWN_ID, SPAWN_POINTS, resolveSpawnPoint } from '../../src/config/spawns';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
 import { terrainSurfaceWeights } from '../../src/world/terrain-height';
 import { sampleTerrainSurface } from '../../src/world/terrain-surface';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
 
 /**
- * Session starts: the car must not always wake up on the same terrain. The
- * curated starts sit in different districts, on drivable road (except the
- * home meadow's flat pad), and never on snow.
+ * Session starts: Aohara is the default; rural Hinode starts remain available
+ * explicitly and through `?spawn=random`. All curated starts sit in different
+ * districts, on drivable road (except the home meadow's flat pad), and never on snow.
  */
 describe('session spawn points', () => {
   it('offers starts in several different places, all on drivable ground', () => {
@@ -31,17 +32,30 @@ describe('session spawn points', () => {
     }
   });
 
-  it('pins a requested start and otherwise spreads the pick across all starts', () => {
+  it('starts at Aohara by default, honours pinned ids, and keeps explicit random rotation', () => {
+    expect(resolveSpawnPoint(undefined, 0).id).toBe(DEFAULT_SPAWN_ID);
+    expect(resolveSpawnPoint(undefined, 0.99).id).toBe(DEFAULT_SPAWN_ID);
     expect(resolveSpawnPoint('Kiri-cedar', 0).id).toBe('Kiri-cedar');
     expect(resolveSpawnPoint('yuhi-town', 0.99).id).toBe('yuhi-town');
     expect(resolveSpawnPoint('aohara-city', 0.5).id).toBe('aohara-city');
     const picked = new Set<string>();
     for (let step = 0; step < SPAWN_POINTS.length; step += 1) {
-      picked.add(resolveSpawnPoint(undefined, step / SPAWN_POINTS.length).id);
+      picked.add(resolveSpawnPoint('random', step / SPAWN_POINTS.length).id);
     }
     expect(picked.size).toBe(SPAWN_POINTS.length);
-    // Unknown ids fall back to the session pick instead of crashing the boot.
-    expect(resolveSpawnPoint('atlantis', 0).id).toBe(SPAWN_POINTS[0]!.id);
+    // Unknown ids safely fall back to the requested default district.
+    expect(resolveSpawnPoint('atlantis', 0).id).toBe(DEFAULT_SPAWN_ID);
+  });
+
+  it('places the default start on Aohara Central Avenue, away from the junction center', () => {
+    const city = resolveSpawnPoint(undefined, 0);
+    const sampler = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
+    const road = sampler.roadAt?.(city.x, city.z);
+    expect(city.id).toBe(DEFAULT_SPAWN_ID);
+    expect(road?.roadClass).toBe('urban-arterial');
+    expect(
+      Math.hypot(city.x - AOHARA_DISTRICT_CONFIG.centerX, city.z - AOHARA_DISTRICT_CONFIG.centerZ),
+    ).toBeCloseTo(AOHARA_DISTRICT_CONFIG.gridSpacingMeters / 2, 5);
   });
 
   describe('spawn views contain no snow ground', () => {

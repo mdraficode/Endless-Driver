@@ -10,8 +10,8 @@ import type { SceneContent, SceneContentContext } from './WorldContent';
 
 /**
  * The driving world: streamed terrain/vegetation, the seeded rural road graph, Yūhi Town, and
- * the bounded Aohara Metropolis access grid/night block. Aohara shares the same terrain sampler,
- * physics heightfield, prefetch window and floating-origin contract; the rural districts remain.
+ * Aohara Metropolis's 5×5 street/sidewalk grid and night block. Aohara shares the same terrain
+ * sampler, physics heightfield, prefetch window and floating-origin contract; rural Hinode remains.
  */
 export function createDrivingWorld(context: SceneContentContext): SceneContent {
   const { terrainSampler } = context;
@@ -50,10 +50,11 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
   const town = new TownWorld(terrainSampler);
   root.add(town.root);
 
-  // Aohara's first 3×3 street grid and night block share the road graph above. The compact
-  // authored block is resident (no pop-in); the terrain and collision windows still use their
-  // normal prepare-ahead streamers. Roadless test samplers keep the rural-only fixture behavior.
-  const urbanNode = terrainSampler.roadNetwork?.nodeById(AOHARA_JUNCTION_NODE_ID) ?? null;
+  // Aohara's connected 5×5 street grid, sidewalks, crossings and night block share the graph above.
+  // The compact, instanced city kit is resident; terrain and collision still use their normal
+  // prepare-ahead streamers. Roadless test samplers keep the rural-only fixture behavior.
+  const urbanNetwork = terrainSampler.roadNetwork ?? null;
+  const urbanNode = urbanNetwork?.nodeById(AOHARA_JUNCTION_NODE_ID) ?? null;
   const tier: TierId =
     context.qualityTier === 'A' || context.qualityTier === 'C' ? context.qualityTier : 'B';
   const aohara =
@@ -65,6 +66,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
             urbanNode.y + 0.57,
             AOHARA_DISTRICT_CONFIG.centerZ,
           ],
+          ...(urbanNetwork === null ? {} : { roadNetwork: urbanNetwork }),
           networkIntegrated: true,
         });
   if (aohara !== null) {

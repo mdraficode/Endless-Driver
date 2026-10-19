@@ -1,9 +1,14 @@
 /**
- * Phase 4/9 road network definition: the original Hinode rural graph plus the bounded Aohara
- * Metropolis access connector and 3×3 urban street grid. Road geometry, the terrain carve, physics
- * surface response, and the minimap all consume the same solved graph.
+ * Phase 4/9 road network definition: the original Hinode rural graph plus Aohara Metropolis's
+ * connected 5×5 urban street grid. Road geometry, the terrain carve, physics surface response, and
+ * the minimap all consume the same solved graph.
  */
-import { AOHARA_DISTRICT_CONFIG } from './urban-district';
+import {
+  AOHARA_DISTRICT_CONFIG,
+  AOHARA_GRID_COLUMNS,
+  AOHARA_GRID_ROWS,
+  AOHARA_JUNCTION_NODE_ID,
+} from './urban-district';
 
 export type RoadClass = 'rural' | 'city-access' | 'urban-local' | 'urban-arterial';
 
@@ -41,23 +46,15 @@ export interface RoadNetworkConfig {
   readonly edges: readonly RoadEdgeConfig[];
 }
 
-const GRID_ROWS = [
-  { id: 'north', offset: -1 },
-  { id: 'middle', offset: 0 },
-  { id: 'south', offset: 1 },
-] as const;
-const GRID_COLUMNS = [
-  { id: 'west', offset: -1 },
-  { id: 'center', offset: 0 },
-  { id: 'east', offset: 1 },
-] as const;
+function aoharaNodeId(rowId: string, columnId: string): string {
+  return rowId === 'middle' && columnId === 'center'
+    ? AOHARA_JUNCTION_NODE_ID
+    : `aohara-${rowId}-${columnId}`;
+}
 
-const AOHARA_GRID_NODES: readonly RoadNodeConfig[] = GRID_ROWS.flatMap((row) =>
-  GRID_COLUMNS.map((column) => ({
-    id:
-      row.id === 'middle' && column.id === 'center'
-        ? 'aohara-center'
-        : `aohara-${row.id}-${column.id}`,
+const AOHARA_GRID_NODES: readonly RoadNodeConfig[] = AOHARA_GRID_ROWS.flatMap((row) =>
+  AOHARA_GRID_COLUMNS.map((column) => ({
+    id: aoharaNodeId(row.id, column.id),
     x: AOHARA_DISTRICT_CONFIG.centerX + column.offset * AOHARA_DISTRICT_CONFIG.gridSpacingMeters,
     z: AOHARA_DISTRICT_CONFIG.centerZ + row.offset * AOHARA_DISTRICT_CONFIG.gridSpacingMeters,
   })),
@@ -79,20 +76,21 @@ const arterial = (from: string, to: string): RoadEdgeConfig => ({
   shoulderMeters: AOHARA_DISTRICT_CONFIG.shoulderMeters,
 });
 
-/** The core urban block: three connected parallel streets in each direction. */
 const AOHARA_GRID_EDGES: readonly RoadEdgeConfig[] = [
-  localStreet('aohara-north-west', 'aohara-north-center'),
-  localStreet('aohara-north-center', 'aohara-north-east'),
-  arterial('aohara-middle-west', 'aohara-center'),
-  arterial('aohara-center', 'aohara-middle-east'),
-  localStreet('aohara-south-west', 'aohara-south-center'),
-  localStreet('aohara-south-center', 'aohara-south-east'),
-  localStreet('aohara-north-west', 'aohara-middle-west'),
-  localStreet('aohara-middle-west', 'aohara-south-west'),
-  arterial('aohara-north-center', 'aohara-center'),
-  arterial('aohara-center', 'aohara-south-center'),
-  localStreet('aohara-north-east', 'aohara-middle-east'),
-  localStreet('aohara-middle-east', 'aohara-south-east'),
+  ...AOHARA_GRID_ROWS.flatMap((row) =>
+    AOHARA_GRID_COLUMNS.slice(0, -1).map((column, index) => {
+      const nextColumn = AOHARA_GRID_COLUMNS[index + 1]!;
+      const createEdge = row.id === 'middle' ? arterial : localStreet;
+      return createEdge(aoharaNodeId(row.id, column.id), aoharaNodeId(row.id, nextColumn.id));
+    }),
+  ),
+  ...AOHARA_GRID_COLUMNS.flatMap((column) =>
+    AOHARA_GRID_ROWS.slice(0, -1).map((row, index) => {
+      const nextRow = AOHARA_GRID_ROWS[index + 1]!;
+      const createEdge = column.id === 'center' ? arterial : localStreet;
+      return createEdge(aoharaNodeId(row.id, column.id), aoharaNodeId(nextRow.id, column.id));
+    }),
+  ),
 ];
 
 export const ROAD_NETWORK_CONFIG: RoadNetworkConfig = {
@@ -124,7 +122,7 @@ export const ROAD_NETWORK_CONFIG: RoadNetworkConfig = {
     { from: 'west-fields', to: 'south-fields', via: [[-300, 540]] },
     {
       from: 'east-plain',
-      to: 'aohara-middle-west',
+      to: aoharaNodeId('middle', 'west-outer'),
       roadClass: 'city-access',
       halfWidthMeters: AOHARA_DISTRICT_CONFIG.accessHalfWidthMeters,
       shoulderMeters: AOHARA_DISTRICT_CONFIG.shoulderMeters,

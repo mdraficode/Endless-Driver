@@ -62,6 +62,28 @@ describe('road network graph', () => {
     expect([...again.nodes.values()]).toEqual([...network.nodes.values()]);
   });
 
+  it('builds the connected 5×5 Aohara grid with arterial spines and a rural gateway', () => {
+    const urbanNodes = [...network.nodes.values()].filter((node) => node.id.startsWith('aohara-'));
+    const urbanEdges = network.edges.filter(
+      (edge) => edge.roadClass === 'urban-local' || edge.roadClass === 'urban-arterial',
+    );
+    const arterialEdges = urbanEdges.filter((edge) => edge.roadClass === 'urban-arterial');
+    const localEdges = urbanEdges.filter((edge) => edge.roadClass === 'urban-local');
+    const westGateway = network.nodeById('aohara-middle-west-outer');
+    const access = network.edges.find((edge) => edge.roadClass === 'city-access');
+
+    expect(urbanNodes).toHaveLength(25);
+    expect(urbanEdges).toHaveLength(40);
+    expect(arterialEdges).toHaveLength(8);
+    expect(localEdges).toHaveLength(32);
+    expect(westGateway).toMatchObject({
+      x: AOHARA_DISTRICT_CONFIG.centerX - 2 * AOHARA_DISTRICT_CONFIG.gridSpacingMeters,
+      z: AOHARA_DISTRICT_CONFIG.centerZ,
+    });
+    expect(access?.from).toBe('east-plain');
+    expect(access?.to).toBe('aohara-middle-west-outer');
+  });
+
   it('carries Aohara road classes and widths into visual and physics samples', () => {
     const center = world.roadAt?.(AOHARA_DISTRICT_CONFIG.centerX, AOHARA_DISTRICT_CONFIG.centerZ);
     expect(center?.roadClass).toBe('urban-arterial');
@@ -88,9 +110,14 @@ describe('road network graph', () => {
     expect(local?.halfWidthMeters).toBe(AOHARA_DISTRICT_CONFIG.localStreetHalfWidthMeters);
   });
 
-  it('batches the complete mixed-width road network into a bounded material-batch set', () => {
+  it('batches roads, city sidewalks and crossings into a bounded mesh set', () => {
     const roads = new RoadWorld(network);
-    expect(roads.getStats().roadMeshes).toBeLessThanOrEqual(6);
+    const stats = roads.getStats();
+    expect(stats.roadMeshes).toBeLessThanOrEqual(8);
+    expect(stats.urbanSidewalkEdges).toBe(40);
+    expect(stats.urbanCrosswalkIntersections).toBe(25);
+    expect(roads.object.getObjectByName('aohara-sidewalks')).not.toBeNull();
+    expect(roads.object.getObjectByName('aohara-crosswalks-and-stop-lines')).not.toBeNull();
     roads.dispose();
   });
 
@@ -142,6 +169,8 @@ describe('terrain carve', () => {
       [200, 0],
       [0, 200],
       [-160, 160],
+      [320, 320],
+      [-320, -320],
     ] as const) {
       expect(
         world.heightAt(AOHARA_DISTRICT_CONFIG.centerX + dx, AOHARA_DISTRICT_CONFIG.centerZ + dz),

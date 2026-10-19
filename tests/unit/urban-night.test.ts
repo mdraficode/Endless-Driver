@@ -93,6 +93,8 @@ describe('Aohara city night-lighting rules', () => {
     expect(city.root.position.toArray()).toEqual([...position]);
     expect(city.root.getObjectByName('aohara-main-avenue')).toBeUndefined();
     expect(city.root.getObjectByName('aohara-signalized-cross-street')).toBeUndefined();
+    expect(city.root.getObjectByName('aohara-ground-deck')).toBeUndefined();
+    expect(city.getContentStats()).toMatchObject({ cityBlocks: 16, highRiseBuildings: 32 });
 
     const towerX = position[0] - 31;
     const towerZ = position[2] - 56;

@@ -55,9 +55,9 @@ export interface ApplicationOptions {
   readonly tier?: TierResolution;
   /** Time-of-day options; the entrypoint forwards the `?time=` debug switch through this. */
   readonly clock?: EnvironmentClockOptions | undefined;
-  /** Pinned session start (`?spawn=<id>`); omit for the per-session random pick. */
+  /** Pinned start (`?spawn=<id>`); omit for the default Aohara Metropolis start. */
   readonly spawnId?: string;
-  /** Random source for the session spawn pick; injectable for tests/captures. */
+  /** Random source used only when `spawnId` is explicitly `random`; injectable for tests/captures. */
   readonly spawnRandom?: () => number;
 }
 
@@ -148,10 +148,10 @@ export class Application {
     const terrainSampler = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
     this.#terrainSampler = terrainSampler;
     this.#treeField = new TreeCollisionField(terrainSampler);
-    // One start per session, picked from the curated district starts (a
-    // pinned `?spawn=<id>` wins). The car must never always wake up on the
-    // same meadow again.
-    const spawnPoint = resolveSpawnPoint(options.spawnId, (options.spawnRandom ?? Math.random)());
+    // Aohara is the default game start. Explicit `?spawn=<id>` requests still select rural
+    // districts, and `?spawn=random` opts into the previous per-session rotation.
+    const spawnRandom = options.spawnId === 'random' ? (options.spawnRandom ?? Math.random)() : 0;
+    const spawnPoint = resolveSpawnPoint(options.spawnId, spawnRandom);
     this.#spawn = {
       ...spawnPoint,
       position: [

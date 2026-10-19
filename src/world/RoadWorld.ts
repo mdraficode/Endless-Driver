@@ -1,22 +1,27 @@
 import {
+  BoxGeometry,
   CircleGeometry,
   Group,
+  InstancedMesh,
   Mesh,
+  Object3D,
   RepeatWrapping,
   type BufferGeometry,
-  type Object3D,
 } from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { texture, uv, vec2 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { loadMaterialTextureSet } from '../assets/AssetManifest';
+import { URBAN_CITY_CONFIG } from '../config/urban-city';
 import type { RoadNetwork } from './road-network';
 import { buildDashGeometry, buildRibbonGeometry } from './road-geometry';
 
 export interface RoadWorldStats {
   roadLengthMeters: number;
   roadMeshes: number;
+  urbanSidewalkEdges: number;
+  urbanCrosswalkIntersections: number;
   roadSurfacesLoaded: 0 | 1;
 }
 
@@ -26,6 +31,7 @@ export interface RoadWorldStats {
 const SHOULDER_LIFT = 0.05;
 const ASPHALT_LIFT = 0.09;
 const PAINT_LIFT = 0.13;
+const SIDEWALK_LIFT = 0.14;
 
 function mergeGeometryBatch(geometries: BufferGeometry[], label: string): BufferGeometry | null {
   if (geometries.length === 0) {
@@ -50,13 +56,128 @@ function mergeGeometryBatch(geometries: BufferGeometry[], label: string): Buffer
   return merged;
 }
 
+interface MarkingTransform {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly width: number;
+  readonly depth: number;
+}
+
+function isUrbanRoad(edge: RoadNetwork['edges'][number]): boolean {
+  return edge.roadClass === 'urban-local' || edge.roadClass === 'urban-arterial';
+}
+
+function createUrbanIntersectionMarkings(
+  network: RoadNetwork,
+  material: MeshStandardNodeMaterial,
+): { readonly mesh: InstancedMesh | null; readonly intersectionCount: number } {
+  const stripeWidth = 0.55;
+  const stripePitch = 1.2;
+  const stripeThickness = 0.035;
+  const markings: MarkingTransform[] = [];
+  let intersectionCount = 0;
+
+  for (const node of network.nodes) {
+    let horizontalHalfWidth: number | null = null;
+    let verticalHalfWidth: number | null = null;
+    for (const edge of network.edges) {
+      if (!isUrbanRoad(edge) || (edge.from !== node.id && edge.to !== node.id)) {
+        continue;
+      }
+      const from = network.nodeById(edge.from);
+      const to = network.nodeById(edge.to);
+      if (from === null || to === null) {
+        continue;
+      }
+      if (Math.abs(to.x - from.x) >= Math.abs(to.z - from.z)) {
+        horizontalHalfWidth = Math.max(horizontalHalfWidth ?? 0, edge.halfWidthMeters);
+      } else {
+        verticalHalfWidth = Math.max(verticalHalfWidth ?? 0, edge.halfWidthMeters);
+      }
+    }
+    if (horizontalHalfWidth === null || verticalHalfWidth === null) {
+      continue;
+    }
+    intersectionCount += 1;
+
+    const addCrosswalk = (
+      acrossWidth: number,
+      center: readonly [number, number],
+      acrossX: boolean,
+    ): void => {
+      const usableWidth = Math.max(6, acrossWidth - 2.8);
+      const stripeCount = Math.max(6, Math.floor(usableWidth / stripePitch));
+      const start = -((stripeCount - 1) * stripePitch) / 2;
+      for (let stripe = 0; stripe < stripeCount; stripe += 1) {
+        const offset = start + stripe * stripePitch;
+        markings.push({
+          x: node.x + center[0] + (acrossX ? 0 : offset),
+          y: node.y + PAINT_LIFT,
+          z: node.z + center[1] + (acrossX ? offset : 0),
+          width: acrossX ? usableWidth : stripeWidth,
+          depth: acrossX ? stripeWidth : usableWidth,
+        });
+      }
+    };
+
+    const verticalApproachOffset = horizontalHalfWidth + 3.8;
+    const horizontalApproachOffset = verticalHalfWidth + 3.8;
+    for (const side of [-1, 1]) {
+      addCrosswalk(verticalHalfWidth * 2, [0, side * verticalApproachOffset], true);
+      addCrosswalk(horizontalHalfWidth * 2, [side * horizontalApproachOffset, 0], false);
+    }
+
+    // Only the signalized central junction has stop bars; the other intersections
+    // receive zebra crossings but no misleading stop-line-only controls.
+    if (node.id === 'aohara-center') {
+      for (const side of [-1, 1]) {
+        markings.push(
+          {
+            x: node.x,
+            y: node.y + PAINT_LIFT,
+            z: node.z + side * (verticalApproachOffset + 5.2),
+            width: verticalHalfWidth * 2,
+            depth: 0.32,
+          },
+          {
+            x: node.x + side * (horizontalApproachOffset + 5.2),
+            y: node.y + PAINT_LIFT,
+            z: node.z,
+            width: 0.32,
+            depth: horizontalHalfWidth * 2,
+          },
+        );
+      }
+    }
+  }
+
+  if (markings.length === 0) {
+    return { mesh: null, intersectionCount };
+  }
+
+  const mesh = new InstancedMesh(new BoxGeometry(1, stripeThickness, 1), material, markings.length);
+  mesh.name = 'aohara-crosswalks-and-stop-lines';
+  mesh.frustumCulled = false;
+  const transform = new Object3D();
+  markings.forEach((marking, index) => {
+    transform.position.set(marking.x, marking.y, marking.z);
+    transform.scale.set(marking.width, 1, marking.depth);
+    transform.rotation.set(0, 0, 0);
+    transform.updateMatrix();
+    mesh.setMatrixAt(index, transform.matrix);
+  });
+  mesh.instanceMatrix.needsUpdate = true;
+  return { mesh, intersectionCount };
+}
+
 /**
  * Visual road network: ribbon meshes laid over the carved terrain corridor.
  *
  * Geometry comes from the same solved profile the height function carves. Per-edge road classes
- * supply their own widths and markings, while the resulting ribbons are batched by material so
- * adding the bounded Aohara grid does not multiply draw calls. Terrain, physics and grip still
- * sample the same road graph.
+ * supply their own widths, lane markings and sidewalks; one bounded instanced pass adds crossings
+ * at the Aohara intersections. Material batches keep draw calls fixed as the 5×5 grid grows. Terrain,
+ * physics and grip still sample the same road graph.
  */
 export class RoadWorld {
   readonly object: Object3D;
@@ -70,6 +191,10 @@ export class RoadWorld {
   readonly #shoulderMaterial: MeshStandardNodeMaterial;
 
   readonly #urbanAsphaltMaterial: MeshStandardNodeMaterial;
+
+  readonly #urbanSidewalkEdges: number;
+
+  readonly #urbanCrosswalkIntersections: number;
 
   #surfacesLoaded: 0 | 1 = 0;
 
@@ -109,12 +234,30 @@ export class RoadWorld {
     const urbanAsphaltGeometries: BufferGeometry[] = [];
     const markingGeometries: BufferGeometry[] = [];
     const centerlineGeometries: BufferGeometry[] = [];
+    const urbanSidewalkGeometries: BufferGeometry[] = [];
+    let urbanSidewalkEdges = 0;
 
     for (const edge of network.edges) {
       const { halfWidthMeters, shoulderMeters } = edge;
+      const urbanRoad = isUrbanRoad(edge);
       shoulderGeometries.push(
         buildRibbonGeometry(edge, (halfWidthMeters + shoulderMeters) * 2, SHOULDER_LIFT),
       );
+      if (urbanRoad) {
+        urbanSidewalkEdges += 1;
+        const sidewalkOffset =
+          halfWidthMeters + shoulderMeters + URBAN_CITY_CONFIG.sidewalk.widthMeters / 2;
+        for (const side of [-1, 1] as const) {
+          urbanSidewalkGeometries.push(
+            buildRibbonGeometry(
+              edge,
+              URBAN_CITY_CONFIG.sidewalk.widthMeters,
+              SIDEWALK_LIFT,
+              side * sidewalkOffset,
+            ),
+          );
+        }
+      }
       const asphaltGeometry = buildRibbonGeometry(edge, halfWidthMeters * 2, ASPHALT_LIFT);
       if (edge.roadClass === 'urban-local' || edge.roadClass === 'urban-arterial') {
         urbanAsphaltGeometries.push(asphaltGeometry);
@@ -155,6 +298,15 @@ export class RoadWorld {
       asphalt.translate(node.x, node.y + ASPHALT_LIFT, node.z);
       (urbanJunction ? urbanAsphaltGeometries : asphaltGeometries).push(asphalt);
     }
+
+    const sidewalkMaterial = new MeshStandardNodeMaterial();
+    sidewalkMaterial.color.set(0x454d53);
+    sidewalkMaterial.roughness = 0.88;
+    sidewalkMaterial.metalness = 0;
+    sidewalkMaterial.name = 'aohara-sidewalk-concrete';
+    const urbanMarkings = createUrbanIntersectionMarkings(network, markingMaterial);
+    this.#urbanSidewalkEdges = urbanSidewalkEdges;
+    this.#urbanCrosswalkIntersections = urbanMarkings.intersectionCount;
 
     const group = new Group();
     group.name = 'road-network';
@@ -200,6 +352,15 @@ export class RoadWorld {
       centerlineMaterial,
       'road-urban-centerlines',
     );
+    add(
+      mergeGeometryBatch(urbanSidewalkGeometries, 'aohara-sidewalks-batch'),
+      sidewalkMaterial,
+      'aohara-sidewalks',
+    );
+    if (urbanMarkings.mesh !== null) {
+      this.#meshes.push(urbanMarkings.mesh);
+      group.add(urbanMarkings.mesh);
+    }
     this.object = group;
   }
 
@@ -256,6 +417,8 @@ export class RoadWorld {
     return {
       roadLengthMeters: Math.round(this.#network.totalLengthMeters),
       roadMeshes: this.#meshes.length,
+      urbanSidewalkEdges: this.#urbanSidewalkEdges,
+      urbanCrosswalkIntersections: this.#urbanCrosswalkIntersections,
       roadSurfacesLoaded: this.#surfacesLoaded,
     };
   }

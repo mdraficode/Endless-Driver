@@ -1,6 +1,6 @@
 import type { TierId } from './tiers';
 
-/** Bounded first Aohara Metropolis night-lighting block; this is a look-dev slice, not the full district. */
+/** Shared Aohara lighting, crossing and sidewalk tuning for the look-dev block and driving district. */
 export const URBAN_CITY_CONFIG = {
   districtName: 'Aohara Metropolis',
   avenue: {
@@ -13,8 +13,8 @@ export const URBAN_CITY_CONFIG = {
     depthMeters: 20,
   },
   sidewalk: {
-    widthMeters: 7,
-    centerOffsetXMeters: 13.5,
+    widthMeters: 3.2,
+    centerOffsetXMeters: 13.8,
     lengthMeters: 180,
   },
   cityDeck: {
@@ -23,7 +23,11 @@ export const URBAN_CITY_CONFIG = {
     centerZ: -20,
   },
   streetLamp: {
+    /** Legacy look-dev block placements; driving-world lamps follow every Aohara road edge. */
     spacingPositionsZ: [-48, -16, 20, 54] as const,
+    /** Lamp posts sit in the city sidewalks, repeated along the urban road graph. */
+    spacingMeters: 64,
+    sidewalkWidthMeters: 3.2,
     sideXMeters: 13.5,
     heightMeters: 7.4,
     pointLightIntensity: 28,
