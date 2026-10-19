@@ -10,6 +10,8 @@ import {
 } from 'three/tsl';
 
 import { FOLIAGE_LIGHTING_CONFIG } from '../config/foliage-lighting';
+import type { TierId } from '../config/tiers';
+import { createFoliageWindPositionNode } from './foliage-wind';
 
 /** Only leaf-like scanned materials get the foliage treatment; bark and dead branches stay put. */
 export function isFoliageMaterial(material: Material): material is MeshStandardMaterial {
@@ -64,6 +66,7 @@ export function createScannedFoliageMaterial(
   sunDirection: Node<'vec3'>,
   sunTint: Node<'vec3'>,
   sunStrength: Node<'float'>,
+  tier: TierId = 'A',
 ): MeshStandardNodeMaterial {
   const material = new MeshStandardNodeMaterial().copy(source);
   // Material stores this behind `_alphaTest`, which NodeMaterial.copy deliberately skips as a
@@ -78,5 +81,9 @@ export function createScannedFoliageMaterial(
     sunTint,
     sunStrength,
   );
+  const foliageWind = createFoliageWindPositionNode(float(1), tier);
+  if (foliageWind !== null) {
+    material.positionNode = foliageWind;
+  }
   return material;
 }

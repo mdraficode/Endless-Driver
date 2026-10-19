@@ -22,6 +22,7 @@ import {
   type VegetationSpecies,
 } from '../config/districts';
 import { FOLIAGE_LIGHTING_CONFIG } from '../config/foliage-lighting';
+import type { TierId } from '../config/tiers';
 import type { DaylightState } from '../environment/EnvironmentClock';
 import {
   createFoliageEmissiveNode,
@@ -29,6 +30,7 @@ import {
   isFoliageMaterial,
   resolveFoliageBacklightStrength,
 } from './foliage-lighting';
+import { createFoliageWindPositionNode, resolveFoliageWindAmplitude } from './foliage-wind';
 import {
   generateChunkVegetation,
   hash01,
@@ -313,6 +315,7 @@ export class VegetationWorld {
   readonly #sampler: TerrainSampler;
   readonly #config: VegetationConfig;
   readonly #detail: number;
+  readonly #tier: TierId;
   readonly #meshes: { species: VegetationSpecies; variant: number; mesh: InstancedMesh }[] = [];
   readonly #chunkPlacements = new Map<string, VegetationPlacement[]>();
   #center: { cx: number; cz: number } | null = null;
@@ -341,10 +344,12 @@ export class VegetationWorld {
     sampler: TerrainSampler,
     config: VegetationConfig = VEGETATION_CONFIG,
     detailScale = 1,
+    tier: TierId = 'A',
   ) {
     this.#sampler = sampler;
     this.#config = config;
     this.#detail = Math.min(1, Math.max(0.4, detailScale));
+    this.#tier = tier;
     this.root.name = 'VegetationWorld';
 
     const material = new MeshStandardNodeMaterial();
@@ -355,6 +360,10 @@ export class VegetationWorld {
       this.#foliageSunTint,
       this.#foliageBacklightStrength,
     );
+    const foliageWind = createFoliageWindPositionNode(attribute('foliageMask', 'float'), tier);
+    if (foliageWind !== null) {
+      material.positionNode = foliageWind;
+    }
     material.roughness = 0.95;
     for (const species of VEGETATION_SPECIES) {
       const variants = TREE_SPECIES.has(species) ? 3 : species === 'bamboo' ? 2 : 2;
@@ -482,6 +491,7 @@ export class VegetationWorld {
                 this.#foliageSunDirection,
                 this.#foliageSunTint,
                 this.#foliageBacklightStrength,
+                this.#tier,
               );
               foliageMaterials.set(part.material, material);
             }
@@ -1055,6 +1065,7 @@ export class VegetationWorld {
     }
     return {
       vegetationInstances: this.#totalInstances,
+      vegetationWindAmplitudeMeters: resolveFoliageWindAmplitude(this.#tier),
       vegetationChunks: this.#chunkPlacements.size,
       vegetationChunksDesired: (2 * this.#config.radiusChunks + 1) ** 2,
       vegetationChunksPending: Math.max(

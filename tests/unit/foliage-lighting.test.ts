@@ -1,17 +1,34 @@
 import { Color, DoubleSide, MeshStandardMaterial, Texture, Vector3 } from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
-import { uniform } from 'three/tsl';
+import { float, uniform } from 'three/tsl';
 import { describe, expect, it } from 'vitest';
 
 import { FOLIAGE_LIGHTING_CONFIG } from '../../src/config/foliage-lighting';
+import { FOLIAGE_WIND_CONFIG } from '../../src/config/foliage-wind';
 import {
   createScannedFoliageMaterial,
   isFoliageMaterial,
   resolveFoliageBacklightStrength,
 } from '../../src/world/foliage-lighting';
+import {
+  createFoliageWindPositionNode,
+  resolveFoliageWindAmplitude,
+} from '../../src/world/foliage-wind';
 import { buildSpeciesGeometry } from '../../src/world/vegetation';
 
 describe('foliage light response', () => {
+  it('adds bounded, tier-gated TSL wind sway with no vertex-node cost on tier C', () => {
+    expect(resolveFoliageWindAmplitude('C')).toBe(0);
+    expect(resolveFoliageWindAmplitude('B')).toBe(FOLIAGE_WIND_CONFIG.amplitudeMetersByTier.B);
+    expect(resolveFoliageWindAmplitude('A')).toBe(FOLIAGE_WIND_CONFIG.amplitudeMetersByTier.A);
+    expect(resolveFoliageWindAmplitude('A')).toBeLessThanOrEqual(0.07);
+
+    const foliageMask = float(1);
+    expect(createFoliageWindPositionNode(foliageMask, 'C')).toBeNull();
+    expect(createFoliageWindPositionNode(foliageMask, 'B')).not.toBeNull();
+    expect(createFoliageWindPositionNode(foliageMask, 'A')).not.toBeNull();
+  });
+
   it('lifts authored leaf albedo and marks only the foliage vertices for backlighting', () => {
     const geometry = buildSpeciesGeometry('broadleaf', 0);
     const foliageMask = geometry.getAttribute('foliageMask');
@@ -79,6 +96,7 @@ describe('foliage light response', () => {
     expect(enhanced.emissive.r).toBeCloseTo(source.emissive.r);
     expect(enhanced.emissiveIntensity).toBe(source.emissiveIntensity);
     expect(enhanced.emissiveNode).not.toBeNull();
+    expect(enhanced.positionNode).not.toBeNull();
 
     const bark = new MeshStandardMaterial({ name: 'fir_tree_01_bark' });
     expect(isFoliageMaterial(bark)).toBe(false);

@@ -1,3 +1,5 @@
+import { InstancedMesh } from 'three';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 
 import { VEGETATION_CONFIG } from '../../src/config/districts';
@@ -20,10 +22,26 @@ describe('vegetation destruction visuals', () => {
     await world.prepareInitial({ x: -430, z: -1010 }, { x: 0, z: -50 });
 
     const stats = world.getContentStats();
+    const leafyMesh = world.root.getObjectByName('vegetation-broadleaf-0');
+    expect(leafyMesh).toBeInstanceOf(InstancedMesh);
+    expect((leafyMesh as InstancedMesh).material).toBeInstanceOf(MeshStandardNodeMaterial);
+    expect(((leafyMesh as InstancedMesh).material as MeshStandardNodeMaterial).positionNode).not.toBeNull();
+    expect(stats.vegetationWindAmplitudeMeters).toBe(0.065);
     expect(stats.vegetationChunks).toBe(9);
     expect(stats.vegetationChunksDesired).toBe(9);
     expect(stats.vegetationChunksPending).toBe(0);
     expect(stats.vegetationInstances).toBeGreaterThan(0);
+    world.dispose();
+  });
+
+  it('omits the wind position node on the constrained C tier', () => {
+    const sampler = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
+    const world = new VegetationWorld(sampler, VEGETATION_CONFIG, 0.6, 'C');
+    const leafyMesh = world.root.getObjectByName('vegetation-broadleaf-0');
+
+    expect(leafyMesh).toBeInstanceOf(InstancedMesh);
+    expect(((leafyMesh as InstancedMesh).material as MeshStandardNodeMaterial).positionNode).toBeNull();
+    expect(world.getContentStats().vegetationWindAmplitudeMeters).toBe(0);
     world.dispose();
   });
 

@@ -3,7 +3,7 @@
 **Updated:** 2026-10-19  
 **Current stage:** Phase 4 built scope delivered; Phase 5 in progress with owner-device visual acceptance open; Phase 6 is authorized after Phase 5 acceptance; Phase 9 Urban Systems is separately authorized and active in parallel; Phase 3 named-hardware frame-budget validation remains open  
 **Authorized development phases:** Phases 1–6, executed in order, plus Phase 9 in parallel; Phases 7–8 remain gated  
-**Next action:** Phase 9 Aohara road-clearance/building-footprint audit commit `0e43703d290aa370a49a3049f235784994c29620` is pushed to `main`; `git ls-remote` matched. GitHub Validate run `39261742446` and Deploy to GitHub Pages run `39261742400` both succeeded for that SHA. From fresh clone `/tmp/endless-driver-city-audit-20261019`, full `npm run check` passed (51 test files / 466 tests). Section 56 records the tested scope and limits. Arrange actual-browser review of the updated `?scene=city&time=23.5` and a manual night drive from `?spawn=aohara-city&time=23.5`. No browser visual, manual drive, owner-device/mobile review or performance measurement has been performed. Keep Phase 5 acceptance unresolved; do not begin Phase 6 before it or Phase 7–8 without new authorization.
+**Next action:** The owner selected continuation of the authorized Phase 5 remainder, not Phase 6. A bounded TSL foliage-wind increment is implemented in fresh clone `/tmp/endless-driver-phase5-20261019`, based on remote `main` `8f2c8942eede402538855f4c8910797fb5d70dd0`; `npm ci` passed. Per `WORKFLOW.md`, push the increment before running the full check, then record exact results and remote workflows in Section 57. No browser visual, manual drive, owner-device/mobile review or performance measurement has been performed. Keep Phase 5 acceptance unresolved; do not begin Phase 6 before it or Phase 7–8 without new authorization.
 
 > **Re-plan (2026-10-14, decisions resolved):** the owner rejected the Phase 2 presentation and set a
 > Forza-Horizon-class visual target. Research and specification are complete and committed alongside
@@ -1679,3 +1679,21 @@ The owner explicitly authorized a new urban-systems track to begin immediately, 
 **Remote status:** Audit commit `0e43703d290aa370a49a3049f235784994c29620` was pushed to `main`; `git ls-remote origin refs/heads/main` matched exactly, and the working tree was clean. GitHub Validate run `39261742446` and Deploy to GitHub Pages run `39261742400` both completed successfully for that SHA. The Pages workflow result is deployment evidence only, not proof of browser rendering or driveability.
 
 **Next:** arrange owner visual review of the post-audit `?scene=city&time=23.5` and manual driving from `?spawn=aohara-city&time=23.5`; record lane/readability and owner-device/mobile performance evidence without assuming it. Do not treat static HTTP responses or automated tests as visual/device acceptance. Phase 5 acceptance remains open; Phase 6 follows it; Phases 7–8 remain gated.
+
+## 57. Phase 5: tier-bounded TSL foliage wind (2026-10-19)
+
+The owner chose to continue the authorized Phase 5 remainder. This does not constitute Phase 5 acceptance or authorize Phase 6; Phases 7–8 remain gated.
+
+**Implementation:**
+
+- Added a one-sinusoid TSL vertex-position node for subtle, spatially varied foliage sway. Its position-derived phase remains stable across streaming rebuilds. Authored trees use the existing per-vertex foliage mask so trunks, rocks, and non-leaf vertices remain fixed; scanned leaf/twig/needle parts use the same effect with a constant foliage mask.
+- Tier C omits the position node; Tier B and A cap maximum displacement at 0.035 m and 0.065 m. Vegetation diagnostics now report `vegetationWindAmplitudeMeters`; the same tier contract is recorded in `docs/VISUAL_TARGET.md` §3.
+- No new geometry attributes, draw calls, assets, dependencies, weather, or traction coupling. Aohara lighting, default spawn and rural Hinode remain unchanged.
+
+**Local verification:** Pending. `WORKFLOW.md` requires pushing this increment before running the full checks; `npm ci` succeeded in the fresh clone `/tmp/endless-driver-phase5-20261019` (201 packages, 0 vulnerabilities).
+
+**Visual/device status:** No browser-render review, manual drive, owner-device/mobile review, or performance measurement was performed. Automated node construction and tier-gating tests, once run, cannot prove visible wind, absence of artifacts, or device cost. Phase 5 acceptance remains open; Phase 6 still follows acceptance; Phases 7–8 remain gated.
+
+**Remote status:** Pending commit, push, remote-SHA verification, and GitHub workflow results.
+
+**Next:** push the coherent code/test/docs increment, then run `npm run check` and update this section with actual results. Keep Phase 6 gated on Phase 5 acceptance.

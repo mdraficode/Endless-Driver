@@ -35,7 +35,9 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
   // The detail scale pulls the scanned LOD rings in on modest devices: the deep
   // jungle canopy is the heaviest thing this world streams.
   const detailScale = context.qualityTier === 'C' ? 0.6 : context.qualityTier === 'B' ? 0.85 : 1;
-  const vegetation = new VegetationWorld(terrainSampler, undefined, detailScale);
+  const vegetationTier: TierId =
+    context.qualityTier === 'C' ? 'C' : context.qualityTier === 'B' ? 'B' : 'A';
+  const vegetation = new VegetationWorld(terrainSampler, undefined, detailScale, vegetationTier);
   root.add(vegetation.root);
   // Scanned CC0 trees replace the authored species behind the same scatter (Phase 5). Start
   // loading immediately, then include it in first-world readiness so the forest is not swapped

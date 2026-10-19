@@ -118,7 +118,7 @@ recorded in every performance claim.
 | Ambient occlusion  | Off or baked                                           | GTAO (half res)                                                | GTAO full res                                              |
 | Reflections        | Environment IBL + Aohara local clearcoat               | SSR (half res) + probes (pending)                              | SSR + probes (pending); Aohara wet-look is local PBR       |
 | Terrain layers     | 2                                                      | 3                                                              | 4 + POM                                                    |
-| Vegetation         | Impostors, ≤ 20k instances                             | LOD1–2, ≤ 80k                                                  | Full LOD0 near, ≤ 200k                                     |
+| Vegetation         | Impostors, ≤ 20k; TSL sway off                         | LOD1–2, ≤ 80k; TSL sway ≤ 0.035 m                             | Full LOD0 near, ≤ 200k; TSL sway ≤ 0.065 m                 |
 | Clouds/atmosphere  | HDRI sky + fog                                         | Sky + layered clouds + fog                                     | Sky + volumetric cloud/light shafts where enabled          |
 | Urban night lights | Faint local halo + 2-axis starburst, few active lights | Soft halo + restrained 4-axis starburst, capped lights/windows | Full local halo + subtle 4-axis starburst, source-isolated |
 | Particles          | Capped, short-lived                                    | Moderate                                                       | Full, lit                                                  |
