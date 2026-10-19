@@ -212,7 +212,9 @@ describe('Aohara city night-lighting rules', () => {
     expect(lowStats.facadeWindowInstances).toBeLessThanOrEqual(
       URBAN_NIGHT_TIER_BUDGET.C.facadeWindowInstances,
     );
-    expect(highStats.facadeWindowInstances).toBeGreaterThanOrEqual(lowStats.facadeWindowInstances);
+    expect(highStats.facadeWindowInstances ?? 0).toBeGreaterThanOrEqual(
+      lowStats.facadeWindowInstances ?? 0,
+    );
     expect(lowStats.facadeDetailInstances).toBeGreaterThan(0);
     expect(lowStats.facadeDetailInstances).toBeLessThanOrEqual(
       URBAN_NIGHT_TIER_BUDGET.C.facadeDetailInstances,
