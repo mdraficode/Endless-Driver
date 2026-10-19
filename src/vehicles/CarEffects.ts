@@ -173,14 +173,17 @@ class ParticlePool {
         this.#visible.push(particle);
       }
     }
-    this.#visible.sort((a, b) => distanceSquared(b, cameraPosition) - distanceSquared(a, cameraPosition));
+    this.#visible.sort(
+      (a, b) => distanceSquared(b, cameraPosition) - distanceSquared(a, cameraPosition),
+    );
     this.mesh.count = this.#visible.length;
     this.#cameraQuaternion.copy(cameraRotation);
 
     let index = 0;
     for (const particle of this.#visible) {
       const life = particle.age / particle.lifetime;
-      const fadeIn = particle.fadeInSeconds > 0 ? smoothUnit(particle.age / particle.fadeInSeconds) : 1;
+      const fadeIn =
+        particle.fadeInSeconds > 0 ? smoothUnit(particle.age / particle.fadeInSeconds) : 1;
       const fadeOut = 1 - smoothUnit((life - 0.55) / 0.45);
       const alpha = particle.opacity * fadeIn * fadeOut;
       const sizeX = lerp(particle.startSizeX, particle.endSizeX, smoothUnit(life));
@@ -264,7 +267,14 @@ export class CarEffects {
     const capacity = VEHICLE_EFFECTS_CONFIG.particleCapacityByTier[tier];
     this.#smokeTexture = makeRadialTexture();
     this.#streakTexture = makeStreakTexture();
-    this.#smoke = new ParticlePool('car-smoke', capacity.smoke, this.#smokeTexture, NormalBlending, 1, 8);
+    this.#smoke = new ParticlePool(
+      'car-smoke',
+      capacity.smoke,
+      this.#smokeTexture,
+      NormalBlending,
+      1,
+      8,
+    );
     this.#sparks = new ParticlePool(
       'gear-shift-sparks',
       capacity.sparks,
@@ -319,9 +329,15 @@ export class CarEffects {
         (VEHICLE_EFFECTS_CONFIG.exhaust.buoyancyMetersPerSecondSquared +
           VEHICLE_EFFECTS_CONFIG.tireSmoke.buoyancyMetersPerSecondSquared) /
           2,
-        (VEHICLE_EFFECTS_CONFIG.exhaust.dragPerSecond + VEHICLE_EFFECTS_CONFIG.tireSmoke.dragPerSecond) / 2,
+        (VEHICLE_EFFECTS_CONFIG.exhaust.dragPerSecond +
+          VEHICLE_EFFECTS_CONFIG.tireSmoke.dragPerSecond) /
+          2,
       );
-      this.#sparks.update(dt, -VEHICLE_EFFECTS_CONFIG.shiftSparks.gravityMetersPerSecondSquared, 0.12);
+      this.#sparks.update(
+        dt,
+        -VEHICLE_EFFECTS_CONFIG.shiftSparks.gravityMetersPerSecondSquared,
+        0.12,
+      );
       this.#airflow.update(dt, 0, 0);
     }
 

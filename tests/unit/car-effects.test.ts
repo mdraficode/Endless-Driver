@@ -96,7 +96,9 @@ describe('batched car effects', () => {
       { x: 0, y: 0, z: -50 },
       camera,
     );
-    expect(effects.activeParticleCounts.sparks).toBe(VEHICLE_EFFECTS_CONFIG.shiftSparks.countByTier.C);
+    expect(effects.activeParticleCounts.sparks).toBe(
+      VEHICLE_EFFECTS_CONFIG.shiftSparks.countByTier.C,
+    );
     expect(effects.root.children).toHaveLength(3);
 
     // Long runs overwrite bounded ring-buffer slots instead of allocating particles forever.
