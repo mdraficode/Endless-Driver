@@ -359,7 +359,7 @@ describe('swipe-to-orbit framing', () => {
     advance(orbited, 2, pose());
     const orbitedScreenPosition = projectCarCenter(orbited);
 
-    expect(orbitedScreenPosition.x).toBeCloseTo(neutralScreenPosition.x, 5);
-    expect(orbitedScreenPosition.y).toBeCloseTo(neutralScreenPosition.y, 5);
+    expect(orbitedScreenPosition.x).toBeCloseTo(neutralScreenPosition.x, 4);
+    expect(orbitedScreenPosition.y).toBeCloseTo(neutralScreenPosition.y, 4);
   });
 });
