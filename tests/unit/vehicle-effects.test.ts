@@ -60,5 +60,11 @@ describe('speed-triggered vehicle visuals', () => {
     expect(B.sparks).toBeLessThan(A.sparks);
     expect(C.airflow).toBeLessThan(B.airflow);
     expect(B.airflow).toBeLessThan(A.airflow);
+
+    for (const tier of ['C', 'B', 'A'] as const) {
+      expect(VEHICLE_EFFECTS_CONFIG.shiftSparks.countByTier[tier]).toBeLessThanOrEqual(
+        VEHICLE_EFFECTS_CONFIG.particleCapacityByTier[tier].sparks,
+      );
+    }
   });
 });
