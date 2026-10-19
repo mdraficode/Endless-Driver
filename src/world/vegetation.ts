@@ -410,10 +410,7 @@ export class VegetationWorld {
       this.#foliageSunTint,
       this.#foliageBacklightStrength,
     );
-    const groundCoverWind = createFoliageWindPositionNode(
-      attribute('foliageMask', 'float'),
-      tier,
-    );
+    const groundCoverWind = createFoliageWindPositionNode(attribute('foliageMask', 'float'), tier);
     if (groundCoverWind !== null) {
       groundCoverMaterial.positionNode = groundCoverWind;
     }

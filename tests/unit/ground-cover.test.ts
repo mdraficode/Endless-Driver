@@ -46,7 +46,10 @@ describe('Phase 5 ground-cover scatter', () => {
         const urban = road.roadClass === 'urban-local' || road.roadClass === 'urban-arterial';
         const sidewalk = urban ? URBAN_CITY_CONFIG.sidewalk.widthMeters : 0;
         expect(road.distance).toBeGreaterThanOrEqual(
-          road.halfWidthMeters + road.shoulderMeters + sidewalk + GROUND_COVER_CONFIG.roadEdgeClearanceMeters,
+          road.halfWidthMeters +
+            road.shoulderMeters +
+            sidewalk +
+            GROUND_COVER_CONFIG.roadEdgeClearanceMeters,
         );
       }
     }

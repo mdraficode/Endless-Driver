@@ -40,9 +40,7 @@ describe('vegetation destruction visuals', () => {
       throw new Error('ground-cover scatter should be one instanced mesh');
     }
     expect(groundCover.count).toBeGreaterThan(0);
-    expect(groundCover.count).toBeLessThanOrEqual(
-      GROUND_COVER_CONFIG.instanceBudgetByTier.A,
-    );
+    expect(groundCover.count).toBeLessThanOrEqual(GROUND_COVER_CONFIG.instanceBudgetByTier.A);
     expect((groundCover.material as MeshStandardNodeMaterial).side).toBe(DoubleSide);
     expect((groundCover.material as MeshStandardNodeMaterial).positionNode).not.toBeNull();
     expect(stats.groundCoverInstances).toBe(groundCover.count);

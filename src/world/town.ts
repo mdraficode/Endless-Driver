@@ -19,7 +19,10 @@ import { DISTRICTS } from '../config/districts';
 import type { TerrainSampler } from './terrain-height';
 import type { RoadNetwork } from './road-network';
 import { districtAt } from './districts';
-import { createArchitecturalMaterial, createVertexColorArchitecturalMaterial } from './architectural-materials';
+import {
+  createArchitecturalMaterial,
+  createVertexColorArchitecturalMaterial,
+} from './architectural-materials';
 import { generateChunkVegetation } from './vegetation-placement';
 import { hash01 } from './vegetation-placement';
 
@@ -281,10 +284,38 @@ function buildTownWindowPlacements(archetype: number): TownWindowPlacement[] {
   const windowHeight = archetype === 1 ? 1.45 : archetype === 2 ? 1.18 : 1.15;
   const floorYs = archetype === 2 ? [1.55, 3.9] : [archetype === 1 ? 1.8 : 1.72];
   const faces = [
-    { id: 'front', length: spec.width, x: 0, z: spec.depth / 2 + 0.055, yaw: -Math.PI / 2, along: 'x' as const },
-    { id: 'back', length: spec.width, x: 0, z: -spec.depth / 2 - 0.055, yaw: Math.PI / 2, along: 'x' as const },
-    { id: 'right', length: spec.depth, x: spec.width / 2 + 0.055, z: 0, yaw: 0, along: 'z' as const },
-    { id: 'left', length: spec.depth, x: -spec.width / 2 - 0.055, z: 0, yaw: Math.PI, along: 'z' as const },
+    {
+      id: 'front',
+      length: spec.width,
+      x: 0,
+      z: spec.depth / 2 + 0.055,
+      yaw: -Math.PI / 2,
+      along: 'x' as const,
+    },
+    {
+      id: 'back',
+      length: spec.width,
+      x: 0,
+      z: -spec.depth / 2 - 0.055,
+      yaw: Math.PI / 2,
+      along: 'x' as const,
+    },
+    {
+      id: 'right',
+      length: spec.depth,
+      x: spec.width / 2 + 0.055,
+      z: 0,
+      yaw: 0,
+      along: 'z' as const,
+    },
+    {
+      id: 'left',
+      length: spec.depth,
+      x: -spec.width / 2 - 0.055,
+      z: 0,
+      yaw: Math.PI,
+      along: 'z' as const,
+    },
   ];
   const windows: TownWindowPlacement[] = [];
   for (const face of faces) {
@@ -331,7 +362,10 @@ function buildWindowFrameGeometry(window: TownWindowPlacement, trimHex: number):
   return merged;
 }
 
-function buildWindowGeometry(archetype: number): { readonly geometry: BufferGeometry; readonly count: number } {
+function buildWindowGeometry(archetype: number): {
+  readonly geometry: BufferGeometry;
+  readonly count: number;
+} {
   const windows = buildTownWindowPlacements(archetype);
   const panes = windows.map((window) => {
     const pane = new BoxGeometry(0.055, window.height - 0.16, window.width - 0.16);
@@ -390,7 +424,15 @@ function buildWallGeometry(archetype: number): BufferGeometry {
     for (const sideX of [-1, 1] as const) {
       for (const sideZ of [-1, 1] as const) {
         parts.push(
-          box(0.16, spec.height, 0.16, 0x73736c, sideX * (spec.width / 2 - 0.08), spec.height / 2, sideZ * (spec.depth / 2 - 0.08)),
+          box(
+            0.16,
+            spec.height,
+            0.16,
+            0x73736c,
+            sideX * (spec.width / 2 - 0.08),
+            spec.height / 2,
+            sideZ * (spec.depth / 2 - 0.08),
+          ),
         );
       }
     }
@@ -422,8 +464,24 @@ function buildRoofGeometry(archetype: number): BufferGeometry {
   ];
   if (archetype === 0) {
     parts.push(
-      box(0.48, 0.92, 0.5, 0x785f4b, spec.width * 0.2, spec.height + spec.roofHeight * 0.52, -spec.depth * 0.15),
-      box(0.58, 0.1, 0.58, 0x3f4140, spec.width * 0.2, spec.height + spec.roofHeight * 0.98, -spec.depth * 0.15),
+      box(
+        0.48,
+        0.92,
+        0.5,
+        0x785f4b,
+        spec.width * 0.2,
+        spec.height + spec.roofHeight * 0.52,
+        -spec.depth * 0.15,
+      ),
+      box(
+        0.58,
+        0.1,
+        0.58,
+        0x3f4140,
+        spec.width * 0.2,
+        spec.height + spec.roofHeight * 0.98,
+        -spec.depth * 0.15,
+      ),
     );
   } else if (archetype === 1) {
     parts.push(

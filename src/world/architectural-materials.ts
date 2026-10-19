@@ -18,10 +18,7 @@ interface SurfaceDetailNodes {
   readonly roughness: Node<'float'>;
 }
 
-function createSurfaceDetailNodes(
-  roughness: number,
-  amplitude: number,
-): SurfaceDetailNodes {
+function createSurfaceDetailNodes(roughness: number, amplitude: number): SurfaceDetailNodes {
   // Two restrained, continuous TSL bands create material-scale variation without a texture
   // dependency or screen-space effect. The HDRI remains the actual environment-light source.
   const broad = sin(positionWorld.x.mul(0.083).add(positionWorld.z.mul(0.117))).mul(
@@ -46,10 +43,7 @@ export function createArchitecturalMaterial(
 ): MeshPhysicalNodeMaterial {
   const material = new MeshPhysicalNodeMaterial();
   const color = new Color(options.colorHex);
-  const detail = createSurfaceDetailNodes(
-    options.roughness,
-    options.detailAmplitude ?? 0.025,
-  );
+  const detail = createSurfaceDetailNodes(options.roughness, options.detailAmplitude ?? 0.025);
   material.color.setHex(options.colorHex);
   material.roughness = options.roughness;
   material.metalness = options.metalness;
@@ -66,10 +60,7 @@ export function createVertexColorArchitecturalMaterial(
   options: Omit<ArchitecturalMaterialOptions, 'colorHex'>,
 ): MeshPhysicalNodeMaterial {
   const material = new MeshPhysicalNodeMaterial();
-  const detail = createSurfaceDetailNodes(
-    options.roughness,
-    options.detailAmplitude ?? 0.025,
-  );
+  const detail = createSurfaceDetailNodes(options.roughness, options.detailAmplitude ?? 0.025);
   material.color.setHex(0xffffff);
   material.roughness = options.roughness;
   material.metalness = options.metalness;

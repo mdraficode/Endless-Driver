@@ -568,10 +568,38 @@ function buildWindowCandidates(
     const xFaceColumns = Math.max(1, Math.floor((building.depth - 2) / 3.2));
     const zFaceColumns = Math.max(1, Math.floor((building.width - 2) / 3.2));
     const sides = [
-      { localX: -building.width / 2 - 0.14, localZ: 0, yaw: yaw + Math.PI, columns: xFaceColumns, along: 'z' as const, length: building.depth },
-      { localX: building.width / 2 + 0.14, localZ: 0, yaw, columns: xFaceColumns, along: 'z' as const, length: building.depth },
-      { localX: 0, localZ: -building.depth / 2 - 0.14, yaw: yaw + Math.PI / 2, columns: zFaceColumns, along: 'x' as const, length: building.width },
-      { localX: 0, localZ: building.depth / 2 + 0.14, yaw: yaw - Math.PI / 2, columns: zFaceColumns, along: 'x' as const, length: building.width },
+      {
+        localX: -building.width / 2 - 0.14,
+        localZ: 0,
+        yaw: yaw + Math.PI,
+        columns: xFaceColumns,
+        along: 'z' as const,
+        length: building.depth,
+      },
+      {
+        localX: building.width / 2 + 0.14,
+        localZ: 0,
+        yaw,
+        columns: xFaceColumns,
+        along: 'z' as const,
+        length: building.depth,
+      },
+      {
+        localX: 0,
+        localZ: -building.depth / 2 - 0.14,
+        yaw: yaw + Math.PI / 2,
+        columns: zFaceColumns,
+        along: 'x' as const,
+        length: building.width,
+      },
+      {
+        localX: 0,
+        localZ: building.depth / 2 + 0.14,
+        yaw: yaw - Math.PI / 2,
+        columns: zFaceColumns,
+        along: 'x' as const,
+        length: building.width,
+      },
     ];
     for (let sideIndex = 0; sideIndex < sides.length; sideIndex += 1) {
       const side = sides[sideIndex]!;
@@ -583,7 +611,11 @@ function buildWindowCandidates(
           const localZ = side.localZ + (side.along === 'z' ? along : 0);
           const rank = stableUnit(buildingIndex + 701, floor * 19 + column + sideIndex * 23, 223);
           add(
-            [building.x + cos * localX + sin * localZ, WORLD_BASE_Y + 1.7 + floor * 2.6, building.z - sin * localX + cos * localZ],
+            [
+              building.x + cos * localX + sin * localZ,
+              WORLD_BASE_Y + 1.7 + floor * 2.6,
+              building.z - sin * localX + cos * localZ,
+            ],
             side.yaw,
             rank,
             buildingIndex * 13 + sideIndex,
@@ -606,7 +638,11 @@ function buildFacadeWindowFrameGeometry(): BufferGeometry {
     new BoxGeometry(depth, bar, width + bar * 2).translate(0, -height / 2, 0),
     new BoxGeometry(depth, bar, width + bar * 2).translate(0, height / 2, 0),
     new BoxGeometry(depth, height, bar * 0.65),
-    new BoxGeometry(depth * 1.35, bar, width + 0.18).translate(depth * 0.14, -height / 2 - bar * 0.8, 0),
+    new BoxGeometry(depth * 1.35, bar, width + 0.18).translate(
+      depth * 0.14,
+      -height / 2 - bar * 0.8,
+      0,
+    ),
   ];
   const merged = mergeGeometries(parts, false);
   for (const part of parts) {

@@ -30,11 +30,7 @@ export interface GroundCoverBuildingBlocker {
   readonly halfDepth: number;
 }
 
-function insideBuilding(
-  x: number,
-  z: number,
-  building: GroundCoverBuildingBlocker,
-): boolean {
+function insideBuilding(x: number, z: number, building: GroundCoverBuildingBlocker): boolean {
   const dx = x - building.x;
   const dz = z - building.z;
   const cos = Math.cos(building.yaw);

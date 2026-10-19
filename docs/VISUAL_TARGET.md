@@ -118,22 +118,22 @@ does not start the hero-car, weather, or broader Phase 8 work.
 Tiers are **explicit contracts**, not "auto magic". The tier system must be visible in the HUD/debug overlay and
 recorded in every performance claim.
 
-| System                      | Tier C: mobile/low                                     | Tier B: desktop balanced                                        | Tier A: desktop high                                            |
-| --------------------------- | ------------------------------------------------------ | --------------------------------------------------------------- | --------------------------------------------------------------- |
-| Renderer path               | WebGL2 backend                                         | WebGPU (WebGL2 fallback)                                        | WebGPU                                                          |
-| Resolution                  | DPR ≤ 1.0, no dynamic scale                            | DPR ≤ 1.5, dynamic scale 0.67–1.0                               | DPR ≤ 2.0 with resolution cap, dynamic scale 0.75–1.0           |
-| Anti-aliasing               | FXAA (SMAA by switch)                                  | TAAU + dynamic resolution                                       | TAAU + dynamic resolution, higher scale floor                   |
-| Shadows                     | 1–2 cascades, 1024                                     | 3 cascades, 2048                                                | 4 cascades, 2048–4096                                           |
-| Ambient occlusion           | Off or baked                                           | GTAO (half res)                                                 | GTAO full res                                                   |
-| Reflections                 | Environment IBL + Aohara local clearcoat               | SSR (half res) + probes (pending)                               | SSR + probes (pending); Aohara wet-look is local PBR            |
-| Terrain layers              | 2                                                      | 3                                                               | 4 + POM                                                         |
-| Vegetation                  | Impostors, ≤ 20k; TSL sway off                         | LOD1–2, ≤ 80k; TSL sway ≤ 0.035 m                               | Full LOD0 near, ≤ 200k; TSL sway ≤ 0.065 m                      |
-| Clouds/atmosphere           | HDRI sky + fog                                         | Sky + layered clouds + fog                                      | Sky + volumetric cloud/light shafts where enabled               |
-| Urban night lights          | Faint local halo + 2-axis starburst, few active lights | Soft halo + restrained 4-axis starburst, capped lights/windows  | Full local halo + subtle 4-axis starburst, source-isolated      |
-| Aohara facade panes/frames + structure details | 2,400 / 512 | 4,800 / 1,024 | 7,200 / 1,600 |
-| Vehicle particles / shutter | ≤ 32 smoke, 6 sparks, 4 airflow marks; no blur         | ≤ 64 smoke, 10 sparks, 10 airflow marks; 0–0.28 high-speed blur | ≤ 88 smoke, 14 sparks, 16 airflow marks; 0–0.36 high-speed blur |
-| Post stack                  | Tone map + grade; no global bloom                      | + GTAO + DOF + TAAU; no global bloom                            | + SSR (pending) + grain; no global bloom                        |
-| Target frame                | 30–60 FPS                                              | 60 FPS                                                          | 60+ FPS where hardware permits                                  |
+| System                                         | Tier C: mobile/low                                     | Tier B: desktop balanced                                        | Tier A: desktop high                                            |
+| ---------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------- | --------------------------------------------------------------- |
+| Renderer path                                  | WebGL2 backend                                         | WebGPU (WebGL2 fallback)                                        | WebGPU                                                          |
+| Resolution                                     | DPR ≤ 1.0, no dynamic scale                            | DPR ≤ 1.5, dynamic scale 0.67–1.0                               | DPR ≤ 2.0 with resolution cap, dynamic scale 0.75–1.0           |
+| Anti-aliasing                                  | FXAA (SMAA by switch)                                  | TAAU + dynamic resolution                                       | TAAU + dynamic resolution, higher scale floor                   |
+| Shadows                                        | 1–2 cascades, 1024                                     | 3 cascades, 2048                                                | 4 cascades, 2048–4096                                           |
+| Ambient occlusion                              | Off or baked                                           | GTAO (half res)                                                 | GTAO full res                                                   |
+| Reflections                                    | Environment IBL + Aohara local clearcoat               | SSR (half res) + probes (pending)                               | SSR + probes (pending); Aohara wet-look is local PBR            |
+| Terrain layers                                 | 2                                                      | 3                                                               | 4 + POM                                                         |
+| Vegetation                                     | Impostors, ≤ 20k; TSL sway off                         | LOD1–2, ≤ 80k; TSL sway ≤ 0.035 m                               | Full LOD0 near, ≤ 200k; TSL sway ≤ 0.065 m                      |
+| Clouds/atmosphere                              | HDRI sky + fog                                         | Sky + layered clouds + fog                                      | Sky + volumetric cloud/light shafts where enabled               |
+| Urban night lights                             | Faint local halo + 2-axis starburst, few active lights | Soft halo + restrained 4-axis starburst, capped lights/windows  | Full local halo + subtle 4-axis starburst, source-isolated      |
+| Aohara facade panes/frames + structure details | 2,400 / 512                                            | 4,800 / 1,024                                                   | 7,200 / 1,600                                                   |
+| Vehicle particles / shutter                    | ≤ 32 smoke, 6 sparks, 4 airflow marks; no blur         | ≤ 64 smoke, 10 sparks, 10 airflow marks; 0–0.28 high-speed blur | ≤ 88 smoke, 14 sparks, 16 airflow marks; 0–0.36 high-speed blur |
+| Post stack                                     | Tone map + grade; no global bloom                      | + GTAO + DOF + TAAU; no global bloom                            | + SSR (pending) + grain; no global bloom                        |
+| Target frame                                   | 30–60 FPS                                              | 60 FPS                                                          | 60+ FPS where hardware permits                                  |
 
 Budgets from `PROJECT_PLAN.md` §8 remain the reference; every tier gate is validated on **named hardware** with
 recorded resolution and settings. The dev sandbox (SwiftShader) may only validate correctness, never frame rate.
