@@ -56,14 +56,14 @@ interface TowerSpec {
 
 /** Compact skyline retained by the standalone night-lighting look-dev block. */
 const LOOKDEV_TOWERS: readonly TowerSpec[] = [
-  { x: -31, z: -56, width: 22, depth: 26, height: 58, color: 0x27333e },
-  { x: -31, z: -25, width: 22, depth: 25, height: 82, color: 0x202b36 },
-  { x: -31, z: 25, width: 23, depth: 27, height: 68, color: 0x30343e },
-  { x: -31, z: 56, width: 24, depth: 27, height: 100, color: 0x202b36 },
-  { x: 31, z: -55, width: 23, depth: 26, height: 74, color: 0x27333e },
-  { x: 31, z: -24, width: 25, depth: 25, height: 96, color: 0x202b36 },
-  { x: 31, z: 25, width: 22, depth: 27, height: 54, color: 0x30343e },
-  { x: 31, z: 56, width: 24, depth: 28, height: 86, color: 0x27333e },
+  { x: -31, z: -57, width: 22, depth: 26, height: 58, color: 0x27333e },
+  { x: -31, z: -30, width: 22, depth: 22, height: 82, color: 0x202b36 },
+  { x: -31, z: 30, width: 23, depth: 22, height: 68, color: 0x30343e },
+  { x: -31, z: 57, width: 24, depth: 27, height: 100, color: 0x202b36 },
+  { x: 31, z: -57, width: 23, depth: 26, height: 74, color: 0x27333e },
+  { x: 31, z: -30, width: 25, depth: 24, height: 96, color: 0x202b36 },
+  { x: 31, z: 30, width: 22, depth: 22, height: 54, color: 0x30343e },
+  { x: 31, z: 57, width: 24, depth: 28, height: 86, color: 0x27333e },
 ];
 
 const SIGNAL_ASPECTS: readonly TrafficSignalAspect[] = ['red', 'amber', 'green'];
@@ -966,9 +966,14 @@ export class UrbanNightWorld implements SceneContent {
     };
   }
 
-  /** High-rise footprints stop the player car through the existing Rapier impulse response path. */
+  /** Static city-building footprints stop the player car through the existing collision response. */
   collide(car: TownCarProbe): TownHit[] {
     return this.#disposed ? [] : collideCarWithStaticBoxes(car, this.#buildingColliders);
+  }
+
+  /** Read-only diagnostic copy used to audit city building clearances against the road graph. */
+  getStaticBuildingFootprints(): readonly StaticBuildingBox[] {
+    return this.#buildingColliders.map((box) => ({ ...box }));
   }
 
   dispose(): void {

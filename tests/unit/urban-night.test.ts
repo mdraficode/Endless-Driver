@@ -16,6 +16,80 @@ import { AOHARA_DISTRICT_CONFIG } from '../../src/config/urban-district';
 import { EnvironmentClock } from '../../src/environment/EnvironmentClock';
 import { UrbanNightWorld } from '../../src/world/urban-night';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
+import type { RoadNetwork } from '../../src/world/road-network';
+import type { StaticBuildingBox } from '../../src/world/static-building-collision';
+
+function footprintSeparation(a: StaticBuildingBox, b: StaticBuildingBox, margin: number): number {
+  const aAxes = [
+    [Math.cos(a.yaw), -Math.sin(a.yaw)],
+    [Math.sin(a.yaw), Math.cos(a.yaw)],
+  ] as const;
+  const bAxes = [
+    [Math.cos(b.yaw), -Math.sin(b.yaw)],
+    [Math.sin(b.yaw), Math.cos(b.yaw)],
+  ] as const;
+  const dx = b.x - a.x;
+  const dz = b.z - a.z;
+  const separations = [...aAxes, ...bAxes].map(([axisX, axisZ]) => {
+    const centerDistance = Math.abs(dx * axisX + dz * axisZ);
+    const aRadius =
+      (a.halfWidth + margin) * Math.abs(aAxes[0]![0] * axisX + aAxes[0]![1] * axisZ) +
+      (a.halfDepth + margin) * Math.abs(aAxes[1]![0] * axisX + aAxes[1]![1] * axisZ);
+    const bRadius =
+      (b.halfWidth + margin) * Math.abs(bAxes[0]![0] * axisX + bAxes[0]![1] * axisZ) +
+      (b.halfDepth + margin) * Math.abs(bAxes[1]![0] * axisX + bAxes[1]![1] * axisZ);
+    return centerDistance - aRadius - bRadius;
+  });
+  return Math.max(...separations);
+}
+
+function expectUrbanRoadClearance(city: UrbanNightWorld, network: RoadNetwork): number {
+  let probeCount = 0;
+  const urbanEdges = network.edges.filter(
+    (edge) => edge.roadClass === 'urban-local' || edge.roadClass === 'urban-arterial',
+  );
+  for (const edge of urbanEdges) {
+    const { points } = edge;
+    for (let index = 0; index < points.length; index += 1) {
+      const point = points[index]!;
+      const previous = points[Math.max(0, index - 1)]!;
+      const next = points[Math.min(points.length - 1, index + 1)]!;
+      const tangentLength = Math.hypot(next.x - previous.x, next.z - previous.z) || 1;
+      const tangentX = (next.x - previous.x) / tangentLength;
+      const tangentZ = (next.z - previous.z) / tangentLength;
+      const sideX = tangentZ;
+      const sideZ = -tangentX;
+      const carYaw = Math.atan2(-tangentX, -tangentZ);
+      const sidewalkOffset =
+        edge.halfWidthMeters + edge.shoulderMeters + URBAN_CITY_CONFIG.sidewalk.widthMeters / 2;
+      const laneEdgeOffset = Math.max(0, edge.halfWidthMeters - 1.5);
+      const offsets = [
+        0,
+        -3.4,
+        3.4,
+        -laneEdgeOffset,
+        laneEdgeOffset,
+        -sidewalkOffset,
+        sidewalkOffset,
+      ];
+      for (const lateralOffset of offsets) {
+        const probe = {
+          x: point.x + sideX * lateralOffset,
+          z: point.z + sideZ * lateralOffset,
+          yaw: carYaw,
+          velocityX: 0,
+          velocityZ: 0,
+        };
+        expect(
+          city.collide(probe),
+          `${edge.id} has a building footprint across the road/sidewalk probe at ${point.alongMeters.toFixed(1)} m`,
+        ).toHaveLength(0);
+        probeCount += 1;
+      }
+    }
+  }
+  return probeCount;
+}
 
 describe('Aohara city night-lighting rules', () => {
   it('fades local city lights across dusk and disables them in daylight', () => {
@@ -230,7 +304,7 @@ describe('Aohara city night-lighting rules', () => {
     expect(city.getContentStats().decorativeLights).toBe(44);
 
     const towerX = position[0] - 31;
-    const towerZ = position[2] - 56;
+    const towerZ = position[2] - 57;
     const hit = city.collide({
       x: towerX,
       z: towerZ + 15,
@@ -257,6 +331,33 @@ describe('Aohara city night-lighting rules', () => {
         velocityZ: -8,
       }),
     ).toHaveLength(0);
+    city.dispose();
+  });
+
+  it('keeps sampled urban road/sidewalk corridors clear of collision footprints and building overlap', () => {
+    const network = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG).roadNetwork;
+    if (network === undefined) {
+      throw new Error('the shared world sampler should expose the road graph');
+    }
+    const city = new UrbanNightWorld('B', {
+      position: [AOHARA_DISTRICT_CONFIG.centerX, 0, AOHARA_DISTRICT_CONFIG.centerZ],
+      roadNetwork: network,
+      networkIntegrated: true,
+    });
+    const footprints = city.getStaticBuildingFootprints();
+    expect(footprints).toHaveLength(55);
+
+    for (let first = 0; first < footprints.length; first += 1) {
+      for (let second = first + 1; second < footprints.length; second += 1) {
+        const separation = footprintSeparation(footprints[first]!, footprints[second]!, 0.75);
+        expect(
+          separation,
+          `building footprints ${first} and ${second} overlap or leave less than the roof-eave margin`,
+        ).toBeGreaterThan(0.05);
+      }
+    }
+
+    expect(expectUrbanRoadClearance(city, network)).toBeGreaterThan(1000);
     city.dispose();
   });
 });
