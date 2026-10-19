@@ -1715,3 +1715,13 @@ The owner requested a full 360° free-look orbit and an automatic return to the 
 **Remote status:** The camera implementation was pushed as `4a4654f`; its GitHub Pages Deploy run [39277758107](https://github.com/mdraficode/Endless-Driver/actions/runs/39277758107) succeeded. The projected-framing tolerance fix was pushed as `dc912926a9aa4b0269860f735bfabfc7bef2da96`; its Validate run [39278018642](https://github.com/mdraficode/Endless-Driver/actions/runs/39278018642) succeeded. A live fetch of the public app returned `assets/index-DRIvfsEo.js`, whose bundle contains `resetOrbit`, confirming the deployed camera code is present (this is not a visual/browser acceptance). README and handoff updates were pushed in docs-only commit `316b38d0e8351e432926749b6e1e4cff113f3ac8`; `git ls-remote origin refs/heads/main` matched this SHA, and `npm run check` passed on it. The docs-only commit's GitHub workflows were still queued at last check; the camera-code Validate and Pages Deploy results above are green.
 
 **Next:** owner-device/browser review should confirm the car stays comfortably framed during a full surroundings sweep and returns to the authored chase view on throttle/reverse. Keep Phase 5 acceptance open; do not infer authorization for Phases 6–8 beyond the user's requested camera behavior.
+
+## 59. Requested vehicle effects and forgiving handling (2026-10-19)
+
+The owner requested exhaust and tire smoke, short gear-change sparks emitted at the exhaust, speed-flow marks, motion blur only at high speed, and a fix for the difficult, easy-to-lose-control driving feel. When asked for a handling target, the owner selected **forgiving arcade**: predictable steering, more stable acceleration/braking, and easier slide recovery.
+
+**Authorized scope:** a narrow implementation in the existing player-car presentation and handling: procedural vehicle-local effects, a speed-gated motion-blur response, and tuning/fixes to the current input/vehicle model. Keep particle counts bounded by tier, preserve mobile budgets, and do not enable global bloom. Use no external/purchased assets or branded car details.
+
+**Scope guard:** this specific request does not constitute Phase 5 acceptance, start the broader Phase 6 hero-car work, or authorize weather/seasons or general Phase 8 polish. Phase gates and all unrelated open acceptance items remain unchanged.
+
+**Baseline:** fresh clone `/tmp/endless-driver-effects-20261019` began clean at remote `main` SHA `400b9618faff0dc7e1c8799d2e516ee59e623660`; `npm ci` succeeded (201 packages, 0 vulnerabilities). The existing vehicle physics and stability suites passed as a baseline (2 files / 26 tests). Implementation, full-check results, commits, remote workflows, and manual-review gaps are pending.
