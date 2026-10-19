@@ -780,7 +780,7 @@ settings, camera gestures/polish, and the final quality pass.
 - Streaming and object/agent budgets remain bounded; named-device performance and real-device mobile checks are recorded before claims of acceptance.
 - The `?scene=city` orbit preview can judge the lighting slice only. Driveability must be checked in the main driving world; neither the preview nor automated checks establish owner-device visual acceptance, performance, or completion of Phase 9.
 
-**Progress (2026-10-19, grid expansion and default city start):** Aohara now has a 310 m rural access connector, a 5×5 640 m classed grid (40 urban edges), 16 city blocks, 32 instanced high-rises, graph-aligned sidewalks and crossings at all 25 intersections, and 160 instanced streetlamp poles with C/B/A-capped point lights/windows. The 500 m-radius levelled core blends back to seeded terrain by 620 m; all roads, sidewalks and heightfield collision share the existing prepare-ahead sampler. Aohara Central Avenue is the default start; explicit rural starts and `?spawn=random` remain available. `npm run check` passed locally: 51 test files / 463 tests, asset verification (17 assets / 39,714,769 bytes) and production build, plus formatting, lint, GLSL and TypeScript checks. GitHub CI and remote-SHA verification are pending. No manual drive, owner-device visual review or performance measurement was performed; automated checks do not establish any of those. Further urban districts, AI agents, expressway access, tunnels, bridges/flyovers and device evidence remain incomplete.
+**Progress (2026-10-19, grid expansion and default city start):** Aohara now has a 310 m rural access connector, a 5×5 640 m classed grid (40 urban edges), 16 city blocks, 32 instanced high-rises, graph-aligned sidewalks and crossings at all 25 intersections, and 160 instanced streetlamp poles with C/B/A-capped point lights/windows. The 500 m-radius levelled core blends back to seeded terrain by 620 m; all roads, sidewalks and heightfield collision share the existing prepare-ahead sampler. Aohara Central Avenue is the default start; explicit rural starts and `?spawn=random` remain available. `npm run check` passed locally: 51 test files / 463 tests, asset verification (17 assets / 39,714,769 bytes) and production build, plus formatting, lint, GLSL and TypeScript checks. Remote `main` matches the pushed commit; GitHub Validate and Pages Deploy succeeded. The default page, night-start URL and main bundle returned HTTP 200 with expected Aohara markers. No manual drive, owner-device visual review or performance measurement was performed; automated checks do not establish any of those. Further urban districts, AI agents, expressway access, tunnels, bridges/flyovers and device evidence remain incomplete.
 
 **Stop:** Do not start work outside this authorized Phase 9 scope; after Phase 9 completion, wait for new owner authorization.
 
@@ -810,21 +810,21 @@ CI verifies the checks actually present. A green scaffold CI does not certify ve
 
 ### Execution status
 
-| Milestone                                                   | State                                                                                                       |
-| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Initial planning/scaffold                                   | Complete and saved to the canonical public repository                                                       |
-| Initial GitHub push                                         | Verified on `main`; first CI run passed                                                                     |
-| Phase 1                                                     | Complete (ADR 0002), pushed as `fbb48a4`, CI green                                                          |
-| Phase 2                                                     | Complete (ADR 0003), pushed as `b85c8ba` + `307efaa`, CI green, evidence bundle archived                    |
-| Visual-fidelity research and re-plan                        | Complete 2026-10-14: `docs/RESEARCH_AAA_FIDELITY.md`, `docs/VISUAL_TARGET.md`, ADR 0004, this plan revision |
-| Free-and-open sourcing, region, brand, audio, photo mode    | Resolved 2026-10-14: `docs/ASSET_SOURCES.md`, `CREDITS.md`, ADR 0005, region brief (§6/§9 references)       |
-| Phase 3 — renderer, lighting, post, asset/material pipeline | Code complete; named-hardware frame-budget validation remains open                                          |
-| Phase 4 — terrain, roads, streaming                         | Built scope delivered 2026-10-15; bridges/tunnels deferred                                                  |
-| Phase 5 — vegetation, props, atmosphere                     | **Authorized 2026-10-18; in progress; owner-device visual acceptance open**                                 |
-| Phase 6 — hero car, materials, vehicle fidelity             | **Authorized 2026-10-18; after Phase 5 acceptance**                                                         |
-| Phase 7 — weather, seasons, surface behaviour               | Gated — requires explicit owner instruction                                                                 |
-| Phase 8 — mobile, HUD, cameras, settings, polish            | Gated — requires explicit owner instruction                                                                 |
-| Phase 9 — urban systems / Aohara Metropolis                 | **Authorized 2026-10-19; expanded 5×5 city grid/default start; local checks pass; remote CI pending**       |
+| Milestone                                                   | State                                                                                                                |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Initial planning/scaffold                                   | Complete and saved to the canonical public repository                                                                |
+| Initial GitHub push                                         | Verified on `main`; first CI run passed                                                                              |
+| Phase 1                                                     | Complete (ADR 0002), pushed as `fbb48a4`, CI green                                                                   |
+| Phase 2                                                     | Complete (ADR 0003), pushed as `b85c8ba` + `307efaa`, CI green, evidence bundle archived                             |
+| Visual-fidelity research and re-plan                        | Complete 2026-10-14: `docs/RESEARCH_AAA_FIDELITY.md`, `docs/VISUAL_TARGET.md`, ADR 0004, this plan revision          |
+| Free-and-open sourcing, region, brand, audio, photo mode    | Resolved 2026-10-14: `docs/ASSET_SOURCES.md`, `CREDITS.md`, ADR 0005, region brief (§6/§9 references)                |
+| Phase 3 — renderer, lighting, post, asset/material pipeline | Code complete; named-hardware frame-budget validation remains open                                                   |
+| Phase 4 — terrain, roads, streaming                         | Built scope delivered 2026-10-15; bridges/tunnels deferred                                                           |
+| Phase 5 — vegetation, props, atmosphere                     | **Authorized 2026-10-18; in progress; owner-device visual acceptance open**                                          |
+| Phase 6 — hero car, materials, vehicle fidelity             | **Authorized 2026-10-18; after Phase 5 acceptance**                                                                  |
+| Phase 7 — weather, seasons, surface behaviour               | Gated — requires explicit owner instruction                                                                          |
+| Phase 8 — mobile, HUD, cameras, settings, polish            | Gated — requires explicit owner instruction                                                                          |
+| Phase 9 — urban systems / Aohara Metropolis                 | **Authorized 2026-10-19; 5×5 grid/default start pushed; local checks and GitHub CI/Pages green; visual review open** |
 
 See `docs/SESSION_HANDOFF.md` for the verified original commit, remote CI evidence, authentication limitations, and the next-session procedure.
 
