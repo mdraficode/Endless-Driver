@@ -286,7 +286,7 @@ export const VEHICLE_CONFIG: VehicleConfig = {
     handbrakeForce: 2600,
   },
   stability: {
-    yawResponsePerSecond: 5.6,
+    yawResponsePerSecond: 4.2,
     minSpeedMps: 4,
     airborneGravityScale: 0.6,
   },
