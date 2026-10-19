@@ -443,13 +443,10 @@ export class Car {
       dotVec3(linearVelocity, scratch.right),
       Math.max(Math.abs(dotVec3(linearVelocity, scratch.forward)), 1),
     );
-    // Relief is for catching slides, not feeding them: extra authority is only
-    // granted when the driver is steering against the slide (counter-steering).
-    // Granting it while steering into the slide was a positive-feedback loop that
-    // turned small yaw kicks into spins under noisy thumb/keyboard input.
-    // `chassisSlip` is positive for rightward velocity and `actions.steer` is positive for right;
-    // opposite signs are therefore the driver's countersteer, not input into the slide.
-    const counterSteering = chassisSlip * actions.steer < 0;
+    // Relief is for catching a slide, not feeding it. Positive chassis slip means the velocity is
+    // to the body's right; steering right points the front tires into that travel direction and
+    // helps catch the oversteer. Both signals therefore share a sign for countersteering here.
+    const counterSteering = chassisSlip * actions.steer > 0;
     const slipRelief = counterSteering ? Math.abs(chassisSlip) * steering.slipReliefFactor : 0;
     const maxSteerAngle = clamp(budgetAngle + slipRelief, steering.minAngle, steering.maxAngle);
     // Sign convention: `actions.steer` is +1 for right, while the physical steering angle is

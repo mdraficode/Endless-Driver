@@ -152,7 +152,7 @@ describe('vehicle physics (headless Rapier)', () => {
     expect(heading(rig)).toBeGreaterThan(turnRight + 0.1);
   });
 
-  it('gives extra steering authority to countersteer, not to steer deeper into a slide', () => {
+  it('gives extra steering authority when the front tires need to catch a lateral slide', () => {
     const makeAuthority = (steer: number): number => {
       const rig = createRig();
       drive(rig, 1.5, NEUTRAL_ACTIONS);
@@ -165,10 +165,11 @@ describe('vehicle physics (headless Rapier)', () => {
       return authority;
     };
 
-    // +X velocity is a slide to the right. Negative steering is opposite lock; positive steers into it.
-    const counterSteering = makeAuthority(-0.5);
-    const steeringIntoTheSlide = makeAuthority(0.5);
-    expect(counterSteering).toBeGreaterThan(steeringIntoTheSlide + 0.05);
+    // +X chassis slip needs right steering: align the front tires with the travel vector to catch
+    // oversteer. This is the correct sign for the project's +X-right / +1-right convention.
+    const catchSlide = makeAuthority(0.5);
+    const steerAwayFromTravel = makeAuthority(-0.5);
+    expect(catchSlide).toBeGreaterThan(steerAwayFromTravel + 0.05);
   });
 
   it('holds a planted line through a moderate corner', () => {
