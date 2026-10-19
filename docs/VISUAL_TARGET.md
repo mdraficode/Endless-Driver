@@ -229,12 +229,16 @@ country-sized sprawl, everything visible from the road. One volcano silhouette (
 of the map and is the visual anchor at golden hour.
 
 **Additional owner decision (2026-10-19):** add the fictional **Aohara Metropolis** as a distinct, high-density Japanese
-city district; do not replace or urbanize any rural Hinode district. The Aohara driving-world slice now uses a 5×5,
-640 m classed grid with 16 building blocks, instanced high-rises, sidewalks, crossings and streetlamp placements from
-the shared road graph. Aohara Central Avenue is now the default game start; rural starts remain explicitly selectable.
-`?scene=city` remains an orbit-only lighting preview. Automated checks cover the road/sidewalk/crossing composition, but
-no manual browser drive, owner-device visual/performance review, or acceptance has been recorded for this increment.
-This bounded prototype is not represented as a completed megacity or verified driving experience.
+city district; do not replace or urbanize any rural Hinode district. The Aohara driving-world slice uses a 5×5,
+640 m classed grid with 16 blocks, 32 instanced high-rises, 22 lower-rise shells (shops, casinos, mansions, townhouses
+and detached houses), an open-bowl stadium, abstract unbadged billboards, street banners and graph-aligned sidewalks,
+crossings and lighting. Streetlamp spacing is 40 m (240 instanced poles at the current graph); active unshadowed
+pointlights are capped at 6/8/12 total across C/B/A, split between street and architectural sources. Localized glow is
+source-bound; whole-frame bloom remains off. Aohara Central Avenue is the default game start; rural starts remain
+explicitly selectable. `?scene=city` remains an orbit-only lighting preview. Automated checks cover budgets, counts,
+collision and streaming selection, but no manual browser drive, owner-device visual/performance review, or acceptance
+has been recorded for this increment. This bounded prototype is not represented as a completed megacity or verified
+driving experience.
 
 | District                            | Road character                                                                          | What it is for                                                                             | Primary seasonal payoff                             |
 | ----------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------- |
@@ -250,7 +254,7 @@ This bounded prototype is not represented as a completed megacity or verified dr
 | **Hokuto Highlands** (北斗高原)     | Open plateau sweepers, susuki grass, volcanic ash                                       | Big sky, wind, dirt pull-offs, rally-ish routes                                            | Silver grass, frost, deep snow                      |
 | **Ginzan Onsen** (銀山温泉)         | Snow-country village lanes, steep approach road                                         | Winter hub: lanterns, steam, wooden buildings                                              | Heavy snow, ice, night glow                         |
 
-**Aohara wet-night scope (owner follow-up, 2026-10-19):** A static, city-only wet-look clearcoat may respond more strongly at night and reflect the existing HDRI/local streetlights. This is visual PBR only—not SSR, rain, puddles, weather/seasons or traction. Full wet-surface behaviour remains gated to Phase 7.
+**Aohara night-brightening scope (owner follow-up, 2026-10-19):** Add road-facing streetlamp pools plus locally budgeted storefront, venue, billboard and entry-lantern light; add varied fictional building types and decorative banners. Preserve lane/readability first, use instanced citywide decor and nearest-focus unshadowed point lights, and do not use global bloom. Separately, the earlier Aohara-only wet-look clearcoat may respond more strongly at night and reflect the existing HDRI/local lights. These remain static visual/PBR treatments—not SSR, rain, puddles, weather/seasons or traction. Full wet-surface behaviour remains gated to Phase 7.
 
 **Events layer (presentation, not gameplay scope):** seasonal set-dressing that turns the same roads into different
 places — _Hanami_ (spring blossom), _Matsuri_ (summer festival: lantern strings, yukata props, fireworks over the

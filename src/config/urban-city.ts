@@ -26,7 +26,7 @@ export const URBAN_CITY_CONFIG = {
     /** Legacy look-dev block placements; driving-world lamps follow every Aohara road edge. */
     spacingPositionsZ: [-48, -16, 20, 54] as const,
     /** Lamp posts sit in the city sidewalks, repeated along the urban road graph. */
-    spacingMeters: 64,
+    spacingMeters: 40,
     sidewalkWidthMeters: 3.2,
     sideXMeters: 13.5,
     heightMeters: 7.4,
@@ -77,7 +77,12 @@ export const URBAN_CITY_CONFIG = {
 } as const;
 
 export interface UrbanNightTierBudget {
+  /** Total active, unshadowed point lights from streets and local architecture. */
   readonly pointLights: number;
+  /** The street-side share of `pointLights`, selected around the driving focus. */
+  readonly streetPointLights: number;
+  /** The building, billboard, venue and decorative share of `pointLights`. */
+  readonly architecturalPointLights: number;
   readonly litWindowInstances: number;
   /** Cardinal (horizontal/vertical) Gaussian streak weight. */
   readonly cardinalStarburst: number;
@@ -86,25 +91,32 @@ export interface UrbanNightTierBudget {
 }
 
 /**
- * A small, explicit first-slice budget. These are counts/optical weights, not claims of measured FPS.
- * Tier C keeps a faint cross-shaped diffraction cue; higher tiers add the diagonal rays and more lights.
+ * Explicit active-light/window caps, not claims of measured FPS. City-wide pole and emitter meshes
+ * are instanced; only this small tier-capped subset casts local illumination. Tier C retains the faint
+ * cross-shaped diffraction cue, while higher tiers add diagonal rays and architectural light pools.
  */
 export const URBAN_NIGHT_TIER_BUDGET: Readonly<Record<TierId, UrbanNightTierBudget>> = {
   C: {
-    pointLights: 4,
-    litWindowInstances: 120,
+    pointLights: 6,
+    streetPointLights: 4,
+    architecturalPointLights: 2,
+    litWindowInstances: 160,
     cardinalStarburst: 0.035,
     diagonalStarburst: 0,
   },
   B: {
-    pointLights: 6,
-    litWindowInstances: 240,
+    pointLights: 8,
+    streetPointLights: 6,
+    architecturalPointLights: 2,
+    litWindowInstances: 320,
     cardinalStarburst: 0.05,
     diagonalStarburst: 0.018,
   },
   A: {
-    pointLights: 8,
-    litWindowInstances: 384,
+    pointLights: 12,
+    streetPointLights: 8,
+    architecturalPointLights: 4,
+    litWindowInstances: 512,
     cardinalStarburst: 0.06,
     diagonalStarburst: 0.026,
   },

@@ -74,6 +74,13 @@ describe('Aohara city night-lighting rules', () => {
     const high = URBAN_NIGHT_TIER_BUDGET.A;
     expect(low.pointLights).toBeLessThan(balanced.pointLights);
     expect(balanced.pointLights).toBeLessThan(high.pointLights);
+    for (const tier of [low, balanced, high]) {
+      expect(tier.streetPointLights + tier.architecturalPointLights).toBe(tier.pointLights);
+    }
+    expect(low.streetPointLights).toBeLessThan(balanced.streetPointLights);
+    expect(balanced.streetPointLights).toBeLessThan(high.streetPointLights);
+    expect(low.architecturalPointLights).toBeLessThanOrEqual(balanced.architecturalPointLights);
+    expect(balanced.architecturalPointLights).toBeLessThan(high.architecturalPointLights);
     expect(low.litWindowInstances).toBeLessThan(balanced.litWindowInstances);
     expect(balanced.litWindowInstances).toBeLessThan(high.litWindowInstances);
     expect(low.cardinalStarburst).toBeGreaterThan(0);
@@ -99,11 +106,35 @@ describe('Aohara city night-lighting rules', () => {
     expect(asphalt.clearcoatRoughnessNode).not.toBeNull();
     expect(cityC.kind).toBe('aohara-city-night');
     expect(lowStats.highRiseBuildings).toBe(8);
-    expect(lowStats.streetLightPointLights).toBe(URBAN_NIGHT_TIER_BUDGET.C.pointLights);
+    expect(lowStats.streetLightPointLights).toBe(URBAN_NIGHT_TIER_BUDGET.C.streetPointLights);
+    expect(lowStats.architecturalPointLights).toBe(
+      URBAN_NIGHT_TIER_BUDGET.C.architecturalPointLights,
+    );
+    expect(lowStats.activePointLights).toBe(URBAN_NIGHT_TIER_BUDGET.C.pointLights);
+    const cityLights = cityC.root.children.filter(
+      (child): child is PointLight => child instanceof PointLight,
+    );
+    expect(cityLights).toHaveLength(URBAN_NIGHT_TIER_BUDGET.C.pointLights);
+    expect(cityLights.every((light) => !light.castShadow)).toBe(true);
+    expect(lowStats.stadiums).toBe(1);
+    expect(lowStats.casinos).toBe(1);
+    expect(lowStats.mansions).toBe(1);
+    expect(lowStats.houses).toBe(1);
+    expect(lowStats.townhouses).toBe(1);
+    expect(lowStats.shops).toBe(1);
+    expect(lowStats.billboards).toBeGreaterThan(0);
+    expect(lowStats.districtBanners).toBeGreaterThan(0);
+    expect(cityC.root.getObjectByName('aohara-stadium-open-bowl-shell')).toBeDefined();
+    expect(cityC.root.getObjectByName('aohara-abstract-billboards-0')).toBeDefined();
+    expect(cityC.root.getObjectByName('aohara-street-banner-panels-0')).toBeDefined();
     expect(lowStats.illuminatedWindows).toBeLessThanOrEqual(
       URBAN_NIGHT_TIER_BUDGET.C.litWindowInstances,
     );
-    expect(highStats.streetLightPointLights).toBe(URBAN_NIGHT_TIER_BUDGET.A.pointLights);
+    expect(highStats.streetLightPointLights).toBe(URBAN_NIGHT_TIER_BUDGET.A.streetPointLights);
+    expect(highStats.architecturalPointLights).toBe(
+      URBAN_NIGHT_TIER_BUDGET.A.architecturalPointLights,
+    );
+    expect(highStats.activePointLights).toBe(URBAN_NIGHT_TIER_BUDGET.A.pointLights);
     expect(highStats.illuminatedWindows ?? 0).toBeGreaterThanOrEqual(
       lowStats.illuminatedWindows ?? 0,
     );
@@ -134,6 +165,20 @@ describe('Aohara city night-lighting rules', () => {
       throw new Error('tier C should create its first active point light');
     }
     const initialPosition = pointLight.position.toArray();
+    expect(city.getContentStats().streetLightPointLights).toBe(
+      URBAN_NIGHT_TIER_BUDGET.C.streetPointLights,
+    );
+    expect(city.getContentStats().architecturalPointLights).toBe(
+      URBAN_NIGHT_TIER_BUDGET.C.architecturalPointLights,
+    );
+    const architecturalLight = city.root.children.find(
+      (child): child is PointLight =>
+        child instanceof PointLight && child.name.includes('architecture-'),
+    );
+    if (architecturalLight === undefined) {
+      throw new Error('tier C should create architectural point lights');
+    }
+    const initialArchitecturalPosition = architecturalLight.position.toArray();
 
     city.updateStreaming({
       x: AOHARA_DISTRICT_CONFIG.centerX + 250,
@@ -141,28 +186,48 @@ describe('Aohara city night-lighting rules', () => {
       z: AOHARA_DISTRICT_CONFIG.centerZ + 250,
     });
     expect(pointLight.position.toArray()).not.toEqual(initialPosition);
+    expect(architecturalLight.position.toArray()).not.toEqual(initialArchitecturalPosition);
     expect(city.getContentStats().streetLightFocusGain).toBe(1);
-    expect(city.getContentStats().streetLightPointLights).toBe(4);
-
     city.updateStreaming({
       x: AOHARA_DISTRICT_CONFIG.centerX + 700,
       y: 0,
       z: AOHARA_DISTRICT_CONFIG.centerZ,
     });
     expect(city.getContentStats().streetLightFocusGain).toBe(0);
+    expect(city.getContentStats().architecturalLightFocusGain).toBe(0);
     expect(pointLight.intensity).toBe(0);
+    expect(architecturalLight.intensity).toBe(0);
     expect(city.root.getObjectByName('aohara-streetlight-gaussian-flare-1')?.visible).toBe(false);
     city.dispose();
   });
 
   it('mounts at the shared Aohara junction and blocks the high-rise footprint', () => {
     const position = [AOHARA_DISTRICT_CONFIG.centerX, 12, AOHARA_DISTRICT_CONFIG.centerZ] as const;
-    const city = new UrbanNightWorld('B', { position, networkIntegrated: true });
+    const roadNetwork = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG).roadNetwork;
+    if (roadNetwork === undefined) {
+      throw new Error('the shared world sampler should expose the road graph');
+    }
+    const city = new UrbanNightWorld('B', { position, roadNetwork, networkIntegrated: true });
     expect(city.root.position.toArray()).toEqual([...position]);
     expect(city.root.getObjectByName('aohara-main-avenue')).toBeUndefined();
     expect(city.root.getObjectByName('aohara-signalized-cross-street')).toBeUndefined();
     expect(city.root.getObjectByName('aohara-ground-deck')).toBeUndefined();
-    expect(city.getContentStats()).toMatchObject({ cityBlocks: 16, highRiseBuildings: 32 });
+    expect(city.getContentStats()).toMatchObject({
+      cityBlocks: 16,
+      highRiseBuildings: 32,
+      stadiums: 1,
+      casinos: 2,
+      mansions: 4,
+      houses: 4,
+      townhouses: 8,
+      shops: 4,
+      billboards: 18,
+      activePointLights: URBAN_NIGHT_TIER_BUDGET.B.pointLights,
+    });
+    expect(URBAN_CITY_CONFIG.streetLamp.spacingMeters).toBe(40);
+    expect(city.getContentStats().streetLightPoles).toBe(240);
+    expect(city.getContentStats().districtBanners).toBe(48);
+    expect(city.getContentStats().decorativeLights).toBe(44);
 
     const towerX = position[0] - 31;
     const towerZ = position[2] - 56;
@@ -175,6 +240,14 @@ describe('Aohara city night-lighting rules', () => {
     });
     expect(hit[0]?.solid).toBe(true);
     expect(hit[0]?.absorbedSpeed).toBeCloseTo(8, 0);
+    const houseHit = city.collide({
+      x: position[0] + 345,
+      z: position[2] + 352,
+      yaw: 0,
+      velocityX: 0,
+      velocityZ: -5,
+    });
+    expect(houseHit[0]?.solid).toBe(true);
     expect(
       city.collide({
         x: position[0],
