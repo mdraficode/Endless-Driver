@@ -118,7 +118,7 @@ docs/             architecture, decisions, handoff, asset/Git policies
 | Stage                                                          | Status                                                                                                                 |
 | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | Planning and project structure                                 | Complete and pushed to the public repository                                                                           |
-| Current verification                                           | `npm run check` passed at `27e65ef` (54 files / 482 tests); Validate #142 and Pages #132 green; visual acceptance open |
+| Current verification                                           | `npm run check` passed at `e24d022` (54 files / 482 tests); Validate #144 and Pages #134 green; visual acceptance open |
 | Phase 1: engine, loop, camera, lighting                        | Implemented, verified, and pushed                                                                                      |
 | Phase 2: vehicle physics, input, camera                        | Implemented and verified (unit, physics, integration, and browser gates)                                               |
 | Visual-fidelity research and re-plan                           | Complete 2026-10-14 (`docs/RESEARCH_AAA_FIDELITY.md`, `docs/VISUAL_TARGET.md`, ADR 0004)                               |
