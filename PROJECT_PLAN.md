@@ -835,11 +835,11 @@ CI verifies the checks actually present. A green scaffold CI does not certify ve
 | Free-and-open sourcing, region, brand, audio, photo mode    | Resolved 2026-10-14: `docs/ASSET_SOURCES.md`, `CREDITS.md`, ADR 0005, region brief (§6/§9 references)                  |
 | Phase 3 — renderer, lighting, post, asset/material pipeline | Code complete; named-hardware frame-budget validation remains open                                                     |
 | Phase 4 — terrain, roads, streaming                         | Built scope delivered 2026-10-15; bridges/tunnels deferred                                                             |
-| Phase 5 — vegetation, props, atmosphere                     | **Authorized 2026-10-18; initial ground-cover increment checked; density/LOD and owner-device visual acceptance open** |
+| Phase 5 — vegetation, props, atmosphere                     | **Authorized 2026-10-18; initial ground-cover increment checked and deployed; density/LOD and owner-device visual acceptance open** |
 | Phase 6 — hero car, materials, vehicle fidelity             | **Authorized 2026-10-18; after Phase 5 acceptance**                                                                    |
 | Phase 7 — weather, seasons, surface behaviour               | Gated — requires explicit owner instruction                                                                            |
 | Phase 8 — mobile, HUD, cameras, settings, polish            | Gated — requires explicit owner instruction                                                                            |
-| Phase 9 — urban systems / Aohara Metropolis                 | **Authorized 2026-10-19; facade-detail increment checked; isolated preview only; visual review open**                  |
+| Phase 9 — urban systems / Aohara Metropolis                 | **Authorized 2026-10-19; facade-detail increment checked/deployed; isolated preview only; visual review open**             |
 
 See `docs/SESSION_HANDOFF.md` for the verified original commit, remote CI evidence, authentication limitations, and the next-session procedure.
 
