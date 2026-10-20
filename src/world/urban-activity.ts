@@ -84,7 +84,10 @@ function wrapDistance(distance: number, routeLength: number): number {
   return ((distance % routeLength) + routeLength) % routeLength;
 }
 
-function createRoute(points: readonly Point2[], stopDistance = Number.POSITIVE_INFINITY): UrbanRoute {
+function createRoute(
+  points: readonly Point2[],
+  stopDistance = Number.POSITIVE_INFINITY,
+): UrbanRoute {
   const segments: RouteSegment[] = [];
   let totalLength = 0;
   for (let index = 0; index < points.length; index += 1) {
@@ -120,10 +123,7 @@ function sampleRoute(route: UrbanRoute, distance: number, pose: RoutePose): void
     if (wrapped > segment.startDistance + segment.length && index < route.segments.length - 1) {
       continue;
     }
-    const along = Math.min(
-      1,
-      Math.max(0, (wrapped - segment.startDistance) / segment.length),
-    );
+    const along = Math.min(1, Math.max(0, (wrapped - segment.startDistance) / segment.length));
     pose.x = segment.startX + segment.dx * along;
     pose.z = segment.startZ + segment.dz * along;
     pose.yaw = segment.yaw;
@@ -173,7 +173,8 @@ function buildTrafficRoutes(): readonly UrbanRoute[] {
 function buildSidewalkRoutes(): readonly UrbanRoute[] {
   const { shoulderMeters, localStreetHalfWidthMeters, arterialHalfWidthMeters } =
     AOHARA_DISTRICT_CONFIG;
-  const localOffset = localStreetHalfWidthMeters + shoulderMeters + URBAN_CITY_CONFIG.sidewalk.widthMeters / 2;
+  const localOffset =
+    localStreetHalfWidthMeters + shoulderMeters + URBAN_CITY_CONFIG.sidewalk.widthMeters / 2;
   const arterialOffset =
     arterialHalfWidthMeters + shoulderMeters + URBAN_CITY_CONFIG.sidewalk.widthMeters / 2;
   const halfGrid = AOHARA_DISTRICT_CONFIG.gridSpacingMeters;
@@ -362,8 +363,14 @@ export class UrbanStreetActivity {
     this.#pedestrians = this.#createPedestrians(budget.pedestrians);
 
     const vehicleBodyMaterial = createActivityMaterial('aohara-traffic-vehicle-paint');
-    const vehicleTrimMaterial = createActivityMaterial('aohara-traffic-vehicle-glass-and-tyres', 0.94);
-    const pedestrianBodyMaterial = createActivityMaterial('aohara-sidewalk-pedestrian-clothing', 0.91);
+    const vehicleTrimMaterial = createActivityMaterial(
+      'aohara-traffic-vehicle-glass-and-tyres',
+      0.94,
+    );
+    const pedestrianBodyMaterial = createActivityMaterial(
+      'aohara-sidewalk-pedestrian-clothing',
+      0.91,
+    );
     const pedestrianHeadMaterial = createActivityMaterial('aohara-sidewalk-pedestrian-skin', 0.9);
     this.#materials.push(
       vehicleBodyMaterial,
@@ -413,7 +420,11 @@ export class UrbanStreetActivity {
         new Color(SKIN_COLORS[pedestrian.index % SKIN_COLORS.length]!),
       );
     }
-    for (const mesh of [this.#vehicleBodyMesh, this.#pedestrianBodyMesh, this.#pedestrianHeadMesh]) {
+    for (const mesh of [
+      this.#vehicleBodyMesh,
+      this.#pedestrianBodyMesh,
+      this.#pedestrianHeadMesh,
+    ]) {
       if (mesh.instanceColor !== null) {
         mesh.instanceColor.needsUpdate = true;
       }
@@ -565,11 +576,7 @@ export class UrbanStreetActivity {
       const route = this.#sidewalkRoutes[pedestrian.routeIndex]!;
       sampleRoute(route, pedestrian.distance, this.#pose);
       const bob = Math.abs(Math.sin(pedestrian.phase)) * 0.025;
-      this.#transform.position.set(
-        this.#pose.x,
-        ROAD_Y + SIDEWALK_LIFT + bob,
-        this.#pose.z,
-      );
+      this.#transform.position.set(this.#pose.x, ROAD_Y + SIDEWALK_LIFT + bob, this.#pose.z);
       this.#transform.rotation.set(0, this.#pose.yaw, 0);
       this.#transform.scale.set(1, 1, 1);
       this.#transform.updateMatrix();

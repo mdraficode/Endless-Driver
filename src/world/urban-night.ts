@@ -353,7 +353,9 @@ function buildAoharaInfillBuildingSpecs(count: number): readonly CityBuildingSpe
     });
   });
   candidates.sort((first, second) => first.rank - second.rank);
-  return candidates.slice(0, Math.max(0, Math.min(count, candidates.length))).map(({ building }) => building);
+  return candidates
+    .slice(0, Math.max(0, Math.min(count, candidates.length)))
+    .map(({ building }) => building);
 }
 
 function createBasicMaterial(color: number, name: string): MeshBasicNodeMaterial {

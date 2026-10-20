@@ -154,9 +154,9 @@ describe('Aohara city night-lighting rules', () => {
       queued = advanceTrafficWithSignal(queued, 100, 50, 5, 'red');
     }
     expect(queued).toBeLessThan(50);
-    expect(
-      advanceTrafficWithSignal(40, 100, 50, 5, 'red', 1),
-    ).toBeLessThan(advanceTrafficWithSignal(40, 100, 50, 5, 'red'));
+    expect(advanceTrafficWithSignal(40, 100, 50, 5, 'red', 1)).toBeLessThan(
+      advanceTrafficWithSignal(40, 100, 50, 5, 'red'),
+    );
 
     expect(advanceTrafficWithSignal(20, 100, 50, 5, 'amber')).toBeLessThan(50);
     expect(advanceTrafficWithSignal(40, 100, 50, 5, 'amber')).toBe(45);
@@ -170,12 +170,8 @@ describe('Aohara city night-lighting rules', () => {
       pedestrians: 12,
     });
     for (const key of ['infillBuildings', 'trafficVehicles', 'pedestrians'] as const) {
-      expect(URBAN_ACTIVITY_TIER_BUDGET.C[key]).toBeLessThan(
-        URBAN_ACTIVITY_TIER_BUDGET.B[key],
-      );
-      expect(URBAN_ACTIVITY_TIER_BUDGET.B[key]).toBeLessThan(
-        URBAN_ACTIVITY_TIER_BUDGET.A[key],
-      );
+      expect(URBAN_ACTIVITY_TIER_BUDGET.C[key]).toBeLessThan(URBAN_ACTIVITY_TIER_BUDGET.B[key]);
+      expect(URBAN_ACTIVITY_TIER_BUDGET.B[key]).toBeLessThan(URBAN_ACTIVITY_TIER_BUDGET.A[key]);
     }
     expect(URBAN_CITY_CONFIG.trafficSignal.stopLineOffsetMeters).toBe(19);
   });

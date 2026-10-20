@@ -115,21 +115,21 @@ docs/             architecture, decisions, handoff, asset/Git policies
 
 ## Execution status
 
-| Stage                                                          | Status                                                                                                                 |
-| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Planning and project structure                                 | Complete and pushed to the public repository                                                                           |
+| Stage                                                          | Status                                                                                                                                                                           |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Planning and project structure                                 | Complete and pushed to the public repository                                                                                                                                     |
 | Current verification                                           | FPS check passed locally at `7f33b23` (55 files / 486 tests; 17 assets / 39,714,769 bytes); Validate #147 / Pages #137 green; city-density check pending; visual acceptance open |
-| Phase 1: engine, loop, camera, lighting                        | Implemented, verified, and pushed                                                                                      |
-| Phase 2: vehicle physics, input, camera                        | Implemented and verified (unit, physics, integration, and browser gates)                                               |
-| Visual-fidelity research and re-plan                           | Complete 2026-10-14 (`docs/RESEARCH_AAA_FIDELITY.md`, `docs/VISUAL_TARGET.md`, ADR 0004)                               |
-| Sourcing, region, brand, audio decisions                       | Complete 2026-10-14 (`docs/ASSET_SOURCES.md`, ADR 0005): free-and-open only, rural-Japan region, fictional brand       |
-| Phase 3: renderer, lighting, post, asset and material pipeline | Code-complete; named-hardware frame-budget validation remains open                                                     |
-| Phase 4: terrain, roads, streaming                             | Built scope delivered 2026-10-15; bridges/tunnels deferred                                                             |
-| Phase 5: vegetation, props, atmosphere                         | **Authorized 2026-10-18; ground-cover/detail increment checked and deployed; density/LOD and visual acceptance open**  |
-| Phase 6: hero car, materials, vehicle fidelity                 | **Authorized 2026-10-18; sequenced after Phase 5 acceptance**                                                          |
-| Phase 7: weather, seasons, surface behaviour                   | Gated — requires explicit owner instruction                                                                            |
-| Phase 8: final mobile/HUD/camera/polish pass                   | Gated — requires explicit owner instruction                                                                            |
-| Phase 9: Aohara Metropolis urban systems                       | **Authorized 2026-10-19; facade detail checked/deployed; bounded infill/traffic/pedestrian increment implemented, check pending; visual acceptance open** |
+| Phase 1: engine, loop, camera, lighting                        | Implemented, verified, and pushed                                                                                                                                                |
+| Phase 2: vehicle physics, input, camera                        | Implemented and verified (unit, physics, integration, and browser gates)                                                                                                         |
+| Visual-fidelity research and re-plan                           | Complete 2026-10-14 (`docs/RESEARCH_AAA_FIDELITY.md`, `docs/VISUAL_TARGET.md`, ADR 0004)                                                                                         |
+| Sourcing, region, brand, audio decisions                       | Complete 2026-10-14 (`docs/ASSET_SOURCES.md`, ADR 0005): free-and-open only, rural-Japan region, fictional brand                                                                 |
+| Phase 3: renderer, lighting, post, asset and material pipeline | Code-complete; named-hardware frame-budget validation remains open                                                                                                               |
+| Phase 4: terrain, roads, streaming                             | Built scope delivered 2026-10-15; bridges/tunnels deferred                                                                                                                       |
+| Phase 5: vegetation, props, atmosphere                         | **Authorized 2026-10-18; ground-cover/detail increment checked and deployed; density/LOD and visual acceptance open**                                                            |
+| Phase 6: hero car, materials, vehicle fidelity                 | **Authorized 2026-10-18; sequenced after Phase 5 acceptance**                                                                                                                    |
+| Phase 7: weather, seasons, surface behaviour                   | Gated — requires explicit owner instruction                                                                                                                                      |
+| Phase 8: final mobile/HUD/camera/polish pass                   | Gated — requires explicit owner instruction                                                                                                                                      |
+| Phase 9: Aohara Metropolis urban systems                       | **Authorized 2026-10-19; facade detail checked/deployed; bounded infill/traffic/pedestrian increment implemented, check pending; visual acceptance open**                        |
 
 Verification detail — including how browser checks were performed, the device/tooling used, and what remains unverified — is recorded in [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md). Green checks do **not** prove realistic vehicle physics, device support, or a 60 FPS guarantee on a given machine.
 
