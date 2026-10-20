@@ -1,4 +1,4 @@
-import { Mesh, PointLight } from 'three';
+import { InstancedMesh, Matrix4, Mesh, PointLight } from 'three';
 import { MeshPhysicalNodeMaterial } from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 
@@ -7,6 +7,7 @@ import {
   resolveUrbanNightGain,
   resolveUrbanStreetLightCoverage,
   resolveUrbanWetness,
+  URBAN_ACTIVITY_TIER_BUDGET,
   URBAN_CITY_CONFIG,
   URBAN_NIGHT_TIER_BUDGET,
 } from '../../src/config/urban-city';
@@ -15,6 +16,7 @@ import { TERRAIN_CONFIG } from '../../src/config/terrain';
 import { AOHARA_DISTRICT_CONFIG } from '../../src/config/urban-district';
 import { EnvironmentClock } from '../../src/environment/EnvironmentClock';
 import { UrbanNightWorld } from '../../src/world/urban-night';
+import { advanceTrafficWithSignal } from '../../src/world/urban-activity';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
 import type { RoadNetwork } from '../../src/world/road-network';
 import type { StaticBuildingBox } from '../../src/world/static-building-collision';
@@ -142,6 +144,42 @@ describe('Aohara city night-lighting rules', () => {
     }
   });
 
+  it('keeps simulated traffic behind red and late-amber stop lines without crossing the queue slot', () => {
+    const red = advanceTrafficWithSignal(40, 100, 50, 5, 'red');
+    expect(red).toBeCloseTo(40 + (5 * 10) / URBAN_CITY_CONFIG.trafficSignal.brakingDistanceMeters);
+    expect(red).toBeLessThan(50);
+
+    let queued = 40;
+    for (let step = 0; step < 30; step += 1) {
+      queued = advanceTrafficWithSignal(queued, 100, 50, 5, 'red');
+    }
+    expect(queued).toBeLessThan(50);
+    expect(
+      advanceTrafficWithSignal(40, 100, 50, 5, 'red', 1),
+    ).toBeLessThan(advanceTrafficWithSignal(40, 100, 50, 5, 'red'));
+
+    expect(advanceTrafficWithSignal(20, 100, 50, 5, 'amber')).toBeLessThan(50);
+    expect(advanceTrafficWithSignal(40, 100, 50, 5, 'amber')).toBe(45);
+    expect(advanceTrafficWithSignal(40, 100, 50, 5, 'green')).toBe(45);
+  });
+
+  it('keeps city activity caps bounded and increasing across C/B/A tiers', () => {
+    expect(URBAN_ACTIVITY_TIER_BUDGET.C).toEqual({
+      infillBuildings: 6,
+      trafficVehicles: 6,
+      pedestrians: 12,
+    });
+    for (const key of ['infillBuildings', 'trafficVehicles', 'pedestrians'] as const) {
+      expect(URBAN_ACTIVITY_TIER_BUDGET.C[key]).toBeLessThan(
+        URBAN_ACTIVITY_TIER_BUDGET.B[key],
+      );
+      expect(URBAN_ACTIVITY_TIER_BUDGET.B[key]).toBeLessThan(
+        URBAN_ACTIVITY_TIER_BUDGET.A[key],
+      );
+    }
+    expect(URBAN_CITY_CONFIG.trafficSignal.stopLineOffsetMeters).toBe(19);
+  });
+
   it('keeps city lights and diffraction budgets bounded and ordered across C/B/A tiers', () => {
     const low = URBAN_NIGHT_TIER_BUDGET.C;
     const balanced = URBAN_NIGHT_TIER_BUDGET.B;
@@ -184,6 +222,9 @@ describe('Aohara city night-lighting rules', () => {
     expect(asphalt.clearcoatRoughnessNode).not.toBeNull();
     expect(cityC.kind).toBe('aohara-city-night');
     expect(lowStats.highRiseBuildings).toBe(8);
+    expect(lowStats.infillBuildings).toBe(0);
+    expect(lowStats.urbanTrafficVehicles).toBe(0);
+    expect(lowStats.urbanPedestrians).toBe(0);
     expect(lowStats.streetLightPointLights).toBe(URBAN_NIGHT_TIER_BUDGET.C.streetPointLights);
     expect(lowStats.architecturalPointLights).toBe(
       URBAN_NIGHT_TIER_BUDGET.C.architecturalPointLights,
@@ -312,6 +353,10 @@ describe('Aohara city night-lighting rules', () => {
     expect(city.getContentStats()).toMatchObject({
       cityBlocks: 16,
       highRiseBuildings: 32,
+      infillBuildings: URBAN_ACTIVITY_TIER_BUDGET.B.infillBuildings,
+      urbanTrafficVehicles: URBAN_ACTIVITY_TIER_BUDGET.B.trafficVehicles,
+      urbanPedestrians: URBAN_ACTIVITY_TIER_BUDGET.B.pedestrians,
+      urbanActivityBatches: 4,
       stadiums: 1,
       casinos: 2,
       mansions: 4,
@@ -324,7 +369,26 @@ describe('Aohara city night-lighting rules', () => {
     expect(URBAN_CITY_CONFIG.streetLamp.spacingMeters).toBe(40);
     expect(city.getContentStats().streetLightPoles).toBe(240);
     expect(city.getContentStats().districtBanners).toBe(48);
-    expect(city.getContentStats().decorativeLights).toBe(44);
+    expect(city.getContentStats().decorativeLights).toBe(
+      44 + URBAN_ACTIVITY_TIER_BUDGET.B.infillBuildings,
+    );
+
+    const trafficBodies = city.root.getObjectByName('aohara-traffic-vehicle-bodies');
+    const pedestrianBodies = city.root.getObjectByName('aohara-sidewalk-pedestrian-bodies');
+    if (!(trafficBodies instanceof InstancedMesh) || !(pedestrianBodies instanceof InstancedMesh)) {
+      throw new Error('integrated Aohara should batch its bounded traffic and pedestrians');
+    }
+    const vehicleBefore = new Matrix4();
+    const pedestrianBefore = new Matrix4();
+    trafficBodies.getMatrixAt(0, vehicleBefore);
+    pedestrianBodies.getMatrixAt(0, pedestrianBefore);
+    city.update(0.1);
+    const vehicleAfter = new Matrix4();
+    const pedestrianAfter = new Matrix4();
+    trafficBodies.getMatrixAt(0, vehicleAfter);
+    pedestrianBodies.getMatrixAt(0, pedestrianAfter);
+    expect(vehicleAfter.equals(vehicleBefore)).toBe(false);
+    expect(pedestrianAfter.equals(pedestrianBefore)).toBe(false);
 
     const towerX = position[0] - 31;
     const towerZ = position[2] - 57;
@@ -368,7 +432,7 @@ describe('Aohara city night-lighting rules', () => {
       networkIntegrated: true,
     });
     const footprints = city.getStaticBuildingFootprints();
-    expect(footprints).toHaveLength(55);
+    expect(footprints).toHaveLength(55 + URBAN_ACTIVITY_TIER_BUDGET.B.infillBuildings);
 
     for (let first = 0; first < footprints.length; first += 1) {
       for (let second = first + 1; second < footprints.length; second += 1) {

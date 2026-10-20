@@ -1781,4 +1781,17 @@ This is a narrow continuation of the appearance-only review authorized with the 
 - Runtime vegetation chunk generation is limited to C/B/A = 1/2/3 chunks per frame; the initial window remains prepared ahead of play. A diagnostic count exposes the active build cap.
 - Added unit coverage for 60/120 Hz smoothing equivalence, spatial/TAAU scale eligibility, and actual tier-capped runtime chunk generation.
 
-**Validation state at handoff preparation:** the source and tests are in the active clone, but the required post-push full check and GitHub workflows have not yet run. No runtime browser test, device frame-time measurement, owner-device review or FPS-stability claim is established. Phase 5 acceptance remains open; Phase 6 must not start. The next action is to push this increment, run the complete project gate, and record actual results before proceeding to Phase 9 street-density implementation.
+**Validation:** the full local `npm run check` passed at `7f33b23664fc7392890b45ba5f3836faba65889c`: formatting, lint, GLSL guard, both TypeScript checks, 55 test files / 486 tests, 17 assets verified (39,714,769 bytes), and production build. Vite emitted a non-fatal large-chunk warning. GitHub Validate #147 and Pages Deploy #137 for `7f33b23` subsequently succeeded (Pages deployed the static build); Pages #136 for `f5c5e0c` also succeeded, while Validate #146 was cancelled after the formatting follow-up. No runtime browser test, owner-device review, or frame-time measurement was performed, so FPS stability and Phase 5 acceptance remain unproven; Phase 6 must not start. The next authorized increment is bounded Phase 9 Aohara infill, signal-aware visual traffic and sidewalk pedestrians.
+
+## 63. Phase 9: bounded Aohara street-density increment (2026-10-20)
+
+**Authorization and boundaries:** the owner selected more building density, moving traffic and pedestrians, with both mobile and desktop in scope. This continues the separately authorized Phase 9 track while Phase 5 acceptance remains open. Budgets are tiered and deliberately bounded; this does not authorize full traffic AI, pedestrian crossing/right-of-way, new vehicle physics, Phase 6, Phases 7–8, or a named-device FPS claim.
+
+**Implementation:**
+
+- Add deterministic low-rise Aohara infill to open half-blocks: C/B/A budgets of 6/9/12 buildings. New footprints enter the existing static collision list and share the existing facade/window/detail budget; the 5×5 grid, rural Hinode, spawns, and road-clearance rules remain unchanged.
+- Add 6/12/18 instanced visual vehicles and 12/24/36 instanced pedestrians for C/B/A, exposed through city diagnostics. Vehicles follow deterministic opposing avenue loops, sample the existing signal phase, brake/hold for red and late amber, and keep an 8 m queued gap. Pedestrians walk loops on the four central-block sidewalks.
+- The actors add four instanced batches and no moving collision bodies or physics solver. Pedestrians do not cross streets; neither actor class has full AI recovery/pathfinding. This is bounded visual activity, not acceptance of traffic or pedestrian simulation.
+- Add tests for exact tier budgets, signal stop/amber-commit/queue behavior, movement of integrated instances, infill count, building overlap and road/sidewalk clearance.
+
+**Validation at handoff preparation:** the source/tests/docs increment has not yet been run through the full project check. Push the candidate, run `npm run check` unfiltered, record exact results, then verify the remote SHA and latest Validate/Pages workflows. No browser visual pass, owner-device review, manual drive or named-device measurement is established. Phase 5 acceptance remains open; Phase 6 stays gated.

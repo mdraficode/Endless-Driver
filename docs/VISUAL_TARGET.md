@@ -243,15 +243,17 @@ of the map and is the visual anchor at golden hour.
 
 **Additional owner decision (2026-10-19):** add the fictional **Aohara Metropolis** as a distinct, high-density Japanese
 city district; do not replace or urbanize any rural Hinode district. The Aohara driving-world slice uses a 5×5,
-640 m classed grid with 16 blocks, 32 instanced high-rises, 22 lower-rise shells (shops, casinos, mansions, townhouses
-and detached houses), an open-bowl stadium, abstract unbadged billboards, street banners and graph-aligned sidewalks,
-crossings and lighting. Streetlamp spacing is 40 m (240 instanced poles at the current graph); active unshadowed
-pointlights are capped at 6/8/12 total across C/B/A, split between street and architectural sources. Localized glow is
-source-bound; whole-frame bloom remains off. Aohara Central Avenue is the default game start; rural starts remain
-explicitly selectable. `?scene=city` remains an orbit-only lighting preview. Automated checks cover budgets, counts,
-collision and streaming selection, but no manual browser drive, owner-device visual/performance review, or acceptance
-has been recorded for this increment. This bounded prototype is not represented as a completed megacity or verified
-driving experience.
+640 m classed grid with 16 blocks, 32 instanced high-rises, 22 authored low-rise shells (shops, casinos, mansions,
+townhouses and detached houses), tier-capped low-rise infill (6/9/12 buildings for C/B/A), an open-bowl stadium,
+abstract unbadged billboards, street banners and graph-aligned sidewalks, crossings and lighting. It also has 6/12/18
+visual-only avenue vehicles and 12/24/36 sidewalk pedestrians for C/B/A; vehicles follow signal-aware loops and
+pedestrians remain on sidewalks. These actors add no moving collision bodies, pedestrian crossings or full AI.
+Streetlamp spacing is 40 m (240 instanced poles at the current graph); active unshadowed pointlights are capped at
+6/8/12 total across C/B/A, split between street and architectural sources. Localized glow is source-bound; whole-frame
+bloom remains off. Aohara Central Avenue is the default game start; rural starts remain explicitly selectable.
+`?scene=city` remains an orbit-only lighting preview. Automated checks cover budgets, counts, collision and streaming
+selection, but no manual browser drive, owner-device visual/performance review, or acceptance has been recorded for
+this increment. This bounded prototype is not represented as a completed megacity or verified driving experience.
 
 | District                            | Road character                                                                          | What it is for                                                                             | Primary seasonal payoff                             |
 | ----------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------- |

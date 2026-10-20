@@ -68,6 +68,11 @@ export const URBAN_CITY_CONFIG = {
     greenSeconds: 10,
     amberSeconds: 2,
     opposingPhaseOffsetSeconds: 13,
+    /** Matches the central avenue's crosswalk plus stop-bar offsets in RoadWorld. */
+    stopLineOffsetMeters: 19,
+    queueGapMeters: 8,
+    brakingDistanceMeters: 18,
+    amberCommitDistanceMeters: 12,
   },
   camera: {
     fovDegrees: 47,
@@ -130,6 +135,22 @@ export const URBAN_NIGHT_TIER_BUDGET: Readonly<Record<TierId, UrbanNightTierBudg
     cardinalStarburst: 0.06,
     diagonalStarburst: 0.026,
   },
+};
+
+export interface UrbanActivityTierBudget {
+  /** Deterministic low-rise Aohara infill buildings added to existing street blocks. */
+  readonly infillBuildings: number;
+  /** Instanced, visual-only vehicle actors; they do not participate in physics. */
+  readonly trafficVehicles: number;
+  /** Instanced pedestrians kept on sidewalks; crossings and right-of-way are not simulated. */
+  readonly pedestrians: number;
+}
+
+/** Conservative, fixed city-activity budgets; these are caps, not device-FPS measurements. */
+export const URBAN_ACTIVITY_TIER_BUDGET: Readonly<Record<TierId, UrbanActivityTierBudget>> = {
+  C: { infillBuildings: 6, trafficVehicles: 6, pedestrians: 12 },
+  B: { infillBuildings: 9, trafficVehicles: 12, pedestrians: 24 },
+  A: { infillBuildings: 12, trafficVehicles: 18, pedestrians: 36 },
 };
 
 export type TrafficSignalAspect = 'red' | 'amber' | 'green';

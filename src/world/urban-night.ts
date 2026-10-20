@@ -29,6 +29,7 @@ import {
   resolveUrbanNightGain,
   resolveUrbanStreetLightCoverage,
   resolveUrbanWetness,
+  URBAN_ACTIVITY_TIER_BUDGET,
   URBAN_CITY_CONFIG,
   URBAN_NIGHT_TIER_BUDGET,
   type TrafficSignalAspect,
@@ -43,6 +44,7 @@ import type { DaylightState } from '../environment/EnvironmentClock';
 import { collideCarWithStaticBoxes, type StaticBuildingBox } from './static-building-collision';
 import { createArchitecturalMaterial } from './architectural-materials';
 import type { RoadNetwork } from './road-network';
+import { UrbanStreetActivity } from './urban-activity';
 import type { TownCarProbe, TownHit } from './town';
 import type { SceneContent, SceneContentContext } from './WorldContent';
 
@@ -93,7 +95,7 @@ interface RankedFacadeBand {
   readonly rank: number;
 }
 
-type CityBuildingKind = 'house' | 'townhouse' | 'mansion' | 'shop' | 'casino';
+type CityBuildingKind = 'house' | 'townhouse' | 'mansion' | 'shop' | 'casino' | 'infill';
 
 interface CityBuildingSpec {
   readonly kind: CityBuildingKind;
@@ -124,6 +126,7 @@ interface ArchitecturalLightCandidate {
 
 interface CityTypologyStats {
   readonly stadiums: number;
+  readonly infillBuildings: number;
   readonly casinos: number;
   readonly mansions: number;
   readonly houses: number;
@@ -316,6 +319,41 @@ function buildCityBuildingSpecs(networkIntegrated: boolean): readonly CityBuildi
       roofColor: 0x37434a,
     },
   ];
+}
+
+/** Place deterministic low-rise homes in the open half-blocks, clear of roads and existing shells. */
+function buildAoharaInfillBuildingSpecs(count: number): readonly CityBuildingSpec[] {
+  const blockCenters = [-1.5, -0.5, 0.5, 1.5].map(
+    (offset) => offset * AOHARA_DISTRICT_CONFIG.gridSpacingMeters,
+  );
+  // Reuse the city kit's house/townhouse palette so infill does not add unique material batches.
+  const wallPalette = [0x82786b, 0x7b746e, 0x99917e, 0x8a928d] as const;
+  const roofPalette = [0x3b4149, 0x3b4149, 0x263039, 0x263039] as const;
+  const candidates: { readonly rank: number; readonly building: CityBuildingSpec }[] = [];
+
+  blockCenters.forEach((centerZ, rowIndex) => {
+    blockCenters.forEach((centerX, columnIndex) => {
+      const seed = rowIndex * blockCenters.length + columnIndex;
+      const outwardSide = centerZ < 0 ? -1 : 1;
+      const paletteIndex = Math.floor(stableUnit(rowIndex, columnIndex, 811) * wallPalette.length);
+      candidates.push({
+        rank: stableUnit(rowIndex, columnIndex, 827),
+        building: {
+          kind: 'infill',
+          x: centerX,
+          z: centerZ + outwardSide * 42,
+          width: 13.2 + stableUnit(seed, columnIndex, 839) * 2.2,
+          depth: 10.2 + stableUnit(seed, rowIndex, 853) * 1.8,
+          height: 6.5 + stableUnit(seed, rowIndex + columnIndex, 877) * 1.8,
+          color: wallPalette[paletteIndex] ?? wallPalette[0],
+          roofColor: roofPalette[paletteIndex] ?? roofPalette[0],
+          yaw: stableUnit(rowIndex, columnIndex, 883) < 0.5 ? 0 : Math.PI / 2,
+        },
+      });
+    });
+  });
+  candidates.sort((first, second) => first.rank - second.rank);
+  return candidates.slice(0, Math.max(0, Math.min(count, candidates.length))).map(({ building }) => building);
 }
 
 function createBasicMaterial(color: number, name: string): MeshBasicNodeMaterial {
@@ -955,6 +993,7 @@ export class UrbanNightWorld implements SceneContent {
   readonly #flareCount: number;
   readonly #buildingColliders: StaticBuildingBox[] = [];
   readonly #cityTypologyStats: CityTypologyStats;
+  readonly #activity: UrbanStreetActivity | null;
   readonly #networkIntegrated: boolean;
   readonly #towers: readonly TowerSpec[];
   readonly #cityBlockCount: number;
@@ -1035,7 +1074,11 @@ export class UrbanNightWorld implements SceneContent {
 
     this.#buildStreetAndCrossing();
     this.#buildTowers(this.#towers);
-    const additionalBuildings = buildCityBuildingSpecs(this.#networkIntegrated);
+    const existingBuildings = buildCityBuildingSpecs(this.#networkIntegrated);
+    const infillBuildings = this.#networkIntegrated
+      ? buildAoharaInfillBuildingSpecs(budget.infillBuildings)
+      : [];
+    const additionalBuildings = [...existingBuildings, ...infillBuildings];
     const typologyCounts = this.#buildCityTypologies(additionalBuildings);
     this.#facadeDetailInstances = this.#buildFacadeDetails(
       this.#towers,
@@ -1063,6 +1106,10 @@ export class UrbanNightWorld implements SceneContent {
     this.#cityTypologyStats = { ...typologyCounts, districtBanners: streetStats.bannerCount };
     this.#buildArchitecturalLights(budget.architecturalPointLights, architecturalFlare);
     this.#buildSignals(signalFlares);
+    this.#activity = this.#networkIntegrated ? new UrbanStreetActivity(tier) : null;
+    if (this.#activity !== null) {
+      this.root.add(this.#activity.root);
+    }
     this.#flareCount =
       this.#streetLights.length +
       this.#architecturalLights.length +
@@ -1126,6 +1173,7 @@ export class UrbanNightWorld implements SceneContent {
     this.#signalSeconds =
       (this.#signalSeconds + deltaSeconds) % URBAN_CITY_CONFIG.trafficSignal.cycleSeconds;
     this.#synchronizeSignals();
+    this.#activity?.update(deltaSeconds, this.#signalHeads[0]?.active ?? 'red');
   }
 
   get trafficSignalAspects(): readonly TrafficSignalAspect[] {
@@ -1136,6 +1184,7 @@ export class UrbanNightWorld implements SceneContent {
     return {
       cityBlocks: this.#cityBlockCount,
       highRiseBuildings: this.#towers.length,
+      infillBuildings: this.#cityTypologyStats.infillBuildings,
       streetLightPoles: this.#streetLightPoleCount,
       streetLightPointLights: this.#streetLights.length,
       architecturalPointLights: this.#architecturalLights.length,
@@ -1157,6 +1206,11 @@ export class UrbanNightWorld implements SceneContent {
       wetSurfaceIntensity: Number(this.#wetness.value.toFixed(3)),
       streetLightFocusGain: Number(this.#streetLightSpatialGain.toFixed(3)),
       architecturalLightFocusGain: Number(this.#architecturalLightSpatialGain.toFixed(3)),
+      ...(this.#activity?.getContentStats() ?? {
+        urbanTrafficVehicles: 0,
+        urbanPedestrians: 0,
+        urbanActivityBatches: 0,
+      }),
       qualityTierCode: this.#tier === 'C' ? 0 : this.#tier === 'B' ? 1 : 2,
     };
   }
@@ -1172,9 +1226,10 @@ export class UrbanNightWorld implements SceneContent {
   }
 
   dispose(): void {
-    // The scene manager owns and sweeps this content's attached geometries/materials. This hook
-    // only stops the content-owned update path; no timer, worker, or external listener is created.
+    // The scene manager owns and sweeps this content's attached geometries/materials. The bounded
+    // activity owns its dynamic buffers, so release those here before its root is detached.
     this.#disposed = true;
+    this.#activity?.dispose();
   }
 
   #buildStreetAndCrossing(): void {
@@ -1972,6 +2027,7 @@ export class UrbanNightWorld implements SceneContent {
 
     return {
       stadiums: 1,
+      infillBuildings: buildings.filter((building) => building.kind === 'infill').length,
       casinos: buildings.filter((building) => building.kind === 'casino').length,
       mansions: buildings.filter((building) => building.kind === 'mansion').length,
       houses: buildings.filter((building) => building.kind === 'house').length,
