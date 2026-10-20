@@ -22,8 +22,8 @@ describe('scene-pass resolution scaling policy', () => {
     expect(
       supportsScenePassResolutionScale(['fxaa'], { dynamicResolution: false, renderScale: 1 }),
     ).toBe(false);
-    expect(
-      supportsScenePassResolutionScale([], { dynamicResolution: true, renderScale: 1 }),
-    ).toBe(false);
+    expect(supportsScenePassResolutionScale([], { dynamicResolution: true, renderScale: 1 })).toBe(
+      false,
+    );
   });
 });

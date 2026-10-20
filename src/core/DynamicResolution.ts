@@ -143,11 +143,7 @@ export class DynamicResolutionController {
         ? 1
         : smoothingAtReference === 0
           ? 0
-          : 1 -
-            Math.pow(
-              1 - smoothingAtReference,
-              frameTimeMs / SMOOTHING_REFERENCE_FRAME_TIME_MS,
-            );
+          : 1 - Math.pow(1 - smoothingAtReference, frameTimeMs / SMOOTHING_REFERENCE_FRAME_TIME_MS);
     // The first sample seeds the average instead of being blended towards zero, which would make the
     // controller read a page that opened slowly as a machine that cannot hold the frame. Later samples
     // use a time-scaled alpha: an 8.3 ms frame blends about half as much as a 16.6 ms frame.
