@@ -1032,6 +1032,7 @@ export class UrbanNightWorld implements SceneContent {
     );
     this.root.name = 'AoharaNightLightingBlock';
     const budget = URBAN_NIGHT_TIER_BUDGET[tier];
+    const activityBudget = URBAN_ACTIVITY_TIER_BUDGET[tier];
     this.#streetLightBudget = budget.streetPointLights;
     this.#architecturalLightBudget = budget.architecturalPointLights;
     const warmFlare = createFlareMaterial(
@@ -1078,7 +1079,7 @@ export class UrbanNightWorld implements SceneContent {
     this.#buildTowers(this.#towers);
     const existingBuildings = buildCityBuildingSpecs(this.#networkIntegrated);
     const infillBuildings = this.#networkIntegrated
-      ? buildAoharaInfillBuildingSpecs(budget.infillBuildings)
+      ? buildAoharaInfillBuildingSpecs(activityBudget.infillBuildings)
       : [];
     const additionalBuildings = [...existingBuildings, ...infillBuildings];
     const typologyCounts = this.#buildCityTypologies(additionalBuildings);
