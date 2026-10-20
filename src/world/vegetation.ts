@@ -24,6 +24,7 @@ import {
 } from '../config/districts';
 import { FOLIAGE_LIGHTING_CONFIG } from '../config/foliage-lighting';
 import { GROUND_COVER_CONFIG } from '../config/ground-cover';
+import { VEGETATION_CHUNK_GENERATION_BUDGET_PER_FRAME } from '../config/vegetation-streaming';
 import type { TierId } from '../config/tiers';
 import type { DaylightState } from '../environment/EnvironmentClock';
 import {
@@ -772,7 +773,10 @@ export class VegetationWorld {
     this.#lastFocus = { x: focus.x, z: focus.z };
     const planned = this.#planWindow(focus, velocity);
     const pruned = this.#retainPlannedChunks(planned);
-    const generated = this.#generateMissingChunks(planned, 3);
+    const generated = this.#generateMissingChunks(
+      planned,
+      VEGETATION_CHUNK_GENERATION_BUDGET_PER_FRAME[this.#tier],
+    );
     if (pruned || generated) {
       this.#rebuildInstances(focus);
     }
@@ -1151,6 +1155,7 @@ export class VegetationWorld {
         (2 * this.#config.radiusChunks + 1) ** 2 - this.#chunkPlacements.size,
       ),
       vegetationChunksGenerated: this.#generatedChunks,
+      vegetationChunkBuildBudgetPerFrame: VEGETATION_CHUNK_GENERATION_BUDGET_PER_FRAME[this.#tier],
       vegetationBent: bent,
       vegetationSnapped: snapped,
       vegetationShattered: shattered,

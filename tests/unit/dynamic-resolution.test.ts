@@ -140,6 +140,29 @@ describe('dynamic resolution controller', () => {
     expect(controller.scale).toBe(0.8);
   });
 
+  it('keeps its EWMA time constant equivalent across 60 Hz and 120 Hz samples', () => {
+    const atSixtyHertz = new DynamicResolutionController({
+      ...OPTIONS,
+      targetFrameTimeMs: 16.6,
+      adjustmentIntervalSeconds: 10,
+    });
+    const atOneTwentyHertz = new DynamicResolutionController({
+      ...OPTIONS,
+      targetFrameTimeMs: 8.3,
+      adjustmentIntervalSeconds: 10,
+    });
+
+    atSixtyHertz.updateFrameTime(33.2);
+    atOneTwentyHertz.updateFrameTime(16.6);
+    feed(atSixtyHertz, 16.6, 30);
+    feed(atOneTwentyHertz, 8.3, 60);
+
+    expect((atSixtyHertz.frameTimeMilliseconds ?? 0) / 16.6).toBeCloseTo(
+      (atOneTwentyHertz.frameTimeMilliseconds ?? 0) / 8.3,
+      10,
+    );
+  });
+
   it('honours the smoothing window it was given', () => {
     // `smoothing` is the weight of the *newest* sample, so a small value is the long memory: after one
     // 100 ms frame followed by 40 fast ones, a 0.01 window still carries the spike while a 0.5 window has

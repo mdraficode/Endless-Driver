@@ -338,12 +338,11 @@ export interface MotionBlurConfig {
 export interface TemporalAntiAliasingConfig {
   readonly enabled: boolean;
   /**
-   * Whether the render scale is allowed to move with the frame time.
+   * Whether the scene-pass render scale is allowed to move with frame time.
    *
-   * The scene pass renders at `renderScale x` the canvas and the resolve reconstructs it at full size —
-   * so the same node that anti-aliases also upscales, and lowering the scale buys frame rate for the
-   * whole scene pass rather than for one effect. What that buys in practice is a *stable* frame time
-   * instead of a fluctuating one: the scale moves a step at a time towards the target and settles.
+   * TAAU reconstructs reduced frames on tiers B/A. Tier C may instead scale its FXAA/SMAA scene pass and
+   * linearly upscale the result, trading detail for fill-rate without temporal reconstruction. Adaptive
+   * changes use small steps and an elapsed-time-smoothed frame-time signal to limit visible scale breathing.
    */
   readonly dynamicResolution: boolean;
   /** Render scale used when dynamic resolution is off; 1 renders at native resolution. */
@@ -372,11 +371,11 @@ export interface TemporalAntiAliasingConfig {
    * state rather than a boundary to be crossed.
    */
   readonly tolerance: number;
-  /** Fraction of the scale moved per adjustment, e.g. 0.08 for a twentieth of a step per half second. */
+  /** Fraction of the scale moved per adjustment; smaller steps reduce visible resolution breathing. */
   readonly step: number;
   /** Minimum seconds between adjustments. The hysteresis that keeps a single slow frame from resizing. */
   readonly adjustmentIntervalSeconds: number;
-  /** Exponential weight of the newest frame time; 0.1 is a ten-frame-ish window. */
+  /** EWMA weight at a 16.6 ms reference interval; adjusted by elapsed time for refresh-rate invariance. */
   readonly smoothing: number;
 }
 
@@ -671,16 +670,15 @@ export const RENDER_CONFIG: RenderConfig = {
       enabled: true,
       dynamicResolution: true,
       renderScale: 1,
-      // Two thirds of native. The resolve already reconstructs from jittered samples, so a reduced render
-      // scale degrades less here than it would anywhere else — and it is the only reason the effect can
-      // pay for itself on a mid-range GPU.
+      // Eighty percent of native. TAAU reconstructs from jittered samples, so a modest scale reduction
+      // degrades less here than it would without temporal reconstruction while buying whole-scene fill rate.
       minScale: 0.8,
       maxScale: 1,
       // A 60 Hz deadline, with the dead band below doing the work of keeping the controller from fighting
       // a display that is comfortably meeting it.
       targetFrameTimeMs: 16.6,
       tolerance: 0.15,
-      step: 0.08,
+      step: 0.05,
       // Two adjustments a second at most. Faster than that and one hitched frame resizes the frame.
       adjustmentIntervalSeconds: 0.5,
       smoothing: 0.1,

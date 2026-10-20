@@ -45,12 +45,11 @@ export interface DiagnosticsSnapshot {
   /** Focus distance the depth-of-field plane is using, in metres; `null` when it is off. */
   readonly focusDistance: number | null;
   /**
-   * Fraction of the drawing buffer the scene pass is drawn at before the temporal resolve reconstructs it,
-   * or `null` when there is no temporal resolve in the chain.
+   * Fraction of the drawing buffer the scene pass is drawn at before TAAU reconstruction or spatial-AA
+   * upscaling, or `null` when the active post chain cannot scale the scene pass.
    *
-   * The third of the three post-processing values a screenshot cannot report. Dynamic resolution is
-   * invisible by design — that is the whole point of it — so a scale that never moves, a scale that has
-   * bottomed out, and a controller that has stopped observing anything all look like a normal frame.
+   * Dynamic resolution is invisible by design, so a scale that never moves, a scale at its floor, and a
+   * controller that has stopped observing anything can otherwise look like the same normal frame.
    */
   readonly renderScale: number | null;
   /** Cascades in the shadow atlas; 1 means the plain single-frustum shadow path. */
@@ -210,11 +209,10 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
     format: (snapshot) => `${snapshot.rendererBackend} · ${snapshot.antialiasing}`,
   },
   {
-    // Temporal AA and dynamic resolution in one row, because they are one system: the resolve is what makes
-    // a reduced render scale look like a full-size image, and a scale reported without the resolve that
-    // reconstructs it would describe nothing.
-    label: 'Temporal',
-    format: (snapshot) => formatTemporal(snapshot.renderScale),
+    // Keep the active reconstruction/AA path beside its scene-pass scale. TAAU reconstructs reduced frames;
+    // FXAA/SMAA use a linear upscale and cannot restore detail, so the row names the path honestly.
+    label: 'Resolution',
+    format: (snapshot) => formatResolution(snapshot.renderScale, snapshot.postEffects),
   },
   {
     label: 'Post',
@@ -265,8 +263,18 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
  * field is deliberately off on the constrained tier, and an ungraded frame is what a project with no
  * look should render. The row says so rather than showing zeroes.
  */
-function formatTemporal(renderScale: number | null): string {
-  return renderScale === null ? 'off' : `taa @ ${Math.round(renderScale * 100)}%`;
+function formatResolution(renderScale: number | null, effects: readonly string[]): string {
+  if (renderScale === null) {
+    return 'off';
+  }
+  const reconstruction = effects.includes('taa')
+    ? 'taau'
+    : effects.includes('fxaa')
+      ? 'fxaa'
+      : effects.includes('smaa')
+        ? 'smaa'
+        : 'scene';
+  return `${reconstruction} @ ${Math.round(renderScale * 100)}%`;
 }
 
 function formatLook(look: string | null, focusDistance: number | null): string {

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { VEGETATION_CONFIG } from '../../src/config/districts';
 import { GROUND_COVER_CONFIG } from '../../src/config/ground-cover';
+import { VEGETATION_CHUNK_GENERATION_BUDGET_PER_FRAME } from '../../src/config/vegetation-streaming';
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
@@ -67,6 +68,27 @@ describe('vegetation destruction visuals', () => {
     );
     expect(world.getContentStats().vegetationWindAmplitudeMeters).toBe(0);
     world.dispose();
+  });
+
+  it('spreads runtime chunk-generation work across C/B/A tier budgets', () => {
+    expect(VEGETATION_CHUNK_GENERATION_BUDGET_PER_FRAME).toEqual({ C: 1, B: 2, A: 3 });
+    const sampler = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
+    const focus = { x: -430, z: -1010 };
+
+    for (const tier of ['C', 'B', 'A'] as const) {
+      const world = new VegetationWorld(
+        sampler,
+        { ...VEGETATION_CONFIG, radiusChunks: 1 },
+        tier === 'C' ? 0.6 : 1,
+        tier,
+      );
+      world.updateStreaming(focus, { x: 0, z: 0 }, 1 / 60);
+      expect(world.getContentStats()).toMatchObject({
+        vegetationChunks: VEGETATION_CHUNK_GENERATION_BUDGET_PER_FRAME[tier],
+        vegetationChunkBuildBudgetPerFrame: VEGETATION_CHUNK_GENERATION_BUDGET_PER_FRAME[tier],
+      });
+      world.dispose();
+    }
   });
 
   it('turns snap/shatter events into stumps and debris', () => {

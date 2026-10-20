@@ -1,9 +1,9 @@
 # Session Handoff — Endless Driver
 
-**Updated:** 2026-10-19  
-**Current stage:** Phase 4 built scope delivered; Phase 5 in progress with owner-device visual acceptance open; Phase 6 is authorized after Phase 5 acceptance; Phase 9 Urban Systems is separately authorized and active in parallel; Phase 3 named-hardware frame-budget validation remains open  
-**Authorized development phases:** Phases 1–6, executed in order, plus Phase 9 in parallel; Phases 7–8 remain gated  
-**Next action:** Continue only the authorized Phase 5 review. Source commit `717d752965452e85ee9f251fd8688a75ccec33d6` remains the latest code change; local `npm run check` passes, and its Validate #133 / Pages #123 runs are green. Section 60 records the post-tuning isolated effects review. The latest low-tier full-game capture was OOM-killed before diagnostics against the pre-tuning `dist`; `npm run check` subsequently rebuilt `dist`, now served at the static preview, but the tuned full-game bundle has not been captured. Thus full-scene composition, owner-device/mobile appearance, manual-driving visuals, and performance remain unverified. Obtain stable browser/device evidence for gameplay ground colour, vegetation streaming/pop-in, foliage readability and wind, plus integrated smoke/spark/airflow legibility. Phase 5 acceptance remains open; do not begin Phase 6 before acceptance, and do not start Phases 7–8 without new authorization.
+**Updated:** 2026-10-20  
+**Current stage:** Phase 4 built scope delivered; Phase 5 implementation continues with FPS stability and formal acceptance open; Phase 6 remains gated on Phase 5 acceptance; Phase 9 Urban Systems is separately authorized in parallel; Phase 3 named-hardware frame-budget validation remains open  
+**Authorized development phases:** Phases 1–6 remain sequenced as recorded, plus Phase 9 in parallel; Phases 7–8 remain gated  
+**Next action:** Implement and validate the owner-authorized bounded mobile/desktop FPS response and denser Aohara street. The owner reports that earlier non-FPS issues are resolved, but FPS remains unstable; no device-specific target or measurement was supplied. Do not claim stable device FPS without named-device evidence. Phase 5 acceptance remains open, Phase 6 must not start, and the separately authorized Phase 9 work may continue within scope.
 
 > **Re-plan (2026-10-14, decisions resolved):** the owner rejected the Phase 2 presentation and set a
 > Forza-Horizon-class visual target. Research and specification are complete and committed alongside
@@ -1770,3 +1770,15 @@ This is a narrow continuation of the appearance-only review authorized with the 
 **Final documentation follow-up (2026-10-20):** after the live-bundle check, docs-only commit `f313e29c14468d4f4f9bc739280cb0a9cd40daed` was pushed and failed Validate #143 on Prettier formatting; `e24d022a4143d71d798ea85b9541ceb44af3c922` corrected formatting. `npm run check` passed on `e24d022` (54 test files / 482 tests; same runtime source as `27e65ef`), and `git ls-remote` matched the pushed SHA. GitHub Validate [#144](https://github.com/mdraficode/Endless-Driver/actions/runs/39392022000) and Pages Deploy [#134](https://github.com/mdraficode/Endless-Driver/actions/runs/39392021929) both succeeded. No runtime code changed in these docs-only follow-ups.
 
 **Next:** arrange owner-device review of gameplay ground colour, ground cover, tree streaming/pop-in, foliage readability, every current building type, and Aohara night-lane readability. Continue only within the authorized Phase 5 remainder and Phase 9 Aohara scope; Phase 5 visual acceptance remains open, Phase 6 remains gated on that acceptance, and Phases 7–8 remain gated.
+
+## 62. Phase 5: bounded frame-pacing increment (2026-10-20)
+
+**Authorization and gates:** the owner reported unstable FPS and requested smoothing on both mobile and desktop. The owner also reported that earlier non-FPS issues are resolved; no named devices, browser/OS, tier, resolution, target FPS or frame-time evidence were supplied. This authorizes bounded Phase 5 adaptation, not Phase 5 acceptance or Phase 6. Phase 9 remains separately authorized; Phases 7–8 remain gated.
+
+**Implementation:**
+
+- The dynamic-resolution EWMA now scales its weight by elapsed frame time, retaining the same time constant across 60/120 Hz sample rates. B/A continue using TAAU; Tier C keeps temporal history and motion vectors off but can now use bounded scene-pass scaling through FXAA/SMAA, with a 0.72 floor and a clearly reported spatial-upscale path. Spatial scaling may soften detail and is not temporal reconstruction. The shared controller uses 0.05 scale steps, its existing dead band and 0.5 s adjustment interval.
+- Runtime vegetation chunk generation is limited to C/B/A = 1/2/3 chunks per frame; the initial window remains prepared ahead of play. A diagnostic count exposes the active build cap.
+- Added unit coverage for 60/120 Hz smoothing equivalence, spatial/TAAU scale eligibility, and actual tier-capped runtime chunk generation.
+
+**Validation state at handoff preparation:** the source and tests are in the active clone, but the required post-push full check and GitHub workflows have not yet run. No runtime browser test, device frame-time measurement, owner-device review or FPS-stability claim is established. Phase 5 acceptance remains open; Phase 6 must not start. The next action is to push this increment, run the complete project gate, and record actual results before proceeding to Phase 9 street-density implementation.

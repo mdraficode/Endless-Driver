@@ -20,8 +20,9 @@
  * - **Hysteresis in time.** One slow frame — a GC pause, a shader compile, a texture upload — is not
  *   evidence that the machine cannot hold the frame. The controller only *considers* a change every
  *   `adjustmentIntervalSeconds`, and moves a fraction of the way when it does.
- * - **Smoothed input.** The frame times it reacts to are an exponential average, so a single spike cannot
- *   move it even in the interval where an adjustment is allowed.
+ * - **Time-based smoothed input.** The exponential average uses the sample's elapsed time, not one fixed
+ *   blend per rendered frame. Its configured `smoothing` is the weight at a 16.6 ms reference interval, so
+ *   the same time constant is retained on 60 Hz and 120 Hz displays; a single spike cannot move the scale.
  *
  * What this controller cannot see is worth stating as plainly as what it can: it is driven by delivered
  * frame time, and a browser caps delivered frames at the display's refresh rate. A GPU using 95% of the
@@ -40,6 +41,7 @@ export interface DynamicResolutionOptions {
   readonly tolerance: number;
   readonly step: number;
   readonly adjustmentIntervalSeconds: number;
+  /** EWMA weight at a 16.6 ms reference interval, adjusted by elapsed time per sample. */
   readonly smoothing: number;
 }
 
@@ -55,10 +57,13 @@ const DEFAULT_OPTIONS: DynamicResolutionOptions = {
   maxScale: 1,
   targetFrameTimeMs: 16.6,
   tolerance: 0.15,
-  step: 0.08,
+  step: 0.05,
   adjustmentIntervalSeconds: 0.5,
   smoothing: 0.1,
 };
+
+/** Reference interval for the configured EWMA weight; makes smoothing independent of refresh rate. */
+const SMOOTHING_REFERENCE_FRAME_TIME_MS = 16.6;
 
 /**
  * Rounds to a hundredth, because the scale is what the render target is sized from and a scale that
@@ -132,9 +137,20 @@ export class DynamicResolutionController {
       return { scale: this.#scale, changed: false };
     }
 
-    const { smoothing } = this.#options;
+    const smoothingAtReference = Math.min(1, Math.max(0, this.#options.smoothing));
+    const smoothing =
+      smoothingAtReference === 1
+        ? 1
+        : smoothingAtReference === 0
+          ? 0
+          : 1 -
+            Math.pow(
+              1 - smoothingAtReference,
+              frameTimeMs / SMOOTHING_REFERENCE_FRAME_TIME_MS,
+            );
     // The first sample seeds the average instead of being blended towards zero, which would make the
-    // controller read a page that opened slowly as a machine that cannot hold the frame.
+    // controller read a page that opened slowly as a machine that cannot hold the frame. Later samples
+    // use a time-scaled alpha: an 8.3 ms frame blends about half as much as a 16.6 ms frame.
     this.#frameTimeMs =
       this.#frameTimeMs === null
         ? frameTimeMs

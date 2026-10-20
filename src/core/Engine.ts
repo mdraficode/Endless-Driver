@@ -13,6 +13,7 @@ import {
 import { scaleBaseline } from '../environment/daylight-levels';
 import { buildPostChain, type PostEffectName } from '../shaders/post-chain';
 import { DynamicResolutionController } from './DynamicResolution';
+import { supportsScenePassResolutionScale } from './RenderScalePolicy';
 import { writeLookTable } from '../shaders/lut-identity';
 import {
   RENDER_CONFIG,
@@ -251,16 +252,16 @@ export class Engine {
   }
 
   /**
-   * Render scale the scene pass is currently drawn at, as a fraction of the drawing buffer; `null` when the
-   * temporal resolve is not in the chain and nothing is scaling anything.
+   * Render scale the scene pass is currently drawn at, as a fraction of the drawing buffer; `null` when
+   * the active post chain cannot use a scaled scene pass.
    *
-   * Reported rather than assumed because this is the one number that says whether dynamic resolution is
-   * doing anything at all: a controller that never fires, a controller that fires constantly, and a fixed
-   * render scale all render a plausible-looking frame, and only the number distinguishes them.
+   * TAAU reconstructs reduced scenes; the low-tier spatial-AA path linearly upscales before FXAA/SMAA and
+   * may look softer. Reporting the scale makes both adaptive and explicitly fixed scaling observable.
    */
   get resolutionScale(): number | null {
     const chain = this.#chain;
-    if (chain === null || !chain.effects.includes('taa')) {
+    const temporal = this.#config.postProcessing.temporalAntiAliasing;
+    if (chain === null || !supportsScenePassResolutionScale(chain.effects, temporal)) {
       return null;
     }
     return this.#renderScale;
@@ -648,13 +649,10 @@ export class Engine {
   }
 
   /**
-   * Moves the render scale towards what the frame time can afford, and applies it to the scene pass.
-   *
-   * Only meaningful when the temporal resolve is in the chain: the scale is set on the *pass*, and the
-   * resolve is what reconstructs the reduced image at full size. Without TAA, reducing the scale would just
-   * render a smaller picture and stretch it, which is softness for nothing — so this is a no-op unless
-   * `taa` is in the effects, and the HUD reports `null` in that case rather than a number that describes
-   * nothing.
+   * Moves the render scale towards what the delivered frame time can afford, then applies it to the scene
+   * pass. TAAU reconstructs reduced frames on B/A; tier C can scale its FXAA/SMAA scene pass as a bounded
+   * mobile fallback, with a higher floor because spatial AA cannot restore the lost detail. That path is
+   * explicitly reported as FXAA/SMAA rather than described as temporal upscaling.
    *
    * `delta` is the frame time this engine already measured, in seconds. It is not the GPU's own time — see
    * the note at the top of `DynamicResolution.ts` for what that difference costs — but it is the time the
@@ -662,10 +660,11 @@ export class Engine {
    */
   #updateResolution(delta: number): void {
     const chain = this.#chain;
-    if (chain === null || !chain.effects.includes('taa')) {
+    const temporal = this.#config.postProcessing.temporalAntiAliasing;
+    if (chain === null || !supportsScenePassResolutionScale(chain.effects, temporal)) {
       return;
     }
-    if (!this.#config.postProcessing.temporalAntiAliasing.dynamicResolution) {
+    if (!temporal.dynamicResolution) {
       // A fixed render scale still has to be *applied* — once, and then never again.
       if (this.#renderScale !== this.#resolution.scale) {
         this.#renderScale = this.#resolution.scale;
@@ -683,10 +682,10 @@ export class Engine {
   /** Applies the configured render scale to the pass. `initial` also seeds the controller's own value. */
   #applyResolutionScale(initial = false): void {
     const chain = this.#chain;
-    if (chain === null || !chain.effects.includes('taa')) {
+    const temporal = this.#config.postProcessing.temporalAntiAliasing;
+    if (chain === null || !supportsScenePassResolutionScale(chain.effects, temporal)) {
       return;
     }
-    const temporal = this.#config.postProcessing.temporalAntiAliasing;
     if (initial) {
       // Optimistic start: the highest scale the configuration allows, with the controller adapting down if
       // the first second cannot hold it. Starting low would mean every session opens soft on the machines

@@ -117,7 +117,7 @@ const TIER_C: TierDefinition = {
   id: 'C',
   name: 'Mobile / low',
   summary:
-    'Phones and low-end laptops: WebGL2 backend, short shadow range, HDRI light with a procedural sky backdrop.',
+    'Phones and low-end laptops: WebGL2 fallback, short shadow range, FXAA with bounded scene-pass scaling, HDRI light with a procedural sky backdrop.',
   render: {
     maxPixelRatio: 1,
     // No backendPreference here on purpose: the backend is a project-wide
@@ -154,7 +154,15 @@ const TIER_C: TierDefinition = {
       // buys resolution. The velocity attachment is not even requested, so the cost of the pair on this
       // tier is exactly zero — not "small".
       motionBlur: { enabled: false },
-      temporalAntiAliasing: { enabled: false },
+      temporalAntiAliasing: {
+        enabled: false,
+        dynamicResolution: true,
+        minScale: 0.72,
+        maxScale: 1,
+        step: 0.05,
+        adjustmentIntervalSeconds: 0.5,
+        smoothing: 0.1,
+      },
       bloom: { strength: 0.18, radius: 0.4 },
       // No depth of field. It costs four passes and five half-resolution targets — on the constrained
       // tier that budget buys resolution, and there is no version of this effect worth a softer image

@@ -119,6 +119,10 @@ describe('applying a tier', () => {
     expect(c.renderer.antialias).toBe(false);
     expect(b.renderer.antialias).toBe(false);
     expect(c.postProcessing.antiAliasing).toBe('fxaa');
+    expect(c.postProcessing.temporalAntiAliasing.enabled).toBe(false);
+    expect(c.postProcessing.temporalAntiAliasing.dynamicResolution).toBe(true);
+    expect(c.postProcessing.temporalAntiAliasing.minScale).toBe(0.72);
+    expect(c.postProcessing.temporalAntiAliasing.maxScale).toBe(1);
     expect(b.postProcessing.antiAliasing).toBe('taa');
   });
 

@@ -121,13 +121,14 @@ recorded in every performance claim.
 | System                                         | Tier C: mobile/low                                     | Tier B: desktop balanced                                        | Tier A: desktop high                                            |
 | ---------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------- | --------------------------------------------------------------- |
 | Renderer path                                  | WebGL2 backend                                         | WebGPU (WebGL2 fallback)                                        | WebGPU                                                          |
-| Resolution                                     | DPR ≤ 1.0, no dynamic scale                            | DPR ≤ 1.5, dynamic scale 0.67–1.0                               | DPR ≤ 2.0 with resolution cap, dynamic scale 0.75–1.0           |
-| Anti-aliasing                                  | FXAA (SMAA by switch)                                  | TAAU + dynamic resolution                                       | TAAU + dynamic resolution, higher scale floor                   |
+| Resolution                                     | DPR ≤ 1.0, FXAA scene scale 0.72–1.0 (spatial upscale) | DPR ≤ 1.5, TAAU scene scale 0.80–1.0                           | DPR ≤ 2.0 with resolution cap, TAAU scale 0.75–1.0              |
+| Anti-aliasing                                  | FXAA (SMAA by switch); no temporal reconstruction      | TAAU + dynamic resolution                                       | TAAU + dynamic resolution, higher scale floor                   |
 | Shadows                                        | 1–2 cascades, 1024                                     | 3 cascades, 2048                                                | 4 cascades, 2048–4096                                           |
 | Ambient occlusion                              | Off or baked                                           | GTAO (half res)                                                 | GTAO full res                                                   |
 | Reflections                                    | Environment IBL + Aohara local clearcoat               | SSR (half res) + probes (pending)                               | SSR + probes (pending); Aohara wet-look is local PBR            |
 | Terrain layers                                 | 2                                                      | 3                                                               | 4 + POM                                                         |
 | Vegetation                                     | Impostors, ≤ 20k; TSL sway off                         | LOD1–2, ≤ 80k; TSL sway ≤ 0.035 m                               | Full LOD0 near, ≤ 200k; TSL sway ≤ 0.065 m                      |
+| Runtime foliage chunks generated per frame      | 1                                                      | 2                                                               | 3                                                               |
 | Clouds/atmosphere                              | HDRI sky + fog                                         | Sky + layered clouds + fog                                      | Sky + volumetric cloud/light shafts where enabled               |
 | Urban night lights                             | Faint local halo + 2-axis starburst, few active lights | Soft halo + restrained 4-axis starburst, capped lights/windows  | Full local halo + subtle 4-axis starburst, source-isolated      |
 | Aohara facade panes/frames + structure details | 2,400 / 512                                            | 4,800 / 1,024                                                   | 7,200 / 1,600                                                   |
@@ -136,7 +137,10 @@ recorded in every performance claim.
 | Target frame                                   | 30–60 FPS                                              | 60 FPS                                                          | 60+ FPS where hardware permits                                  |
 
 Budgets from `PROJECT_PLAN.md` §8 remain the reference; every tier gate is validated on **named hardware** with
-recorded resolution and settings. The dev sandbox (SwiftShader) may only validate correctness, never frame rate.
+recorded resolution and settings. Dynamic resolution uses a dead band, a 0.5 s adjustment interval, smaller 0.05
+scale steps, and an EWMA whose time constant is independent of 60/120 Hz refresh rates. Tier C's spatial upscale
+may soften detail; compare that trade on device. These controls are code budgets, not measured FPS guarantees. The
+dev sandbox (SwiftShader) may only validate correctness, never frame rate.
 
 **Implementation status (Phase 3).** The C/B/A contracts are code, not prose: `src/config/tiers.ts` holds the
 matrix as data and `src/core/QualityTier.ts` resolves and applies it. Selection is deterministic — an explicit
@@ -150,13 +154,12 @@ Two documented deviations from the table above:
 - **Tier C's renderer path.** The table says "WebGL2 backend"; the implementation leaves the backend on `auto`,
   because pinning the older API on a device that supports WebGPU would surrender performance for no quality gain.
   The WebGL2 fallback still engages wherever WebGPU is unavailable, and `?backend=webgl` forces it for comparison.
-- **Anti-aliasing.** Implemented: MSAA, FXAA, SMAA, and TAAU with dynamic resolution. The temporal strategy is
-  now what tiers B and A actually run, which retires the earlier note that they ran MSAA — the resolve requires
-  MSAA to be off, so **no tier uses multisampling any more** (the tier resolver forces `samples: 0` for any
-  non-`msaa` mode, and the unit tests assert the pairing). Tier C resolves with FXAA and has the temporal path
-  switched off _by cost_, not by absence: it is the same code. `?aa=fxaa|smaa|none|taa` names a strategy outright
-  for a like-for-like comparison, and when the temporal path is switched off on a `taa` tier the chain falls back
-  to SMAA rather than resolving nothing.
+- **Anti-aliasing and scaling.** Implemented: MSAA, FXAA, SMAA, and TAAU with dynamic resolution. Tiers B/A use
+  TAAU reconstruction; Tier C keeps temporal history and motion vectors off, but permits bounded scene-pass scaling
+  through its FXAA/SMAA path (floor 0.72) to trade detail for fill-rate. Spatial AA linearly upscales and cannot
+  restore lost detail, so this is a mobile fallback, not TAAU. **No tier uses multisampling by default** (the
+  resolver forces `samples: 0` for non-MSAA modes). `?aa=fxaa|smaa|none|taa` names a strategy outright, and
+  `?res=` fixes a scale; when TAA is switched off on a TAA tier, the chain falls back to SMAA.
 
 **Post-processing status (Phase 3).** The stack is assembled by `src/shaders/post-chain.ts` in a fixed, documented
 order, and every effect is individually toggleable through configuration:
