@@ -2,7 +2,7 @@
 
 ## Current inventory
 
-`public/assets/manifest.json` contains 19 pinned CC0 runtime entries at this revision: three HDRIs, nine 1K PBR surface sets, one colour-grading LUT, and six optimized environment models (44,913,263 asset bytes). The two concrete sets added for sidewalks, planters and selected opaque facades are Gravel Concrete 03 and Concrete Wall 009; existing Japanese Cedar Planks is used on wooden bench boards. The hero car, audio, and third-party shaders have not been acquired. The manifest, `CREDITS.md`, and [`docs/ASSET_SOURCES.md`](ASSET_SOURCES.md) are the current inventory/provenance records.
+`public/assets/manifest.json` contains 19 pinned CC0 runtime entries at the verified PBR baseline: three HDRIs, nine 1K PBR surface sets, one colour-grading LUT, and six optimized environment models (44,913,263 asset bytes). The two concrete sets added for sidewalks, planters and selected opaque facades are Gravel Concrete 03 and Concrete Wall 009; existing Japanese Cedar Planks is used on wooden bench boards. The player roadster and five traffic archetypes are now project-authored TypeScript/Three.js geometry, not third-party model files; no vehicle asset was added to the manifest and `CREDITS.md` needs no new entry. A verifiably CC0 RGS_Dev vehicle pack was audited but not shipped because it is FBX-only and its stylized meshes do not match the current in-house rendering path. The manifest, `CREDITS.md`, and [`docs/ASSET_SOURCES.md`](ASSET_SOURCES.md) remain the source/provenance records.
 
 The project's initial `UNLICENSED` status does not replace or remove dependency licenses. Choosing an open-source project license later does not automatically permit redistribution of purchased or restricted assets.
 
@@ -25,9 +25,11 @@ The owner requires Forza-Horizon-class visuals, which makes sourcing a first-cla
   allowed only with a per-asset licence record, the terms that apply, and the download date. The
   era of the whole Megascans library being free for everyone ended 2024-12-31, and free-of-charge is
   not the same as licensed for redistribution.
-- **Cars:** never ripped game assets; never manufacturer names, logos, or trade dress. The hero car is an
-  in-house design under the fictional "Kaminari" marque, with a **CC0** Sketchfab concept car (Unity Fan series)
-  as the stand-in until it lands — see `docs/ASSET_SOURCES.md` §3.5. No purchases are involved at any point.
+- **Cars:** never ripped game assets; never manufacturer names, logos, or trade dress. The current player visual
+  is a code-authored, unbadged GT roadster under the fictional "Kaminari" marque. The owner's Ferrari California
+  selection is a broad convertible/GT body-class reference only, not permission to reproduce a specific car. The
+  Unity Fan and RGS_Dev CC0 candidates are not runtime dependencies; see `docs/ASSET_SOURCES.md` §3.5. No purchases
+  are involved at any point.
 - Audio, if it is ever added, follows the same rules and needs its own scope decision.
 
 ## Before adding an asset
@@ -62,12 +64,12 @@ Any examples in documentation are examples, not authorization for a specific dow
 
 ## Car model contract — Phase 6
 
-- GLB preferred for packaging; external GLTF resources allowed only when paths are tracked and deployment-safe.
-- Normalize to meters, +Y up, +X right, and local -Z forward.
-- Resolve four wheel nodes, front steering pivots, an optional interior steering wheel, brake-light material/meshes, and cockpit camera anchor.
+- The current player roadster is project-authored Three.js geometry in `src/vehicles/CarVisual.ts`; no imported model, manifest entry, or external runtime resource is required. A future free/open GLB is eligible only after source, license, and reproducible optimization are verified.
+- Keep units in metres, +Y up, +X right, and local -Z forward.
+- `CarVisual` resolves four physics-driven wheel pivots, front steering, an interior steering-wheel pivot, pose-driven local brake lamps, and shadow-casting body surfaces.
 - Keep chassis collision geometry independent and simple; do not use the detailed render mesh as a dynamic triangle collider.
-- Provide a placeholder/error fallback for missing files or nodes.
-- Interior detail must support cockpit view or the view's limitations must be explicitly documented.
+- The code-authored geometry is the deterministic fallback if a future optional external model cannot load.
+- The open two-seat cabin is present, but a cockpit camera, mirror hooks, visual cockpit review, and device acceptance remain unverified.
 
 ## Optimization and hosting
 

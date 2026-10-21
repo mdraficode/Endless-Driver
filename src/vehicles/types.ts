@@ -116,6 +116,8 @@ export interface VehiclePose {
   readonly position: Vec3;
   readonly rotation: Quat;
   readonly wheels: readonly WheelVisualState[];
+  /** Current brake input, used only for the player vehicle's local rear lamp intensity. */
+  readonly brake: number;
 }
 
 export const WHEEL_INDEX = {

@@ -2,10 +2,13 @@ import { MeshPhysicalNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu
 import { describe, expect, it } from 'vitest';
 import {
   createAutomotivePaintMaterial,
+  createBrakeLightMaterial,
   createExhaustInteriorMaterial,
   createHeadlightMaterial,
   createRubberMaterial,
   createTintedCabinMaterial,
+  createVehicleInteriorMaterial,
+  createWheelMetalMaterial,
 } from '../../src/vehicles/vehicle-materials';
 
 describe('vehicle node materials', () => {
@@ -29,6 +32,22 @@ describe('vehicle node materials', () => {
     expect(lamp.emissiveMap).toBeNull();
     glass.dispose();
     lamp.dispose();
+  });
+
+  it('keeps open-cabin upholstery, wheel metal, and brake emitters as separate map-free materials', () => {
+    const interior = createVehicleInteriorMaterial();
+    const wheelMetal = createWheelMetalMaterial();
+    const brakeLight = createBrakeLightMaterial();
+    expect(interior).toBeInstanceOf(MeshPhysicalNodeMaterial);
+    expect(interior.map).toBeNull();
+    expect(interior.roughness).toBeGreaterThan(0.5);
+    expect(wheelMetal).toBeInstanceOf(MeshStandardNodeMaterial);
+    expect(wheelMetal.metalness).toBeGreaterThan(0.5);
+    expect(brakeLight.emissiveIntensity).toBeGreaterThan(0);
+    expect(brakeLight.emissiveMap).toBeNull();
+    interior.dispose();
+    wheelMetal.dispose();
+    brakeLight.dispose();
   });
 
   it('uses a rough opaque rubber surface and does not fabricate exhaust maps', () => {

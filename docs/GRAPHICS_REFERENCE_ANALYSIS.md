@@ -1,4 +1,4 @@
-# Public graphics-reference analysis — 2026-10-21
+# Public graphics-reference analysis — 2026-10-22
 
 ## Scope and evidence boundary
 
@@ -37,15 +37,23 @@ The material extension uses pinned CC0 1K scans selected by surface type:
 | City sidewalks and concrete planters                  | Poly Haven Gravel Concrete 03                               | sRGB albedo, tangent-space normal and packed AO/roughness/metalness on matching sidewalk/planter geometry                                                      |
 | Opaque city/plaster facades                           | Poly Haven Concrete Wall 009                                | Albedo, normal, roughness and packed ARM on selected Aohara low-rise facades and Yūhi wall-body boxes; trims, signage, roofs, frames and glazing stay separate |
 | Wooden bench boards                                   | Existing Poly Haven Japanese Cedar Planks                   | Bench-seat group only; steel supports and planter shrubs retain separate materials                                                                             |
-| Car paint                                             | Existing TSL physical-material treatment                    | Metallic base/clearcoat remains a purpose-authored automotive response; no unsuitable concrete/industrial scan is assigned                                     |
+| Kaminari GT roadster paint                            | Project-authored TSL physical-material treatment             | In-house unbadged body uses metallic base/clearcoat and procedural micro-variation; no unsuitable concrete/industrial scan is assigned                          |
 | Glazing, emitters and mixed/unsupported metal details | No fabricated maps                                          | Glass/emissive paths remain separate; metal trim, signals and light sources retain authored PBR/emissive materials                                             |
 
 Albedo uses sRGB; normal and packed ARM data are linear. ARM channels are red = AO, green = roughness, blue = metalness. A small per-world texture library coalesces requests for shared static-world sets and owns their disposal; the existing streamed terrain resource lifecycle remains independent. Texture sets are pinned and verified through the asset script, manifest and credits register.
 
+## Vehicle visual and traffic implementation (2026-10-22)
+
+The +360º Car Visualizer remains a presentation reference only: its public page does not disclose a source mesh, topology, asset license, or authoring tool. The owner selected “Ferrari California” as a broad two-seat convertible/GT body-class reference. `CarVisual.ts` now builds an original fictional Kaminari GT roadster from Three.js geometry: a long-hood open-top silhouette, visible seats/dashboard, framed windshield, mirrors, non-branded wheels, and local brake lamps. It uses the project's metallic/clearcoat node material plus map-free opaque tinted glazing and authored interior/rubber/metal materials. The detailed render body remains separate from Rapier's simple chassis collider. No manufacturer badge, text, exact Ferrari body geometry, third-party model, or externally sourced vehicle texture is included.
+
+Aohara visual traffic now has five procedural archetypes: passenger cars, city buses, rigid trucks, semi-trailer rigs, and farm tractors. Each class has compact merged geometry and one instanced mesh with three material groups (physical paint, dark glazing/tires, and small metal/light accents). The groups remain separate GPU draws; configured batch counts are not draw-call or FPS measurements. Class totals stay inside the existing C/B/A traffic budgets of 6/12/18, with all five types represented at each tier; the actor count, pedestrian budgets, and no-moving-collider design are unchanged. Length-aware stop-line offsets keep the longer vehicles' fronts clear of the signal while retaining a tier-bounded batch count. This is signal-aware visual traffic, not collision-resolved vehicle AI or pedestrian right-of-way.
+
+The CC0 RGS_Dev pack was verified from its OpenGameArt listing and included `License.txt`; its FBX-only roadster/bus/truck/trailer assets are stylized and no tractor is included. Because the project's reproducible model pipeline is GLTF/GLB-based, no unverified one-off conversion or external model was added. The Innerscene bus page declares CC0 but the local file was not inspected and is not used. These sources are research candidates only; they do not need `CREDITS.md` entries because none is shipped.
+
 ## Deliberate limits
 
 - Maps are restricted to geometry whose physical material matches the scan; furniture preserves semantic material groups, and Yūhi Town separates wall bodies from trim/details before applying the concrete scan. No blanket texture is put on every opaque material.
-- The body paint is not made to look realistic by attaching a generic industrial texture. Its layered physical shader, clearcoat, and HDRI reflections remain the appropriate path until a suitable CC0 automotive-paint asset/hero vehicle is adopted.
+- The in-house body paint is not made to look realistic by attaching a generic industrial texture. Its authored physical shader, clearcoat, and HDRI reflections are used instead; no automotive-paint maps are fabricated.
 - No scanned maps are added to glass or emissive surfaces. No new global bloom, fog, mist, haze, weather, rain, standing water, or traction behavior is introduced. Aohara's authorized static wet-look stays local and visual-only.
 - Existing quality-tier budgets, streaming, instancing pools, lane readability, spawn behavior, and relaxing balance are unchanged. These are configured budgets, not measured GPU limits or FPS evidence.
 - No browser visual review, manual drive, named-device frame-time measurement, or owner-device acceptance is claimed in this reference review.

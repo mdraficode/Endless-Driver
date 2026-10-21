@@ -20,7 +20,7 @@ import { AOHARA_DISTRICT_CONFIG } from '../../src/config/urban-district';
 import { DEFAULT_SPAWN_ID, SPAWN_POINTS } from '../../src/config/spawns';
 import { EnvironmentClock } from '../../src/environment/EnvironmentClock';
 import { UrbanNightWorld } from '../../src/world/urban-night';
-import { advanceTrafficWithSignal } from '../../src/world/urban-activity';
+import { advanceTrafficWithSignal, UrbanStreetActivity } from '../../src/world/urban-activity';
 import { generateAoharaStreetFurniturePlacements } from '../../src/world/urban-furniture';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
 import type { RoadNetwork } from '../../src/world/road-network';
@@ -162,10 +162,49 @@ describe('Aohara city night-lighting rules', () => {
     expect(advanceTrafficWithSignal(40, 100, 50, 5, 'red', 1)).toBeLessThan(
       advanceTrafficWithSignal(40, 100, 50, 5, 'red'),
     );
+    expect(advanceTrafficWithSignal(40, 100, 50, 5, 'red', 0, 11)).toBe(40);
 
     expect(advanceTrafficWithSignal(20, 100, 50, 5, 'amber')).toBeLessThan(50);
     expect(advanceTrafficWithSignal(40, 100, 50, 5, 'amber')).toBe(45);
     expect(advanceTrafficWithSignal(40, 100, 50, 5, 'green')).toBe(45);
+  });
+
+  it('fills every traffic class inside the existing C/B/A vehicle and draw-call budgets', () => {
+    const expectedByTier = {
+      C: { passengerCars: 2, cityBuses: 1, rigidTrucks: 1, semiTrailerRigs: 1, farmTractors: 1 },
+      B: { passengerCars: 3, cityBuses: 3, rigidTrucks: 2, semiTrailerRigs: 2, farmTractors: 2 },
+      A: { passengerCars: 4, cityBuses: 4, rigidTrucks: 4, semiTrailerRigs: 3, farmTractors: 3 },
+    } as const;
+
+    for (const tier of ['C', 'B', 'A'] as const) {
+      const activity = new UrbanStreetActivity(tier);
+      const stats = activity.getContentStats();
+      expect(stats).toMatchObject({
+        urbanTrafficVehicles: URBAN_ACTIVITY_TIER_BUDGET[tier].trafficVehicles,
+        urbanTrafficPassengerCars: expectedByTier[tier].passengerCars,
+        urbanTrafficCityBuses: expectedByTier[tier].cityBuses,
+        urbanTrafficRigidTrucks: expectedByTier[tier].rigidTrucks,
+        urbanTrafficSemiTrailerRigs: expectedByTier[tier].semiTrailerRigs,
+        urbanTrafficFarmTractors: expectedByTier[tier].farmTractors,
+        urbanTrafficBatches: 5,
+        urbanPedestrians: URBAN_ACTIVITY_TIER_BUDGET[tier].pedestrians,
+        urbanActivityBatches: 7,
+      });
+      const trafficMeshes = activity.root.children.filter(
+        (child) => child instanceof InstancedMesh && child.name.startsWith('aohara-traffic-'),
+      );
+      expect(trafficMeshes).toHaveLength(5);
+      for (const mesh of trafficMeshes) {
+        expect(mesh).toBeInstanceOf(InstancedMesh);
+        if (!(mesh instanceof InstancedMesh)) {
+          throw new Error('each vehicle class should use one instanced mesh');
+        }
+        expect(Array.isArray(mesh.material)).toBe(true);
+        expect(mesh.geometry.groups.map((group) => group.materialIndex)).toEqual([0, 1, 2]);
+      }
+      activity.update(1 / 60, 'red');
+      activity.dispose();
+    }
   });
 
   it('keeps city activity caps bounded and increasing across C/B/A tiers', () => {
@@ -415,8 +454,14 @@ describe('Aohara city night-lighting rules', () => {
       highRiseBuildings: 32,
       infillBuildings: URBAN_ACTIVITY_TIER_BUDGET.B.infillBuildings,
       urbanTrafficVehicles: URBAN_ACTIVITY_TIER_BUDGET.B.trafficVehicles,
+      urbanTrafficPassengerCars: 3,
+      urbanTrafficCityBuses: 3,
+      urbanTrafficRigidTrucks: 2,
+      urbanTrafficSemiTrailerRigs: 2,
+      urbanTrafficFarmTractors: 2,
+      urbanTrafficBatches: 5,
       urbanPedestrians: URBAN_ACTIVITY_TIER_BUDGET.B.pedestrians,
-      urbanActivityBatches: 4,
+      urbanActivityBatches: 7,
       stadiums: 1,
       casinos: 2,
       mansions: 4,

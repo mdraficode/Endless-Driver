@@ -24,8 +24,8 @@ caveat, not a recommendation.
 
 **Why CC-BY is an exception rather than a ban:** a CC-BY credit is just a line of text naming the artist in the
 credits screen. It is not a payment, not a restriction on use, distribution, or modification, and not a fee. It buys
-real quality in only a few places — a handful of Japanese shrine/torii models and some music. Everything structural
-(sky, terrain, roads, vegetation, water, the car, and all sound effects) is plain CC0 with no conditions at all.
+real quality in only a few places — a handful of Japanese shrine/torii models and some music. The environment
+textures/models and sound effects are plain CC0; the player vehicle and traffic geometry are authored in-house.
 
 **Decided 2026-10-14:** the credited exception **stays**, because the only alternative is spending our own build
 time recreating those few landmark props from scratch for no benefit. Rule of thumb for whoever implements this:
@@ -116,10 +116,9 @@ There is no free, licence-clean, production-car-grade hero vehicle. What exists:
 | three.js's example `ferrari.glb`                                                | Real-brand Ferrari: trademark risk, and the licence trail depends on third-party attribution. Excluded.                                                                                                                                                  |
 | "Free" marketplace cars (RenderHub, Free3D, TurboSquid free section)            | Brand names plus non-open "extended use" licences. Excluded by the rule in §1.                                                                                                                                                                           |
 
-**Plan:** build the hero car **in-house as a "Kaminari" GT coupe** (fictional marque, zero trademark exposure) using
-the open-source toolchain, and use a **CC0 Unity Fan concept car as the Phase-3/4 stand-in** so the pipeline and the
-look-dev scenes are never blocked by an empty garage. Both go through the same asset pipeline, so swapping the hero
-later costs nothing.
+**Vehicle decision (2026-10-22):** the owner selected the Ferrari California only as a broad convertible/GT body-class reference for a new, in-house player car—not as a model to reproduce. `src/vehicles/CarVisual.ts` now builds an original, unbadged two-seat GT roadster with a long bonnet, open cabin, project-authored physical paint/glazing/interior materials, four pose-driven wheels, steering, and brake lamps. Traffic geometry is also authored in-house for passenger cars, city buses, rigid trucks, semi-trailer rigs, and farm tractors. No vehicle mesh is shipped as an external asset, and no manifest or credit entry is needed.
+
+**Free/open candidates audited, not adopted:** the [RGS_Dev Free Low Poly Vehicles Pack on OpenGameArt](https://opengameart.org/content/free-low-poly-vehicles-pack) identifies the pack as CC0; its included `License.txt` names Raphael Gonçalves and explicitly grants commercial/public-domain use. The archive has FBX files for a roadster, bus, rigid truck, and truck with trailer, but no tractor. It is visibly stylized low-poly and FBX-only, whereas the current verified asset pipeline derives GLTF/GLB with pinned optimization and LODs; no reproducible FBX conversion was added. The models therefore remain unshipped. The [Innerscene low-floor bus](https://www.innerscene.com/tools/library/3d-parts/low-floor-city-bus-9e7ce899) page also declares a CC0 GLB, but it was not locally inspected or used. Kenney and Quaternius vehicle packs are likewise CC0 stylized candidates, not runtime dependencies. No exact reference geometry or branded model was copied.
 
 ### 3.6 Audio — **premium SFX, good-not-AAA music**
 
@@ -168,7 +167,7 @@ Said plainly so expectations stay honest:
    CC-BY community models or not free at all. Our world is a **composite, fictional prefecture** built from CC0
    materials plus in-house landmarks — not a scan of a real place, and we will never claim otherwise.
 4. **Specific real locations cannot be rebuilt.** Forza pays capture crews. We author a plausible, coherent region.
-5. **Traffic and crowds are out of scope**, so no free vehicle-fleet problem exists yet.
+5. **Full traffic AI and crowds remain bounded Phase 9 work.** The authorized visual-actor slice now has instanced passenger cars, city buses, rigid trucks, semi-trailer rigs and farm tractors, with totals fixed at C/B/A = 6/12/18 and no moving colliders. Pedestrians, crossings/right-of-way, vehicle collision truth, recovery and further population remain separate work.
 
 None of these stop the project hitting `docs/VISUAL_TARGET.md`; they define the ceiling of it.
 

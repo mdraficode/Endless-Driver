@@ -5,9 +5,10 @@ import {
   Group,
   InstancedMesh,
   Object3D,
+  type Material,
   type BufferGeometry,
 } from 'three';
-import { MeshStandardNodeMaterial } from 'three/webgpu';
+import { MeshPhysicalNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import {
@@ -17,13 +18,17 @@ import {
 } from '../config/urban-city';
 import { AOHARA_DISTRICT_CONFIG } from '../config/urban-district';
 import type { TierId } from '../config/tiers';
+import {
+  TRAFFIC_VEHICLE_CLASSES,
+  type TrafficVehicleClass,
+} from '../config/traffic-vehicles';
+import { createTrafficVehicleModel, getTrafficVehicleSpec } from './traffic-vehicle-models';
 
 const ROAD_Y = -0.46;
 const SIDEWALK_LIFT = 0.035;
 const LANE_OFFSET_METERS = 3.4;
 const MAX_UPDATE_DELTA_SECONDS = 0.1;
 
-const VEHICLE_COLORS = [0xd2d3ce, 0x35424a, 0x9c4338, 0x35657a, 0xb38e54, 0x526c58] as const;
 const PEDESTRIAN_COLORS = [0x455d76, 0x805749, 0x536348, 0x414248, 0x897753, 0x715d76] as const;
 const SKIN_COLORS = [0xc58e6c, 0xe0b890, 0x9d7259] as const;
 
@@ -63,6 +68,9 @@ interface BoxPart {
 interface TrafficVehicle {
   readonly index: number;
   readonly routeIndex: number;
+  readonly type: TrafficVehicleClass;
+  readonly instanceIndex: number;
+  readonly lengthMeters: number;
   readonly speedMetersPerSecond: number;
   distance: number;
 }
@@ -220,34 +228,6 @@ function mergeBoxes(parts: readonly BoxPart[], name: string): BufferGeometry {
   return merged;
 }
 
-function createVehicleBodyGeometry(): BufferGeometry {
-  return mergeBoxes(
-    [
-      { width: 2.0, height: 0.64, depth: 4.25, x: 0, y: 0.55, z: 0 },
-      { width: 1.55, height: 0.68, depth: 2.15, x: 0, y: 1.13, z: -0.13 },
-    ],
-    'aohara-traffic-car-body-and-cabin',
-  );
-}
-
-function createVehicleTrimGeometry(): BufferGeometry {
-  const wheels: BoxPart[] = [];
-  for (const side of [-1, 1]) {
-    for (const axle of [-1, 1]) {
-      wheels.push({
-        width: 0.28,
-        height: 0.46,
-        depth: 0.7,
-        x: side * 0.98,
-        y: 0.21,
-        z: axle * 1.27,
-      });
-    }
-  }
-  wheels.push({ width: 1.32, height: 0.16, depth: 1.72, x: 0, y: 1.39, z: -0.13 });
-  return mergeBoxes(wheels, 'aohara-traffic-car-wheels-and-glass');
-}
-
 function createPedestrianBodyGeometry(): BufferGeometry {
   return mergeBoxes(
     [
@@ -285,7 +265,8 @@ function deterministicUnit(index: number, salt: number): number {
 
 /**
  * Advances a traffic actor without passing its queued stop-line slot on a red/amber phase.
- * `queuePosition` is zero for the lead vehicle; later vehicles queue one fixed gap behind it.
+ * `queuePosition` is zero for the lead vehicle; callers with mixed vehicle lengths may pass an
+ * explicit center-to-slot offset so long buses and rigs retain a realistic bumper gap.
  */
 export function advanceTrafficWithSignal(
   currentDistance: number,
@@ -294,6 +275,7 @@ export function advanceTrafficWithSignal(
   requestedTravelMeters: number,
   aspect: TrafficSignalAspect,
   queuePosition = 0,
+  queueOffsetMeters?: number,
 ): number {
   if (
     !Number.isFinite(currentDistance) ||
@@ -316,7 +298,10 @@ export function advanceTrafficWithSignal(
     return wrapDistance(currentDistance + requestedTravel, routeLength);
   }
 
-  const queueOffset = Math.max(0, queuePosition) * URBAN_CITY_CONFIG.trafficSignal.queueGapMeters;
+  const queueOffset =
+    queueOffsetMeters !== undefined && Number.isFinite(queueOffsetMeters)
+      ? Math.max(0, queueOffsetMeters)
+      : Math.max(0, queuePosition) * URBAN_CITY_CONFIG.trafficSignal.queueGapMeters;
   const distanceToQueueSlot = Math.max(0, distanceToStop - queueOffset);
   if (distanceToQueueSlot <= 0.03) {
     return wrapDistance(currentDistance, routeLength);
@@ -331,8 +316,8 @@ export function advanceTrafficWithSignal(
 
 /**
  * Bounded, visual-only Aohara activity: instanced path-following vehicles and pedestrians, no second
- * physics solver and no moving colliders. Traffic obeys the avenue phase and keeps a fixed queue gap;
- * pedestrians stay on the four central-block sidewalks until crossing-right-of-way is implemented.
+ * physics solver and no moving colliders. Traffic obeys the avenue phase and keeps a class-length-aware
+ * bumper gap; pedestrians stay on the four central-block sidewalks until crossing-right-of-way is implemented.
  */
 export class UrbanStreetActivity {
   readonly root = new Group();
@@ -341,13 +326,15 @@ export class UrbanStreetActivity {
   readonly #vehicles: TrafficVehicle[];
   readonly #vehiclesByRoute: TrafficVehicle[][];
   readonly #trafficQueueScratch: TrafficQueueEntry[][];
+  readonly #trafficClassCounts = new Map<TrafficVehicleClass, number>(
+    TRAFFIC_VEHICLE_CLASSES.map((type) => [type, 0] as const),
+  );
+  readonly #trafficMeshes = new Map<TrafficVehicleClass, InstancedMesh>();
   readonly #pedestrians: Pedestrian[];
-  readonly #vehicleBodyMesh: InstancedMesh;
-  readonly #vehicleTrimMesh: InstancedMesh;
   readonly #pedestrianBodyMesh: InstancedMesh;
   readonly #pedestrianHeadMesh: InstancedMesh;
   readonly #meshes: InstancedMesh[] = [];
-  readonly #materials: MeshStandardNodeMaterial[] = [];
+  readonly #materials: Material[] = [];
   readonly #pose: RoutePose = { x: 0, z: 0, yaw: 0 };
   readonly #transform = new Object3D();
   #disposed = false;
@@ -362,35 +349,45 @@ export class UrbanStreetActivity {
     );
     this.#pedestrians = this.#createPedestrians(budget.pedestrians);
 
-    const vehicleBodyMaterial = createActivityMaterial('aohara-traffic-vehicle-paint');
     const vehicleTrimMaterial = createActivityMaterial(
       'aohara-traffic-vehicle-glass-and-tyres',
-      0.94,
+      0.9,
     );
+    vehicleTrimMaterial.color.setHex(0x242b31);
+    const vehicleAccentMaterial = createActivityMaterial('aohara-traffic-vehicle-metal-accents', 0.36);
+    vehicleAccentMaterial.color.setHex(0xaab5bd);
+    vehicleAccentMaterial.metalness = 0.62;
     const pedestrianBodyMaterial = createActivityMaterial(
       'aohara-sidewalk-pedestrian-clothing',
       0.91,
     );
     const pedestrianHeadMaterial = createActivityMaterial('aohara-sidewalk-pedestrian-skin', 0.9);
-    this.#materials.push(
-      vehicleBodyMaterial,
-      vehicleTrimMaterial,
-      pedestrianBodyMaterial,
-      pedestrianHeadMaterial,
-    );
+    this.#materials.push(vehicleTrimMaterial, vehicleAccentMaterial, pedestrianBodyMaterial, pedestrianHeadMaterial);
 
-    this.#vehicleBodyMesh = this.#createMesh(
-      createVehicleBodyGeometry(),
-      vehicleBodyMaterial,
-      budget.trafficVehicles,
-      'aohara-traffic-vehicle-bodies',
-    );
-    this.#vehicleTrimMesh = this.#createMesh(
-      createVehicleTrimGeometry(),
-      vehicleTrimMaterial,
-      budget.trafficVehicles,
-      'aohara-traffic-vehicle-trim',
-    );
+    for (const type of TRAFFIC_VEHICLE_CLASSES) {
+      const count = this.#trafficClassCounts.get(type) ?? 0;
+      if (count === 0) {
+        continue;
+      }
+      const model = createTrafficVehicleModel(type);
+      const bodyMaterial = new MeshPhysicalNodeMaterial();
+      bodyMaterial.name = `aohara-${type}-physical-paint`;
+      bodyMaterial.color.setHex(model.bodyColor);
+      bodyMaterial.metalness = 0.18;
+      bodyMaterial.roughness = 0.4;
+      bodyMaterial.clearcoat = 0.34;
+      bodyMaterial.clearcoatRoughness = 0.24;
+      this.#materials.push(bodyMaterial);
+      this.#trafficMeshes.set(
+        type,
+        this.#createMesh(
+          model.geometry,
+          [bodyMaterial, vehicleTrimMaterial, vehicleAccentMaterial],
+          count,
+          `aohara-traffic-${type}-instances`,
+        ),
+      );
+    }
     this.#pedestrianBodyMesh = this.#createMesh(
       createPedestrianBodyGeometry(),
       pedestrianBodyMaterial,
@@ -404,12 +401,6 @@ export class UrbanStreetActivity {
       'aohara-sidewalk-pedestrian-heads',
     );
 
-    for (const vehicle of this.#vehicles) {
-      this.#vehicleBodyMesh.setColorAt(
-        vehicle.index,
-        new Color(VEHICLE_COLORS[vehicle.index % VEHICLE_COLORS.length]!),
-      );
-    }
     for (const pedestrian of this.#pedestrians) {
       this.#pedestrianBodyMesh.setColorAt(
         pedestrian.index,
@@ -420,11 +411,7 @@ export class UrbanStreetActivity {
         new Color(SKIN_COLORS[pedestrian.index % SKIN_COLORS.length]!),
       );
     }
-    for (const mesh of [
-      this.#vehicleBodyMesh,
-      this.#pedestrianBodyMesh,
-      this.#pedestrianHeadMesh,
-    ]) {
+    for (const mesh of [this.#pedestrianBodyMesh, this.#pedestrianHeadMesh]) {
       if (mesh.instanceColor !== null) {
         mesh.instanceColor.needsUpdate = true;
       }
@@ -451,8 +438,10 @@ export class UrbanStreetActivity {
           first.distanceToSignal - second.distanceToSignal ||
           first.vehicleIndex - second.vehicleIndex,
       );
+      let queueOffsetMeters = 0;
       queue.forEach((entry, queuePosition) => {
         const vehicle = this.#vehicles[entry.vehicleIndex]!;
+        const centerToSlotMeters = queueOffsetMeters + vehicle.lengthMeters / 2;
         vehicle.distance = advanceTrafficWithSignal(
           vehicle.distance,
           route.length,
@@ -460,7 +449,9 @@ export class UrbanStreetActivity {
           vehicle.speedMetersPerSecond * delta,
           aspect,
           queuePosition,
+          centerToSlotMeters,
         );
+        queueOffsetMeters += vehicle.lengthMeters + URBAN_CITY_CONFIG.trafficSignal.queueGapMeters;
       });
     }
 
@@ -479,6 +470,12 @@ export class UrbanStreetActivity {
   getContentStats(): Readonly<Record<string, number>> {
     return {
       urbanTrafficVehicles: this.#vehicles.length,
+      urbanTrafficPassengerCars: this.#trafficClassCounts.get('passenger-car') ?? 0,
+      urbanTrafficCityBuses: this.#trafficClassCounts.get('city-bus') ?? 0,
+      urbanTrafficRigidTrucks: this.#trafficClassCounts.get('rigid-truck') ?? 0,
+      urbanTrafficSemiTrailerRigs: this.#trafficClassCounts.get('semi-trailer-rig') ?? 0,
+      urbanTrafficFarmTractors: this.#trafficClassCounts.get('farm-tractor') ?? 0,
+      urbanTrafficBatches: this.#trafficMeshes.size,
       urbanPedestrians: this.#pedestrians.length,
       urbanActivityBatches: this.#meshes.length,
     };
@@ -506,11 +503,21 @@ export class UrbanStreetActivity {
     this.#trafficRoutes.forEach((route, routeIndex) => {
       const vehicles: TrafficVehicle[] = [];
       for (let localIndex = 0; localIndex < counts[routeIndex]!; localIndex += 1) {
+        const type = TRAFFIC_VEHICLE_CLASSES[index % TRAFFIC_VEHICLE_CLASSES.length]!;
+        const spec = getTrafficVehicleSpec(type);
+        const instanceIndex = this.#trafficClassCounts.get(type) ?? 0;
+        this.#trafficClassCounts.set(type, instanceIndex + 1);
         vehicles.push({
           index,
           routeIndex,
+          type,
+          instanceIndex,
+          lengthMeters: spec.lengthMeters,
           distance: ((localIndex + 0.5) / counts[routeIndex]!) * route.length,
-          speedMetersPerSecond: 7.2 + deterministicUnit(index, routeIndex + 11) * 2.8,
+          speedMetersPerSecond:
+            spec.minimumSpeedMetersPerSecond +
+            deterministicUnit(index, routeIndex + 11) *
+              (spec.maximumSpeedMetersPerSecond - spec.minimumSpeedMetersPerSecond),
         });
         index += 1;
       }
@@ -540,7 +547,7 @@ export class UrbanStreetActivity {
 
   #createMesh(
     geometry: BufferGeometry,
-    material: MeshStandardNodeMaterial,
+    material: Material | Material[],
     count: number,
     name: string,
   ): InstancedMesh {
@@ -564,11 +571,11 @@ export class UrbanStreetActivity {
       this.#transform.rotation.set(0, this.#pose.yaw, 0);
       this.#transform.scale.set(1, 1, 1);
       this.#transform.updateMatrix();
-      this.#vehicleBodyMesh.setMatrixAt(vehicle.index, this.#transform.matrix);
-      this.#vehicleTrimMesh.setMatrixAt(vehicle.index, this.#transform.matrix);
+      this.#trafficMeshes.get(vehicle.type)?.setMatrixAt(vehicle.instanceIndex, this.#transform.matrix);
     }
-    this.#vehicleBodyMesh.instanceMatrix.needsUpdate = true;
-    this.#vehicleTrimMesh.instanceMatrix.needsUpdate = true;
+    for (const mesh of this.#trafficMeshes.values()) {
+      mesh.instanceMatrix.needsUpdate = true;
+    }
   }
 
   #writePedestrianMatrices(): void {

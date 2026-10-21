@@ -8,6 +8,7 @@ import type { VehiclePose, VehicleTelemetry, WheelState } from '../../src/vehicl
 const pose: VehiclePose = {
   position: { x: 0, y: 0.7, z: 0 },
   rotation: { x: 0, y: 0, z: 0, w: 1 },
+  brake: 0,
   wheels: [
     { isFront: true, steerAngle: 0, spinAngle: 0, suspensionLength: 0.37 },
     { isFront: true, steerAngle: 0, spinAngle: 0, suspensionLength: 0.37 },
