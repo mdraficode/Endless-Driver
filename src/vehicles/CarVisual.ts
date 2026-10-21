@@ -479,7 +479,7 @@ export class CarVisual {
   ): Mesh {
     const mesh = this.#addMesh(
       name,
-      new RoundedBoxGeometry(width, height, depth, 4, radius),
+      new RoundedBoxGeometry(width, height, depth, 2, radius),
       material,
     );
     mesh.position.set(position[0], position[1], position[2]);
