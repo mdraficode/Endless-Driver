@@ -1,6 +1,9 @@
-import { InstancedMesh } from 'three';
+import { DataTexture, InstancedMesh } from 'three';
 import { MeshPhysicalNodeMaterial } from 'three/webgpu';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+import type { MaterialTextureSet } from '../../src/assets/AssetManifest';
+import { SurfaceTextureLibrary } from '../../src/assets/SurfaceTextureLibrary';
 
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
@@ -15,6 +18,29 @@ import { generateRoadPoles, generateTownBuildings, TownWorld } from '../../src/w
 
 const sampler = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
 const network = sampler.roadNetwork!;
+
+function createConcreteSet(): MaterialTextureSet {
+  const makeMap = () => new DataTexture(new Uint8Array([128, 128, 128, 255]), 1, 1);
+  const diffuse = makeMap();
+  const normal = makeMap();
+  const arm = makeMap();
+  const dispose = vi.fn(() => {
+    diffuse.dispose();
+    normal.dispose();
+    arm.dispose();
+  });
+  return {
+    id: 'test-concrete',
+    name: 'Test concrete',
+    licence: 'CC0-1.0',
+    creator: 'Test creator',
+    diffuse,
+    normal,
+    arm,
+    height: null,
+    dispose,
+  };
+}
 
 describe('town placement', () => {
   it('builds a deterministic town inside the district, clear of roads', () => {
@@ -45,12 +71,20 @@ describe('town placement', () => {
     for (let archetype = 0; archetype < 3; archetype += 1) {
       const glazing = world.root.getObjectByName(`town-glazing-${archetype}`);
       const walls = world.root.getObjectByName(`town-walls-${archetype}`);
+      const wallDetails = world.root.getObjectByName(`town-wall-details-${archetype}`);
       const roofs = world.root.getObjectByName(`town-roofs-${archetype}`);
       expect(glazing).toBeInstanceOf(InstancedMesh);
       expect(walls).toBeInstanceOf(InstancedMesh);
+      expect(wallDetails).toBeInstanceOf(InstancedMesh);
       expect(roofs).toBeInstanceOf(InstancedMesh);
-      if (!(glazing instanceof InstancedMesh) || !(walls instanceof InstancedMesh)) {
-        throw new Error(`town archetype ${archetype} should include facade and glazing batches`);
+      if (
+        !(glazing instanceof InstancedMesh) ||
+        !(walls instanceof InstancedMesh) ||
+        !(wallDetails instanceof InstancedMesh)
+      ) {
+        throw new Error(
+          `town archetype ${archetype} should separate wall, trim and glazing batches`,
+        );
       }
       expect(glazing.count).toBe(
         world.buildings.filter((building) => building.archetype === archetype).length,
@@ -59,9 +93,33 @@ describe('town placement', () => {
       expect((glazing.material as MeshPhysicalNodeMaterial).clearcoatNode).not.toBeNull();
       expect(walls.material).toBeInstanceOf(MeshPhysicalNodeMaterial);
       expect((walls.material as MeshPhysicalNodeMaterial).colorNode).not.toBeNull();
-      expect(walls.geometry.getAttribute('position').count).toBeGreaterThan(100);
+      expect(walls.geometry.getAttribute('uv')).toBeDefined();
+      expect(wallDetails.material).toBeInstanceOf(MeshPhysicalNodeMaterial);
+      expect(wallDetails.material).not.toBe(walls.material);
+      expect(wallDetails.geometry.getAttribute('position').count).toBeGreaterThan(100);
     }
     world.dispose();
+  });
+
+  it('binds the concrete scan to wall bodies, not painted trim details', async () => {
+    const set = createConcreteSet();
+    const library = new SurfaceTextureLibrary(vi.fn().mockResolvedValue(set));
+    const world = new TownWorld(sampler, library);
+    await world.loadSurfaces();
+
+    const wallBody = world.root.getObjectByName('town-walls-0');
+    const wallDetails = world.root.getObjectByName('town-wall-details-0');
+    if (!(wallBody instanceof InstancedMesh) || !(wallDetails instanceof InstancedMesh)) {
+      throw new Error('town wall bodies and detail kits must have separate instanced meshes');
+    }
+    const wallMaterial = wallBody.material as MeshPhysicalNodeMaterial;
+    const detailMaterial = wallDetails.material as MeshPhysicalNodeMaterial;
+    expect(wallMaterial.normalNode).not.toBeNull();
+    expect(detailMaterial.normalNode).toBeNull();
+
+    world.dispose();
+    library.dispose();
+    expect(set.dispose).toHaveBeenCalledOnce();
   });
 
   it('marches poles along the network at roadside offset', () => {

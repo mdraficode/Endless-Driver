@@ -187,15 +187,43 @@ const ENTRIES = [
     attribution: '',
     runtimePath: 'assets/textures/japanese_cedar_planks_1k',
     url: `${BASE_URL}/Textures/jpg/1k/japanese_cedar_planks`,
-    role: 'Scanned CC0 surface used by the material library and the studio validation grid (Phase 3 acceptance).',
+    role: 'Scanned CC0 cedar surface for the material library, studio validation grid and wooden Aohara bench boards.',
+  },
+  {
+    id: 'tex-gravel-concrete-03-1k',
+    kind: 'texture',
+    name: 'Gravel Concrete 03 — 1K PBR set',
+    assetClass: 'material-surface',
+    sourceUrl: 'https://polyhaven.com/a/gravel_concrete_03',
+    creator: 'Charlotte Baglioni',
+    licence: 'CC0-1.0',
+    attribution: '',
+    runtimePath: 'assets/textures/gravel_concrete_03_1k',
+    url: `${BASE_URL}/Textures/jpg/1k/gravel_concrete_03`,
+    stem: 'gravel_concrete_03',
+    role: 'CC0 aggregate concrete for sidewalks and concrete street furniture; albedo, normal and packed AO/roughness/metalness maps.',
+  },
+  {
+    id: 'tex-concrete-wall-009-1k',
+    kind: 'texture',
+    name: 'Concrete Wall 009 — 1K PBR set',
+    assetClass: 'material-surface',
+    sourceUrl: 'https://polyhaven.com/a/concrete_wall_009',
+    creator: 'Charlotte Baglioni',
+    licence: 'CC0-1.0',
+    attribution: '',
+    runtimePath: 'assets/textures/concrete_wall_009_1k',
+    url: `${BASE_URL}/Textures/jpg/1k/concrete_wall_009`,
+    stem: 'concrete_wall_009',
+    role: 'CC0 cast-concrete scan for opaque city and rural building walls; albedo, normal and packed AO/roughness/metalness maps.',
   },
 ];
 
 /**
- * Map files for the cedar planks set, as published by Poly Haven:
+ * Map files for the Poly Haven texture sets:
  * [manifest slot, published file stem, colour space, usage].
- * The exact file names are pinned here (verified against api.polyhaven.com on 2026-10-14) so the
- * pipeline never guesses a URL and never depends on the API at build time.
+ * The exact file names are pinned here (verified against Poly Haven's public asset pages/API on
+ * 2026-10-21) so the pipeline never guesses a URL or depends on the API at build time.
  */
 const TEXTURE_MAPS = [
   ['diffuse', 'diff', 'srgb'],

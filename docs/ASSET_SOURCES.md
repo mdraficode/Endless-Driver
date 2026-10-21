@@ -80,6 +80,8 @@ Poly Haven has Japan-specific scanned materials we can use directly: `japanese_c
 `bamboo_veneer`, `tatami_mat`, `dark_wood`. ambientCG supplies asphalt, wet asphalt, gravel, soil, rock, snow, ice,
 concrete, and road-marking materials at 1K–16K with direct links. Everything is CC0.
 
+**Runtime surface-map selections verified and added 2026-10-21:** Poly Haven's [Gravel Concrete 03](https://polyhaven.com/a/gravel_concrete_03) is a 2.1 m exposed-aggregate outdoor pavement scan by Charlotte Baglioni, tagged for sidewalks/paving; its CC0 page lists diffuse, OpenGL normal, roughness, AO and packed ARM maps. It is pinned at 1K for sidewalks and concrete planter shells. Poly Haven's [Concrete Wall 009](https://polyhaven.com/a/concrete_wall_009), also by Charlotte Baglioni and CC0, is a 1.8 m cast-concrete wall scan with formwork seams; its diffuse, OpenGL normal, roughness, AO and ARM slots are pinned at 1K for selected opaque Aohara facades and Yūhi Town wall-body boxes (painted trims and signs use a separate material). Existing [Japanese Cedar Planks](https://polyhaven.com/a/japanese_cedar_planks) remains the matching CC0 scan for wooden bench boards. Runtime albedo is sRGB; normal and packed ARM are linear, with ARM channels AO/roughness/metalness. The pinned file paths, exact hashes, creators and retrieval dates are in `public/assets/manifest.json` and `CREDITS.md`; the `fetch-assets.mjs` entries are the acquisition source of truth. No generic gym rubber, worn blue steel, or other physically mismatched texture is assigned to tires, automotive paint, or bare metal.
+
 ### 3.3 Vegetation, rocks, water edges — **CC0 + open-source generation**
 
 Verified Poly Haven nature content: category counts are **trees 20**, **plants 57**, **ground cover 32**,

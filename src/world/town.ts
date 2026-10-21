@@ -12,9 +12,11 @@ import {
   Vector3,
 } from 'three';
 import { MeshPhysicalNodeMaterial } from 'three/webgpu';
+import { float, uv, vec2, vertexColor } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { BUILDING_ARCHETYPES, TOWN_CONFIG } from '../config/town';
+import { configureTiledSurface, SurfaceTextureLibrary } from '../assets/SurfaceTextureLibrary';
 import { DISTRICTS } from '../config/districts';
 import type { TerrainSampler } from './terrain-height';
 import type { RoadNetwork } from './road-network';
@@ -23,6 +25,7 @@ import {
   createArchitecturalMaterial,
   createVertexColorArchitecturalMaterial,
 } from './architectural-materials';
+import { bindScannedPbrMaps } from './scanned-pbr';
 import { generateChunkVegetation } from './vegetation-placement';
 import { hash01 } from './vegetation-placement';
 
@@ -237,7 +240,7 @@ export function generateRoadPoles(sampler: TerrainSampler, network: RoadNetwork)
 }
 
 // ---------------------------------------------------------------------------
-// Kit geometry (vertex-coloured, merged): walls and roofs share transforms.
+// Kit geometry (vertex-coloured, merged): wall bodies, painted details and roofs keep shared transforms but distinct materials.
 // ---------------------------------------------------------------------------
 
 function paint(geometry: BufferGeometry, hex: number): BufferGeometry {
@@ -385,13 +388,27 @@ function buildWindowGeometry(archetype: number): {
   return { geometry: merged, count: windows.length };
 }
 
-function buildWallGeometry(archetype: number): BufferGeometry {
+function buildWallBodyGeometry(archetype: number): BufferGeometry {
+  const spec = BUILDING_ARCHETYPES[archetype]!;
+  const geometry = box(
+    spec.width,
+    spec.height,
+    spec.depth,
+    WALL_COLORS[archetype]!,
+    0,
+    spec.height / 2,
+    0,
+  );
+  geometry.name = `yuhi-town-wall-body-${archetype}`;
+  return geometry;
+}
+
+function buildWallDetailGeometry(archetype: number): BufferGeometry {
   const spec = BUILDING_ARCHETYPES[archetype]!;
   const trimHex = archetype === 1 ? 0x3e4547 : 0x57483a;
   const doorX = -spec.width * 0.28;
   const frontZ = spec.depth / 2 + 0.045;
   const parts = [
-    box(spec.width, spec.height, spec.depth, WALL_COLORS[archetype]!, 0, spec.height / 2, 0),
     box(spec.width * 0.98, 0.32, spec.depth * 0.98, 0x736b5e, 0, 0.16, 0),
     box(spec.width + 0.24, 0.11, spec.depth + 0.24, 0x3d454b, 0, spec.height + 0.035, 0),
     box(0.9, 1.86, 0.075, 0x49382c, doorX, 0.93, frontZ),
@@ -442,9 +459,9 @@ function buildWallGeometry(archetype: number): BufferGeometry {
     part.dispose();
   }
   if (merged === null) {
-    throw new Error(`could not assemble Yūhi Town wall kit ${archetype}`);
+    throw new Error(`could not assemble Yūhi Town wall details ${archetype}`);
   }
-  merged.name = `yuhi-town-wall-kit-${archetype}`;
+  merged.name = `yuhi-town-wall-details-${archetype}`;
   return merged;
 }
 
@@ -559,26 +576,58 @@ export class TownWorld {
   readonly #poleRecords = new Map<string, PoleRecord>();
   readonly #poleMesh: InstancedMesh;
   readonly #poleIndex = new Map<string, number>();
-  readonly #material: MeshPhysicalNodeMaterial;
+  readonly #wallMaterial: MeshPhysicalNodeMaterial;
+  readonly #wallDetailMaterial: MeshPhysicalNodeMaterial;
+  readonly #roofMaterial: MeshPhysicalNodeMaterial;
+  readonly #poleMaterial: MeshPhysicalNodeMaterial;
   readonly #glassMaterial: MeshPhysicalNodeMaterial;
+  readonly #surfaceTextures: SurfaceTextureLibrary;
+  readonly #ownsSurfaceTextures: boolean;
+  #wallSurfaceBound = false;
   #facadeWindowCount = 0;
   #polesDown = 0;
   #time = 0;
   #disposed = false;
 
-  constructor(sampler: TerrainSampler) {
+  constructor(sampler: TerrainSampler, surfaceTextures?: SurfaceTextureLibrary) {
     this.root.name = 'TownWorld';
+    this.#surfaceTextures = surfaceTextures ?? new SurfaceTextureLibrary();
+    this.#ownsSurfaceTextures = surfaceTextures === undefined;
     const network = sampler.roadNetwork ?? null;
     this.buildings = generateTownBuildings(sampler, network);
     this.poles = network === null ? [] : generateRoadPoles(sampler, network);
 
-    const material = createVertexColorArchitecturalMaterial({
-      name: 'yuhi-town-weathered-plaster-roof-and-wood-pbr',
+    const wallMaterial = createVertexColorArchitecturalMaterial({
+      name: 'yuhi-town-weathered-plaster-walls-pbr',
       roughness: 0.86,
       metalness: 0.025,
       detailAmplitude: 0.022,
       clearcoat: 0.075,
       clearcoatRoughness: 0.4,
+    });
+    const wallDetailMaterial = createVertexColorArchitecturalMaterial({
+      name: 'yuhi-town-painted-trim-and-entry-details-pbr',
+      roughness: 0.78,
+      metalness: 0.035,
+      detailAmplitude: 0.018,
+      clearcoat: 0.06,
+      clearcoatRoughness: 0.42,
+    });
+    const roofMaterial = createVertexColorArchitecturalMaterial({
+      name: 'yuhi-town-weathered-roofs-pbr',
+      roughness: 0.88,
+      metalness: 0.015,
+      detailAmplitude: 0.02,
+      clearcoat: 0.045,
+      clearcoatRoughness: 0.44,
+    });
+    const poleMaterial = createVertexColorArchitecturalMaterial({
+      name: 'yuhi-town-wood-utility-poles-pbr',
+      roughness: 0.84,
+      metalness: 0,
+      detailAmplitude: 0.015,
+      clearcoat: 0.025,
+      clearcoatRoughness: 0.5,
     });
     const glassMaterial = createArchitecturalMaterial({
       name: 'yuhi-town-hdri-tinted-glazing',
@@ -593,9 +642,10 @@ export class TownWorld {
     const dummy = new Object3D();
     for (let archetype = 0; archetype < BUILDING_ARCHETYPES.length; archetype += 1) {
       const placed = this.buildings.filter((b) => b.archetype === archetype);
-      for (const [kind, build] of [
-        ['walls', buildWallGeometry],
-        ['roofs', buildRoofGeometry],
+      for (const [kind, build, material] of [
+        ['walls', buildWallBodyGeometry, wallMaterial],
+        ['wall-details', buildWallDetailGeometry, wallDetailMaterial],
+        ['roofs', buildRoofGeometry, roofMaterial],
       ] as const) {
         const mesh = new InstancedMesh(build(archetype), material, Math.max(1, placed.length));
         mesh.castShadow = true;
@@ -639,7 +689,7 @@ export class TownWorld {
 
     const poleMesh = new InstancedMesh(
       buildPoleGeometry(),
-      material,
+      poleMaterial,
       Math.max(1, this.poles.length),
     );
     poleMesh.castShadow = true;
@@ -657,8 +707,36 @@ export class TownWorld {
     poleMesh.instanceMatrix.needsUpdate = true;
     this.root.add(poleMesh);
     this.#poleMesh = poleMesh;
-    this.#material = material;
+    this.#wallMaterial = wallMaterial;
+    this.#wallDetailMaterial = wallDetailMaterial;
+    this.#roofMaterial = roofMaterial;
+    this.#poleMaterial = poleMaterial;
     this.#glassMaterial = glassMaterial;
+  }
+
+  /** Loads CC0 cast-concrete maps for plaster/concrete wall bodies; trim, signage, roofs and glazing stay separate. */
+  async loadSurfaces(): Promise<void> {
+    if (this.#disposed || this.#wallSurfaceBound || this.buildings.length === 0) {
+      return;
+    }
+    const concrete = await this.#surfaceTextures.load('tex-concrete-wall-009-1k');
+    if (this.#disposed || concrete === null) {
+      return;
+    }
+    configureTiledSurface(concrete);
+    const authoredRoughness = this.#wallMaterial.roughnessNode;
+    bindScannedPbrMaps(this.#wallMaterial, concrete, uv().mul(vec2(5, 4)), {
+      albedoTint: this.#wallMaterial.colorNode ?? vertexColor(),
+      normalStrength: 0.48,
+      aoStrength: 0.72,
+      metalnessScale: 0,
+      ...(authoredRoughness === null
+        ? {}
+        : {
+            roughnessAdjustment: authoredRoughness.sub(float(this.#wallMaterial.roughness)),
+          }),
+    });
+    this.#wallSurfaceBound = true;
   }
 
   /**
@@ -859,8 +937,14 @@ export class TownWorld {
         object.dispose();
       }
     });
-    this.#material.dispose();
+    this.#wallMaterial.dispose();
+    this.#wallDetailMaterial.dispose();
+    this.#roofMaterial.dispose();
+    this.#poleMaterial.dispose();
     this.#glassMaterial.dispose();
+    if (this.#ownsSurfaceTextures) {
+      this.#surfaceTextures.dispose();
+    }
     this.root.removeFromParent();
   }
 }

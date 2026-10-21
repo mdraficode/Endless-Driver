@@ -50,6 +50,10 @@ listed because their work deserves the credit, not because the licence asks for 
   - file: `assets/textures/asphalt_03_1k_diff_1k.jpg`, `assets/textures/asphalt_03_1k_nor_gl_1k.jpg`, `assets/textures/asphalt_03_1k_rough_1k.jpg`, `assets/textures/asphalt_03_1k_arm_1k.jpg`
 - **Brown Mud Dry — 1K PBR set** — Rob Tuytel — [source](https://polyhaven.com/a/brown_mud_dry) — CC0-1.0
   - file: `assets/textures/brown_mud_dry_1k_diff_1k.jpg`, `assets/textures/brown_mud_dry_1k_nor_gl_1k.jpg`, `assets/textures/brown_mud_dry_1k_rough_1k.jpg`, `assets/textures/brown_mud_dry_1k_arm_1k.jpg`, `assets/textures/brown_mud_dry_1k_disp_1k.jpg`
+- **Concrete Wall 009 — 1K PBR set** — Charlotte Baglioni — [source](https://polyhaven.com/a/concrete_wall_009) — CC0-1.0
+  - file: `assets/textures/concrete_wall_009_1k_diff_1k.jpg`, `assets/textures/concrete_wall_009_1k_nor_gl_1k.jpg`, `assets/textures/concrete_wall_009_1k_rough_1k.jpg`, `assets/textures/concrete_wall_009_1k_arm_1k.jpg`
+- **Gravel Concrete 03 — 1K PBR set** — Charlotte Baglioni — [source](https://polyhaven.com/a/gravel_concrete_03) — CC0-1.0
+  - file: `assets/textures/gravel_concrete_03_1k_diff_1k.jpg`, `assets/textures/gravel_concrete_03_1k_nor_gl_1k.jpg`, `assets/textures/gravel_concrete_03_1k_rough_1k.jpg`, `assets/textures/gravel_concrete_03_1k_arm_1k.jpg`
 - **Japanese Cedar Planks — 1K PBR set** — Rob Tuytel — [source](https://polyhaven.com/a/japanese_cedar_planks) — CC0-1.0
   - file: `assets/textures/japanese_cedar_planks_1k_diff_1k.jpg`, `assets/textures/japanese_cedar_planks_1k_nor_gl_1k.jpg`, `assets/textures/japanese_cedar_planks_1k_rough_1k.jpg`, `assets/textures/japanese_cedar_planks_1k_arm_1k.jpg`
 - **Leafy Grass — 1K PBR set** — Charlotte Baglioni — [source](https://polyhaven.com/a/leafy_grass) — CC0-1.0

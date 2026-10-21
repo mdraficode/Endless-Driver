@@ -10,7 +10,10 @@ import {
   Object3D,
 } from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
-import { vertexColor } from 'three/tsl';
+import { uv, vec2, vertexColor } from 'three/tsl';
+
+import { configureTiledSurface, SurfaceTextureLibrary } from '../assets/SurfaceTextureLibrary';
+import { bindScannedPbrMaps } from './scanned-pbr';
 
 import {
   URBAN_CITY_CONFIG,
@@ -99,6 +102,8 @@ export interface UrbanStreetFurnitureOptions {
   readonly roadNetwork?: RoadNetwork;
   readonly origin: readonly [number, number, number];
   readonly buildingFootprints: readonly StaticBuildingBox[];
+  /** Shared per-world owner for scanned CC0 wood/concrete map sets. */
+  readonly surfaceTextures?: SurfaceTextureLibrary;
 }
 
 function roadPositionAt(edge: RoadEdge, distanceMeters: number): RoadPosition {
@@ -405,31 +410,55 @@ function createLookdevPlacements(
   return placements;
 }
 
+interface GeometryGroupSpan {
+  start: number;
+  count: number;
+  materialIndex: number;
+}
+
+interface FurnitureGeometryBuffers {
+  readonly positions: number[];
+  readonly colors: number[];
+  readonly uvs: number[];
+  readonly groups: GeometryGroupSpan[];
+}
+
+function createGeometryBuffers(): FurnitureGeometryBuffers {
+  return { positions: [], colors: [], uvs: [], groups: [] };
+}
+
 function appendGeometry(
-  positions: number[],
-  colors: number[],
+  buffers: FurnitureGeometryBuffers,
   geometry: BufferGeometry,
   colorHex: number,
+  materialIndex = 0,
 ): void {
   const position = geometry.getAttribute('position');
+  const uvAttribute = geometry.getAttribute('uv');
+  if (uvAttribute === undefined) {
+    geometry.dispose();
+    throw new Error(`furniture source geometry "${geometry.name}" has no UV coordinates`);
+  }
   const index = geometry.getIndex();
   const color = new Color(colorHex);
+  const start = buffers.positions.length / 3;
   const vertexCount = index?.count ?? position.count;
   for (let vertex = 0; vertex < vertexCount; vertex += 1) {
     const sourceIndex = index?.getX(vertex) ?? vertex;
-    positions.push(
+    buffers.positions.push(
       position.getX(sourceIndex),
       position.getY(sourceIndex),
       position.getZ(sourceIndex),
     );
-    colors.push(color.r, color.g, color.b);
+    buffers.colors.push(color.r, color.g, color.b);
+    buffers.uvs.push(uvAttribute.getX(sourceIndex), uvAttribute.getY(sourceIndex));
   }
+  buffers.groups.push({ start, count: vertexCount, materialIndex });
   geometry.dispose();
 }
 
 function appendBox(
-  positions: number[],
-  colors: number[],
+  buffers: FurnitureGeometryBuffers,
   width: number,
   height: number,
   depth: number,
@@ -437,17 +466,34 @@ function appendBox(
   y: number,
   z: number,
   color: number,
+  materialIndex = 0,
 ): void {
   const geometry = new BoxGeometry(width, height, depth);
   geometry.translate(x, y, z);
-  appendGeometry(positions, colors, geometry, color);
+  appendGeometry(buffers, geometry, color, materialIndex);
 }
 
-function finishGeometry(name: string, positions: number[], colors: number[]): BufferGeometry {
+function finishGeometry(name: string, buffers: FurnitureGeometryBuffers): BufferGeometry {
   const geometry = new BufferGeometry();
   geometry.name = name;
-  geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
-  geometry.setAttribute('color', new BufferAttribute(new Float32Array(colors), 3));
+  geometry.setAttribute('position', new BufferAttribute(new Float32Array(buffers.positions), 3));
+  geometry.setAttribute('color', new BufferAttribute(new Float32Array(buffers.colors), 3));
+  geometry.setAttribute('uv', new BufferAttribute(new Float32Array(buffers.uvs), 2));
+
+  const mergedGroups: GeometryGroupSpan[] = [];
+  for (const group of buffers.groups) {
+    const previous = mergedGroups.at(-1);
+    if (
+      previous !== undefined &&
+      previous.materialIndex === group.materialIndex &&
+      previous.start + previous.count === group.start
+    ) {
+      previous.count += group.count;
+    } else {
+      mergedGroups.push({ ...group });
+    }
+  }
+  mergedGroups.forEach((group) => geometry.addGroup(group.start, group.count, group.materialIndex));
   geometry.computeVertexNormals();
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
@@ -455,24 +501,22 @@ function finishGeometry(name: string, positions: number[], colors: number[]): Bu
 }
 
 function buildBenchGeometry(): BufferGeometry {
-  const positions: number[] = [];
-  const colors: number[] = [];
-  appendBox(positions, colors, 0.68, 0.1, 1.58, 0, 0.46, 0, 0x72583f);
-  appendBox(positions, colors, 0.05, 0.46, 1.5, -0.295, 0.72, 0, 0x39434a);
+  const buffers = createGeometryBuffers();
+  appendBox(buffers, 0.68, 0.1, 1.58, 0, 0.46, 0, 0x72583f, 0);
+  appendBox(buffers, 0.05, 0.46, 1.5, -0.295, 0.72, 0, 0x39434a, 1);
   for (const x of [-0.24, 0.24]) {
     for (const z of [-0.58, 0.58]) {
-      appendBox(positions, colors, 0.055, 0.43, 0.06, x, 0.215, z, 0x39434a);
+      appendBox(buffers, 0.055, 0.43, 0.06, x, 0.215, z, 0x39434a, 1);
     }
   }
-  return finishGeometry('aohara-street-furniture-bench', positions, colors);
+  return finishGeometry('aohara-street-furniture-bench', buffers);
 }
 
 function buildPlanterGeometry(): BufferGeometry {
-  const positions: number[] = [];
-  const colors: number[] = [];
-  appendBox(positions, colors, 0.84, 0.48, 1.3, 0, 0.24, 0, 0x777d7b);
-  appendBox(positions, colors, 0.88, 0.07, 1.34, 0, 0.49, 0, 0x8e9188);
-  appendBox(positions, colors, 0.7, 0.035, 1.15, 0, 0.54, 0, 0x443f34);
+  const buffers = createGeometryBuffers();
+  appendBox(buffers, 0.84, 0.48, 1.3, 0, 0.24, 0, 0x777d7b, 0);
+  appendBox(buffers, 0.88, 0.07, 1.34, 0, 0.49, 0, 0x8e9188, 0);
+  appendBox(buffers, 0.7, 0.035, 1.15, 0, 0.54, 0, 0x443f34, 0);
   const shrubs = [
     { x: -0.08, y: 0.72, z: -0.38, scale: [0.23, 0.22, 0.23] as const, color: 0x3c6245 },
     { x: 0.06, y: 0.75, z: 0.02, scale: [0.25, 0.24, 0.24] as const, color: 0x52724a },
@@ -482,33 +526,31 @@ function buildPlanterGeometry(): BufferGeometry {
     const geometry = new IcosahedronGeometry(1, 1);
     geometry.scale(shrub.scale[0], shrub.scale[1], shrub.scale[2]);
     geometry.translate(shrub.x, shrub.y, shrub.z);
-    appendGeometry(positions, colors, geometry, shrub.color);
+    appendGeometry(buffers, geometry, shrub.color, 1);
   }
-  return finishGeometry('aohara-street-furniture-planter', positions, colors);
+  return finishGeometry('aohara-street-furniture-planter', buffers);
 }
 
 function buildWasteBinGeometry(): BufferGeometry {
-  const positions: number[] = [];
-  const colors: number[] = [];
-  appendBox(positions, colors, 0.56, 0.84, 0.56, 0, 0.42, 0, 0x354f53);
-  appendBox(positions, colors, 0.6, 0.08, 0.6, 0, 0.88, 0, 0x27383c);
-  appendBox(positions, colors, 0.24, 0.04, 0.035, 0, 0.83, 0.3, 0xc1b894);
-  return finishGeometry('aohara-street-furniture-waste-bin', positions, colors);
+  const buffers = createGeometryBuffers();
+  appendBox(buffers, 0.56, 0.84, 0.56, 0, 0.42, 0, 0x354f53);
+  appendBox(buffers, 0.6, 0.08, 0.6, 0, 0.88, 0, 0x27383c);
+  appendBox(buffers, 0.24, 0.04, 0.035, 0, 0.83, 0.3, 0xc1b894);
+  return finishGeometry('aohara-street-furniture-waste-bin', buffers);
 }
 
 function buildBicycleRackGeometry(): BufferGeometry {
-  const positions: number[] = [];
-  const colors: number[] = [];
+  const buffers = createGeometryBuffers();
   for (const x of [-0.31, 0.31]) {
     const leg = new CylinderGeometry(0.035, 0.04, 0.62, 8);
     leg.translate(x, 0.31, 0);
-    appendGeometry(positions, colors, leg, 0x59636a);
+    appendGeometry(buffers, leg, 0x59636a);
   }
   const rail = new CylinderGeometry(0.035, 0.035, 0.64, 8);
   rail.rotateZ(Math.PI / 2);
   rail.translate(0, 0.62, 0);
-  appendGeometry(positions, colors, rail, 0x737a7d);
-  return finishGeometry('aohara-street-furniture-bicycle-rack', positions, colors);
+  appendGeometry(buffers, rail, 0x737a7d);
+  return finishGeometry('aohara-street-furniture-bicycle-rack', buffers);
 }
 
 function buildFurnitureGeometry(kind: UrbanStreetFurnitureKind): BufferGeometry {
@@ -537,13 +579,34 @@ function batchName(kind: UrbanStreetFurnitureKind): string {
   }
 }
 
+function createFurnitureMaterial(
+  name: string,
+  roughness: number,
+  metalness: number,
+): MeshStandardNodeMaterial {
+  const material = new MeshStandardNodeMaterial();
+  material.colorNode = vertexColor();
+  material.roughness = roughness;
+  material.metalness = metalness;
+  material.name = name;
+  return material;
+}
+
 /** Fixed, non-colliding instanced sidewalk detail shared by the driving world and city look-dev. */
 export class UrbanStreetFurniture {
   readonly root = new Group();
   readonly #tier: TierId;
   readonly #budget: UrbanStreetFurnitureTierBudget;
   readonly #placements: readonly UrbanStreetFurniturePlacement[];
-  readonly #material: MeshStandardNodeMaterial;
+  readonly #benchMaterial: MeshStandardNodeMaterial;
+  readonly #benchSupportMaterial: MeshStandardNodeMaterial;
+  readonly #planterMaterial: MeshStandardNodeMaterial;
+  readonly #foliageMaterial: MeshStandardNodeMaterial;
+  readonly #wasteBinMaterial: MeshStandardNodeMaterial;
+  readonly #bicycleRackMaterial: MeshStandardNodeMaterial;
+  readonly #materials: readonly MeshStandardNodeMaterial[];
+  readonly #surfaceTextures: SurfaceTextureLibrary;
+  readonly #ownsSurfaceTextures: boolean;
   readonly #meshes: InstancedMesh[] = [];
   readonly #counts: Record<UrbanStreetFurnitureKind, number> = {
     bench: 0,
@@ -551,11 +614,15 @@ export class UrbanStreetFurniture {
     wasteBin: 0,
     bicycleRack: 0,
   };
+  #woodSurfaceBound = false;
+  #concreteSurfaceBound = false;
   #disposed = false;
 
   constructor(tier: TierId, options: UrbanStreetFurnitureOptions) {
     this.#tier = tier;
     this.#budget = URBAN_STREET_FURNITURE_TIER_BUDGET[tier];
+    this.#surfaceTextures = options.surfaceTextures ?? new SurfaceTextureLibrary();
+    this.#ownsSurfaceTextures = options.surfaceTextures === undefined;
     const [originX, originY, originZ] = options.origin;
     this.root.name = 'aohara-street-furniture';
     this.#placements = options.networkIntegrated
@@ -568,11 +635,36 @@ export class UrbanStreetFurniture {
           )
       : createLookdevPlacements(tier, options.origin);
 
-    this.#material = new MeshStandardNodeMaterial();
-    this.#material.colorNode = vertexColor();
-    this.#material.roughness = 0.76;
-    this.#material.metalness = 0.08;
-    this.#material.name = 'aohara-street-furniture-pbr';
+    this.#benchMaterial = createFurnitureMaterial('aohara-bench-cedar-pbr', 0.84, 0);
+    this.#benchSupportMaterial = createFurnitureMaterial(
+      'aohara-bench-painted-steel-pbr',
+      0.58,
+      0.04,
+    );
+    this.#planterMaterial = createFurnitureMaterial(
+      'aohara-planter-aggregate-concrete-pbr',
+      0.9,
+      0,
+    );
+    this.#foliageMaterial = createFurnitureMaterial('aohara-planter-shrubs-pbr', 0.92, 0);
+    this.#wasteBinMaterial = createFurnitureMaterial(
+      'aohara-waste-bin-painted-steel-pbr',
+      0.66,
+      0.04,
+    );
+    this.#bicycleRackMaterial = createFurnitureMaterial(
+      'aohara-bicycle-rack-metal-pbr',
+      0.48,
+      0.72,
+    );
+    this.#materials = [
+      this.#benchMaterial,
+      this.#benchSupportMaterial,
+      this.#planterMaterial,
+      this.#foliageMaterial,
+      this.#wasteBinMaterial,
+      this.#bicycleRackMaterial,
+    ];
 
     const dummy = new Object3D();
     for (const kind of FURNITURE_KINDS) {
@@ -581,9 +673,15 @@ export class UrbanStreetFurniture {
       if (placements.length === 0) {
         continue;
       }
+      const meshMaterials =
+        kind === 'bench'
+          ? [this.#benchMaterial, this.#benchSupportMaterial]
+          : kind === 'planter'
+            ? [this.#planterMaterial, this.#foliageMaterial]
+            : [kind === 'wasteBin' ? this.#wasteBinMaterial : this.#bicycleRackMaterial];
       const mesh = new InstancedMesh(
         buildFurnitureGeometry(kind),
-        this.#material,
+        meshMaterials,
         placements.length,
       );
       mesh.name = batchName(kind);
@@ -600,6 +698,40 @@ export class UrbanStreetFurniture {
       mesh.instanceMatrix.needsUpdate = true;
       this.root.add(mesh);
       this.#meshes.push(mesh);
+    }
+  }
+
+  /** Applies scans only to the wooden bench boards and concrete planter shell. */
+  async loadSurfaces(): Promise<void> {
+    if (this.#placements.length === 0 || this.#disposed) {
+      return;
+    }
+    const [wood, concrete] = await Promise.all([
+      this.#surfaceTextures.load('tex-japanese-cedar-planks-1k'),
+      this.#surfaceTextures.load('tex-gravel-concrete-03-1k'),
+    ]);
+    if (this.#disposed) {
+      return;
+    }
+    if (wood !== null && !this.#woodSurfaceBound) {
+      configureTiledSurface(wood);
+      bindScannedPbrMaps(this.#benchMaterial, wood, uv(), {
+        albedoTint: this.#benchMaterial.colorNode ?? vertexColor(),
+        normalStrength: 0.46,
+        aoStrength: 0.72,
+        metalnessScale: 0,
+      });
+      this.#woodSurfaceBound = true;
+    }
+    if (concrete !== null && !this.#concreteSurfaceBound) {
+      configureTiledSurface(concrete);
+      bindScannedPbrMaps(this.#planterMaterial, concrete, uv(), {
+        albedoTint: this.#planterMaterial.colorNode ?? vertexColor(),
+        normalStrength: 0.52,
+        aoStrength: 0.72,
+        metalnessScale: 0,
+      });
+      this.#concreteSurfaceBound = true;
     }
   }
 
@@ -638,7 +770,12 @@ export class UrbanStreetFurniture {
       mesh.geometry.dispose();
       mesh.dispose();
     }
-    this.#material.dispose();
+    for (const material of this.#materials) {
+      material.dispose();
+    }
+    if (this.#ownsSurfaceTextures) {
+      this.#surfaceTextures.dispose();
+    }
     this.root.removeFromParent();
   }
 }

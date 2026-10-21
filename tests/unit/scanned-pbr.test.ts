@@ -1,6 +1,6 @@
 import { DataTexture, LinearSRGBColorSpace, SRGBColorSpace } from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
-import { uv, vec4 } from 'three/tsl';
+import { float, uv, vec4 } from 'three/tsl';
 import { describe, expect, it } from 'vitest';
 import { bindScannedPbrMaps } from '../../src/world/scanned-pbr';
 
@@ -24,6 +24,7 @@ describe('scanned PBR map binding', () => {
       albedoTint: vec4(0.9, 0.95, 1, 1),
       normalStrength: 0.7,
       aoStrength: 0.8,
+      roughnessAdjustment: float(0.03),
     });
 
     expect(diffuse.colorSpace).toBe(SRGBColorSpace);

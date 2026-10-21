@@ -1,5 +1,5 @@
 import { InstancedMesh, Matrix4, Mesh, PointLight } from 'three';
-import { MeshPhysicalNodeMaterial } from 'three/webgpu';
+import { MeshPhysicalNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -250,6 +250,40 @@ describe('Aohara city night-lighting rules', () => {
     expect(lowStats.streetLightPointLights).toBe(URBAN_NIGHT_TIER_BUDGET.C.streetPointLights);
     expect(lowStats.urbanStreetFurnitureBatches).toBe(4);
     expect(lowStats.urbanStreetFurnitureInstances).toBeGreaterThan(0);
+    const benches = cityC.root.getObjectByName('aohara-street-benches');
+    const planters = cityC.root.getObjectByName('aohara-street-planters');
+    const wasteBins = cityC.root.getObjectByName('aohara-street-waste-bins');
+    const bicycleRacks = cityC.root.getObjectByName('aohara-street-bicycle-racks');
+    expect(benches).toBeInstanceOf(InstancedMesh);
+    expect(planters).toBeInstanceOf(InstancedMesh);
+    expect(wasteBins).toBeInstanceOf(InstancedMesh);
+    expect(bicycleRacks).toBeInstanceOf(InstancedMesh);
+    if (
+      !(benches instanceof InstancedMesh) ||
+      !(planters instanceof InstancedMesh) ||
+      !(wasteBins instanceof InstancedMesh) ||
+      !(bicycleRacks instanceof InstancedMesh)
+    ) {
+      throw new Error('Aohara furniture should retain one instanced pool per kind');
+    }
+    for (const furniture of [benches, planters]) {
+      expect(furniture.geometry.getAttribute('uv')).toBeDefined();
+      expect(furniture.geometry.groups).toHaveLength(2);
+      expect(furniture.geometry.groups.map((group) => group.materialIndex)).toEqual([0, 1]);
+      expect(Array.isArray(furniture.material)).toBe(true);
+    }
+    const benchMaterials = benches.material as MeshStandardNodeMaterial[];
+    expect(benchMaterials[0]?.name).toBe('aohara-bench-cedar-pbr');
+    expect(benchMaterials[1]?.name).toBe('aohara-bench-painted-steel-pbr');
+    const planterMaterials = planters.material as MeshStandardNodeMaterial[];
+    expect(planterMaterials[0]?.name).toBe('aohara-planter-aggregate-concrete-pbr');
+    expect(planterMaterials[1]?.name).toBe('aohara-planter-shrubs-pbr');
+    expect((wasteBins.material as MeshStandardNodeMaterial).name).toBe(
+      'aohara-waste-bin-painted-steel-pbr',
+    );
+    expect((bicycleRacks.material as MeshStandardNodeMaterial).name).toBe(
+      'aohara-bicycle-rack-metal-pbr',
+    );
     expect(lowStats.architecturalPointLights).toBe(
       URBAN_NIGHT_TIER_BUDGET.C.architecturalPointLights,
     );

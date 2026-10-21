@@ -1,5 +1,6 @@
 import { Group, Mesh, type BufferGeometry, type Material } from 'three';
 import { AOHARA_DISTRICT_CONFIG, AOHARA_JUNCTION_NODE_ID } from '../config/urban-district';
+import { SurfaceTextureLibrary } from '../assets/SurfaceTextureLibrary';
 import type { TierId } from '../config/tiers';
 import { RoadWorld } from './RoadWorld';
 import { UrbanNightWorld } from './urban-night';
@@ -22,12 +23,15 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
   }
   const root = new Group();
   root.name = 'driving-world';
+  const surfaceTextures = new SurfaceTextureLibrary();
   const terrain = new TerrainWorld(terrainSampler);
   root.add(terrain.root);
   // Road ribbons exist only when the shared sampler carries the carved network; the
   // mesh-less samplers used by unit fixtures simply stay roadless.
   const roads =
-    terrainSampler.roadNetwork !== undefined ? new RoadWorld(terrainSampler.roadNetwork) : null;
+    terrainSampler.roadNetwork !== undefined
+      ? new RoadWorld(terrainSampler.roadNetwork, surfaceTextures)
+      : null;
   if (roads !== null) {
     root.add(roads.object);
   }
@@ -49,7 +53,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
           console.warn('scanned vegetation unavailable:', (error as Error).message);
         });
   // Yūhi Town + roadside poles (Increment 5b): static rural town, always resident.
-  const town = new TownWorld(terrainSampler);
+  const town = new TownWorld(terrainSampler, surfaceTextures);
   root.add(town.root);
   vegetation.setGroundCoverBlockers(town.buildings);
 
@@ -71,6 +75,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
           ],
           ...(urbanNetwork === null ? {} : { roadNetwork: urbanNetwork }),
           networkIntegrated: true,
+          surfaceTextures,
         });
   if (aohara !== null) {
     root.add(aohara.root);
@@ -113,6 +118,8 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       await Promise.all([
         terrain.loadSurfaces(),
         roads === null ? Promise.resolve() : roads.loadSurfaces(),
+        town.loadSurfaces(),
+        aohara === null ? Promise.resolve() : aohara.loadSurfaces(),
       ]);
     },
     getContentStats: () => {
@@ -164,6 +171,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       for (const material of materials) {
         material.dispose();
       }
+      surfaceTextures.dispose();
       root.removeFromParent();
     },
   };

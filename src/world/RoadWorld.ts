@@ -5,14 +5,13 @@ import {
   InstancedMesh,
   Mesh,
   Object3D,
-  RepeatWrapping,
   type BufferGeometry,
 } from 'three';
 import { MeshPhysicalNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import { float, mix, positionLocal, sin, texture, uniform, uv, vec2, vec4 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-import { loadMaterialTextureSet, type MaterialTextureSet } from '../assets/AssetManifest';
+import { configureTiledSurface, SurfaceTextureLibrary } from '../assets/SurfaceTextureLibrary';
 import { createArchitecturalMaterial } from './architectural-materials';
 import { bindScannedPbrMaps } from './scanned-pbr';
 import { resolveUrbanWetness, URBAN_CITY_CONFIG } from '../config/urban-city';
@@ -197,6 +196,12 @@ export class RoadWorld {
 
   readonly #urbanAsphaltMaterial: MeshPhysicalNodeMaterial;
 
+  readonly #sidewalkMaterial: MeshPhysicalNodeMaterial;
+
+  readonly #surfaceTextures: SurfaceTextureLibrary;
+
+  readonly #ownsSurfaceTextures: boolean;
+
   readonly #urbanWetness = uniform(URBAN_CITY_CONFIG.wetRoad.wetnessDay);
 
   readonly #urbanSidewalkEdges: number;
@@ -205,10 +210,14 @@ export class RoadWorld {
 
   #surfacesLoaded: 0 | 1 = 0;
 
-  readonly #surfaceSets: MaterialTextureSet[] = [];
+  #sidewalkSurfaceBound = false;
 
-  constructor(network: RoadNetwork) {
+  #disposed = false;
+
+  constructor(network: RoadNetwork, surfaceTextures?: SurfaceTextureLibrary) {
     this.#network = network;
+    this.#surfaceTextures = surfaceTextures ?? new SurfaceTextureLibrary();
+    this.#ownsSurfaceTextures = surfaceTextures === undefined;
 
     this.#asphaltMaterial = new MeshStandardNodeMaterial();
     this.#asphaltMaterial.color.set(0x35383d);
@@ -324,7 +333,7 @@ export class RoadWorld {
       (urbanJunction ? urbanAsphaltGeometries : asphaltGeometries).push(asphalt);
     }
 
-    const sidewalkMaterial = createArchitecturalMaterial({
+    this.#sidewalkMaterial = createArchitecturalMaterial({
       name: 'aohara-sidewalk-pbr-aggregate',
       colorHex: 0x454d53,
       roughness: 0.88,
@@ -383,7 +392,7 @@ export class RoadWorld {
     );
     add(
       mergeGeometryBatch(urbanSidewalkGeometries, 'aohara-sidewalks-batch'),
-      sidewalkMaterial,
+      this.#sidewalkMaterial,
       'aohara-sidewalks',
     );
     if (urbanMarkings.mesh !== null) {
@@ -399,43 +408,61 @@ export class RoadWorld {
   }
 
   /**
-   * Async CC0 surfaces: scanned asphalt and sandy gravel at 1k. Until they arrive the roads render
-   * with flat colours (already correct in shape and lighting); a failure keeps that fallback.
+   * Async CC0 surfaces: scanned asphalt, sandy gravel and aggregate concrete at 1k. Until they
+   * arrive the roads render with their authored fallback materials; failures are non-fatal.
    */
   async loadSurfaces(): Promise<void> {
-    if (this.#surfacesLoaded === 1) {
+    if (this.#disposed || (this.#surfacesLoaded === 1 && this.#sidewalkSurfaceBound)) {
       return;
     }
-    try {
-      const [asphalt, gravel] = await Promise.all([
-        loadMaterialTextureSet('tex-asphalt-03-1k'),
-        loadMaterialTextureSet('tex-sandy-gravel-1k'),
-      ]);
-      if (asphalt === null || gravel === null) {
-        asphalt?.dispose();
-        gravel?.dispose();
-        return;
-      }
-      this.#surfaceSets.push(asphalt, gravel);
-      for (const set of [asphalt, gravel]) {
-        for (const map of [set.diffuse, set.normal, set.arm]) {
-          if (map !== null) {
-            map.wrapS = RepeatWrapping;
-            map.wrapT = RepeatWrapping;
-            map.anisotropy = 8;
-          }
-        }
-      }
-      // Ribbon UVs run across [0, 1] and along in metres / 6; the across repeat stops
-      // the scan stretching sideways over both rural lanes and the wider city streets.
-      const roadUv = uv().mul(vec2(2, 1));
-      // The batches keep authored world-space vertices in mesh-local coordinates. Sample them
-      // before the floating-origin root shift so the subtle macro variation cannot jump on rebase.
-      // The CC0 albedo/normal/ARM maps still carry all physical micro-detail.
-      const roadMacro = float(1)
-        .add(sin(positionLocal.x.mul(0.013).add(positionLocal.z.mul(0.009))).mul(0.025))
-        .add(sin(positionLocal.x.mul(0.071).sub(positionLocal.z.mul(0.053))).mul(0.006));
-      const macroTint = vec4(roadMacro, roadMacro, roadMacro, 1);
+
+    const [asphalt, gravel, concrete] = await Promise.all([
+      this.#surfaceTextures.load('tex-asphalt-03-1k'),
+      this.#surfaceTextures.load('tex-sandy-gravel-1k'),
+      this.#surfaceTextures.load('tex-gravel-concrete-03-1k'),
+    ]);
+    if (this.#disposed) {
+      return;
+    }
+
+    if (concrete !== null && !this.#sidewalkSurfaceBound) {
+      configureTiledSurface(concrete);
+      const authoredColor =
+        this.#sidewalkMaterial.colorNode ??
+        vec4(
+          this.#sidewalkMaterial.color.r,
+          this.#sidewalkMaterial.color.g,
+          this.#sidewalkMaterial.color.b,
+          1,
+        );
+      const authoredRoughness = this.#sidewalkMaterial.roughnessNode;
+      bindScannedPbrMaps(this.#sidewalkMaterial, concrete, uv().mul(vec2(3, 3)), {
+        albedoTint: authoredColor,
+        normalStrength: 0.55,
+        aoStrength: 0.72,
+        metalnessScale: 0,
+        ...(authoredRoughness === null
+          ? {}
+          : {
+              roughnessAdjustment: authoredRoughness.sub(float(this.#sidewalkMaterial.roughness)),
+            }),
+      });
+      this.#sidewalkSurfaceBound = true;
+    }
+
+    // Ribbon UVs run across [0, 1] and along in metres / 6; the across repeat stops
+    // the scan stretching sideways over both rural lanes and the wider city streets.
+    const roadUv = uv().mul(vec2(2, 1));
+    // The batches keep authored world-space vertices in mesh-local coordinates. Sample them
+    // before the floating-origin root shift so the subtle macro variation cannot jump on rebase.
+    // The CC0 albedo/normal/ARM maps still carry all physical micro-detail.
+    const roadMacro = float(1)
+      .add(sin(positionLocal.x.mul(0.013).add(positionLocal.z.mul(0.009))).mul(0.025))
+      .add(sin(positionLocal.x.mul(0.071).sub(positionLocal.z.mul(0.053))).mul(0.006));
+    const macroTint = vec4(roadMacro, roadMacro, roadMacro, 1);
+
+    if (asphalt !== null) {
+      configureTiledSurface(asphalt);
       bindScannedPbrMaps(this.#asphaltMaterial, asphalt, roadUv, {
         albedoTint: macroTint,
         normalStrength: 0.72,
@@ -455,12 +482,16 @@ export class RoadWorld {
         );
       }
       this.#urbanAsphaltMaterial.needsUpdate = true;
+    }
+
+    if (gravel !== null) {
+      configureTiledSurface(gravel);
       bindScannedPbrMaps(this.#shoulderMaterial, gravel, roadUv, {
         normalStrength: 0.78,
       });
+    }
+    if (asphalt !== null && gravel !== null) {
       this.#surfacesLoaded = 1;
-    } catch {
-      // Textures are an enhancement; flat-coloured roads remain correct.
     }
   }
 
@@ -476,7 +507,16 @@ export class RoadWorld {
   }
 
   dispose(): void {
-    const materials = new Set<MeshStandardNodeMaterial>([this.#urbanAsphaltMaterial]);
+    if (this.#disposed) {
+      return;
+    }
+    this.#disposed = true;
+    const materials = new Set<MeshStandardNodeMaterial>([
+      this.#asphaltMaterial,
+      this.#shoulderMaterial,
+      this.#urbanAsphaltMaterial,
+      this.#sidewalkMaterial,
+    ]);
     for (const mesh of this.#meshes) {
       mesh.geometry.dispose();
       materials.add(mesh.material as MeshStandardNodeMaterial);
@@ -484,10 +524,9 @@ export class RoadWorld {
     for (const material of materials) {
       material.dispose();
     }
-    for (const set of this.#surfaceSets) {
-      set.dispose();
+    if (this.#ownsSurfaceTextures) {
+      this.#surfaceTextures.dispose();
     }
-    this.#surfaceSets.length = 0;
     this.#meshes.length = 0;
   }
 }

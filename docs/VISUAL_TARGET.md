@@ -1,6 +1,6 @@
 # Visual target: the look we are building toward, and how we will know we got there
 
-**Status:** specification, updated 2026-10-21 · **rural region and sourcing decisions resolved 2026-10-14; additional fictional megacity district authorized 2026-10-19; broad Phase 6 work authorized 2026-10-20 while Phase 5 acceptance remains open**  
+**Status:** specification, updated 2026-10-21 · **rural region and sourcing decisions resolved 2026-10-14; additional fictional megacity district authorized 2026-10-19; Phase 6 and Phase 9 active; owner reports Phase 5 passed; Phases 7–8 remain gated**  
 **Companion documents:** [`docs/RESEARCH_AAA_FIDELITY.md`](RESEARCH_AAA_FIDELITY.md) (evidence and feasibility),
 [`docs/ASSET_SOURCES.md`](ASSET_SOURCES.md) (the verified free-and-open asset register backing every claim here),
 [`PROJECT_PLAN.md`](../PROJECT_PLAN.md) §6–§11 (the phased plan),
@@ -48,7 +48,7 @@ owns it. "Tier" refers to §3.
 
 ### 2.2 Terrain and roads
 
-**Owner correction (2026-10-18; latest report 2026-10-20):** gameplay terrain must not render white/snow ground. The active splat is grass, soil, and rock only; snow is not loaded or weighted in the current gameplay material. The owner now reports earlier non-FPS issues resolved, but no new stable, readable owner-device capture or formal Phase 5 acceptance is recorded. Seasonal snow belongs to the gated Phase 7 scope and must not reappear in the default gameplay world.
+**Owner correction (2026-10-18; latest report 2026-10-21):** gameplay terrain must not render white/snow ground. The active splat is grass, soil, and rock only; snow is not loaded or weighted in the current gameplay material. The owner reports Phase 5 passed and earlier non-FPS issues resolved, while FPS remains unstable. No named-device frame-time measurement or runtime capture is supplied by that report. Seasonal snow belongs to the gated Phase 7 scope and must not reappear in the default gameplay world.
 
 | Target                                                                                                          | Measurable check                                                                                                                         | Phase |
 | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----- |
@@ -69,7 +69,7 @@ owns it. "Tier" refers to §3.
 | Contact/screen-space shadows beneath small props and foliage                          | Rocks and grass clumps are visually anchored (no floating), shadow contact density scales with tier                         | 3, 5  |
 | Props: rocks, barriers, signs, poles, fences with correct scale and material response | Scale check against the car (1.8 m tall reference); no intersected/oversized props in the drive route                       | 5     |
 
-**Implementation note (2026-10-20):** the initial ground-cover batch has fixed instance-pool caps of 16k / 42k / 100k for C/B/A and is reported separately from tree/prop instances. The cap is not proof that a given streaming window reaches 100k, that the cover is continuous, or that it meets frame budgets; actual counts, LOD/pop-in, fixed-bookmark appearance, and owner-device performance remain to be validated. Its TSL wind/backlight uses the existing daylight and tier pipeline. New building surfaces use the current HDRI image-based lighting and AgX tone mapping by default with TSL PBR variation; this does not add SSR or hardware ray tracing. Phase 5 visual acceptance remains open.
+**Implementation note (updated 2026-10-21):** the initial ground-cover batch has fixed instance-pool caps of 16k / 42k / 100k for C/B/A and is reported separately from tree/prop instances. The cap is not proof that a given streaming window reaches 100k, that the cover is continuous, or that it meets frame budgets; actual counts, LOD/pop-in, fixed-bookmark appearance, and owner-device performance remain to be reviewed. Its TSL wind/backlight uses the existing daylight and tier pipeline. The owner reports Phase 5 passed; the subsequent world-detail sequence is code-complete, but runtime visual and device evidence remain separate. New building surfaces use the current HDRI image-based lighting and AgX tone mapping by default with TSL PBR variation; this does not add SSR or hardware ray tracing.
 
 ### 2.4 The car (Phase 6)
 

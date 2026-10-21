@@ -22,6 +22,8 @@ export interface ScannedPbrOptions {
   readonly aoStrength?: number;
   /** Scalar for the packed metallic channel, useful for documented authoring adjustments. */
   readonly metalnessScale?: number;
+  /** Zero-centred adjustment that preserves an authored roughness detail node around the scan. */
+  readonly roughnessAdjustment?: Node<'float'>;
 }
 
 /**
@@ -46,7 +48,7 @@ export function bindScannedPbrMaps(
 
   if (maps.arm !== null) {
     const packed = texture(maps.arm, uvNode);
-    material.roughnessNode = packed.g;
+    material.roughnessNode = packed.g.add(options.roughnessAdjustment ?? float(0)).clamp(0.04, 1);
     material.metalnessNode = packed.b.mul(float(options.metalnessScale ?? 1)).clamp(0, 1);
     material.aoNode = mix(float(1), packed.r, float(options.aoStrength ?? 1)).clamp(0, 1);
   }

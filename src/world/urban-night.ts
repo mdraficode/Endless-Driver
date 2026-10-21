@@ -19,9 +19,10 @@ import {
   MeshPhysicalNodeMaterial,
   MeshStandardNodeMaterial,
   SpriteNodeMaterial,
+  type Node,
   type UniformNode,
 } from 'three/webgpu';
-import { abs, exp, float, mix, uniform, uv, vec3, vec4 } from 'three/tsl';
+import { abs, exp, float, mix, texture, uniform, uv, vec2, vec3, vec4 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import {
@@ -40,9 +41,12 @@ import {
   AOHARA_GRID_ROWS,
 } from '../config/urban-district';
 import type { TierId } from '../config/tiers';
+import { configureTiledSurface, SurfaceTextureLibrary } from '../assets/SurfaceTextureLibrary';
+import type { MaterialTextureSet } from '../assets/AssetManifest';
 import type { DaylightState } from '../environment/EnvironmentClock';
 import { collideCarWithStaticBoxes, type StaticBuildingBox } from './static-building-collision';
 import { createArchitecturalMaterial } from './architectural-materials';
+import { bindScannedPbrMaps } from './scanned-pbr';
 import { UrbanStreetFurniture } from './urban-furniture';
 import type { RoadNetwork } from './road-network';
 import { UrbanStreetActivity } from './urban-activity';
@@ -414,6 +418,52 @@ function addPlane(
   mesh.receiveShadow = true;
   parent.add(mesh);
   return mesh;
+}
+
+interface ScannedSurfaceBindingOptions {
+  readonly repeat: readonly [number, number];
+  readonly normalStrength: number;
+  readonly albedoTint?: Node<'vec4'>;
+}
+
+function bindScannedSurfaceToMaterials(
+  root: Group,
+  maps: MaterialTextureSet,
+  matches: (material: MeshStandardNodeMaterial) => boolean,
+  options: ScannedSurfaceBindingOptions,
+): MeshStandardNodeMaterial[] {
+  const bound = new Set<MeshStandardNodeMaterial>();
+  const uvNode = uv().mul(vec2(options.repeat[0], options.repeat[1]));
+  root.traverse((object) => {
+    if (!(object instanceof Mesh)) {
+      return;
+    }
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    for (const material of materials) {
+      if (
+        !(material instanceof MeshStandardNodeMaterial) ||
+        !matches(material) ||
+        bound.has(material)
+      ) {
+        continue;
+      }
+      const authoredRoughness = material.roughnessNode;
+      bindScannedPbrMaps(material, maps, uvNode, {
+        albedoTint:
+          options.albedoTint ??
+          material.colorNode ??
+          vec4(material.color.r, material.color.g, material.color.b, 1),
+        normalStrength: options.normalStrength,
+        aoStrength: 0.72,
+        metalnessScale: 0,
+        ...(authoredRoughness === null
+          ? {}
+          : { roughnessAdjustment: authoredRoughness.sub(float(material.roughness)) }),
+      });
+      bound.add(material);
+    }
+  });
+  return [...bound];
 }
 
 function addInstancedBoxes(
@@ -967,6 +1017,8 @@ export interface UrbanNightWorldOptions {
   readonly roadNetwork?: RoadNetwork;
   /** Road ribbons/lanes/sidewalks/crossings come from RoadWorld in the driving composition. */
   readonly networkIntegrated?: boolean;
+  /** Shared static-world map owner; omitted for a standalone city look-dev scene. */
+  readonly surfaceTextures?: SurfaceTextureLibrary;
 }
 
 /**
@@ -998,6 +1050,8 @@ export class UrbanNightWorld implements SceneContent {
   readonly #cityTypologyStats: CityTypologyStats;
   readonly #activity: UrbanStreetActivity | null;
   readonly #streetFurniture: UrbanStreetFurniture;
+  readonly #surfaceTextures: SurfaceTextureLibrary;
+  readonly #ownsSurfaceTextures: boolean;
   readonly #networkIntegrated: boolean;
   readonly #towers: readonly TowerSpec[];
   readonly #cityBlockCount: number;
@@ -1010,10 +1064,13 @@ export class UrbanNightWorld implements SceneContent {
   #architecturalLightSpatialGain = 1;
   #lastStreetLightFocus: { x: number; z: number } | null = null;
   #signalSeconds = 0;
+  #surfacesBound = false;
   #disposed = false;
 
   constructor(tier: TierId = 'B', options: UrbanNightWorldOptions = {}) {
     this.#tier = tier;
+    this.#surfaceTextures = options.surfaceTextures ?? new SurfaceTextureLibrary();
+    this.#ownsSurfaceTextures = options.surfaceTextures === undefined;
     this.#networkIntegrated = options.networkIntegrated ?? false;
     const [originX, originY, originZ] = options.position ?? [0, 0, 0];
     this.#cityOriginX = originX;
@@ -1104,6 +1161,7 @@ export class UrbanNightWorld implements SceneContent {
       networkIntegrated: this.#networkIntegrated,
       origin: [originX, originY, originZ],
       buildingFootprints: this.#buildingColliders,
+      surfaceTextures: this.#surfaceTextures,
       ...(options.roadNetwork === undefined ? {} : { roadNetwork: options.roadNetwork }),
     });
     this.root.add(this.#streetFurniture.root);
@@ -1127,6 +1185,86 @@ export class UrbanNightWorld implements SceneContent {
       this.#architecturalLights.length +
       this.#signalHeads.length * SIGNAL_ASPECTS.length;
     this.#synchronizeSignals();
+  }
+
+  /** Binds shared CC0 maps to opaque city surfaces; glass, emitters and mixed-metal kits stay distinct. */
+  async loadSurfaces(): Promise<void> {
+    if (this.#disposed || this.#surfacesBound) {
+      return;
+    }
+    const [asphalt, sidewalk, concrete] = await Promise.all([
+      this.#surfaceTextures.load('tex-asphalt-03-1k'),
+      this.#surfaceTextures.load('tex-gravel-concrete-03-1k'),
+      this.#surfaceTextures.load('tex-concrete-wall-009-1k'),
+    ]);
+    await this.#streetFurniture.loadSurfaces();
+    if (this.#disposed) {
+      return;
+    }
+
+    if (asphalt !== null) {
+      configureTiledSurface(asphalt);
+      const roadBindings = [
+        {
+          name: 'aohara-dark-asphalt-wet-look-clearcoat',
+          repeat: [2, Math.max(1, Math.round(URBAN_CITY_CONFIG.avenue.lengthMeters / 6))],
+        },
+        {
+          name: 'aohara-cross-street-asphalt-wet-look-clearcoat',
+          repeat: [2, Math.max(1, Math.round(URBAN_CITY_CONFIG.crossStreet.depthMeters / 6))],
+        },
+      ] as const;
+      for (const binding of roadBindings) {
+        const asphaltMaterials = bindScannedSurfaceToMaterials(
+          this.root,
+          asphalt,
+          (material) => material.name === binding.name,
+          {
+            repeat: binding.repeat,
+            normalStrength: 0.65,
+            albedoTint: vec4(0.72, 0.77, 0.83, 1),
+          },
+        );
+        if (asphalt.arm !== null) {
+          const asphaltUv = uv().mul(vec2(binding.repeat[0], binding.repeat[1]));
+          for (const material of asphaltMaterials) {
+            material.roughnessNode = mix(
+              texture(asphalt.arm, asphaltUv).g,
+              float(URBAN_CITY_CONFIG.wetRoad.wetRoughness),
+              this.#wetness,
+            );
+            material.needsUpdate = true;
+          }
+        }
+      }
+    }
+
+    if (sidewalk !== null) {
+      configureTiledSurface(sidewalk);
+      bindScannedSurfaceToMaterials(
+        this.root,
+        sidewalk,
+        (material) => material.name === 'aohara-sidewalk-concrete',
+        {
+          repeat: [3, Math.max(1, Math.round(URBAN_CITY_CONFIG.avenue.lengthMeters / 2))],
+          normalStrength: 0.54,
+          albedoTint: vec4(0.65, 0.68, 0.72, 1),
+        },
+      );
+    }
+
+    if (concrete !== null) {
+      configureTiledSurface(concrete);
+      bindScannedSurfaceToMaterials(
+        this.root,
+        concrete,
+        (material) =>
+          material.name.startsWith('aohara-low-rise-facade-pbr-') &&
+          material.color.r + material.color.g + material.color.b > 0.3,
+        { repeat: [8, 6], normalStrength: 0.46 },
+      );
+    }
+    this.#surfacesBound = true;
   }
 
   setDaylight(state: DaylightState): void {
@@ -1244,6 +1382,9 @@ export class UrbanNightWorld implements SceneContent {
     this.#disposed = true;
     this.#activity?.dispose();
     this.#streetFurniture.dispose();
+    if (this.#ownsSurfaceTextures) {
+      this.#surfaceTextures.dispose();
+    }
   }
 
   #buildStreetAndCrossing(): void {
@@ -1265,26 +1406,33 @@ export class UrbanNightWorld implements SceneContent {
     );
 
     if (!this.#networkIntegrated) {
-      const asphalt = new MeshPhysicalNodeMaterial();
-      asphalt.color.setHex(0x1d252e);
-      asphalt.roughness = URBAN_CITY_CONFIG.wetRoad.dryRoughness;
-      asphalt.metalness = 0.025;
-      asphalt.roughnessNode = mix(
-        float(URBAN_CITY_CONFIG.wetRoad.dryRoughness),
-        float(URBAN_CITY_CONFIG.wetRoad.wetRoughness),
-        this.#wetness,
+      const createWetLookAsphalt = (name: string): MeshPhysicalNodeMaterial => {
+        const asphalt = new MeshPhysicalNodeMaterial();
+        asphalt.color.setHex(0x1d252e);
+        asphalt.roughness = URBAN_CITY_CONFIG.wetRoad.dryRoughness;
+        asphalt.metalness = 0.025;
+        asphalt.roughnessNode = mix(
+          float(URBAN_CITY_CONFIG.wetRoad.dryRoughness),
+          float(URBAN_CITY_CONFIG.wetRoad.wetRoughness),
+          this.#wetness,
+        );
+        asphalt.clearcoatNode = mix(
+          float(URBAN_CITY_CONFIG.wetRoad.dryClearcoat),
+          float(URBAN_CITY_CONFIG.wetRoad.wetClearcoat),
+          this.#wetness,
+        );
+        asphalt.clearcoatRoughnessNode = mix(
+          float(URBAN_CITY_CONFIG.wetRoad.dryClearcoatRoughness),
+          float(URBAN_CITY_CONFIG.wetRoad.wetClearcoatRoughness),
+          this.#wetness,
+        );
+        asphalt.name = name;
+        return asphalt;
+      };
+      const asphalt = createWetLookAsphalt('aohara-dark-asphalt-wet-look-clearcoat');
+      const crossStreetAsphalt = createWetLookAsphalt(
+        'aohara-cross-street-asphalt-wet-look-clearcoat',
       );
-      asphalt.clearcoatNode = mix(
-        float(URBAN_CITY_CONFIG.wetRoad.dryClearcoat),
-        float(URBAN_CITY_CONFIG.wetRoad.wetClearcoat),
-        this.#wetness,
-      );
-      asphalt.clearcoatRoughnessNode = mix(
-        float(URBAN_CITY_CONFIG.wetRoad.dryClearcoatRoughness),
-        float(URBAN_CITY_CONFIG.wetRoad.wetClearcoatRoughness),
-        this.#wetness,
-      );
-      asphalt.name = 'aohara-dark-asphalt-wet-look-clearcoat';
       addPlane(
         this.root,
         URBAN_CITY_CONFIG.avenue.widthMeters,
@@ -1302,7 +1450,7 @@ export class UrbanNightWorld implements SceneContent {
         0,
         ROAD_Y + 0.002,
         0,
-        asphalt,
+        crossStreetAsphalt,
         'aohara-signalized-cross-street',
       );
     }

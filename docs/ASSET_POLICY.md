@@ -2,7 +2,7 @@
 
 ## Current inventory
 
-`public/assets/manifest.json` contains an empty versioned asset list. No car model, environment texture, building/tree/rock model, sound, HDRI, or third-party shader has been acquired or committed.
+`public/assets/manifest.json` contains 19 pinned CC0 runtime entries at this revision: three HDRIs, nine 1K PBR surface sets, one colour-grading LUT, and six optimized environment models (44,913,263 asset bytes). The two concrete sets added for sidewalks, planters and selected opaque facades are Gravel Concrete 03 and Concrete Wall 009; existing Japanese Cedar Planks is used on wooden bench boards. The hero car, audio, and third-party shaders have not been acquired. The manifest, `CREDITS.md`, and [`docs/ASSET_SOURCES.md`](ASSET_SOURCES.md) are the current inventory/provenance records.
 
 The project's initial `UNLICENSED` status does not replace or remove dependency licenses. Choosing an open-source project license later does not automatically permit redistribution of purchased or restricted assets.
 
@@ -43,9 +43,9 @@ The owner requires Forza-Horizon-class visuals, which makes sourcing a first-cla
 
 Do not infer that an image-search result, marketplace download, or publicly viewable GLB is free to redistribute. Prefer owned content or clearly compatible licenses such as verified CC0 when appropriate.
 
-## Manifest contract to extend during asset loading
+## Manifest contract for asset acquisition
 
-The current manifest is intentionally minimal. Add a loader/schema as assets appear. Each actual entry should record:
+The runtime manifest and loader are established. Every new entry must continue recording:
 
 - Unique asset identifier and kind.
 - Relative runtime path(s), format, and content/version identifier.

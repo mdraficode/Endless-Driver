@@ -211,8 +211,8 @@ export async function loadMaterialTextureSet(
     const texture = await loader.loadAsync(file.path);
     texture.name = `${assetId}:${slot}`;
     texture.colorSpace = colourSpace === 'srgb' ? SRGBColorSpace : LinearSRGBColorSpace;
-    // The surface is seen at a shallow angle from the chase camera, so the sharper mip chain is
-    // worth the small bandwidth cost on the one material that uses it.
+    // This surface may be viewed at a shallow angle from the chase camera; world loaders can raise
+    // anisotropy for their reused static sets after loading, within the renderer's device limit.
     texture.anisotropy = 4;
     loaded.push(texture);
     return texture;
