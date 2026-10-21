@@ -480,7 +480,7 @@ function buildPlanterGeometry(): BufferGeometry {
   ] as const;
   for (const shrub of shrubs) {
     const geometry = new IcosahedronGeometry(1, 1);
-    geometry.scale(...shrub.scale);
+    geometry.scale(shrub.scale[0], shrub.scale[1], shrub.scale[2]);
     geometry.translate(shrub.x, shrub.y, shrub.z);
     appendGeometry(positions, colors, geometry, shrub.color);
   }
