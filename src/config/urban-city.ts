@@ -153,6 +153,46 @@ export const URBAN_ACTIVITY_TIER_BUDGET: Readonly<Record<TierId, UrbanActivityTi
   A: { infillBuildings: 12, trafficVehicles: 18, pedestrians: 36 },
 };
 
+export interface UrbanStreetFurnitureTierBudget {
+  /** Long, low benches placed at the outer edge of the accessible sidewalk clear zone. */
+  readonly benches: number;
+  /** Low planting troughs with restrained static greenery. */
+  readonly planters: number;
+  /** Small, unbranded waste bins. */
+  readonly wasteBins: number;
+  /** Simple metal bicycle stands, with no signage or branded text. */
+  readonly bicycleRacks: number;
+}
+
+/** Fixed Aohara furniture caps, independent of city lights and moving actor budgets. */
+export const URBAN_STREET_FURNITURE_TIER_BUDGET: Readonly<
+  Record<TierId, UrbanStreetFurnitureTierBudget>
+> = {
+  C: { benches: 8, planters: 12, wasteBins: 4, bicycleRacks: 4 },
+  B: { benches: 12, planters: 18, wasteBins: 6, bicycleRacks: 6 },
+  A: { benches: 18, planters: 24, wasteBins: 8, bicycleRacks: 8 },
+};
+
+/** Placement contract for the graph-aligned, static sidewalk furniture batch. */
+export const URBAN_STREET_FURNITURE_CONFIG = {
+  /** Candidate slots stay away from junction nodes, zebra crossings and stop bars. */
+  slotSpacingMeters: 80,
+  slotPhaseMeters: 40,
+  intersectionClearanceMeters: 30,
+  /** Clearance from the wider of the crosswalk/stop-bar approach bands at a junction. */
+  minimumRoadMarkingClearanceMeters: 12,
+  /** Keep at least this much continuous pedestrian width inside every prop footprint. */
+  minimumWalkwayClearanceMeters: 1.8,
+  /** Reserve the sidewalk's outer 0.18 m as a curb/eave margin for the widest prop. */
+  outerCurbMarginMeters: 0.18,
+  /** Additional inset accounts for mesh bounds and leaves a small robustness margin. */
+  additionalCurbInsetMeters: 0.15,
+  /** Keep the central Aohara start sightline and explicit/default spawn area clear. */
+  spawnClearanceMeters: 55,
+  minimumFurnitureSeparationMeters: 8,
+  buildingFootprintClearanceMeters: 0.7,
+} as const;
+
 export type TrafficSignalAspect = 'red' | 'amber' | 'green';
 
 /** Darkness gate for city-owned lamps; the fade spans −4° through +4° solar elevation. */

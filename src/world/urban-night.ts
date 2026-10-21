@@ -43,6 +43,7 @@ import type { TierId } from '../config/tiers';
 import type { DaylightState } from '../environment/EnvironmentClock';
 import { collideCarWithStaticBoxes, type StaticBuildingBox } from './static-building-collision';
 import { createArchitecturalMaterial } from './architectural-materials';
+import { UrbanStreetFurniture } from './urban-furniture';
 import type { RoadNetwork } from './road-network';
 import { UrbanStreetActivity } from './urban-activity';
 import type { TownCarProbe, TownHit } from './town';
@@ -996,6 +997,7 @@ export class UrbanNightWorld implements SceneContent {
   readonly #buildingColliders: StaticBuildingBox[] = [];
   readonly #cityTypologyStats: CityTypologyStats;
   readonly #activity: UrbanStreetActivity | null;
+  readonly #streetFurniture: UrbanStreetFurniture;
   readonly #networkIntegrated: boolean;
   readonly #towers: readonly TowerSpec[];
   readonly #cityBlockCount: number;
@@ -1098,6 +1100,13 @@ export class UrbanNightWorld implements SceneContent {
     );
     this.#windowInstances = windowStats.illuminatedWindows;
     this.#facadeWindowInstances = windowStats.facadeWindows;
+    this.#streetFurniture = new UrbanStreetFurniture(tier, {
+      networkIntegrated: this.#networkIntegrated,
+      origin: [originX, originY, originZ],
+      buildingFootprints: this.#buildingColliders,
+      ...(options.roadNetwork === undefined ? {} : { roadNetwork: options.roadNetwork }),
+    });
+    this.root.add(this.#streetFurniture.root);
     const streetStats = this.#buildStreetLights(
       budget.streetPointLights,
       warmFlare,
@@ -1214,6 +1223,7 @@ export class UrbanNightWorld implements SceneContent {
         urbanPedestrians: 0,
         urbanActivityBatches: 0,
       }),
+      ...this.#streetFurniture.getContentStats(),
       qualityTierCode: this.#tier === 'C' ? 0 : this.#tier === 'B' ? 1 : 2,
     };
   }
@@ -1233,6 +1243,7 @@ export class UrbanNightWorld implements SceneContent {
     // activity owns its dynamic buffers, so release those here before its root is detached.
     this.#disposed = true;
     this.#activity?.dispose();
+    this.#streetFurniture.dispose();
   }
 
   #buildStreetAndCrossing(): void {

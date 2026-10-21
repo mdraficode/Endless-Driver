@@ -10,13 +10,17 @@ import {
   URBAN_ACTIVITY_TIER_BUDGET,
   URBAN_CITY_CONFIG,
   URBAN_NIGHT_TIER_BUDGET,
+  URBAN_STREET_FURNITURE_CONFIG,
+  URBAN_STREET_FURNITURE_TIER_BUDGET,
 } from '../../src/config/urban-city';
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
 import { AOHARA_DISTRICT_CONFIG } from '../../src/config/urban-district';
+import { DEFAULT_SPAWN_ID, SPAWN_POINTS } from '../../src/config/spawns';
 import { EnvironmentClock } from '../../src/environment/EnvironmentClock';
 import { UrbanNightWorld } from '../../src/world/urban-night';
 import { advanceTrafficWithSignal } from '../../src/world/urban-activity';
+import { generateAoharaStreetFurniturePlacements } from '../../src/world/urban-furniture';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
 import type { RoadNetwork } from '../../src/world/road-network';
 import type { StaticBuildingBox } from '../../src/world/static-building-collision';
@@ -173,6 +177,17 @@ describe('Aohara city night-lighting rules', () => {
       expect(URBAN_ACTIVITY_TIER_BUDGET.C[key]).toBeLessThan(URBAN_ACTIVITY_TIER_BUDGET.B[key]);
       expect(URBAN_ACTIVITY_TIER_BUDGET.B[key]).toBeLessThan(URBAN_ACTIVITY_TIER_BUDGET.A[key]);
     }
+    for (const key of ['benches', 'planters', 'wasteBins', 'bicycleRacks'] as const) {
+      expect(URBAN_STREET_FURNITURE_TIER_BUDGET.C[key]).toBeGreaterThan(0);
+      expect(URBAN_STREET_FURNITURE_TIER_BUDGET.C[key]).toBeLessThan(
+        URBAN_STREET_FURNITURE_TIER_BUDGET.B[key],
+      );
+      expect(URBAN_STREET_FURNITURE_TIER_BUDGET.B[key]).toBeLessThan(
+        URBAN_STREET_FURNITURE_TIER_BUDGET.A[key],
+      );
+    }
+    expect(URBAN_STREET_FURNITURE_CONFIG.spawnClearanceMeters).toBeGreaterThanOrEqual(50);
+    expect(URBAN_STREET_FURNITURE_CONFIG.minimumWalkwayClearanceMeters).toBeGreaterThanOrEqual(1.8);
     expect(URBAN_CITY_CONFIG.trafficSignal.stopLineOffsetMeters).toBe(19);
   });
 
@@ -222,6 +237,8 @@ describe('Aohara city night-lighting rules', () => {
     expect(lowStats.urbanTrafficVehicles).toBe(0);
     expect(lowStats.urbanPedestrians).toBe(0);
     expect(lowStats.streetLightPointLights).toBe(URBAN_NIGHT_TIER_BUDGET.C.streetPointLights);
+    expect(lowStats.urbanStreetFurnitureBatches).toBe(4);
+    expect(lowStats.urbanStreetFurnitureInstances).toBeGreaterThan(0);
     expect(lowStats.architecturalPointLights).toBe(
       URBAN_NIGHT_TIER_BUDGET.C.architecturalPointLights,
     );
@@ -365,6 +382,30 @@ describe('Aohara city night-lighting rules', () => {
     expect(URBAN_CITY_CONFIG.streetLamp.spacingMeters).toBe(40);
     expect(city.getContentStats().streetLightPoles).toBe(240);
     expect(city.getContentStats().districtBanners).toBe(48);
+    expect(city.getContentStats()).toMatchObject({
+      urbanStreetFurnitureBatches: 4,
+      urbanStreetFurnitureInstances:
+        URBAN_STREET_FURNITURE_TIER_BUDGET.B.benches +
+        URBAN_STREET_FURNITURE_TIER_BUDGET.B.planters +
+        URBAN_STREET_FURNITURE_TIER_BUDGET.B.wasteBins +
+        URBAN_STREET_FURNITURE_TIER_BUDGET.B.bicycleRacks,
+      urbanStreetBenches: URBAN_STREET_FURNITURE_TIER_BUDGET.B.benches,
+      urbanStreetBenchesBudget: URBAN_STREET_FURNITURE_TIER_BUDGET.B.benches,
+      urbanStreetPlanters: URBAN_STREET_FURNITURE_TIER_BUDGET.B.planters,
+      urbanStreetPlantersBudget: URBAN_STREET_FURNITURE_TIER_BUDGET.B.planters,
+      urbanStreetWasteBins: URBAN_STREET_FURNITURE_TIER_BUDGET.B.wasteBins,
+      urbanStreetWasteBinsBudget: URBAN_STREET_FURNITURE_TIER_BUDGET.B.wasteBins,
+      urbanStreetBicycleRacks: URBAN_STREET_FURNITURE_TIER_BUDGET.B.bicycleRacks,
+      urbanStreetBicycleRacksBudget: URBAN_STREET_FURNITURE_TIER_BUDGET.B.bicycleRacks,
+    });
+    for (const name of [
+      'aohara-street-benches',
+      'aohara-street-planters',
+      'aohara-street-waste-bins',
+      'aohara-street-bicycle-racks',
+    ]) {
+      expect(city.root.getObjectByName(name)).toBeInstanceOf(InstancedMesh);
+    }
     expect(city.getContentStats().decorativeLights).toBe(
       44 + URBAN_ACTIVITY_TIER_BUDGET.B.infillBuildings,
     );
@@ -441,6 +482,122 @@ describe('Aohara city night-lighting rules', () => {
     }
 
     expect(expectUrbanRoadClearance(city, network)).toBeGreaterThan(1000);
+    city.dispose();
+  });
+
+  it('generates deterministic furniture while preserving road, crossing, spawn, building and walkway clearances', () => {
+    const network = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG).roadNetwork;
+    if (network === undefined) {
+      throw new Error('the shared world sampler should expose the road graph');
+    }
+    const city = new UrbanNightWorld('B', {
+      position: [AOHARA_DISTRICT_CONFIG.centerX, 0, AOHARA_DISTRICT_CONFIG.centerZ],
+      roadNetwork: network,
+      networkIntegrated: true,
+    });
+    const footprints = city.getStaticBuildingFootprints();
+    const placements = generateAoharaStreetFurniturePlacements(network, 'B', footprints);
+    const repeat = generateAoharaStreetFurniturePlacements(network, 'B', footprints);
+    expect(placements).toEqual(repeat);
+    expect(new Set(placements.map((placement) => placement.slotId)).size).toBe(placements.length);
+    expect(placements).toHaveLength(
+      URBAN_STREET_FURNITURE_TIER_BUDGET.B.benches +
+        URBAN_STREET_FURNITURE_TIER_BUDGET.B.planters +
+        URBAN_STREET_FURNITURE_TIER_BUDGET.B.wasteBins +
+        URBAN_STREET_FURNITURE_TIER_BUDGET.B.bicycleRacks,
+    );
+    const spawn = SPAWN_POINTS.find((point) => point.id === DEFAULT_SPAWN_ID);
+    if (spawn === undefined) {
+      throw new Error('Aohara should remain the configured default spawn');
+    }
+    const edgeById = new Map(network.edges.map((edge) => [edge.id, edge]));
+    const largestMarkingApproach = Math.max(
+      Math.max(
+        AOHARA_DISTRICT_CONFIG.arterialHalfWidthMeters,
+        AOHARA_DISTRICT_CONFIG.localStreetHalfWidthMeters,
+      ) + 3.8,
+      URBAN_CITY_CONFIG.trafficSignal.stopLineOffsetMeters,
+    );
+
+    for (const placement of placements) {
+      const edge = edgeById.get(placement.roadEdgeId);
+      if (edge === undefined) {
+        throw new Error(`unknown furniture road edge ${placement.roadEdgeId}`);
+      }
+      const endpointClearance = Math.min(
+        placement.alongMeters,
+        edge.lengthMeters - placement.alongMeters,
+      );
+      expect(endpointClearance).toBeGreaterThanOrEqual(
+        URBAN_STREET_FURNITURE_CONFIG.intersectionClearanceMeters,
+      );
+      expect(
+        endpointClearance - largestMarkingApproach - placement.halfDepthMeters,
+      ).toBeGreaterThanOrEqual(URBAN_STREET_FURNITURE_CONFIG.minimumRoadMarkingClearanceMeters);
+      expect(Math.hypot(placement.x - spawn.x, placement.z - spawn.z)).toBeGreaterThanOrEqual(
+        URBAN_STREET_FURNITURE_CONFIG.spawnClearanceMeters,
+      );
+
+      const sample = network.sample(placement.x, placement.z);
+      if (sample === null) {
+        throw new Error(`furniture ${placement.slotId} should remain beside its urban road`);
+      }
+      expect(['urban-local', 'urban-arterial']).toContain(sample.roadClass);
+      const walkwayClearance =
+        sample.distance -
+        sample.halfWidthMeters -
+        sample.shoulderMeters -
+        placement.halfWidthMeters;
+      const curbClearance =
+        sample.halfWidthMeters +
+        sample.shoulderMeters +
+        URBAN_CITY_CONFIG.sidewalk.widthMeters -
+        sample.distance -
+        placement.halfWidthMeters;
+      expect(walkwayClearance).toBeGreaterThanOrEqual(
+        URBAN_STREET_FURNITURE_CONFIG.minimumWalkwayClearanceMeters,
+      );
+      expect(curbClearance + 1e-4).toBeGreaterThanOrEqual(
+        URBAN_STREET_FURNITURE_CONFIG.outerCurbMarginMeters,
+      );
+
+      const furnitureBox: StaticBuildingBox = {
+        x: placement.x,
+        z: placement.z,
+        yaw: placement.yaw,
+        halfWidth: placement.halfWidthMeters,
+        halfDepth: placement.halfDepthMeters,
+      };
+      for (const building of footprints) {
+        expect(footprintSeparation(furnitureBox, building, 0)).toBeGreaterThan(
+          URBAN_STREET_FURNITURE_CONFIG.buildingFootprintClearanceMeters,
+        );
+      }
+    }
+
+    for (let first = 0; first < placements.length; first += 1) {
+      const a = placements[first]!;
+      const boxA: StaticBuildingBox = {
+        x: a.x,
+        z: a.z,
+        yaw: a.yaw,
+        halfWidth: a.halfWidthMeters,
+        halfDepth: a.halfDepthMeters,
+      };
+      for (let second = first + 1; second < placements.length; second += 1) {
+        const b = placements[second]!;
+        const boxB: StaticBuildingBox = {
+          x: b.x,
+          z: b.z,
+          yaw: b.yaw,
+          halfWidth: b.halfWidthMeters,
+          halfDepth: b.halfDepthMeters,
+        };
+        expect(footprintSeparation(boxA, boxB, 0)).toBeGreaterThanOrEqual(
+          URBAN_STREET_FURNITURE_CONFIG.minimumFurnitureSeparationMeters,
+        );
+      }
+    }
     city.dispose();
   });
 });
