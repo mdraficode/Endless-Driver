@@ -74,8 +74,24 @@ export class CarVisual {
     // Long, low hood, rear deck and subtle panel forms complete the original GT silhouette.
     this.#addRounded('kaminari-gt-hood-panel', 1.32, 0.065, 1.22, 0.025, paint, [0, 0.292, -1.12]);
     this.#addRounded('kaminari-gt-rear-deck', 1.34, 0.07, 0.56, 0.025, paint, [0, 0.265, 1.48]);
-    this.#addRounded('kaminari-gt-hood-ridge-left', 0.022, 0.018, 0.84, 0.008, paint, [-0.37, 0.333, -1.12]);
-    this.#addRounded('kaminari-gt-hood-ridge-right', 0.022, 0.018, 0.84, 0.008, paint, [0.37, 0.333, -1.12]);
+    this.#addRounded(
+      'kaminari-gt-hood-ridge-left',
+      0.022,
+      0.018,
+      0.84,
+      0.008,
+      paint,
+      [-0.37, 0.333, -1.12],
+    );
+    this.#addRounded(
+      'kaminari-gt-hood-ridge-right',
+      0.022,
+      0.018,
+      0.84,
+      0.008,
+      paint,
+      [0.37, 0.333, -1.12],
+    );
 
     // The open cabin is deliberately visible from the chase camera; there is no fabricated glass map.
     const dashboard = this.#addRounded(
@@ -92,7 +108,11 @@ export class CarVisual {
 
     for (const side of [-1, 1] as const) {
       const x = side * 0.36;
-      this.#addRounded(`kaminari-gt-seat-${side}-cushion`, 0.5, 0.17, 0.51, 0.07, interior, [x, 0.055, 0.44]);
+      this.#addRounded(`kaminari-gt-seat-${side}-cushion`, 0.5, 0.17, 0.51, 0.07, interior, [
+        x,
+        0.055,
+        0.44,
+      ]);
       this.#addRounded(
         `kaminari-gt-seat-${side}-back`,
         0.5,
@@ -103,25 +123,51 @@ export class CarVisual {
         [x, 0.38, 0.72],
         [0.1, 0, 0],
       );
-      this.#addRounded(
-        `kaminari-gt-seat-${side}-headrest`,
-        0.34,
-        0.2,
-        0.16,
-        0.055,
-        interior,
-        [x, 0.73, 0.83],
-      );
+      this.#addRounded(`kaminari-gt-seat-${side}-headrest`, 0.34, 0.2, 0.16, 0.055, interior, [
+        x,
+        0.73,
+        0.83,
+      ]);
     }
 
     const windshield = this.#addMesh('kaminari-gt-windshield', createWindshieldGeometry(), glass);
     windshield.castShadow = false;
     windshield.receiveShadow = true;
-    this.#addRod('kaminari-gt-a-pillar-left', [-0.62, 0.27, -0.53], [-0.52, 0.88, -0.08], 0.034, trim);
-    this.#addRod('kaminari-gt-a-pillar-right', [0.62, 0.27, -0.53], [0.52, 0.88, -0.08], 0.034, trim);
-    this.#addRod('kaminari-gt-roll-hoop-left', [-0.47, 0.27, 0.92], [-0.47, 0.94, 0.97], 0.026, trim);
-    this.#addRod('kaminari-gt-roll-hoop-right', [0.47, 0.27, 0.92], [0.47, 0.94, 0.97], 0.026, trim);
-    this.#addRod('kaminari-gt-roll-hoop-crossbar', [-0.47, 0.94, 0.97], [0.47, 0.94, 0.97], 0.027, trim);
+    this.#addRod(
+      'kaminari-gt-a-pillar-left',
+      [-0.62, 0.27, -0.53],
+      [-0.52, 0.88, -0.08],
+      0.034,
+      trim,
+    );
+    this.#addRod(
+      'kaminari-gt-a-pillar-right',
+      [0.62, 0.27, -0.53],
+      [0.52, 0.88, -0.08],
+      0.034,
+      trim,
+    );
+    this.#addRod(
+      'kaminari-gt-roll-hoop-left',
+      [-0.47, 0.27, 0.92],
+      [-0.47, 0.94, 0.97],
+      0.026,
+      trim,
+    );
+    this.#addRod(
+      'kaminari-gt-roll-hoop-right',
+      [0.47, 0.27, 0.92],
+      [0.47, 0.94, 0.97],
+      0.026,
+      trim,
+    );
+    this.#addRod(
+      'kaminari-gt-roll-hoop-crossbar',
+      [-0.47, 0.94, 0.97],
+      [0.47, 0.94, 0.97],
+      0.027,
+      trim,
+    );
 
     for (const side of [-1, 1] as const) {
       const mirror = this.#addRounded(
@@ -150,29 +196,37 @@ export class CarVisual {
         trim,
       );
       doorSeam.castShadow = false;
-      this.#addRounded(
-        `kaminari-gt-door-handle-${side}`,
-        0.045,
-        0.018,
-        0.12,
-        0.008,
-        exhaustMetal,
-        [side * 0.794, 0.13, 0.42],
-      );
+      this.#addRounded(`kaminari-gt-door-handle-${side}`, 0.045, 0.018, 0.12, 0.008, exhaustMetal, [
+        side * 0.794,
+        0.13,
+        0.42,
+      ]);
     }
 
-    this.#addRounded('kaminari-gt-front-grille', 0.68, 0.13, 0.035, 0.016, trim, [0, 0.105, -2.034]);
-    this.#addRounded('kaminari-gt-front-grille-slat', 0.48, 0.014, 0.012, 0.005, exhaustMetal, [0, 0.105, -2.057]);
+    this.#addRounded(
+      'kaminari-gt-front-grille',
+      0.68,
+      0.13,
+      0.035,
+      0.016,
+      trim,
+      [0, 0.105, -2.034],
+    );
+    this.#addRounded(
+      'kaminari-gt-front-grille-slat',
+      0.48,
+      0.014,
+      0.012,
+      0.005,
+      exhaustMetal,
+      [0, 0.105, -2.057],
+    );
     for (const side of [-1, 1] as const) {
-      this.#addRounded(
-        `kaminari-gt-headlamp-${side}`,
-        0.34,
-        0.105,
-        0.035,
-        0.016,
-        headlamp,
-        [side * 0.55, 0.18, -2.043],
-      );
+      this.#addRounded(`kaminari-gt-headlamp-${side}`, 0.34, 0.105, 0.035, 0.016, headlamp, [
+        side * 0.55,
+        0.18,
+        -2.043,
+      ]);
       this.#addRounded(
         `kaminari-gt-brake-lamp-${side}`,
         0.3,
@@ -343,8 +397,13 @@ export class CarVisual {
   }
 
   #mergeStaticRootMeshes(): void {
-    const batches = new Map<Material, { readonly geometries: BufferGeometry[]; readonly partNames: string[] }>();
-    const originalMeshes = this.root.children.filter((child): child is Mesh => child instanceof Mesh);
+    const batches = new Map<
+      Material,
+      { readonly geometries: BufferGeometry[]; readonly partNames: string[] }
+    >();
+    const originalMeshes = this.root.children.filter(
+      (child): child is Mesh => child instanceof Mesh,
+    );
 
     for (const mesh of originalMeshes) {
       if (Array.isArray(mesh.material)) {
@@ -381,7 +440,12 @@ export class CarVisual {
     }
   }
 
-  #addMesh(name: string, geometry: BufferGeometry, material: Material, parent: Group = this.root): Mesh {
+  #addMesh(
+    name: string,
+    geometry: BufferGeometry,
+    material: Material,
+    parent: Group = this.root,
+  ): Mesh {
     const mesh = new Mesh(this.#track(geometry), material);
     mesh.name = name;
     mesh.castShadow = true;
@@ -413,7 +477,11 @@ export class CarVisual {
     position: Position3,
     rotation?: Position3,
   ): Mesh {
-    const mesh = this.#addMesh(name, new RoundedBoxGeometry(width, height, depth, 4, radius), material);
+    const mesh = this.#addMesh(
+      name,
+      new RoundedBoxGeometry(width, height, depth, 4, radius),
+      material,
+    );
     mesh.position.set(position[0], position[1], position[2]);
     if (rotation !== undefined) {
       mesh.rotation.set(rotation[0], rotation[1], rotation[2]);
@@ -421,7 +489,13 @@ export class CarVisual {
     return mesh;
   }
 
-  #addRod(name: string, start: Position3, end: Position3, radius: number, material: Material): Mesh {
+  #addRod(
+    name: string,
+    start: Position3,
+    end: Position3,
+    radius: number,
+    material: Material,
+  ): Mesh {
     const from = new Vector3(...start);
     const to = new Vector3(...end);
     const direction = to.clone().sub(from);
@@ -494,10 +568,7 @@ function createWindshieldGeometry(): BufferGeometry {
     'position',
     new BufferAttribute(
       new Float32Array([
-        -0.61, 0.29, -0.55,
-        0.61, 0.29, -0.55,
-        0.52, 0.86, -0.1,
-        -0.52, 0.86, -0.1,
+        -0.61, 0.29, -0.55, 0.61, 0.29, -0.55, 0.52, 0.86, -0.1, -0.52, 0.86, -0.1,
       ]),
       3,
     ),

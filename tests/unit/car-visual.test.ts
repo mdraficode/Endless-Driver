@@ -25,7 +25,9 @@ function mergedPartNames(car: CarVisual): string[] {
       return [];
     }
     const names = child.userData.partNames;
-    return Array.isArray(names) ? names.filter((name): name is string => typeof name === 'string') : [];
+    return Array.isArray(names)
+      ? names.filter((name): name is string => typeof name === 'string')
+      : [];
   });
 }
 

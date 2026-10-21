@@ -18,10 +18,7 @@ import {
 } from '../config/urban-city';
 import { AOHARA_DISTRICT_CONFIG } from '../config/urban-district';
 import type { TierId } from '../config/tiers';
-import {
-  TRAFFIC_VEHICLE_CLASSES,
-  type TrafficVehicleClass,
-} from '../config/traffic-vehicles';
+import { TRAFFIC_VEHICLE_CLASSES, type TrafficVehicleClass } from '../config/traffic-vehicles';
 import { createTrafficVehicleModel, getTrafficVehicleSpec } from './traffic-vehicle-models';
 
 const ROAD_Y = -0.46;
@@ -354,7 +351,10 @@ export class UrbanStreetActivity {
       0.9,
     );
     vehicleTrimMaterial.color.setHex(0x242b31);
-    const vehicleAccentMaterial = createActivityMaterial('aohara-traffic-vehicle-metal-accents', 0.36);
+    const vehicleAccentMaterial = createActivityMaterial(
+      'aohara-traffic-vehicle-metal-accents',
+      0.36,
+    );
     vehicleAccentMaterial.color.setHex(0xaab5bd);
     vehicleAccentMaterial.metalness = 0.62;
     const pedestrianBodyMaterial = createActivityMaterial(
@@ -362,7 +362,12 @@ export class UrbanStreetActivity {
       0.91,
     );
     const pedestrianHeadMaterial = createActivityMaterial('aohara-sidewalk-pedestrian-skin', 0.9);
-    this.#materials.push(vehicleTrimMaterial, vehicleAccentMaterial, pedestrianBodyMaterial, pedestrianHeadMaterial);
+    this.#materials.push(
+      vehicleTrimMaterial,
+      vehicleAccentMaterial,
+      pedestrianBodyMaterial,
+      pedestrianHeadMaterial,
+    );
 
     for (const type of TRAFFIC_VEHICLE_CLASSES) {
       const count = this.#trafficClassCounts.get(type) ?? 0;
@@ -571,7 +576,9 @@ export class UrbanStreetActivity {
       this.#transform.rotation.set(0, this.#pose.yaw, 0);
       this.#transform.scale.set(1, 1, 1);
       this.#transform.updateMatrix();
-      this.#trafficMeshes.get(vehicle.type)?.setMatrixAt(vehicle.instanceIndex, this.#transform.matrix);
+      this.#trafficMeshes
+        .get(vehicle.type)
+        ?.setMatrixAt(vehicle.instanceIndex, this.#transform.matrix);
     }
     for (const mesh of this.#trafficMeshes.values()) {
       mesh.instanceMatrix.needsUpdate = true;
