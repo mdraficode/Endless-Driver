@@ -7,11 +7,7 @@ import {
   Object3D,
   type BufferGeometry,
 } from 'three';
-import {
-  MeshPhysicalNodeMaterial,
-  MeshStandardNodeMaterial,
-  type Node,
-} from 'three/webgpu';
+import { MeshPhysicalNodeMaterial, MeshStandardNodeMaterial, type Node } from 'three/webgpu';
 import { float, mix, positionLocal, sin, texture, uniform, uv, vec2, vec4 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
