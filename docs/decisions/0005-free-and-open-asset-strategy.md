@@ -56,19 +56,18 @@ real place and will never be described as one.
 The hero car is an in-house design under a fictional marque (**"Kaminari"**). No real manufacturer names, logos, or
 trade dress anywhere in the game — signage included.
 
-### 4. Car: in-house hero, CC0 stand-in
+### 4. Car: in-house, unbadged hero; no stand-in asset
 
-There is no free, licence-clean, production-grade hero car; that is the single hardest free-sourcing gap and the
-plan states it rather than hiding it. Two tracks:
+The player vehicle is an original code-authored GT roadster under the fictional **Kaminari** marque. Ferrari California
+is only a broad convertible/GT body-class reference; no reference mesh, badge or trade dress is copied. The current
+procedural model has clearcoat paint, map-free glazing/interior/rubber/metal, a visible cabin, pose-driven wheels and
+steering, and local brake lamps. Its automated test enforces fewer than 20k triangles and at most 12 rendered Mesh
+objects; the full check passed at `cdcd8f1`.
 
-1. **Stand-in (Phase 3–5):** a Unity Fan **CC0** concept car (200k–760k tris, unbranded, author public-domain
-   dedication) run through the pipeline — decimated, rematerialised, wheel/anchor contract applied — so look-dev,
-   the studio scene, and the validation route are never blocked.
-2. **Hero (Phase 6):** an in-house GT coupe built with the open-source toolchain (Blender, Material Maker, Krita)
-   to the material standard in `docs/VISUAL_TARGET.md` §2.4 — clearcoat automotive paint, glass, rubber, lights,
-   correct proportions and panel gaps, cockpit, halving LODs.
-
-Both use the same model-binding contract, so the swap costs no code.
+External models are optional, not required for the build. Use one only if its provenance, license, suitability and
+reproducible conversion path are verifiable. The CC0 RGS_Dev pack was audited but not integrated because it is
+stylized and FBX-only; other reviewed candidates were also not adopted. The current car remains in-house with no
+third-party vehicle files or manifest entry.
 
 ### 5. Audio: free sample libraries plus a project-owned synthesis layer
 
@@ -105,8 +104,7 @@ exist, and a signature Forza feature.
 
 **Negative / mitigations**
 
-- **Hero car requires real 3D authoring effort.** Mitigation: CC0 stand-in keeps all pipeline work moving; the
-  contract is asset-agnostic; quality bars define when it is good enough.
+- **Hero car requires ongoing visual authoring and review.** Mitigation: the original in-house roadster is now implemented with tested triangle/render-mesh caps; runtime visual and device review remain explicit acceptance gates. No external stand-in is used.
 - **Music is the weakest free category.** Mitigation: curated CC0/CC-BY playlist matched to seasons, stated as such
   in the research document's non-promises.
 - **CC-BY props add a credit obligation.** Mitigation: automated credits generation; the owner can close the

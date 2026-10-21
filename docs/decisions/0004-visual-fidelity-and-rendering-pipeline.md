@@ -91,22 +91,10 @@ may only assert correctness — never frame rate.
 
 ### 5. Content sourcing is engineering, with the car as the binding constraint
 
-- Environment content is sourced primarily from **CC0** sources (Poly Haven, ambientCG); every asset
-  entry records source, creator, licence, modifications, and required credits.
-- Non-CC0 content (Fab/Megascans free starter, purchased models) is allowed only with a per-asset
-  licence record; the whole-library-free Megascans era ended 2024-12-31, so free-of-charge is not a
-  licence.
-- **No ripped game assets, no manufacturer trademarks or logos without a licence.**
-- Every asset passes an automated pipeline — prune/dedupe → LODs → quantization → **meshopt**
-  geometry compression → **KTX2/Basis** textures (4–8× less GPU memory) → budget check — driven by
-  the asset manifest, not by hand. Textures are capped at 1024/2048 (a single 4096² RGBA8 texture
-  costs ~89 MB of VRAM uncompressed).
-- Budgets: hero car 100k–200k triangles with halving LODs; props ≤ 5k; foliage via atlases and
-  impostors.
-- The car is procured by one of three routes, in the owner's chosen order: **(b)** buy a
-  royalty-free game-ready model with a recorded licence, **(a)** commission/build one in-house, with
-  **(c)** an in-house generic coupe — correct proportions, panel gaps, glass, wheels, and paint — as
-  the interim hero so the car is never again a box.
+- External environment and vehicle assets are **free/open only, CC0-first**; any other permissive licence, attribution, provenance and redistribution terms must be verified and recorded before use. No paid or account-gated models.
+- **No ripped game assets, manufacturer trademarks, badges, logos or copied trade dress.** The player car is a fictional, unbadged in-house Kaminari GT roadster; Ferrari California is only a broad convertible/GT body-class reference. No external model is incorporated in this increment.
+- Every external asset passes the automated pipeline — prune/dedupe → LODs → quantization → **meshopt** geometry compression → **KTX2/Basis** textures → budget check — driven by the asset manifest, not by hand. Textures are capped at 1024/2048 (a single 4096² RGBA8 texture costs ~89 MB of VRAM uncompressed). Code-authored Three.js geometry is tracked by tests, not the third-party manifest.
+- Budgets: the current player roadster is tested below 20k triangles and at no more than 12 rendered Mesh objects at `cdcd8f1`; any future imported high-detail model requires a separate 100k–200k LOD budget plus verified suitability/licence. Props ≤ 5k; foliage via atlases and impostors.
 
 ### 6. Visual work is validated by a repeatable procedure
 
