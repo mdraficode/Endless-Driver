@@ -293,7 +293,7 @@ export class CarVisual {
     parts.push(hub);
     for (let index = 0; index < 3; index += 1) {
       const spoke = new BoxGeometry(0.018, 0.135, 0.016);
-      spoke.rotation.z = (index / 3) * Math.PI * 2;
+      spoke.rotateZ((index / 3) * Math.PI * 2);
       spoke.translate(0, 0.045, 0);
       parts.push(spoke);
     }
@@ -334,7 +334,7 @@ export class CarVisual {
 
       for (let spokeIndex = 0; spokeIndex < 5; spokeIndex += 1) {
         const spoke = new BoxGeometry(WHEEL_WIDTH * 1.04, WHEEL_RADIUS * 0.44, 0.026);
-        spoke.rotation.x = (spokeIndex / 5) * Math.PI * 2;
+        spoke.rotateX((spokeIndex / 5) * Math.PI * 2);
         spoke.translate(x, WHEEL_RADIUS * 0.25, 0);
         alloyParts.push(spoke);
       }
