@@ -1,15 +1,15 @@
 # Endless Driver — Project Plan and Implementation Instructions
 
 **Planning baseline:** 2026-10-13 · **Visual-fidelity revision:** 2026-10-14 · **Status updated:** 2026-10-21  
-**Project stage:** Phase 4 built scope delivered; owner reports Phase 5 passed; Phase 6 renderer/material and Phase 9 urban-systems work are authorized; requested world-detail code sequence implemented; Phases 7–8 gated  
-**Development authorization:** The owner opened broad Phase 6 on 2026-10-20 and reports Phase 5 passed on 2026-10-21. Phase 9 is separately authorized in parallel. The requested audit → natural detail → streetscape → integrated tier-budget sequence is implemented through `f98adfb`; runtime visual/device review remains separate. Phases 7–8 remain gated. Phase 3 code complete with named-hardware frame-budget validation open.  
+**Project stage:** Phase 4 built scope delivered; owner reports Phase 5 passed; Phase 6 renderer/material and Phase 9 urban-systems work are authorized; requested world-detail code sequence implemented; reference-driven PBR surface coverage verified at `ceaa184`; Phases 7–8 gated  
+**Development authorization:** The owner opened broad Phase 6 on 2026-10-20 and reports Phase 5 passed on 2026-10-21. Phase 9 is separately authorized. The requested audit → natural detail → streetscape → integrated tier-budget sequence is implemented through `f98adfb`; the public-reference material increment is implemented and passes full local `npm run check` at `ceaa184`. Runtime visual/device review remains separate; Phases 7–8 remain gated. Phase 3 code complete with named-hardware frame-budget validation open.  
 **Visual target:** [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) — rural Hinode remains; a fictional megacity district is an authorized addition. Forza-Horizon-class presentation remains an engineering target, with evidence and feasibility boundaries in [`docs/RESEARCH_AAA_FIDELITY.md`](docs/RESEARCH_AAA_FIDELITY.md)  
 **GitHub destination:** Public [`mdraficode/Endless-Driver`](https://github.com/mdraficode/Endless-Driver), branch `main`  
 **Remote synchronization:** Scaffold, documentation, Phase 1, and Phase 2 pushed and verified on `main`; CI runs on each push
 
 The original requested technical scope is retained in [`docs/PROJECT_BRIEF.md`](docs/PROJECT_BRIEF.md).
 
-> This is the implementation specification, not a claim that the game is complete. Phases 1–4 provide the runtime, vehicle foundation, renderer/asset pipeline, terrain/roads, and initial world systems. The owner reports Phase 5 passed on 2026-10-21; the subsequent world-detail request is implemented at code level through `f98adfb` and does not reopen Phase 5 acceptance. Phase 6 and Phase 9 are separately authorized; Phases 7–8 remain gated. FPS remains unstable by owner report and no named-device measurements are available. Keep gameplay terrain non-white and snow-free. Rendering is Three.js + Rapier with automatic WebGPU/WebGL2 selection, HDRI image-based lighting, AgX tone mapping by default, and screen-space approximations—not hardware ray tracing.
+> This is the implementation specification, not a claim that the game is complete. Phases 1–4 provide the runtime, vehicle foundation, renderer/asset pipeline, terrain/roads, and initial world systems. The owner reports Phase 5 passed on 2026-10-21; the subsequent world-detail request is implemented at code level through `f98adfb` and does not reopen Phase 5 acceptance. A reference-driven Phase 6/9 surface-material increment is implemented and fully checked at `ceaa184`; its analysis and evidence limits are in `docs/GRAPHICS_REFERENCE_ANALYSIS.md`. Phase 6 and Phase 9 remain separately authorized; Phases 7–8 remain gated. FPS remains unstable by owner report and no named-device measurements are available. Keep gameplay terrain non-white and snow-free. Rendering is Three.js + Rapier with automatic WebGPU/WebGL2 selection, HDRI image-based lighting, AgX tone mapping by default, and screen-space approximations—not hardware ray tracing.
 
 ## Contents
 
@@ -393,7 +393,7 @@ valid and are extended, not replaced.
 | 1     | Engine, loop, resize/DPR handling, orbit debug camera, reference lighting, diagnostics, disposal (ADR 0002)                                                      | `fbb48a4`, CI green                                            |
 | 2     | Rapier world + custom raycast force layer, slip-friction drift, smoothed keyboard input, damped chase camera, placeholder car meshes bound to physics (ADR 0003) | `b85c8ba`, `307efaa`, CI green; evidence in `/phase2-evidence` |
 
-**Phases 1–4 are implemented; the owner reports Phase 5 passed; Phase 6 renderer/material work is authorized and its foundation is implemented; Phase 9 is separately authorized and active. The requested world-detail code follow-up is implemented through `f98adfb`; runtime visual/device review remains separate. Phases 7–8 remain gated. Phase 3 code is complete; named-hardware frame-budget validation is still open.**
+**Phases 1–4 are implemented; the owner reports Phase 5 passed; Phase 6 renderer/material work is authorized and its foundation plus reference-driven PBR surface coverage are implemented; Phase 9 is separately authorized and active. The requested world-detail code follow-up is implemented through `f98adfb`; material coverage passed the full local check at `ceaa184`. Runtime visual/device review remains separate. Phases 7–8 remain gated. Phase 3 code is complete; named-hardware frame-budget validation is still open.**
 
 ### Phase 3 — Renderer migration, lighting, post-processing, asset and material pipeline
 
@@ -687,6 +687,8 @@ which is the difference between a clean render and a photographed one.
 
 **Authorization:** Broad Phase 6 work was explicitly opened on 2026-10-20; the owner reported Phase 5 passed on 2026-10-21. The owner has not selected a replacement hero-car asset, so preserve the fictional, unbadged in-house placeholder and use free/open sources only if assets are added. Phase 7 weather/seasons and Phase 8 polish are not included.
 
+**Reference-driven surface-material increment (2026-10-21):** the public comparison in [`docs/GRAPHICS_REFERENCE_ANALYSIS.md`](docs/GRAPHICS_REFERENCE_ANALYSIS.md) treats Slow Roads, the Three.js WebGPU materials gallery, and +360º Car Visualizer as visual targets, not disclosures of their renderer internals. The existing Three.js setup already supplies HDRI PMREM image-based lighting, AgX by default with ACES/Neutral alternatives, and TSL SSAO (SSGI substitutes at the higher tier); this increment retains that pipeline. It adds two pinned CC0 1K concrete sets and a per-world coalescing/disposal library. Scanned albedo, tangent-space normal and packed AO/roughness/metalness maps are bound selectively to asphalt/shoulders, sidewalks, planter shells, cedar bench boards, Yūhi wall-body boxes, and selected opaque Aohara low-rise facades. Painted trim, roofs, glazing, emitters, unsupported metal scans, tires and automotive paint remain on purpose-authored PBR materials. Commit `ceaa1846a61ebf66af9806c93c5556cb309425fe` passed the full local `npm run check` (59 test files / 504 tests; 19 assets / 44,913,263 bytes; production build) and GitHub Validate #170 / Pages Deploy #160. No browser visual review or named-device performance measurement is claimed.
+
 **Deliverables**
 
 1. Hero car asset through a free/open legal route (in-house build or a free asset with a recorded licence;
@@ -784,7 +786,7 @@ settings, camera gestures/polish, and the final quality pass.
 
 ### Phase 9 — Urban Systems: Aohara Metropolis
 
-**Authorization (2026-10-19, with follow-up 2026-10-20):** the owner authorized this new track to begin immediately, despite the unresolved Phase 5 visual-acceptance gate. Phase 9 may proceed alongside Phases 5–6; broad Phase 6 work was separately authorized on 2026-10-20 despite Phase 5 acceptance remaining open. This does **not** authorize Phase 7 weather/seasons or Phase 8 final polish.
+**Historical authorization record (2026-10-19, with follow-up 2026-10-20; status corrected 2026-10-21):** Phase 9 was authorized at that time while Phase 5 visual acceptance was pending; the owner reported Phase 5 passed on 2026-10-21. Broad Phase 6 work was separately authorized on 2026-10-20. These authorizations do **not** authorize Phase 7 weather/seasons or Phase 8 final polish.
 
 **District decision:** add a fictional Japanese megacity district to the existing fictional Hinode region. Preserve every rural Hinode district and its no-white-ground requirement; do not replace or urbanize the rural world. Aohara Metropolis is a bounded, vertically dense addition, connected to the existing rural road graph by a city-access connector; a separate highway/expressway link remains future work. The dimensions and streaming footprint must be measured before expanding the world bounds.
 
