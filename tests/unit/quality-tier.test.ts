@@ -195,14 +195,14 @@ describe('forced-backend debug switch', () => {
     // Everything else must survive the override.
     expect(forced.shadows).toEqual(base.shadows);
     expect(forced.maxPixelRatio).toBe(base.maxPixelRatio);
-    // A null request, or one matching what is already set, returns the same object;
-    // a different preference clones exactly the renderer block.
+    // A null request, or one matching the automatic baseline, returns the same object;
+    // a forced WebGL2 preference clones exactly the renderer block.
     expect(applyBackendOverride(base, null)).toBe(base);
-    expect(applyBackendOverride(base, 'webgl')).toBe(base);
-    const autoForced = applyBackendOverride(base, 'auto');
-    expect(autoForced).not.toBe(base);
-    expect(autoForced.renderer.backendPreference).toBe('auto');
-    expect(autoForced.shadows).toEqual(base.shadows);
+    expect(applyBackendOverride(base, 'auto')).toBe(base);
+    const webglForced = applyBackendOverride(base, 'webgl');
+    expect(webglForced).not.toBe(base);
+    expect(webglForced.renderer.backendPreference).toBe('webgl');
+    expect(webglForced.shadows).toEqual(base.shadows);
     expect(base.renderer.backendPreference).toBe('auto');
   });
 
