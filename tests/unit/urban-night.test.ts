@@ -269,7 +269,9 @@ describe('Aohara city night-lighting rules', () => {
     for (const furniture of [benches, planters]) {
       expect(furniture.geometry.getAttribute('uv')).toBeDefined();
       expect(furniture.geometry.groups).toHaveLength(2);
-      expect(furniture.geometry.groups.map((group) => group.materialIndex)).toEqual([0, 1]);
+      expect(
+        furniture.geometry.groups.map((group: { materialIndex: number }) => group.materialIndex),
+      ).toEqual([0, 1]);
       expect(Array.isArray(furniture.material)).toBe(true);
     }
     const benchMaterials = benches.material as MeshStandardNodeMaterial[];

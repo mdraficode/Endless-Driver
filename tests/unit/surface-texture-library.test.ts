@@ -62,7 +62,11 @@ describe('per-world scanned surface ownership', () => {
     set.diffuse.anisotropy = 12;
     configureTiledSurface(set, 8);
 
-    for (const map of [set.diffuse, set.normal, set.arm]) {
+    const maps = [set.diffuse, set.normal];
+    if (set.arm !== null) {
+      maps.push(set.arm);
+    }
+    for (const map of maps) {
       expect(map.wrapS).toBe(RepeatWrapping);
       expect(map.wrapT).toBe(RepeatWrapping);
       expect(map.version).toBeGreaterThan(0);
