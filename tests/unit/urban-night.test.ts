@@ -13,6 +13,7 @@ import {
   URBAN_STREET_FURNITURE_CONFIG,
   URBAN_STREET_FURNITURE_TIER_BUDGET,
 } from '../../src/config/urban-city';
+import { GROUND_COVER_CONFIG } from '../../src/config/ground-cover';
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
 import { AOHARA_DISTRICT_CONFIG } from '../../src/config/urban-district';
@@ -188,6 +189,16 @@ describe('Aohara city night-lighting rules', () => {
     }
     expect(URBAN_STREET_FURNITURE_CONFIG.spawnClearanceMeters).toBeGreaterThanOrEqual(50);
     expect(URBAN_STREET_FURNITURE_CONFIG.minimumWalkwayClearanceMeters).toBeGreaterThanOrEqual(1.8);
+    let previousCombinedBudget = 0;
+    for (const tier of ['C', 'B', 'A'] as const) {
+      const furnitureBudget = Object.values(URBAN_STREET_FURNITURE_TIER_BUDGET[tier]).reduce(
+        (total, count) => total + count,
+        0,
+      );
+      const combinedBudget = GROUND_COVER_CONFIG.instanceBudgetByTier[tier] + furnitureBudget;
+      expect(combinedBudget).toBeGreaterThan(previousCombinedBudget);
+      previousCombinedBudget = combinedBudget;
+    }
     expect(URBAN_CITY_CONFIG.trafficSignal.stopLineOffsetMeters).toBe(19);
   });
 

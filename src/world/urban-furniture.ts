@@ -607,6 +607,11 @@ export class UrbanStreetFurniture {
     return {
       urbanStreetFurnitureBatches: this.#meshes.length,
       urbanStreetFurnitureInstances: this.#placements.length,
+      urbanStreetFurnitureInstanceBudget:
+        this.#budget.benches +
+        this.#budget.planters +
+        this.#budget.wasteBins +
+        this.#budget.bicycleRacks,
       urbanStreetBenches: this.#counts.bench,
       urbanStreetBenchesBudget: this.#budget.benches,
       urbanStreetPlanters: this.#counts.planter,

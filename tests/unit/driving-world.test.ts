@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import { GROUND_COVER_CONFIG } from '../../src/config/ground-cover';
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
+import { URBAN_STREET_FURNITURE_TIER_BUDGET } from '../../src/config/urban-city';
 import { RENDER_CONFIG } from '../../src/config/render';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
 import { WORLD_CONFIG } from '../../src/config/world';
@@ -40,6 +42,24 @@ describe('Aohara driving-world integration', () => {
       urbanCrosswalkIntersections: 25,
       roadMeshes: 8,
     });
+    const stats = content.getContentStats?.();
+    if (stats === undefined) {
+      throw new Error('the driving world should expose integrated enrichment diagnostics');
+    }
+    const cityFurnitureBudget = Object.values(URBAN_STREET_FURNITURE_TIER_BUDGET.C).reduce(
+      (total, count) => total + count,
+      0,
+    );
+    expect(stats.groundCoverStylePools).toBe(4);
+    expect(stats.urbanStreetFurnitureBatches).toBe(4);
+    expect(stats.urbanStreetFurnitureInstances).toBe(cityFurnitureBudget);
+    expect(stats.worldEnrichmentBatchPools).toBe(8);
+    expect(stats.worldEnrichmentInstanceBudget).toBe(
+      GROUND_COVER_CONFIG.instanceBudgetByTier.C + cityFurnitureBudget,
+    );
+    expect(stats.worldEnrichmentInstances).toBe(
+      stats.groundCoverInstances! + stats.urbanStreetFurnitureInstances!,
+    );
     expect(content.root.getObjectByName('aohara-ground-deck')).toBeUndefined();
 
     const night: DaylightState = {
@@ -61,5 +81,6 @@ describe('Aohara driving-world integration', () => {
     content.setDaylight?.(night);
     content.update?.(1);
     content.dispose();
+    expect(content.root.getObjectByName('aohara-street-furniture')).toBeUndefined();
   });
 });

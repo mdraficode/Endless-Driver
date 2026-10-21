@@ -115,13 +115,30 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
         roads === null ? Promise.resolve() : roads.loadSurfaces(),
       ]);
     },
-    getContentStats: () => ({
-      ...terrain.getContentStats(),
-      ...(roads === null ? {} : roads.getStats()),
-      ...vegetation.getContentStats(),
-      ...town.getContentStats(),
-      ...(aohara?.getContentStats() ?? {}),
-    }),
+    getContentStats: () => {
+      const terrainStats = terrain.getContentStats();
+      const roadStats = roads?.getStats() ?? {};
+      const vegetationStats = vegetation.getContentStats();
+      const townStats = town.getContentStats();
+      const urbanStats = aohara?.getContentStats() ?? {};
+      const groundCoverInstances = vegetationStats.groundCoverInstances ?? 0;
+      const groundCoverBudget = vegetationStats.groundCoverInstanceBudget ?? 0;
+      const streetFurnitureInstances = urbanStats.urbanStreetFurnitureInstances ?? 0;
+      const streetFurnitureBudget = urbanStats.urbanStreetFurnitureInstanceBudget ?? 0;
+      return {
+        ...terrainStats,
+        ...roadStats,
+        ...vegetationStats,
+        ...townStats,
+        ...urbanStats,
+        worldEnrichmentInstances: groundCoverInstances + streetFurnitureInstances,
+        worldEnrichmentInstanceBudget: groundCoverBudget + streetFurnitureBudget,
+        /** Number of static instance pools; this is not a measured draw-call count. */
+        worldEnrichmentBatchPools:
+          (vegetationStats.groundCoverStylePools ?? 0) +
+          (urbanStats.urbanStreetFurnitureBatches ?? 0),
+      };
+    },
     dispose(): void {
       terrain.dispose();
       roads?.dispose();

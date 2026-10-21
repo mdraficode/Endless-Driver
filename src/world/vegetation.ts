@@ -1177,6 +1177,7 @@ export class VegetationWorld {
       vegetationInstances: this.#totalInstances,
       groundCoverInstances: this.#groundCoverInstances,
       groundCoverInstanceBudget: GROUND_COVER_CONFIG.instanceBudgetByTier[this.#tier],
+      groundCoverStylePools: this.#groundCoverMeshes.length,
       groundCoverGrassInstances: this.#groundCoverInstancesByStyle.grass,
       groundCoverFernInstances: this.#groundCoverInstancesByStyle.fern,
       groundCoverWildflowerInstances: this.#groundCoverInstancesByStyle.wildflower,
