@@ -200,7 +200,10 @@ describe('Aohara city night-lighting rules', () => {
           throw new Error('each vehicle class should use one instanced mesh');
         }
         expect(Array.isArray(mesh.material)).toBe(true);
-        expect(mesh.geometry.groups.map((group) => group.materialIndex)).toEqual([0, 1, 2]);
+        expect(mesh.geometry.groups).toHaveLength(3);
+        expect(mesh.geometry.groups[0]?.materialIndex).toBe(0);
+        expect(mesh.geometry.groups[1]?.materialIndex).toBe(1);
+        expect(mesh.geometry.groups[2]?.materialIndex).toBe(2);
       }
       activity.update(1 / 60, 'red');
       activity.dispose();
