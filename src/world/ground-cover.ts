@@ -473,7 +473,7 @@ function buildStoneGeometry(): BufferGeometry {
   ] as const;
 
   for (const stone of stones) {
-    const source = new IcosahedronGeometry(1, 0).toNonIndexed();
+    const source = new IcosahedronGeometry(1, 0);
     const sourcePositions = source.getAttribute('position');
     const base = new Color(stone.color);
     for (let index = 0; index < sourcePositions.count; index += 1) {

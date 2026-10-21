@@ -44,7 +44,7 @@ describe('vegetation destruction visuals', () => {
     expect(groundCover.count).toBeLessThanOrEqual(GROUND_COVER_CONFIG.instanceBudgetByTier.A);
     expect((groundCover.material as MeshStandardNodeMaterial).side).toBe(DoubleSide);
     expect((groundCover.material as MeshStandardNodeMaterial).positionNode).not.toBeNull();
-    expect(stats.groundCoverInstances).toBe(groundCover.count);
+    expect(stats.groundCoverGrassInstances).toBe(groundCover.count);
     let styleTotal = 0;
     for (const style of GROUND_COVER_STYLES) {
       const styleMesh = world.root.getObjectByName(`ground-cover-${style}`);
