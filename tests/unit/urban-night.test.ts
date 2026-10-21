@@ -280,10 +280,10 @@ describe('Aohara city night-lighting rules', () => {
     const planterMaterials = planters.material as MeshStandardNodeMaterial[];
     expect(planterMaterials[0]?.name).toBe('aohara-planter-aggregate-concrete-pbr');
     expect(planterMaterials[1]?.name).toBe('aohara-planter-shrubs-pbr');
-    expect((wasteBins.material as MeshStandardNodeMaterial).name).toBe(
+    expect((wasteBins.material as MeshStandardNodeMaterial[])[0]?.name).toBe(
       'aohara-waste-bin-painted-steel-pbr',
     );
-    expect((bicycleRacks.material as MeshStandardNodeMaterial).name).toBe(
+    expect((bicycleRacks.material as MeshStandardNodeMaterial[])[0]?.name).toBe(
       'aohara-bicycle-rack-metal-pbr',
     );
     expect(lowStats.architecturalPointLights).toBe(
