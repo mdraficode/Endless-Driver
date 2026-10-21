@@ -3,7 +3,7 @@ import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 
 import { VEGETATION_CONFIG } from '../../src/config/districts';
-import { GROUND_COVER_CONFIG } from '../../src/config/ground-cover';
+import { GROUND_COVER_CONFIG, GROUND_COVER_STYLES } from '../../src/config/ground-cover';
 import { VEGETATION_CHUNK_GENERATION_BUDGET_PER_FRAME } from '../../src/config/vegetation-streaming';
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
@@ -45,6 +45,24 @@ describe('vegetation destruction visuals', () => {
     expect((groundCover.material as MeshStandardNodeMaterial).side).toBe(DoubleSide);
     expect((groundCover.material as MeshStandardNodeMaterial).positionNode).not.toBeNull();
     expect(stats.groundCoverInstances).toBe(groundCover.count);
+    let styleTotal = 0;
+    for (const style of GROUND_COVER_STYLES) {
+      const styleMesh = world.root.getObjectByName(`ground-cover-${style}`);
+      expect(styleMesh).toBeInstanceOf(InstancedMesh);
+      if (!(styleMesh instanceof InstancedMesh)) {
+        throw new Error(`ground-cover ${style} should have a fixed instanced pool`);
+      }
+      const budget = GROUND_COVER_CONFIG.styleInstanceBudgetByTier.A[style];
+      expect(styleMesh.count).toBeLessThanOrEqual(budget);
+      expect(styleMesh.geometry.getAttribute('foliageMask')).toBeDefined();
+      styleTotal += styleMesh.count;
+    }
+    expect(styleTotal).toBe(stats.groundCoverInstances);
+    expect(stats.groundCoverFernInstances).toBeLessThanOrEqual(stats.groundCoverFernBudget);
+    expect(stats.groundCoverWildflowerInstances).toBeLessThanOrEqual(
+      stats.groundCoverWildflowerBudget,
+    );
+    expect(stats.groundCoverStoneInstances).toBeLessThanOrEqual(stats.groundCoverStoneBudget);
     world.dispose();
   });
 

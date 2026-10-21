@@ -1,15 +1,41 @@
 import { describe, expect, it } from 'vitest';
 
-import { GROUND_COVER_CONFIG } from '../../src/config/ground-cover';
+import { GROUND_COVER_CONFIG, GROUND_COVER_STYLES } from '../../src/config/ground-cover';
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
 import { AOHARA_DISTRICT_CONFIG } from '../../src/config/urban-district';
 import { URBAN_CITY_CONFIG } from '../../src/config/urban-city';
-import { generateChunkGroundCover } from '../../src/world/ground-cover';
+import {
+  buildGroundCoverGeometry,
+  generateChunkGroundCover,
+  resolveGroundCoverStyle,
+} from '../../src/world/ground-cover';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
 
 describe('Phase 5 ground-cover scatter', () => {
   const sampler = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
+
+  it('selects district-aware microdetail styles inside the existing total tier pool', () => {
+    expect(resolveGroundCoverStyle('kuroha-jungle', 0, 0.1)).toBe('fern');
+    expect(resolveGroundCoverStyle('sakura-avenue', 0, 0.1)).toBe('wildflower');
+    expect(resolveGroundCoverStyle('west-highlands', 0.8, 0.1)).toBe('stone');
+    expect(resolveGroundCoverStyle(undefined, 0, 0.9)).toBe('grass');
+    for (const tier of ['C', 'B', 'A'] as const) {
+      const styleBudget = GROUND_COVER_STYLES.reduce(
+        (total, style) => total + GROUND_COVER_CONFIG.styleInstanceBudgetByTier[tier][style],
+        0,
+      );
+      expect(styleBudget).toBe(GROUND_COVER_CONFIG.instanceBudgetByTier[tier]);
+    }
+    for (const style of GROUND_COVER_STYLES) {
+      const geometry = buildGroundCoverGeometry(style);
+      expect(geometry.boundingBox?.max.y).toBeLessThanOrEqual(
+        GROUND_COVER_CONFIG.maximumDetailHeightMeters,
+      );
+      expect(geometry.getAttribute('foliageMask')).toBeDefined();
+      geometry.dispose();
+    }
+  });
 
   it('is deterministic, tier-scaled, and owned by exactly one chunk at borders', () => {
     const a = generateChunkGroundCover(sampler, 0, 0, 'A');
