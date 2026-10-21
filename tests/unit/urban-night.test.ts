@@ -505,7 +505,7 @@ describe('Aohara city night-lighting rules', () => {
       44 + URBAN_ACTIVITY_TIER_BUDGET.B.infillBuildings,
     );
 
-    const trafficBodies = city.root.getObjectByName('aohara-traffic-vehicle-bodies');
+    const trafficBodies = city.root.getObjectByName('aohara-traffic-passenger-car-instances');
     const pedestrianBodies = city.root.getObjectByName('aohara-sidewalk-pedestrian-bodies');
     if (!(trafficBodies instanceof InstancedMesh) || !(pedestrianBodies instanceof InstancedMesh)) {
       throw new Error('integrated Aohara should batch its bounded traffic and pedestrians');

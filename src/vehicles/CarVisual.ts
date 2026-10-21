@@ -521,7 +521,17 @@ function mergeGeometryList(
   name: string,
   useGroups = false,
 ): BufferGeometry {
-  const geometry = mergeGeometries([...parts], useGroups);
+  const normalizedParts = parts.map((part) => (part.index === null ? part : part.toNonIndexed()));
+  let geometry: BufferGeometry | null;
+  try {
+    geometry = mergeGeometries(normalizedParts, useGroups);
+  } finally {
+    normalizedParts.forEach((part, index) => {
+      if (part !== parts[index]) {
+        part.dispose();
+      }
+    });
+  }
   if (geometry === null) {
     throw new Error(`Unable to merge vehicle geometry: ${name}`);
   }
