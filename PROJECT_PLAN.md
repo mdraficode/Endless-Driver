@@ -1,15 +1,15 @@
 # Endless Driver — Project Plan and Implementation Instructions
 
 **Planning baseline:** 2026-10-13 · **Visual-fidelity revision:** 2026-10-14 · **Status updated:** 2026-10-21  
-**Project stage:** Phase 4 built scope delivered; Phase 5 acceptance open; broad Phase 6 renderer/material work authorized; Phase 9 urban-systems track authorized and active; Phases 7–8 gated  
-**Development authorization:** The owner opened broad Phase 6 on 2026-10-20 despite pending Phase 5 acceptance. Phase 9 is separately authorized in parallel. Phase 3 code complete with named-hardware frame-budget validation open.  
+**Project stage:** Phase 4 built scope delivered; owner reports Phase 5 passed; Phase 6 renderer/material work authorized; Phase 9 urban-systems track authorized and active; further world-detail enrichment requested; Phases 7–8 gated  
+**Development authorization:** The owner opened broad Phase 6 on 2026-10-20 and reports Phase 5 passed on 2026-10-21. Phase 9 is separately authorized in parallel. The owner requests additional world-detail depth/enrichment in a logical, tier-budgeted sequence; Phases 7–8 remain gated. Phase 3 code complete with named-hardware frame-budget validation open.  
 **Visual target:** [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) — rural Hinode remains; a fictional megacity district is an authorized addition. Forza-Horizon-class presentation remains an engineering target, with evidence and feasibility boundaries in [`docs/RESEARCH_AAA_FIDELITY.md`](docs/RESEARCH_AAA_FIDELITY.md)  
 **GitHub destination:** Public [`mdraficode/Endless-Driver`](https://github.com/mdraficode/Endless-Driver), branch `main`  
 **Remote synchronization:** Scaffold, documentation, Phase 1, and Phase 2 pushed and verified on `main`; CI runs on each push
 
 The original requested technical scope is retained in [`docs/PROJECT_BRIEF.md`](docs/PROJECT_BRIEF.md).
 
-> This is the implementation specification, not a claim that the game is complete. Phases 1–4 provide the runtime, vehicle foundation, renderer/asset pipeline, terrain/roads, and initial world systems. Phase 5 acceptance remains open pending evidence and explicit acceptance; the owner broadly authorized Phase 6 on 2026-10-20 despite that gate. Phase 9 is separately authorized in parallel; Phases 7–8 remain gated. The latest owner report says FPS remains unstable and earlier non-FPS issues are resolved; no named-device measurements or formal Phase 5 visual acceptance have been recorded. Keep gameplay terrain non-white and snow-free. Rendering is Three.js + Rapier with automatic WebGPU/WebGL2 selection, HDRI image-based lighting, AgX tone mapping by default, and screen-space approximations—not hardware ray tracing.
+> This is the implementation specification, not a claim that the game is complete. Phases 1–4 provide the runtime, vehicle foundation, renderer/asset pipeline, terrain/roads, and initial world systems. The owner reports Phase 5 passed on 2026-10-21 and requests further world-detail depth/enrichment; this follow-up does not reopen Phase 5 acceptance. Phase 6 and Phase 9 are separately authorized; Phases 7–8 remain gated. FPS remains unstable by owner report and no named-device measurements are available. Keep gameplay terrain non-white and snow-free. Rendering is Three.js + Rapier with automatic WebGPU/WebGL2 selection, HDRI image-based lighting, AgX tone mapping by default, and screen-space approximations—not hardware ray tracing.
 
 ## Contents
 
@@ -393,7 +393,7 @@ valid and are extended, not replaced.
 | 1     | Engine, loop, resize/DPR handling, orbit debug camera, reference lighting, diagnostics, disposal (ADR 0002)                                                      | `fbb48a4`, CI green                                            |
 | 2     | Rapier world + custom raycast force layer, slip-friction drift, smoothed keyboard input, damped chase camera, placeholder car meshes bound to physics (ADR 0003) | `b85c8ba`, `307efaa`, CI green; evidence in `/phase2-evidence` |
 
-**Phases 1–4 are implemented; Phase 5 visual acceptance remains open; broad Phase 6 renderer/material work is authorized despite that gate; Phase 9 is separately authorized and active. Phases 7–8 remain gated. Phase 3 code is complete; named-hardware frame-budget validation is still open.**
+**Phases 1–4 are implemented; the owner reports Phase 5 passed; Phase 6 renderer/material work is authorized and its foundation is implemented; Phase 9 is separately authorized and active. Additional world-detail depth/enrichment is requested. Phases 7–8 remain gated. Phase 3 code is complete; named-hardware frame-budget validation is still open.**
 
 ### Phase 3 — Renderer migration, lighting, post-processing, asset and material pipeline
 
@@ -610,7 +610,7 @@ owner's hardware frame-budget validation.
 
 **Owner correction (2026-10-18):** gameplay terrain has no snow layer: the reserved fourth splat channel is zero, snow is not loaded by the terrain material, and high ground uses exposed rock/soil. This is a code-level safeguard, not a claim that the owner's white-ground report is visually resolved; acceptance requires a stable, readable owner-device capture.
 
-**Current gates (2026-10-21):** the owner reports earlier non-FPS issues resolved, but Phase 5 acceptance remains open pending FPS evidence and formal owner acceptance. Phase 6 is broadly authorized despite that open gate. Phase 9 Urban Systems remains separately authorized. Phases 7–8 remain gated.
+**Current status (2026-10-21):** the owner reports Phase 5 passed and earlier non-FPS issues resolved; additional world-detail depth/enrichment is still wanted. Phase 6 renderer/material work and Phase 9 Urban Systems remain authorized. No named-device FPS measurements or stability claim are available. Phases 7–8 remain gated.
 
 ### Phase 5 — Environment detail: vegetation, props, atmosphere
 
@@ -650,7 +650,7 @@ do not establish that the wind is visible, artifact-free, or within a device fra
 
 **Implementation and verification (2026-10-20):** the gameplay world now has a deterministic, instanced ground-cover layer sharing the existing terrain sampler and prepare-ahead vegetation window. C/B/A fixed pools are capped at 16,000 / 42,000 / 100,000 clumps; its TSL material reuses sun-tinted foliage backlight and tier-gated wind, while placement respects grass weights, slopes, roads/sidewalks, the spawn pad, town footprints, tree trunks and Aohara's core. It adds no collision/grip or weather state. Rural building kits now carry framed/tinted multi-face glazing, door/eave/roof details and TSL PBR surface variation; Aohara city building materials and sidewalk aggregate use the same existing HDRI/ACES lighting pipeline with low-amplitude TSL material breakup. `npm run check` passed locally on code commit `27e65ef`: 54 test files / 482 tests, 17 verified assets (39,714,769 bytes), and production build. A Tier C `?scene=city` WebGL2/SwiftShader preview compiled and rendered without runtime errors, but the facades read dark in this isolated block; no gameplay-ground capture, manual drive, named-device measurement or owner-device visual acceptance was performed. Ground-cover density, fixed-bookmark appearance, streaming stability and device cost remain unaccepted.
 
-**Phase 5 FPS follow-up (2026-10-20; local full check passed):** following the owner's report that FPS remains unstable on both mobile and desktop, Tier C now has bounded scene-pass scaling through FXAA (0.72–1.0; spatial upscaling is softer and is not TAAU), while B/A retain TAAU. The controller uses an elapsed-time-scaled EWMA, smaller 0.05 scale steps and the existing dead band/0.5 s interval. Runtime vegetation generation is capped at 1/2/3 chunks per frame on C/B/A; initial preparation remains prepare-ahead. Tests cover refresh-rate smoothing, spatial/TAAU scale eligibility and per-tier generation caps. The full local `npm run check` passed at `7f33b23` (55 test files / 486 tests; 17 assets / 39,714,769 bytes; production build), and GitHub Validate #147 plus Pages Deploy #137 succeeded for that commit. No named-device frame-time measurement, owner-device visual review, or FPS-stability claim is established; Phase 5 acceptance remains open.
+**Phase 5 FPS follow-up (2026-10-20; local full check passed):** following the owner's report that FPS remains unstable on both mobile and desktop, Tier C now has bounded scene-pass scaling through FXAA (0.72–1.0; spatial upscaling is softer and is not TAAU), while B/A retain TAAU. The controller uses an elapsed-time-scaled EWMA, smaller 0.05 scale steps and the existing dead band/0.5 s interval. Runtime vegetation generation is capped at 1/2/3 chunks per frame on C/B/A; initial preparation remains prepare-ahead. Tests cover refresh-rate smoothing, spatial/TAAU scale eligibility and per-tier generation caps. The full local `npm run check` passed at `7f33b23` (55 test files / 486 tests; 17 assets / 39,714,769 bytes; production build), and GitHub Validate #147 plus Pages Deploy #137 succeeded for that commit. No named-device frame-time measurement or FPS-stability claim is established. The owner later reported Phase 5 passed on 2026-10-21; that acceptance is separate from device-performance evidence.
 
 **Acceptance**
 
@@ -660,7 +660,18 @@ do not establish that the wind is visible, artifact-free, or within a device fra
 - Foliage lighting reads correctly at dawn/dusk, not only at noon.
 - For the requested mobile and desktop coverage, record frame-time median/p95 and FPS on named representative devices at stated tiers/resolutions; code-level adaptation alone is not FPS acceptance.
 
-**Phase gate:** Phase 5 acceptance remains open; the owner separately authorized broad Phase 6 work on 2026-10-20.
+**Phase gate:** the owner reported Phase 5 passed on 2026-10-21. Additional world-detail enrichment is requested as follow-up work; Phase 6 remains authorized and Phases 7–8 remain gated.
+
+### Owner follow-up — World-detail depth and enrichment (2026-10-21)
+
+The owner reports Phase 5 passed but says world-detail depth/enrichment is still missing. Treat this as a new bounded follow-up, not a reversal of Phase 5 acceptance. Proceed in this order:
+
+1. Audit current natural, town and Aohara detail layers against the C/B/A instance, draw-call and streaming budgets.
+2. Enrich rural ground/understory with deterministic, district-aware visual variation that reuses the prepare-ahead vegetation window and adds no collision, grip, weather or particle-system work.
+3. Add sparse pedestrian-safe streetscape and building-site details to the existing town/city kits, keeping road lanes, crossings, sidewalk routes and spawn sightlines clear.
+4. Integrate and test determinism, clearance, per-tier caps, chunk-boundary consistency, streaming/disposal and diagnostics before any visual/device-performance claims.
+
+Preserve CC0-first sourcing and fictional unbadged identity. No fog, mist, haze, global atmospheric veil, rain, standing water, traction changes or global bloom; Phases 7–8 remain gated.
 
 ### Phase 6 — The car: hero model, materials, and vehicle fidelity
 
@@ -668,7 +679,7 @@ Combined with [`docs/REALISM_PLAN.md`](docs/REALISM_PLAN.md) §3 Ranks 7 and 8: 
 wet-surface reflections, and deliberate imperfection — wear, dirt accumulation, brake dust, rubber laid on kerbs —
 which is the difference between a clean render and a photographed one.
 
-**Authorization:** Broad Phase 6 work was explicitly opened on 2026-10-20 despite pending Phase 5 acceptance. Phase 5 remains a separate open gate; the owner has not selected a replacement hero-car asset, so preserve the fictional, unbadged in-house placeholder and use free/open sources only if assets are added. Phase 7 weather/seasons and Phase 8 polish are not included.
+**Authorization:** Broad Phase 6 work was explicitly opened on 2026-10-20; the owner reported Phase 5 passed on 2026-10-21. The owner has not selected a replacement hero-car asset, so preserve the fictional, unbadged in-house placeholder and use free/open sources only if assets are added. Phase 7 weather/seasons and Phase 8 polish are not included.
 
 **Deliverables**
 
@@ -685,7 +696,7 @@ which is the difference between a clean render and a photographed one.
    Phase 7 can drive with weather.
 6. Brake lights, indicators, headlights, and shadows; screenshots at the fixed bookmarks for review.
 
-**Implemented renderer/material foundation (2026-10-21):** the renderer prefers WebGPU with automatic WebGL2 fallback (`?backend=webgl` forces WebGL2), defaults to AgX, and can display the loaded Radiance HDRI as a background via `?envbg=1`. The existing look LUT was authored under ACES; the AgX/LUT interaction remains for visual review. The TSL `RenderPipeline` carries MRT normals/depth into SSAO, retains SMAA/TAAU, and exposes restrained thresholded bloom only as an explicit comparison switch to preserve the no-global-bloom gameplay decision. CC0-first opaque scanned surfaces bind sRGB albedo, tangent-space normals, and linear AO/roughness/metalness through a shared helper with large-surface macro variation; glass/emissives have no fabricated maps. The placeholder vehicle uses node-based physical materials. World scale is converted at scene boundaries as 1 Three.js unit = 1 m. Vehicle particles use fixed-capacity TSL storage/compute on WebGPU and are disabled on WebGL2 rather than CPU-simulated. This is implementation scope only: the hero car remains a placeholder; no visual acceptance or device-performance result is established. Initial push `9294a2d` and lint-fix push `547df58` are SHA-verified. The second post-push `npm run check` passed formatting, lint, GLSL guard and TypeScript, then failed one stale backend-override assertion (57/58 files, 497/498 tests); the corrected test is local but not yet pushed. Asset verification, build, CI and deployment remain unverified.
+**Implemented renderer/material foundation (2026-10-21):** the renderer prefers WebGPU with automatic WebGL2 fallback (`?backend=webgl` forces WebGL2), defaults to AgX, and can display the loaded Radiance HDRI as a background via `?envbg=1`. The existing look LUT was authored under ACES; the AgX/LUT interaction remains for visual review. The TSL `RenderPipeline` carries MRT normals/depth into SSAO, retains SMAA/TAAU, and exposes restrained thresholded bloom only as an explicit comparison switch to preserve the no-global-bloom gameplay decision. CC0-first opaque scanned surfaces bind sRGB albedo, tangent-space normals, and linear AO/roughness/metalness through a shared helper with large-surface macro variation; glass/emissives have no fabricated maps. The placeholder vehicle uses node-based physical materials. World scale is converted at scene boundaries as 1 Three.js unit = 1 m. Vehicle particles use fixed-capacity TSL storage/compute on WebGPU and are disabled on WebGL2 rather than CPU-simulated. This is implementation scope only: the hero car remains a placeholder; no visual acceptance or device-performance result is established. Foundation push `9294a2d`, lint-fix push `547df58`, and backend-override test correction `64c07f6` are SHA-verified. The full local `npm run check` passed on `64c07f6`: formatting, lint, GLSL guard, both TypeScript checks, 58/58 test files and 498/498 tests, 17 assets / 39,714,769 bytes with hashes/licences verified, and production build. CI/deployment, runtime visual acceptance and owner-device performance evidence are not yet established.
 
 **Acceptance**
 
@@ -828,21 +839,21 @@ CI verifies the checks actually present. A green scaffold CI does not certify ve
 
 ### Execution status
 
-| Milestone                                                    | State                                                                                                                                         |
-| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Initial planning/scaffold                                    | Complete and saved to the canonical public repository                                                                                         |
-| Initial GitHub push                                          | Verified on `main`; first CI run passed                                                                                                       |
-| Phase 1                                                      | Complete (ADR 0002), pushed as `fbb48a4`, CI green                                                                                            |
-| Phase 2                                                      | Complete (ADR 0003), pushed as `b85c8ba` + `307efaa`, CI green, evidence bundle archived                                                      |
-| Visual-fidelity research and re-plan                         | Complete 2026-10-14: `docs/RESEARCH_AAA_FIDELITY.md`, `docs/VISUAL_TARGET.md`, ADR 0004, this plan revision                                   |
-| Free-and-open sourcing, region, brand, audio, photo mode     | Resolved 2026-10-14: `docs/ASSET_SOURCES.md`, `CREDITS.md`, ADR 0005, region brief (§6/§9 references)                                         |
-| Phase 3 — renderer, lighting, post, asset/material pipeline  | Code complete; named-hardware frame-budget validation remains open                                                                            |
-| Phase 4 — terrain, roads, streaming                          | Built scope delivered 2026-10-15; bridges/tunnels deferred                                                                                    |
-| Phase 5 — vegetation, props, atmosphere                      | **Authorized 2026-10-18; FPS code check passed at `7f33b23`; device measurements and formal acceptance remain open**                          |
-| Phase 6 — renderer/material foundation and hero car fidelity | **Broadly authorized 2026-10-20 despite pending Phase 5 acceptance**                                                                          |
-| Phase 7 — weather, seasons, surface behaviour                | Gated — requires explicit owner instruction                                                                                                   |
-| Phase 8 — mobile, HUD, cameras, settings, polish             | Gated — requires explicit owner instruction                                                                                                   |
-| Phase 9 — urban systems / Aohara Metropolis                  | **Authorized 2026-10-19; facade detail checked/deployed; bounded infill/actor increment implemented, full check pending; visual review open** |
+| Milestone                                                    | State                                                                                                                                                  |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Initial planning/scaffold                                    | Complete and saved to the canonical public repository                                                                                                  |
+| Initial GitHub push                                          | Verified on `main`; first CI run passed                                                                                                                |
+| Phase 1                                                      | Complete (ADR 0002), pushed as `fbb48a4`, CI green                                                                                                     |
+| Phase 2                                                      | Complete (ADR 0003), pushed as `b85c8ba` + `307efaa`, CI green, evidence bundle archived                                                               |
+| Visual-fidelity research and re-plan                         | Complete 2026-10-14: `docs/RESEARCH_AAA_FIDELITY.md`, `docs/VISUAL_TARGET.md`, ADR 0004, this plan revision                                            |
+| Free-and-open sourcing, region, brand, audio, photo mode     | Resolved 2026-10-14: `docs/ASSET_SOURCES.md`, `CREDITS.md`, ADR 0005, region brief (§6/§9 references)                                                  |
+| Phase 3 — renderer, lighting, post, asset/material pipeline  | Code complete; named-hardware frame-budget validation remains open                                                                                     |
+| Phase 4 — terrain, roads, streaming                          | Built scope delivered 2026-10-15; bridges/tunnels deferred                                                                                             |
+| Phase 5 — vegetation, props, atmosphere                      | **Owner-reported passed 2026-10-21; named-device FPS evidence remains open; further world-detail enrichment requested**                                |
+| Phase 6 — renderer/material foundation and hero car fidelity | **Authorized; renderer/PBR/compute foundation locally passes full check at `64c07f6`; visual/device review remains open**                              |
+| Phase 7 — weather, seasons, surface behaviour                | Gated — requires explicit owner instruction                                                                                                            |
+| Phase 8 — mobile, HUD, cameras, settings, polish             | Gated — requires explicit owner instruction                                                                                                            |
+| Phase 9 — urban systems / Aohara Metropolis                  | **Authorized 2026-10-19; facade detail and bounded infill/actor code included in full check at `64c07f6`; workflow/device visual review remains open** |
 
 See `docs/SESSION_HANDOFF.md` for the verified original commit, remote CI evidence, authentication limitations, and the next-session procedure.
 
@@ -971,4 +982,4 @@ References guide implementation; pinned package APIs must still be checked at th
 
 ---
 
-**Next permitted development action:** complete and validate the authorized Phase 6 renderer/material increment using the GitHub-first workflow. The current code includes WebGPU auto-fallback, AgX, HDRI background comparison, MRT/SSAO, scanned PBR maps with TSL macro variation, metric units, node-based placeholder-car materials and WebGPU-compute vehicle particles disabled on WebGL2. Pushes `9294a2d` and `547df58` are remote-verified. The latest `npm run check` passed formatting, lint, the GLSL guard and TypeScript, then failed one stale `applyBackendOverride` test (57/58 files, 497/498 tests); the test expectation has been corrected locally but not pushed. Push that correction before rerunning the full check; asset verification/build and CI/deploy remain unverified, while visual acceptance and device performance are separate. Phase 5 acceptance remains open despite broad Phase 6 authorization; no owner-device visual or FPS evidence is recorded. Preserve the default Central Avenue start, pinned `?spawn=<id>`, `?spawn=random`, rural Hinode, no global bloom, no fog, and the Aohara static-only wet-look. Phase 7 weather/seasons and Phase 8 polish remain gated.
+**Next permitted development action:** continue the owner-requested, tier-budgeted world-detail enrichment in sequence: (1) audit existing rural/urban detail and budgets; (2) add natural understory/ground variation without changing terrain grip or collisions; (3) add sparse, walkable streetscape/building-site detail while preserving lane/sidewalk clearance; (4) integrate and test deterministic placement, per-tier caps, streaming and overall visual budgets. Keep Phase 5 marked passed per the owner's 2026-10-21 report. The Phase 6 renderer/PBR/compute foundation and backend-override correction are pushed; local `npm run check` passed at `64c07f6` (58/58 files, 498/498 tests, 17 verified assets / 39,714,769 bytes, production build). GitHub workflow/deployment and browser/device review remain to verify. Preserve the default Central Avenue start, pinned `?spawn=<id>`, `?spawn=random`, rural Hinode, no global bloom, no fog/mist/haze, prepare-ahead streaming, lane readability, localized optics, relaxing balance, and the Aohara static-only wet-look. Do not enter Phases 7–8 or claim measured FPS stability.
