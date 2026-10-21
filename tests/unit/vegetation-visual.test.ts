@@ -57,12 +57,19 @@ describe('vegetation destruction visuals', () => {
       expect(styleMesh.geometry.getAttribute('foliageMask')).toBeDefined();
       styleTotal += styleMesh.count;
     }
-    expect(styleTotal).toBe(stats.groundCoverInstances);
-    expect(stats.groundCoverFernInstances).toBeLessThanOrEqual(stats.groundCoverFernBudget);
-    expect(stats.groundCoverWildflowerInstances).toBeLessThanOrEqual(
-      stats.groundCoverWildflowerBudget,
+    expect(stats.groundCoverInstances).toBeDefined();
+    expect(styleTotal).toBe(stats.groundCoverInstances!);
+    expect(stats.groundCoverFernInstances).toBeDefined();
+    expect(stats.groundCoverFernBudget).toBeDefined();
+    expect(stats.groundCoverFernInstances!).toBeLessThanOrEqual(stats.groundCoverFernBudget!);
+    expect(stats.groundCoverWildflowerInstances).toBeDefined();
+    expect(stats.groundCoverWildflowerBudget).toBeDefined();
+    expect(stats.groundCoverWildflowerInstances!).toBeLessThanOrEqual(
+      stats.groundCoverWildflowerBudget!,
     );
-    expect(stats.groundCoverStoneInstances).toBeLessThanOrEqual(stats.groundCoverStoneBudget);
+    expect(stats.groundCoverStoneInstances).toBeDefined();
+    expect(stats.groundCoverStoneBudget).toBeDefined();
+    expect(stats.groundCoverStoneInstances!).toBeLessThanOrEqual(stats.groundCoverStoneBudget!);
     world.dispose();
   });
 
