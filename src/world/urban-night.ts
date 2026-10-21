@@ -447,11 +447,11 @@ function bindScannedSurfaceToMaterials(
       ) {
         continue;
       }
-      const authoredRoughness = material.roughnessNode;
+      const authoredRoughness = material.roughnessNode as Node<'float'> | null;
       bindScannedPbrMaps(material, maps, uvNode, {
         albedoTint:
           options.albedoTint ??
-          material.colorNode ??
+          (material.colorNode as Node<'vec4'> | null) ??
           vec4(material.color.r, material.color.g, material.color.b, 1),
         normalStrength: options.normalStrength,
         aoStrength: 0.72,

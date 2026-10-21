@@ -11,7 +11,7 @@ import {
   Quaternion,
   Vector3,
 } from 'three';
-import { MeshPhysicalNodeMaterial } from 'three/webgpu';
+import { MeshPhysicalNodeMaterial, type Node } from 'three/webgpu';
 import { float, uv, vec2, vertexColor } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -724,9 +724,9 @@ export class TownWorld {
       return;
     }
     configureTiledSurface(concrete);
-    const authoredRoughness = this.#wallMaterial.roughnessNode;
+    const authoredRoughness = this.#wallMaterial.roughnessNode as Node<'float'> | null;
     bindScannedPbrMaps(this.#wallMaterial, concrete, uv().mul(vec2(5, 4)), {
-      albedoTint: this.#wallMaterial.colorNode ?? vertexColor(),
+      albedoTint: (this.#wallMaterial.colorNode as Node<'vec4'> | null) ?? vertexColor(),
       normalStrength: 0.48,
       aoStrength: 0.72,
       metalnessScale: 0,

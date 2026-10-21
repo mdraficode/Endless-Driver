@@ -7,7 +7,11 @@ import {
   Object3D,
   type BufferGeometry,
 } from 'three';
-import { MeshPhysicalNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
+import {
+  MeshPhysicalNodeMaterial,
+  MeshStandardNodeMaterial,
+  type Node,
+} from 'three/webgpu';
 import { float, mix, positionLocal, sin, texture, uniform, uv, vec2, vec4 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -428,14 +432,14 @@ export class RoadWorld {
     if (concrete !== null && !this.#sidewalkSurfaceBound) {
       configureTiledSurface(concrete);
       const authoredColor =
-        this.#sidewalkMaterial.colorNode ??
+        (this.#sidewalkMaterial.colorNode as Node<'vec4'> | null) ??
         vec4(
           this.#sidewalkMaterial.color.r,
           this.#sidewalkMaterial.color.g,
           this.#sidewalkMaterial.color.b,
           1,
         );
-      const authoredRoughness = this.#sidewalkMaterial.roughnessNode;
+      const authoredRoughness = this.#sidewalkMaterial.roughnessNode as Node<'float'> | null;
       bindScannedPbrMaps(this.#sidewalkMaterial, concrete, uv().mul(vec2(3, 3)), {
         albedoTint: authoredColor,
         normalStrength: 0.55,

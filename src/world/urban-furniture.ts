@@ -716,7 +716,7 @@ export class UrbanStreetFurniture {
     if (wood !== null && !this.#woodSurfaceBound) {
       configureTiledSurface(wood);
       bindScannedPbrMaps(this.#benchMaterial, wood, uv(), {
-        albedoTint: this.#benchMaterial.colorNode ?? vertexColor(),
+        albedoTint: vertexColor(),
         normalStrength: 0.46,
         aoStrength: 0.72,
         metalnessScale: 0,
@@ -726,7 +726,7 @@ export class UrbanStreetFurniture {
     if (concrete !== null && !this.#concreteSurfaceBound) {
       configureTiledSurface(concrete);
       bindScannedPbrMaps(this.#planterMaterial, concrete, uv(), {
-        albedoTint: this.#planterMaterial.colorNode ?? vertexColor(),
+        albedoTint: vertexColor(),
         normalStrength: 0.52,
         aoStrength: 0.72,
         metalnessScale: 0,
