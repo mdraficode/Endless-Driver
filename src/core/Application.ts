@@ -329,6 +329,7 @@ export class Application {
   async start(): Promise<void> {
     if (!this.#engine.isInitialized) {
       await this.#engine.init();
+      this.#carEffects.configureBackend(this.#engine.backend, this.#engine.renderer);
       await this.#loadEnvironment();
       await this.#scene.loadContentSurfaces();
       await this.#loadLook();
@@ -504,6 +505,7 @@ export class Application {
       sunElevationDegrees: this.#daylight?.sunElevationDegrees ?? 0,
       isNight: this.#daylight?.isNight ?? false,
       rendererBackend: this.#engine.backend ?? 'pending',
+      particleSimulation: this.#carEffects.simulationMode,
       postProcessing: this.#engine.isPostProcessingEnabled,
       antialiasing: this.#config.postProcessing.antiAliasing,
       postEffects: this.#engine.postEffects,
@@ -736,14 +738,7 @@ export class Application {
 
     const activeCamera = this.#activeCamera();
     const telemetry = this.#car.telemetry;
-    this.#carEffects.update(
-      delta,
-      pose,
-      telemetry,
-      this.#car.wheels,
-      this.#car.body.linvel(),
-      activeCamera,
-    );
+    this.#carEffects.update(delta, pose, telemetry, this.#car.wheels, this.#car.body.linvel());
     this.#engine.setMotionBlurIntensity(
       resolveHighSpeedMotionBlurIntensity(
         telemetry.speedKph,

@@ -1,24 +1,24 @@
 import {
   BoxGeometry,
-  Color,
   CylinderGeometry,
   Group,
   Mesh,
-  MeshStandardMaterial,
   type BufferGeometry,
   type Material,
 } from 'three';
 import { VEHICLE_CONFIG, type VehicleConfig } from '../config/vehicle';
 import { VEHICLE_EFFECTS_CONFIG } from '../config/vehicle-effects';
+import {
+  createAutomotivePaintMaterial,
+  createExhaustInteriorMaterial,
+  createExhaustMetalMaterial,
+  createHeadlightMaterial,
+  createMarkerMaterial,
+  createRubberMaterial,
+  createTintedCabinMaterial,
+  createWheelMetalMaterial,
+} from './vehicle-materials';
 import type { VehiclePose } from './types';
-
-const PAINT_COLOR = 0x2359a8;
-const GLASS_COLOR = 0x141a22;
-const TIRE_COLOR = 0x14171b;
-const HUB_COLOR = 0xb9c0c8;
-const MARKER_COLOR = 0xe0e6ee;
-const LIGHT_COLOR = 0xfff3d0;
-const LIGHT_EMISSIVE = new Color(0x2a2413);
 
 /**
  * Placeholder low-poly car mesh driven entirely by the vehicle's interpolated pose.
@@ -44,29 +44,12 @@ export class CarVisual {
 
     const [halfWidth, halfHeight, halfLength] = config.chassis.halfExtents;
 
-    const paint = this.#track(
-      new MeshStandardMaterial({ color: PAINT_COLOR, metalness: 0.35, roughness: 0.32 }),
-    );
-    const glass = this.#track(
-      new MeshStandardMaterial({ color: GLASS_COLOR, metalness: 0.2, roughness: 0.12 }),
-    );
-    const tire = this.#track(
-      new MeshStandardMaterial({ color: TIRE_COLOR, metalness: 0, roughness: 0.9 }),
-    );
-    const hub = this.#track(
-      new MeshStandardMaterial({ color: HUB_COLOR, metalness: 0.6, roughness: 0.35 }),
-    );
-    const marker = this.#track(
-      new MeshStandardMaterial({ color: MARKER_COLOR, metalness: 0.1, roughness: 0.5 }),
-    );
-    const light = this.#track(
-      new MeshStandardMaterial({
-        color: LIGHT_COLOR,
-        emissive: LIGHT_EMISSIVE,
-        metalness: 0.1,
-        roughness: 0.4,
-      }),
-    );
+    const paint = this.#track(createAutomotivePaintMaterial());
+    const glass = this.#track(createTintedCabinMaterial());
+    const tire = this.#track(createRubberMaterial());
+    const hub = this.#track(createWheelMetalMaterial());
+    const marker = this.#track(createMarkerMaterial());
+    const light = this.#track(createHeadlightMaterial());
 
     // The hull is deliberately narrower than the physics collider (0.9 half-width) so the wheels,
     // which sit at the simulated half-track, stay visible outside the bodywork.
@@ -96,12 +79,8 @@ export class CarVisual {
       this.root.add(headlight);
     }
 
-    const exhaustSteel = this.#track(
-      new MeshStandardMaterial({ color: 0x77818a, metalness: 0.72, roughness: 0.32 }),
-    );
-    const exhaustInterior = this.#track(
-      new MeshStandardMaterial({ color: 0x11151a, metalness: 0.1, roughness: 0.92 }),
-    );
+    const exhaustSteel = this.#track(createExhaustMetalMaterial());
+    const exhaustInterior = this.#track(createExhaustInteriorMaterial());
     const exhaustGeometry = this.#track(new CylinderGeometry(0.066, 0.078, 0.28, 8));
     exhaustGeometry.rotateX(Math.PI / 2);
     const exhaustOpeningGeometry = this.#track(new CylinderGeometry(0.041, 0.041, 0.006, 8));

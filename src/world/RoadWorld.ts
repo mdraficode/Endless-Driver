@@ -9,11 +9,12 @@ import {
   type BufferGeometry,
 } from 'three';
 import { MeshPhysicalNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
-import { float, mix, texture, uniform, uv, vec2, vec4 } from 'three/tsl';
+import { float, mix, positionLocal, sin, texture, uniform, uv, vec2, vec4 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-import { loadMaterialTextureSet } from '../assets/AssetManifest';
+import { loadMaterialTextureSet, type MaterialTextureSet } from '../assets/AssetManifest';
 import { createArchitecturalMaterial } from './architectural-materials';
+import { bindScannedPbrMaps } from './scanned-pbr';
 import { resolveUrbanWetness, URBAN_CITY_CONFIG } from '../config/urban-city';
 import type { DaylightState } from '../environment/EnvironmentClock';
 import type { RoadNetwork } from './road-network';
@@ -203,6 +204,8 @@ export class RoadWorld {
   readonly #urbanCrosswalkIntersections: number;
 
   #surfacesLoaded: 0 | 1 = 0;
+
+  readonly #surfaceSets: MaterialTextureSet[] = [];
 
   constructor(network: RoadNetwork) {
     this.#network = network;
@@ -413,6 +416,7 @@ export class RoadWorld {
         gravel?.dispose();
         return;
       }
+      this.#surfaceSets.push(asphalt, gravel);
       for (const set of [asphalt, gravel]) {
         for (const map of [set.diffuse, set.normal, set.arm]) {
           if (map !== null) {
@@ -425,35 +429,35 @@ export class RoadWorld {
       // Ribbon UVs run across [0, 1] and along in metres / 6; the across repeat stops
       // the scan stretching sideways over both rural lanes and the wider city streets.
       const roadUv = uv().mul(vec2(2, 1));
-      this.#asphaltMaterial.colorNode = texture(asphalt.diffuse, roadUv);
-      this.#asphaltMaterial.normalNode = texture(asphalt.normal, roadUv);
-      if (asphalt.arm !== null) {
-        this.#asphaltMaterial.roughnessNode = texture(asphalt.arm, roadUv).g;
-        this.#asphaltMaterial.aoNode = texture(asphalt.arm, roadUv).r;
-      }
-      this.#asphaltMaterial.needsUpdate = true;
+      // The batches keep authored world-space vertices in mesh-local coordinates. Sample them
+      // before the floating-origin root shift so the subtle macro variation cannot jump on rebase.
+      // The CC0 albedo/normal/ARM maps still carry all physical micro-detail.
+      const roadMacro = float(1)
+        .add(sin(positionLocal.x.mul(0.013).add(positionLocal.z.mul(0.009))).mul(0.025))
+        .add(sin(positionLocal.x.mul(0.071).sub(positionLocal.z.mul(0.053))).mul(0.006));
+      const macroTint = vec4(roadMacro, roadMacro, roadMacro, 1);
+      bindScannedPbrMaps(this.#asphaltMaterial, asphalt, roadUv, {
+        albedoTint: macroTint,
+        normalStrength: 0.72,
+      });
 
-      // Reuse the already-loaded CC0 asphalt maps for the Aohara road mesh. The texture-backed
-      // micro-roughness remains visible under clearcoat, especially in the local streetlamp glints.
-      this.#urbanAsphaltMaterial.colorNode = texture(asphalt.diffuse, roadUv).mul(
-        vec4(0.72, 0.77, 0.83, 1),
-      );
-      this.#urbanAsphaltMaterial.normalNode = texture(asphalt.normal, roadUv);
+      // Reuse the CC0 asphalt maps for Aohara's static wet-look surface. The roughness/clearcoat
+      // response remains local to the city; there is no weather state or traction change.
+      bindScannedPbrMaps(this.#urbanAsphaltMaterial, asphalt, roadUv, {
+        albedoTint: vec4(0.72, 0.77, 0.83, 1).mul(macroTint),
+        normalStrength: 0.65,
+      });
       if (asphalt.arm !== null) {
         this.#urbanAsphaltMaterial.roughnessNode = mix(
           texture(asphalt.arm, roadUv).g,
           float(URBAN_CITY_CONFIG.wetRoad.wetRoughness),
           this.#urbanWetness,
         );
-        this.#urbanAsphaltMaterial.aoNode = texture(asphalt.arm, roadUv).r;
       }
       this.#urbanAsphaltMaterial.needsUpdate = true;
-      this.#shoulderMaterial.colorNode = texture(gravel.diffuse, roadUv);
-      this.#shoulderMaterial.normalNode = texture(gravel.normal, roadUv);
-      if (gravel.arm !== null) {
-        this.#shoulderMaterial.roughnessNode = texture(gravel.arm, roadUv).g;
-      }
-      this.#shoulderMaterial.needsUpdate = true;
+      bindScannedPbrMaps(this.#shoulderMaterial, gravel, roadUv, {
+        normalStrength: 0.78,
+      });
       this.#surfacesLoaded = 1;
     } catch {
       // Textures are an enhancement; flat-coloured roads remain correct.
@@ -480,6 +484,10 @@ export class RoadWorld {
     for (const material of materials) {
       material.dispose();
     }
+    for (const set of this.#surfaceSets) {
+      set.dispose();
+    }
+    this.#surfaceSets.length = 0;
     this.#meshes.length = 0;
   }
 }

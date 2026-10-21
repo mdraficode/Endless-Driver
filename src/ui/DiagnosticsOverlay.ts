@@ -34,6 +34,8 @@ export interface DiagnosticsSnapshot {
    * `webgl2` when the renderer fell back, `pending` before initialisation resolves.
    */
   readonly rendererBackend: RendererBackendName | 'pending';
+  /** Vehicle particle path: compute on WebGPU, intentionally disabled on WebGL2. */
+  readonly particleSimulation: 'pending' | 'webgpu-compute' | 'webgl2-disabled';
   /** Whether frames go through the `RenderPipeline` output chain (grade, bloom, tone mapping). */
   readonly postProcessing: boolean;
   /** Anti-aliasing strategy in force: `msaa` in the renderer, `fxaa`/`smaa` as a post effect. */
@@ -207,6 +209,10 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
   {
     label: 'Renderer',
     format: (snapshot) => `${snapshot.rendererBackend} · ${snapshot.antialiasing}`,
+  },
+  {
+    label: 'Particles',
+    format: (snapshot) => snapshot.particleSimulation,
   },
   {
     // Keep the active reconstruction/AA path beside its scene-pass scale. TAAU reconstructs reduced frames;

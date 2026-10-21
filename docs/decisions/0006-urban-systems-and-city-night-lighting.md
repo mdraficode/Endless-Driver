@@ -14,7 +14,7 @@ The owner later requested a brighter Aohara night drive with denser streetlamps,
 ## Decision
 
 1. Create a **new fictional Japanese megacity district, Aohara Metropolis**, as an addition to the existing rural Hinode setting. Rural Hinode remains intact and rural; the city is not a replacement or a re-theme of it.
-2. Record the urban systems work as a new **Phase 9**, expressly authorized on 2026-10-19 to proceed alongside the open Phase 5 visual gate. This authorizes Phase 9 only; Phase 6 still depends on Phase 5 acceptance, and Phases 7–8 remain gated.
+2. Record the urban systems work as a new **Phase 9**, expressly authorized on 2026-10-19 to proceed alongside the open Phase 5 visual gate. The owner later broadly authorized Phase 6 on 2026-10-20 despite pending Phase 5 acceptance. Phases 7–8 remain gated.
 3. Start Phase 9 with a bounded night-lighting slice. Include both a localized soft Gaussian halo and restrained radial starburst/diffraction around urban light sources. Preserve road and crossing visibility. Do not re-enable whole-frame bloom to achieve this; the prior global bloom washout result remains relevant.
 4. The longer Phase 9 scope includes streets, signals, crossings, high-rises, grade-separated roads and single-player traffic/pedestrian AI. Multiplayer, accounts, server persistence, weather/seasons and unrelated final-polish scope are not authorized by this decision.
 5. Keep all new rendering within Three.js TSL and the existing C/B/A quality-tier architecture. Prefer in-house/procedural or verified free/open assets, retain fictional/unbadged identity, and do not claim SSR, ray tracing, visual acceptance or hardware performance without implementation and evidence.

@@ -26,7 +26,7 @@ import {
 } from 'three';
 import type { Node, UniformNode, WebGPURenderer } from 'three/webgpu';
 import type { Data3DTexture } from 'three';
-import { ao } from 'three/addons/tsl/display/GTAONode.js';
+import { ssao } from 'three/addons/tsl/display/SSAONode.js';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { chromaticAberration } from 'three/addons/tsl/display/ChromaticAberrationNode.js';
 import { film } from 'three/addons/tsl/display/FilmNode.js';
@@ -149,9 +149,8 @@ export function resolvePostEffects(config: RenderConfig): PostEffectName[] {
   }
 
   const enabled = new Set<PostEffectName>();
-  // SSGI's composite carries its own occlusion term, so when it runs it *replaces* GTAO:
-  // two horizon-based darkenings over the same crevices would double-darken them, and the
-  // chain would be paying for both. The tier that buys the bounce sells the separate AO.
+  // SSGI's composite carries its own occlusion term, so when it runs it replaces SSAO:
+  // stacking both would double-darken crevices and spend two screen-space passes on AO.
   if (postProcessing.ssgi.enabled) {
     enabled.add('ssgi');
   } else if (postProcessing.ambientOcclusion.enabled) {
@@ -254,6 +253,8 @@ export interface PostChain {
   readonly pipeline: RenderPipeline;
   readonly scenePass: ReturnType<typeof pass>;
   readonly effects: readonly PostEffectName[];
+  /** Releases node-owned render targets/textures as well as the RenderPipeline material. */
+  dispose(): void;
   /**
    * Live linear-RGB multiplier for the grade, mutated in place by `Engine.setGrade()`.
    *
@@ -370,23 +371,38 @@ export function buildPostChain(options: PostChainOptions): PostChain {
   }
 
   // --- ambient occlusion: applied to the scene pass, not chained after it -------------------
+  const disposables: Array<() => void> = [];
+  const rememberDisposable = (resource: unknown): void => {
+    if (typeof resource !== 'object' || resource === null || !('dispose' in resource)) {
+      return;
+    }
+    const dispose = (resource as { readonly dispose?: unknown }).dispose;
+    if (typeof dispose === 'function') {
+      disposables.push(() => dispose.call(resource));
+    }
+  };
+  // PassNode owns the scene render target, including the MRT attachments; dispose it after nodes
+  // that sample those attachments.
+  rememberDisposable(scenePass);
+
   if (effects.includes('ao')) {
     const aoConfig = config.postProcessing.ambientOcclusion;
-    const aoNode = ao(
+    const aoNode = ssao(
       scenePass.getTextureNode('depth'),
       scenePass.getTextureNode('normal'),
       camera,
     );
     aoNode.radius.value = aoConfig.radius;
-    aoNode.thickness.value = aoConfig.thickness;
-    aoNode.distanceExponent.value = aoConfig.distanceExponent;
+    aoNode.intensity.value = aoConfig.intensity;
+    aoNode.bias.value = aoConfig.bias;
     aoNode.samples.value = aoConfig.samples;
-    aoNode.scale.value = aoConfig.scale;
     aoNode.resolutionScale = aoConfig.resolutionScale;
-    // `contextNode` is how an occlusion term reaches the lighting of the scene pass itself.
-    scenePass.contextNode = builtinAOContext(
-      aoNode.getTextureNode().sample(screenUV).r.mul(aoConfig.intensity),
-    );
+    aoNode.blurEnabled = aoConfig.blurEnabled;
+    aoNode.blurSharpness.value = aoConfig.blurSharpness;
+    rememberDisposable(aoNode);
+    // `contextNode` is how an occlusion term reaches the lighting of the scene pass itself;
+    // SSAO's own intensity uniform already owns the strength, so do not multiply it twice here.
+    scenePass.contextNode = builtinAOContext(aoNode.getTextureNode().sample(screenUV).r);
   }
 
   let color: ColorNode = asColor(scenePass.getTextureNode('output'));
@@ -398,7 +414,7 @@ export function buildPostChain(options: PostChainOptions): PostChain {
      * The composite three's own SSGI example uses: the beauty pass multiplied by the node's
      * occlusion term, plus the frame's diffuse colour multiplied by its GI term. The node
      * ray-samples the scene colour for bounce and the depth/normal pair for horizons — the
-     * normals in view space, which is what the MRT already stores for GTAO.
+     * normals in view space, which is what the MRT already stores for SSAO.
      *
      * It runs on the *unresolved* scene image, ahead of the temporal resolve: the node's
      * temporal filtering assumes a TRAA-class accumulation downstream, and ours is exactly
@@ -414,6 +430,7 @@ export function buildPostChain(options: PostChainOptions): PostChain {
       scenePass.getTextureNode('normal'),
       camera as PerspectiveCamera,
     );
+    rememberDisposable(giNode);
     giNode.sliceCount.value = ssgiConfig.sliceCount;
     giNode.stepCount.value = ssgiConfig.stepCount;
     giNode.giIntensity.value = ssgiConfig.giIntensity;
@@ -472,6 +489,7 @@ export function buildPostChain(options: PostChainOptions): PostChain {
       scenePass.getTextureNode('velocity'),
       camera,
     );
+    rememberDisposable(resolve);
     // The *texture node*, not the resolve node itself, even though the resolve node's own setup returns
     // this same texture. The distinction matters downstream: several effects (motion blur, and any future
     // one) sample their input as a texture and so need an object that still has `.sample()`. The resolve
@@ -521,6 +539,7 @@ export function buildPostChain(options: PostChainOptions): PostChain {
      * chain" and "shafts are visible" are separate facts, both reported honestly.
      */
     const rays = godrays(scenePass.getTextureNode('depth'), camera, options.godraysLight);
+    rememberDisposable(rays);
     rays.raymarchSteps.value = godraysConfig.raymarchSteps;
     rays.density.value = godraysConfig.density;
     rays.maxDensity.value = godraysConfig.maxDensity;
@@ -539,6 +558,7 @@ export function buildPostChain(options: PostChainOptions): PostChain {
   const lutIntensity = uniform(lutConfig.intensity);
   const lutSize = lutConfig.size;
   const lutTexture = createLookTexture(lutSize);
+  rememberDisposable(lutTexture);
 
   // --- linear HDR stage ----------------------------------------------------------------------
   if (effects.includes('grade')) {
@@ -547,9 +567,9 @@ export function buildPostChain(options: PostChainOptions): PostChain {
   }
   if (effects.includes('bloom')) {
     const bloomConfig = config.postProcessing.bloom;
-    color = asColor(
-      color.add(bloom(color, bloomConfig.strength, bloomConfig.radius, bloomConfig.threshold)),
-    );
+    const bloomNode = bloom(color, bloomConfig.strength, bloomConfig.radius, bloomConfig.threshold);
+    rememberDisposable(bloomNode);
+    color = asColor(color.add(bloomNode));
   }
 
   // --- pre-sRGB stage (SMAA documents that it must run before the colour-space conversion) ---
@@ -570,10 +590,20 @@ export function buildPostChain(options: PostChainOptions): PostChain {
       float(clipNear),
       float(clipFar),
     );
-    color = asColor(dof(color, viewZ, focusDistance, float(dofConfig.focalLength), bokehScale));
+    const depthOfFieldNode = dof(
+      color,
+      viewZ,
+      focusDistance,
+      float(dofConfig.focalLength),
+      bokehScale,
+    );
+    rememberDisposable(depthOfFieldNode);
+    color = asColor(depthOfFieldNode);
   }
   if (effects.includes('smaa')) {
-    color = asColor(smaa(color));
+    const smaaNode = smaa(color);
+    rememberDisposable(smaaNode);
+    color = asColor(smaaNode);
   }
 
   const ownsOutput = chainsOwnsOutputTransform(effects);
@@ -608,7 +638,9 @@ export function buildPostChain(options: PostChainOptions): PostChain {
   }
   if (effects.includes('sharpen')) {
     const sharpenConfig = config.postProcessing.sharpen;
-    color = asColor(sharpen(color, sharpenConfig.sharpness, sharpenConfig.denoise));
+    const sharpenNode = sharpen(color, sharpenConfig.sharpness, sharpenConfig.denoise);
+    rememberDisposable(sharpenNode);
+    color = asColor(sharpenNode);
   }
   if (effects.includes('filmGrain')) {
     color = asColor(film(color, float(config.postProcessing.filmGrain.intensity)));
@@ -622,11 +654,23 @@ export function buildPostChain(options: PostChainOptions): PostChain {
 
   const pipeline = new RenderPipeline(renderer, color);
   pipeline.outputColorTransform = !ownsOutput;
+  let disposed = false;
+  const dispose = (): void => {
+    if (disposed) {
+      return;
+    }
+    disposed = true;
+    pipeline.dispose();
+    for (const cleanup of disposables.reverse()) {
+      cleanup();
+    }
+  };
 
   return {
     pipeline,
     scenePass,
     effects,
+    dispose,
     gradeTint,
     focusDistance,
     bokehScale,

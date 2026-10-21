@@ -56,10 +56,10 @@ rather than optional.
 ### 2. Post-processing is one TSL `RenderPipeline`
 
 `EffectComposer` and the pmndrs `postprocessing` package are WebGL-only; neither is used. The stack
-is ordered explicitly: scene render → (SSGI/SSR/GTAO, tier-gated) → volumetrics/atmosphere → bloom →
-DOF → motion blur → tone mapping → LUT grading → grain/chromatic aberration/vignette → TAAU/TRAA (or
-FXAA/SMAA on the low tier). Tone mapping and colour-space conversion happen exactly once, at the end
-of the pipeline.
+is ordered explicitly: scene render/MRT depth+normals → SSAO (or SSGI, which replaces separate AO) / SSR,
+tier-gated → low-sun shafts (no fog or atmospheric veil) → restrained optional bloom → DOF → motion blur
+→ tone mapping → LUT grading → grain/chromatic aberration/vignette → TAAU/TRAA or FXAA/SMAA. Tone mapping
+and colour-space conversion happen exactly once, at the end of the pipeline. Gameplay-wide bloom remains off.
 
 ### 3. Rendering, asset, and material foundations move _before_ world content
 
@@ -174,3 +174,7 @@ answers is `docs/ASSET_SOURCES.md`.
 - `docs/ASSET_POLICY.md` — licence rules and manifest requirements.
 - `docs/decisions/0001-engine-and-physics.md`, `0002-renderer-three-js.md`,
   `0003-vehicle-physics-and-camera.md`, `0005-free-and-open-asset-strategy.md`.
+
+## Current renderer/material foundation (2026-10-21)
+
+The owner broadly authorized Phase 6 on 2026-10-20 despite pending Phase 5 acceptance; this authorization does not accept Phase 5 or open Phases 7–8. The renderer prefers WebGPU with automatic WebGL2 fallback and AgX tone mapping by default. Radiance HDRI can be shown as a background for comparison; the post chain uses MRT normals/depth, SSAO, SMAA/TAAU and only an opt-in restrained bloom comparison. Scanned opaque surfaces bind sRGB albedo, tangent-space normals and linear AO/roughness/metalness with TSL macro variation. Glass and emissive surfaces receive no fabricated maps. Vehicle effects use fixed-capacity GPU compute on WebGPU and are disabled on WebGL2, not simulated on the CPU. One Three.js unit equals one metre. Code-level implementation is not visual acceptance, device validation or a performance result.

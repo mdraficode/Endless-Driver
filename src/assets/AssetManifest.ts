@@ -167,7 +167,12 @@ export async function loadEnvironmentAsset(
   return asset;
 }
 
-/** Loads a Radiance `.hdr` file as a linear, half-float reflection texture. */
+/**
+ * Loads a Radiance `.hdr` file as a linear, half-float reflection texture.
+ *
+ * Three.js r186 marks `RGBELoader` deprecated in favour of `HDRLoader`; both read the same Radiance
+ * format, so the non-deprecated loader is used while retaining equirectangular HDR environment maps.
+ */
 export async function loadHdrTexture(file: string): Promise<Texture> {
   const texture = await new HDRLoader().loadAsync(file);
   texture.name = file;

@@ -8,7 +8,7 @@ import {
   SphereGeometry,
   type Material,
 } from 'three/webgpu';
-import { float, texture, vec2 } from 'three/tsl';
+import { float, vec2 } from 'three/tsl';
 import {
   STUDIO_CONFIG,
   SURFACE_MATERIALS,
@@ -19,6 +19,7 @@ import {
 } from '../config/studio';
 import type { SceneContent, SceneContentContext } from '../world/WorldContent';
 import { loadMaterialTextureSet, type MaterialTextureSet } from '../assets/AssetManifest';
+import { bindScannedPbrMaps } from '../world/scanned-pbr';
 
 /**
  * The material lab: a grid of spheres, each one a surface the world will need, standing on a neutral
@@ -116,18 +117,10 @@ export function createMaterialLab(
       // The planks are ~2 m of scanned surface; tiling them twice keeps the grain reading at the
       // scale a sphere this size is looked at from.
       const uvScale = float(2);
-      const uv = vec2(uvScale);
-      target.colorNode = texture(set.diffuse, uv).rgb;
-      target.normalNode = texture(set.normal, uv).rgb;
-      if (set.arm !== null) {
-        // Packed ORM: occlusion in red, roughness in green, metalness in blue. Reading the channels
-        // separately is what keeps three maps in one texture, and it is how the terrain and props
-        // will be authored in Phase 5.
-        const arm = texture(set.arm, uv);
-        target.aoNode = arm.r;
-        target.roughnessNode = arm.g;
-        target.metalnessNode = arm.b;
-      }
+      const surfaceUv = vec2(uvScale);
+      // The shared helper honours sRGB/linear manifest spaces and applies the tangent-space
+      // normal through TBN rather than assigning raw normal-map RGB to a view-space normal node.
+      bindScannedPbrMaps(target, set, surfaceUv, { normalStrength: 0.8 });
       textures?.dispose();
       textures = set;
       return set;

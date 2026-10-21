@@ -4,9 +4,8 @@
  * `config/world.ts` because the physics world builds colliders from the same definitions.
  *
  * All values are data, never inline constants, so quality tiers and later phases can override them
- * without touching engine or scene code. Phase 3 moved rendering to `WebGPURenderer` with TSL node
- * materials and a `RenderPipeline` post stack (ADR 0004); the fields below describe that pipeline,
- * not the retired `WebGLRenderer` + GLSL setup.
+ * without touching engine or scene code. Rendering uses `WebGPURenderer` with its automatic WebGL2
+ * fallback, TSL node materials, and a `RenderPipeline` post stack (ADR 0004).
  */
 
 /** Shadow filtering mode. Both are supported by the WebGPU renderer and its WebGL2 backend. */
@@ -32,8 +31,8 @@ export interface RendererConfig {
   readonly antialias: boolean;
   readonly samples: number;
   /**
-   * Output transform. `aces` keeps highlight roll-off filmic and matches the look the scene was
-   * authored against; `agx`/`neutral` are available for comparison without code changes.
+   * Output transform. AgX is the preferred highlight-preserving display transform; ACES and Neutral
+   * remain available for comparison. The authored display-referred look is checked through all curves.
    */
   readonly toneMapping: ToneMappingName;
   readonly toneMappingExposure: number;
@@ -152,7 +151,7 @@ export interface EnvironmentConfig {
   readonly intensity: number;
   /** Rotation about +Y in degrees; aligns the HDRI's interesting features with the scene. */
   readonly rotationDegrees: number;
-  /** Draw the HDRI as the background instead of the procedural sky (photo-mode style). */
+  /** Draw the HDRI as the backdrop instead of the procedural sky for look-dev comparison. */
   readonly useAsBackground: boolean;
 }
 
@@ -193,24 +192,25 @@ export interface BloomConfig {
 export type AntiAliasingMode = 'msaa' | 'fxaa' | 'smaa' | 'taa' | 'none';
 
 /**
- * Ground-truth ambient occlusion. Applied to the scene pass through `builtinAOContext`, which is why
- * it is described here as part of the scene rather than as another link in the post chain.
+ * Screen-space ambient occlusion. The SSAO node reads the scene pass's linear depth and view-space
+ * normal attachments and denoises with a depth-aware blur before modulating the scene lighting.
  */
 export interface AmbientOcclusionConfig {
   readonly enabled: boolean;
   /** Fraction of the render resolution the occlusion is computed at; 0.5 is the balanced tier. */
   readonly resolutionScale: number;
-  /** Sample radius in world units. */
+  /** World-space sample radius in metres. */
   readonly radius: number;
-  /** Depth difference above which a sample is treated as a separate surface. */
-  readonly thickness: number;
-  /** How quickly sampling distance falls off with range. */
-  readonly distanceExponent: number;
-  /** Darkening strength of the resulting occlusion (1 = fully applied). */
+  /** Angle bias that suppresses self-occlusion on near-flat surfaces. */
+  readonly bias: number;
+  /** Strength of the occlusion estimate (1 = fully applied). */
   readonly intensity: number;
   /** Taps per pixel; the dominant cost of the effect. */
   readonly samples: number;
-  readonly scale: number;
+  /** Whether to run SSAO's built-in separable depth-aware denoising. */
+  readonly blurEnabled: boolean;
+  /** Blur rejection strength across depth discontinuities; higher preserves edges. */
+  readonly blurSharpness: number;
 }
 
 /** Lens colour fringing. Display-referred: applied after tone mapping. */
@@ -447,7 +447,7 @@ export interface GodraysConfig {
  *
  * This is the centimetre-scale half of shadowing that cascaded maps cannot resolve: a 2048
  * shadow map spread over 300 m has ~15 cm texels, so the tyre's contact patch, the kerb's
- * foot, and the underside of a guardrail all float. GTAO darkens crevices without knowing
+ * foot, and the underside of a guardrail all float. SSAO darkens crevices without knowing
  * where the light is; this knows, and grounds objects *against the sun's side*. It is cheap
  * (a dozen depth taps), entirely screen-space (its known failure is the same as every
  * screen-space effect: an occluder off-screen casts nothing), and gated by the daylight
@@ -468,7 +468,7 @@ export interface ContactShadowsConfig {
 /**
  * Screen-space global illumination (`SSGINode`, SSRT3-derived): horizon-based ray sampling
  * of the rendered frame itself, producing bounced diffuse light plus its own ambient
- * occlusion term. When enabled it *replaces* GTAO — the composite is
+ * occlusion term. When enabled it *replaces* SSAO — the composite is
  * `beauty × ssao + diffuse × gi`, the form three's own example uses — because running both
  * occlusion terms would darken every crevice twice.
  *
@@ -543,19 +543,15 @@ export const RENDER_CONFIG: RenderConfig = {
   maxPixelRatio: 2,
   maxFrameDeltaSeconds: 0.1,
   renderer: {
-    // WebGL2 is the backend every capture, test and CI run in this project
-    // verifies, so it is the shipped default. WebGPU remains implemented but
-    // unreached until a proof exists on real hardware: the owner's devices
-    // showed artefacts (an all-white ground) that no WebGL2 capture, at any
-    // tier or spawn, has ever reproduced (2026-10-17). Switching the default
-    // back to 'auto' is a one-line change once WebGPU captures exist.
-    backendPreference: 'webgl',
+    // Prefer WebGPU where available; WebGPURenderer transparently falls back to WebGL2. Use
+    // ?backend=webgl for a forced comparison or as a driver workaround.
+    backendPreference: 'auto',
     // MSAA off in the baseline for the same reason the tier table has it off: the AA strategy in force is
     // temporal, and the two cannot both be on. Tier C, which has no TAA, keeps MSAA off as well and uses
     // FXAA; a caller that wants MSAA asks for it explicitly, and the tier test asserts the pairing.
     antialias: false,
     samples: 0,
-    toneMapping: 'aces',
+    toneMapping: 'agx',
     // Baseline exposure, multiplied by the daylight phase (1 at noon). 0.94 put the
     // whole daytime frame at or past the top of the tone curve: grass, tree lines and
     // high-ground textures all compressed into the same near-white and read as fog (owner
@@ -629,9 +625,9 @@ export const RENDER_CONFIG: RenderConfig = {
     lut: {
       enabled: true,
       assetId: null,
-      // The look is authored to be *visible* on top of ACES and the time-of-day grade, and this trim
-      // is where the project decides how much of it to take. Full strength is the authored look; the
-      // interesting property of a LUT is that it can be dialled without being re-authored.
+      // The archived look was authored against ACES; AgX is now the default per owner direction, so
+      // compare both curves through the same look during visual review. This trim controls LUT
+      // strength without re-authoring its source.
       intensity: 1,
       // Must match the shipped table. Chosen by measurement in `scripts/build-lut.mjs --analyse`.
       size: 17,
@@ -723,7 +719,7 @@ export const RENDER_CONFIG: RenderConfig = {
       // indistinguishable from fog, and it turned green highlands into a snow
       // field (owner reports 2026-10-16/17; proven by A/B captures 2026-10-17:
       // with bloom the frame's black level sat at 195/255, without it at 33).
-      // Photo mode (Phase 8) may re-enable it per shot; gameplay clarity wins.
+      // `?bloom=1` exposes a restrained high-threshold look-dev comparison; gameplay clarity wins.
       enabled: false,
       strength: 0.1,
       radius: 0.45,
@@ -732,12 +728,12 @@ export const RENDER_CONFIG: RenderConfig = {
     ambientOcclusion: {
       enabled: true,
       resolutionScale: 0.5,
-      radius: 0.3,
-      thickness: 1,
-      distanceExponent: 1.2,
+      radius: 0.42,
+      bias: 0.025,
       intensity: 0.85,
       samples: 16,
-      scale: 1.2,
+      blurEnabled: true,
+      blurSharpness: 2,
     },
     grade: {
       enabled: true,
@@ -781,6 +777,20 @@ export const RENDER_CONFIG: RenderConfig = {
  * Returns a new configuration; the input is never mutated, so a caller may hold the baseline and
  * apply different switches to it.
  */
+function parseBooleanSwitch(value: string | null): boolean | null {
+  if (value === null) {
+    return null;
+  }
+  const normalized = value.toLowerCase();
+  if (['1', 'true', 'on'].includes(normalized)) {
+    return true;
+  }
+  if (['0', 'false', 'off'].includes(normalized)) {
+    return false;
+  }
+  return null;
+}
+
 export function applyRenderSwitches(config: RenderConfig, search: string): RenderConfig {
   const params = new URLSearchParams(search);
   const dof = params.get('dof');
@@ -799,6 +809,9 @@ export function applyRenderSwitches(config: RenderConfig, search: string): Rende
   const tonemap = params.get('tonemap');
   const grain = params.get('grain');
   const clouds = params.get('clouds');
+  const bloomSwitch = parseBooleanSwitch(params.get('bloom'));
+  const aoSwitch = parseBooleanSwitch(params.get('ao'));
+  const environmentBackground = parseBooleanSwitch(params.get('envbg'));
 
   const depthOfField = {
     ...config.postProcessing.depthOfField,
@@ -885,12 +898,16 @@ export function applyRenderSwitches(config: RenderConfig, search: string): Rende
       : { enabled: ssgiSwitch !== '0' && ssgiSwitch !== 'false' }),
   };
 
-  /**
-   * `?tonemap=aces|agx|neutral` replays the same frame through a different tone curve. The
-   * look LUT was authored on top of ACES, so an AgX frame is *not* the shipped look — it is
-   * the comparison the plan owes (which curve's highlight behaviour suits this game's sky),
-   * and it can only be run as a switch, never by editing the default between captures.
-   */
+  const bloom = {
+    ...config.postProcessing.bloom,
+    ...(bloomSwitch === null ? {} : { enabled: bloomSwitch }),
+  };
+  const ambientOcclusion = {
+    ...config.postProcessing.ambientOcclusion,
+    ...(aoSwitch === null ? {} : { enabled: aoSwitch }),
+  };
+
+  /** `?tonemap=aces|agx|neutral` compares the display transform without changing the default. */
   const renderer: RendererConfig = {
     ...config.renderer,
     ...(tonemap === 'aces' || tonemap === 'agx' || tonemap === 'neutral'
@@ -916,6 +933,10 @@ export function applyRenderSwitches(config: RenderConfig, search: string): Rende
     ...config,
     diagnostics,
     renderer,
+    environment: {
+      ...config.environment,
+      ...(environmentBackground === null ? {} : { useAsBackground: environmentBackground }),
+    },
     atmosphere: {
       ...config.atmosphere,
       clouds: {
@@ -936,6 +957,8 @@ export function applyRenderSwitches(config: RenderConfig, search: string): Rende
       godrays: godraysConfig,
       contactShadows,
       ssgi,
+      bloom,
+      ambientOcclusion,
       // A switch of its own because grain is per-frame random: any A/B measurement between two
       // captures is grain noise until it can be turned off.
       filmGrain: {

@@ -7,7 +7,9 @@ import {
   float,
   fract,
   mix,
+  normalMap,
   normalWorld,
+  positionLocal,
   positionWorld,
   select,
   sin,
@@ -165,9 +167,11 @@ export class TerrainWorld implements SceneContent {
    * a missing texture must never take the ground with it).
    */
   #applyFlatNodes(material: MeshStandardNodeMaterial): void {
-    const cell = positionWorld.xz.mul(1.6).floor();
+    // Terrain vertices are authored in absolute world coordinates in mesh-local space. Sampling
+    // those coordinates avoids visible material motion when the floating-origin root is shifted.
+    const cell = positionLocal.xz.mul(1.6).floor();
     const grain = fract(sin(cell.dot(vec2(127.1, 311.7))).mul(43758.5453123));
-    const swell = sin(positionWorld.x.mul(0.21)).mul(sin(positionWorld.z.mul(0.17)));
+    const swell = sin(positionLocal.x.mul(0.21)).mul(sin(positionLocal.z.mul(0.17)));
     const detail = float(0.94).add(grain.mul(0.07)).add(swell.mul(0.03));
     material.colorNode = vertexColor().mul(detail);
   }
@@ -245,7 +249,7 @@ export class TerrainWorld implements SceneContent {
     const splat = attribute('splat', 'vec4');
     const tint = attribute('tint', 'float');
     const districtTint = attribute('district', 'vec3');
-    let wxz = positionWorld.xz;
+    let wxz = positionLocal.xz;
 
     if (pom) {
       const pomConfig = this.#config.pom;
@@ -301,7 +305,7 @@ export class TerrainWorld implements SceneContent {
       const hitXz = wxz.sub(slope.mul(refinedDepth.mul(pomConfig.depthMeters)));
       wxz = mix(wxz, hitXz, pomFade);
     }
-    const wpos = vec3(wxz.x, positionWorld.y, wxz.y);
+    const wpos = vec3(wxz.x, positionLocal.y, wxz.y);
 
     // Detail fades out between 90 m and 260 m: beyond that the macro tint (which every
     // LOD shares) carries the colour, so chunk resolution changes stop changing the
@@ -338,7 +342,7 @@ export class TerrainWorld implements SceneContent {
     const grassArm = sampleArm(grass, GRASS_UV);
     const soilArm = sampleArm(soil, SOIL_UV);
     const rockArm = sampleArm(rock, ROCK_UV);
-    const mixArm = (channel: 'r' | 'g', fallback: number) => {
+    const mixArm = (channel: 'r' | 'g' | 'b', fallback: number) => {
       if (grassArm === null || soilArm === null || rockArm === null) {
         return float(fallback);
       }
@@ -351,16 +355,18 @@ export class TerrainWorld implements SceneContent {
     const macro = vertexColor();
     material.colorNode = mix(macro, detailAlbedo.mul(tint).mul(districtTint), detailFade);
     material.roughnessNode = mix(float(0.96), mixArm('g', 0.95), detailFade);
+    material.metalnessNode = mix(float(0), mixArm('b', 0), detailFade);
     material.aoNode = mix(float(1), mixArm('r', 1), detailFade);
 
-    // Normal detail, blended like the albedo and faded with it: the far field keeps the
-    // geometry normals, which is what makes distant LOD steps stop crawling.
+    // Normal detail is tangent-space data. Blend the scanned maps in tangent space, then let
+    // normalMap() decode and transform through the geometry's TBN frame into view space. The
+    // far field fades back to the geometric normal instead of feeding raw RGB to normalNode.
     const flatNormal = vec3(0.5, 0.5, 1);
     const detailNormal = texture(grass.normal, wxz.mul(GRASS_UV))
       .rgb.mul(splat.x)
       .add(texture(soil.normal, wxz.mul(SOIL_UV)).rgb.mul(splat.y))
       .add(texture(rock.normal, wxz.mul(ROCK_UV)).rgb.mul(splat.z));
-    material.normalNode = mix(flatNormal, detailNormal, detailFade.mul(0.85));
+    material.normalNode = normalMap(mix(flatNormal, detailNormal, detailFade.mul(0.85)));
   }
 
   updateStreaming(

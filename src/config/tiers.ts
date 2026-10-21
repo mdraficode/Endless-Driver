@@ -103,21 +103,18 @@ export interface TierDefinition {
 /**
  * Tier C — mobile and low-end hardware.
  *
- * MSAA is off, one shadow cascade at half resolution, and the backdrop is the HDRI rather than the
- * procedural sky with its cloud layer. Everything here trades fill rate for a stable frame on a
- * phone.
+ * MSAA is off, one shadow cascade at reduced resolution, and the gameplay backdrop stays procedural
+ * while the HDRI supplies image-based lighting. `?envbg=1` is available for an HDRI-backdrop A/B.
+ * Everything here trades fill rate for a lower-cost mobile path.
  *
- * **Deliberate deviation from `docs/VISUAL_TARGET.md` §3:** that table lists tier C's renderer path
- * as "WebGL2 backend". That line describes the hardware class this tier targets, and the
- * implementation keeps the backend on `auto` instead of pinning the older API — forcing WebGL2 on a
- * device that supports WebGPU would surrender performance for no quality gain, and the fallback
- * already engages wherever WebGPU is unavailable. Use `?backend=webgl` to force it for comparison.
+ * Backend selection is project-wide rather than a tier override: all tiers prefer WebGPU when
+ * available and use automatic WebGL2 fallback; `?backend=webgl` forces the fallback for comparison.
  */
 const TIER_C: TierDefinition = {
   id: 'C',
   name: 'Mobile / low',
   summary:
-    'Phones and low-end laptops: WebGL2 fallback, short shadow range, FXAA with bounded scene-pass scaling, HDRI light with a procedural sky backdrop.',
+    'Phones and low-end laptops: automatic WebGPU/WebGL2 selection, short shadow range, FXAA with bounded scene-pass scaling, HDRI light with a clear procedural sky backdrop.',
   render: {
     maxPixelRatio: 1,
     // No backendPreference here on purpose: the backend is a project-wide
@@ -140,9 +137,8 @@ const TIER_C: TierDefinition = {
       clouds: { enabled: false },
     },
     environment: {
-      // The HDRI lights and reflects; it is never the visible backdrop. A garden photo
-      // behind open terrain reads as a diorama at every tier, and the procedural sky is
-      // one dome shader — the honest backdrop costs no more than the dishonest one.
+      // Gameplay defaults to the clear procedural sky while the HDRI supplies image-based lighting.
+      // `?envbg=1` opts into the captured HDRI backdrop for look-dev comparison.
       useAsBackground: false,
     },
     postProcessing: {
@@ -275,7 +271,7 @@ const TIER_A: TierDefinition = {
       // The raymarch tier. Sixty shadow taps per pixel at half resolution is the most expensive
       // single effect in the stack, and it belongs to the tier that exists for measured headroom.
       godrays: { enabled: true },
-      // Full-length contact march, and the bounce light: SSGI replaces GTAO on this tier
+      // Full-length contact march and the bounce light: SSGI replaces SSAO on this tier
       // (its composite carries its own occlusion term). Both are stated here rather than
       // defaulted on, so a frame can always name what it paid for them.
       contactShadows: { enabled: true, steps: 16 },

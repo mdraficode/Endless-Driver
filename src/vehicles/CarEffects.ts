@@ -1,256 +1,39 @@
 import {
   AdditiveBlending,
-  type Blending,
-  Color,
   DataTexture,
-  DoubleSide,
-  DynamicDrawUsage,
   Group,
-  InstancedBufferAttribute,
-  InstancedMesh,
   LinearFilter,
   NormalBlending,
-  Object3D,
-  PlaneGeometry,
-  Quaternion,
   RGBAFormat,
   UnsignedByteType,
-  Vector3,
-  type Camera,
 } from 'three';
-import { MeshBasicNodeMaterial } from 'three/webgpu';
-import { attribute } from 'three/tsl';
+import type { WebGPURenderer } from 'three/webgpu';
 
 import { VEHICLE_EFFECTS_CONFIG } from '../config/vehicle-effects';
 import { VEHICLE_CONFIG } from '../config/vehicle';
+import type { RendererBackendName } from '../config/render';
 import type { TierId } from '../config/tiers';
 import { rotateVec3ByQuat, vec3, type Vec3 } from '../shared/vector';
 import type { VehiclePose, VehicleTelemetry, WheelState } from './types';
+import { GpuParticlePool, type ParticleSpawn } from './GpuParticlePool';
 import { resolveAirflowIntensity, resolveTireSmokeStrength } from './vehicle-effects';
 
-interface Particle {
-  active: boolean;
-  age: number;
-  lifetime: number;
-  x: number;
-  y: number;
-  z: number;
-  vx: number;
-  vy: number;
-  vz: number;
-  startSizeX: number;
-  endSizeX: number;
-  startSizeY: number;
-  endSizeY: number;
-  opacity: number;
-  color: number;
-  roll: number;
-  fadeInSeconds: number;
-}
-
-interface ParticleSpawn {
-  readonly position: Vec3;
-  readonly velocity: Vec3;
-  readonly lifetime: number;
-  readonly startSizeX: number;
-  readonly endSizeX: number;
-  readonly startSizeY: number;
-  readonly endSizeY: number;
-  readonly opacity: number;
-  readonly color: number;
-  readonly roll: number;
-  readonly fadeInSeconds: number;
-}
-
-class ParticlePool {
-  readonly particles: Particle[];
-  readonly mesh: InstancedMesh;
-  readonly #opacity: InstancedBufferAttribute;
-  readonly #dummy = new Object3D();
-  readonly #color = new Color();
-  readonly #rotationAxis = new Vector3(0, 0, 1);
-  readonly #cameraQuaternion = new Quaternion();
-  readonly #rollQuaternion = new Quaternion();
-  readonly #visible: Particle[] = [];
-  #cursor = 0;
-  #activeCount = 0;
-
-  constructor(
-    name: string,
-    capacity: number,
-    texture: DataTexture,
-    blending: Blending,
-    opacityScale = 1,
-    renderOrder = 10,
-  ) {
-    const geometry = new PlaneGeometry(1, 1);
-    this.#opacity = new InstancedBufferAttribute(new Float32Array(capacity), 1);
-    this.#opacity.setUsage(DynamicDrawUsage);
-    geometry.setAttribute('particleOpacity', this.#opacity);
-
-    const material = new MeshBasicNodeMaterial({
-      map: texture,
-      transparent: true,
-      depthWrite: false,
-      side: DoubleSide,
-      blending,
-      toneMapped: blending !== AdditiveBlending,
-    });
-    material.opacityNode = attribute('particleOpacity', 'float').mul(opacityScale);
-
-    this.mesh = new InstancedMesh(geometry, material, capacity);
-    this.mesh.name = name;
-    this.mesh.count = 0;
-    this.mesh.frustumCulled = false;
-    this.mesh.renderOrder = renderOrder;
-    this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
-    this.particles = Array.from({ length: capacity }, () => createParticle());
-  }
-
-  get activeCount(): number {
-    return this.#activeCount;
-  }
-
-  spawn(spawn: ParticleSpawn): void {
-    const particle = this.particles[this.#cursor];
-    this.#cursor = (this.#cursor + 1) % this.particles.length;
-    if (!particle) {
-      return;
-    }
-    if (!particle.active) {
-      this.#activeCount += 1;
-    }
-    particle.active = true;
-    particle.age = 0;
-    particle.lifetime = spawn.lifetime;
-    particle.x = spawn.position.x;
-    particle.y = spawn.position.y;
-    particle.z = spawn.position.z;
-    particle.vx = spawn.velocity.x;
-    particle.vy = spawn.velocity.y;
-    particle.vz = spawn.velocity.z;
-    particle.startSizeX = spawn.startSizeX;
-    particle.endSizeX = spawn.endSizeX;
-    particle.startSizeY = spawn.startSizeY;
-    particle.endSizeY = spawn.endSizeY;
-    particle.opacity = spawn.opacity;
-    particle.color = spawn.color;
-    particle.roll = spawn.roll;
-    particle.fadeInSeconds = spawn.fadeInSeconds;
-  }
-
-  update(dt: number, verticalAcceleration: number, dragPerSecond: number): void {
-    if (dt <= 0) {
-      return;
-    }
-    const drag = dragPerSecond > 0 ? Math.exp(-dragPerSecond * dt) : 1;
-    for (const particle of this.particles) {
-      if (!particle.active) {
-        continue;
-      }
-      particle.age += dt;
-      if (particle.age >= particle.lifetime) {
-        particle.active = false;
-        this.#activeCount -= 1;
-        continue;
-      }
-      particle.vy += verticalAcceleration * dt;
-      particle.vx *= drag;
-      particle.vy *= drag;
-      particle.vz *= drag;
-      particle.x += particle.vx * dt;
-      particle.y += particle.vy * dt;
-      particle.z += particle.vz * dt;
-    }
-  }
-
-  writeInstances(cameraRotation: Quaternion, cameraPosition: Vec3): void {
-    // Small pools are sorted back-to-front so translucent smoke blends predictably without
-    // relying on a per-particle draw call.
-    this.#visible.length = 0;
-    for (const particle of this.particles) {
-      if (particle.active) {
-        this.#visible.push(particle);
-      }
-    }
-    this.#visible.sort(
-      (a, b) => distanceSquared(b, cameraPosition) - distanceSquared(a, cameraPosition),
-    );
-    this.mesh.count = this.#visible.length;
-    this.#cameraQuaternion.copy(cameraRotation);
-
-    let index = 0;
-    for (const particle of this.#visible) {
-      const life = particle.age / particle.lifetime;
-      const fadeIn =
-        particle.fadeInSeconds > 0 ? smoothUnit(particle.age / particle.fadeInSeconds) : 1;
-      const fadeOut = 1 - smoothUnit((life - 0.55) / 0.45);
-      const alpha = particle.opacity * fadeIn * fadeOut;
-      const sizeX = lerp(particle.startSizeX, particle.endSizeX, smoothUnit(life));
-      const sizeY = lerp(particle.startSizeY, particle.endSizeY, smoothUnit(life));
-
-      this.#dummy.position.set(particle.x, particle.y, particle.z);
-      this.#rollQuaternion.setFromAxisAngle(this.#rotationAxis, particle.roll);
-      this.#dummy.quaternion.copy(this.#cameraQuaternion).multiply(this.#rollQuaternion);
-      this.#dummy.scale.set(sizeX, sizeY, 1);
-      this.#dummy.updateMatrix();
-      this.mesh.setMatrixAt(index, this.#dummy.matrix);
-      this.mesh.setColorAt(index, this.#color.setHex(particle.color));
-      this.#opacity.setX(index, alpha);
-      index += 1;
-    }
-
-    this.mesh.instanceMatrix.needsUpdate = true;
-    if (this.mesh.instanceColor) {
-      this.mesh.instanceColor.setUsage(DynamicDrawUsage);
-      this.mesh.instanceColor.needsUpdate = true;
-    }
-    this.#opacity.needsUpdate = true;
-  }
-
-  shiftBy(dx: number, dz: number): void {
-    for (const particle of this.particles) {
-      if (particle.active) {
-        particle.x -= dx;
-        particle.z -= dz;
-      }
-    }
-  }
-
-  reset(): void {
-    for (const particle of this.particles) {
-      particle.active = false;
-      particle.age = 0;
-    }
-    this.#activeCount = 0;
-    this.#cursor = 0;
-    this.mesh.count = 0;
-  }
-
-  dispose(): void {
-    this.mesh.geometry.dispose();
-    const material = this.mesh.material;
-    if (!Array.isArray(material)) {
-      material.dispose();
-    }
-    this.mesh.removeFromParent();
-  }
-}
-
 /**
- * Small, fixed-capacity vehicle effects. Particles live in the same rebased simulation coordinates
- * as the visible car, while the camera-facing quads are batched in three instanced draws.
+ * Fixed-capacity GPU vehicle effects. Emitter decisions and spawn payloads are prepared on the CPU;
+ * WebGPU compute owns integration and opacity, and WebGL2 disables the effects instead of falling
+ * back to CPU simulation.
  */
 export class CarEffects {
   readonly root = new Group();
   readonly #tier: TierId;
   readonly #smokeTexture: DataTexture;
   readonly #streakTexture: DataTexture;
-  readonly #smoke: ParticlePool;
-  readonly #sparks: ParticlePool;
-  readonly #airflow: ParticlePool;
-  readonly #cameraQuaternion = new Quaternion();
-  readonly #cameraPosition = new Vector3();
+  readonly #smoke: GpuParticlePool;
+  readonly #sparks: GpuParticlePool;
+  readonly #airflow: GpuParticlePool;
+  #renderer: WebGPURenderer | null = null;
+  #configuredBackend: RendererBackendName | null = null;
+  #lastSpawnRequests = { smoke: 0, sparks: 0, airflow: 0 };
   readonly #rotatedLocal = vec3();
   readonly #randomState = { value: 0x6d2b79f5 };
   readonly #wheelLayout = VEHICLE_CONFIG.wheels;
@@ -267,7 +50,7 @@ export class CarEffects {
     const capacity = VEHICLE_EFFECTS_CONFIG.particleCapacityByTier[tier];
     this.#smokeTexture = makeRadialTexture();
     this.#streakTexture = makeStreakTexture();
-    this.#smoke = new ParticlePool(
+    this.#smoke = new GpuParticlePool(
       'car-smoke',
       capacity.smoke,
       this.#smokeTexture,
@@ -275,7 +58,7 @@ export class CarEffects {
       1,
       8,
     );
-    this.#sparks = new ParticlePool(
+    this.#sparks = new GpuParticlePool(
       'gear-shift-sparks',
       capacity.sparks,
       this.#streakTexture,
@@ -283,7 +66,7 @@ export class CarEffects {
       1,
       10,
     );
-    this.#airflow = new ParticlePool(
+    this.#airflow = new GpuParticlePool(
       'speed-airflow',
       capacity.airflow,
       this.#streakTexture,
@@ -294,12 +77,26 @@ export class CarEffects {
     this.root.add(this.#airflow.mesh, this.#smoke.mesh, this.#sparks.mesh);
   }
 
-  get activeParticleCounts(): Readonly<{ smoke: number; sparks: number; airflow: number }> {
-    return {
-      smoke: this.#smoke.activeCount,
-      sparks: this.#sparks.activeCount,
-      airflow: this.#airflow.activeCount,
-    };
+  get simulationMode(): 'pending' | 'webgpu-compute' | 'webgl2-disabled' {
+    if (this.#renderer !== null) {
+      return 'webgpu-compute';
+    }
+    return this.#configuredBackend === 'webgl2' ? 'webgl2-disabled' : 'pending';
+  }
+
+  get lastSpawnRequests(): Readonly<{ smoke: number; sparks: number; airflow: number }> {
+    return this.#lastSpawnRequests;
+  }
+
+  /** Backend is known only after WebGPURenderer.init() resolves. */
+  configureBackend(backend: RendererBackendName | null, renderer: WebGPURenderer): void {
+    this.#configuredBackend = backend;
+    this.#renderer = backend === 'webgpu' ? renderer : null;
+    const enabled = this.#renderer !== null;
+    this.#smoke.setComputeEnabled(enabled);
+    this.#sparks.setComputeEnabled(enabled);
+    this.#airflow.setComputeEnabled(enabled);
+    this.reset();
   }
 
   update(
@@ -308,42 +105,58 @@ export class CarEffects {
     telemetry: VehicleTelemetry,
     wheels: readonly WheelState[],
     linearVelocity: Vec3,
-    camera: Camera,
   ): void {
     if (this.#disposed) {
       return;
     }
+    const renderer = this.#renderer;
+    if (renderer === null) {
+      this.#lastSpawnRequests = { smoke: 0, sparks: 0, airflow: 0 };
+      return;
+    }
+
     const dt = Math.min(0.1, Math.max(0, delta));
-    camera.getWorldPosition(this.#cameraPosition);
-    camera.getWorldQuaternion(this.#cameraQuaternion);
+    this.#smoke.beginFrame();
+    this.#sparks.beginFrame();
+    this.#airflow.beginFrame();
 
     if (dt > 0) {
       this.#updateExhaust(dt, pose, telemetry, linearVelocity);
       this.#updateTireSmoke(dt, pose, telemetry, wheels, linearVelocity);
       this.#updateShiftSparks(pose, telemetry, linearVelocity);
       this.#updateAirflow(dt, pose, telemetry, linearVelocity);
-      // Exhaust and tire smoke share one bounded, batched pool; use a restrained midpoint for
-      // their common buoyancy/drag so neither emitter dominates the other.
-      this.#smoke.update(
-        dt,
-        (VEHICLE_EFFECTS_CONFIG.exhaust.buoyancyMetersPerSecondSquared +
-          VEHICLE_EFFECTS_CONFIG.tireSmoke.buoyancyMetersPerSecondSquared) /
-          2,
-        (VEHICLE_EFFECTS_CONFIG.exhaust.dragPerSecond +
-          VEHICLE_EFFECTS_CONFIG.tireSmoke.dragPerSecond) /
-          2,
-      );
-      this.#sparks.update(
-        dt,
-        -VEHICLE_EFFECTS_CONFIG.shiftSparks.gravityMetersPerSecondSquared,
-        0.12,
-      );
-      this.#airflow.update(dt, 0, 0);
     }
 
-    this.#smoke.writeInstances(this.#cameraQuaternion, this.#cameraPosition);
-    this.#sparks.writeInstances(this.#cameraQuaternion, this.#cameraPosition);
-    this.#airflow.writeInstances(this.#cameraQuaternion, this.#cameraPosition);
+    // CPU work is restricted to emitter requests. Integration, aging, rebasing, billboard sizing
+    // and opacity are computed in the three GPU kernels before the scene draw.
+    this.#smoke.prepareCompute(
+      dt,
+      (VEHICLE_EFFECTS_CONFIG.exhaust.buoyancyMetersPerSecondSquared +
+        VEHICLE_EFFECTS_CONFIG.tireSmoke.buoyancyMetersPerSecondSquared) /
+        2,
+      (VEHICLE_EFFECTS_CONFIG.exhaust.dragPerSecond +
+        VEHICLE_EFFECTS_CONFIG.tireSmoke.dragPerSecond) /
+        2,
+    );
+    this.#sparks.prepareCompute(
+      dt,
+      -VEHICLE_EFFECTS_CONFIG.shiftSparks.gravityMetersPerSecondSquared,
+      0.12,
+    );
+    this.#airflow.prepareCompute(dt, 0, 0);
+    renderer.compute([
+      this.#smoke.computeNode,
+      this.#sparks.computeNode,
+      this.#airflow.computeNode,
+    ]);
+    this.#smoke.finishCompute();
+    this.#sparks.finishCompute();
+    this.#airflow.finishCompute();
+    this.#lastSpawnRequests = {
+      smoke: this.#smoke.spawnRequests,
+      sparks: this.#sparks.spawnRequests,
+      airflow: this.#airflow.spawnRequests,
+    };
   }
 
   /** Keeps already-emitted particles aligned when the simulation origin rebases. */
@@ -363,6 +176,7 @@ export class CarEffects {
     this.#exhaustOutlet = 0;
     this.#lastGear = 1;
     this.#randomState.value = 0x6d2b79f5;
+    this.#lastSpawnRequests = { smoke: 0, sparks: 0, airflow: 0 };
   }
 
   dispose(): void {
@@ -611,28 +425,6 @@ export class CarEffects {
   }
 }
 
-function createParticle(): Particle {
-  return {
-    active: false,
-    age: 0,
-    lifetime: 0,
-    x: 0,
-    y: 0,
-    z: 0,
-    vx: 0,
-    vy: 0,
-    vz: 0,
-    startSizeX: 0,
-    endSizeX: 0,
-    startSizeY: 0,
-    endSizeY: 0,
-    opacity: 0,
-    color: 0xffffff,
-    roll: 0,
-    fadeInSeconds: 0,
-  };
-}
-
 function makeRadialTexture(): DataTexture {
   const size = 32;
   const data = new Uint8Array(size * size * 4);
@@ -691,13 +483,6 @@ function smoothUnit(value: number): number {
 
 function lerp(from: number, to: number, t: number): number {
   return from + (to - from) * t;
-}
-
-function distanceSquared(particle: Particle, position: Vec3): number {
-  const x = particle.x - position.x;
-  const y = particle.y - position.y;
-  const z = particle.z - position.z;
-  return x * x + y * y + z * z;
 }
 
 function add(left: Vec3, right: Vec3): Vec3 {

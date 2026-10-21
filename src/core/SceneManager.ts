@@ -20,6 +20,7 @@ import {
   type EnvironmentAsset,
 } from '../assets/AssetManifest';
 import type { RenderConfig } from '../config/render';
+import { METERS_PER_THREE_UNIT, metersToThreePoint, metersToThreeUnits } from '../config/units';
 import { WORLD_CONFIG, type WorldConfig } from '../config/world';
 import type { DaylightState } from '../environment/EnvironmentClock';
 import type { Vec3 } from '../shared/vector';
@@ -59,14 +60,13 @@ export interface SceneDiagnostics {
   readonly objectCount: number;
   /** Backdrop currently drawn: the procedural Preetham sky or an HDRI background. */
   readonly skyMode: 'procedural' | 'hdri';
-  /** Label of the mounted content: `driving`, `studio`, and so on. */
   /** Manifest id of the HDRI lighting the scene, or `null` while only the sun lights it. */
   readonly environmentId: string | null;
+  /** Label of the mounted content: `driving`, `studio`, and so on. */
   readonly contentKind: string;
   /** Flat numeric content stats (terrain chunk counts, triangles, build budget usage). */
   readonly contentStats: Readonly<Record<string, number>>;
-  /** Which distance-cueing model the frame used: height-aware, the linear band, or none. */
-  /** Fog was removed completely; this stays in diagnostics so a capture can prove it. */
+  /** Fog is disabled; this stays in diagnostics so a capture can prove it. */
   readonly fogMode: 'off';
   /** Sun elevation in degrees, or `null` before the first daylight update. */
   readonly sunElevationDegrees: number | null;
@@ -96,8 +96,8 @@ const DEG_TO_RAD = Math.PI / 180;
  *   `onBeforeCompile`, which does not exist on the WebGPU backend; `npm run guard:glsl` now forbids
  *   that API from returning.
  *
- * Every resource created here is released in `dispose`. The world content remains temporary
- * placeholders for the procedural world planned in Phase 4.
+ * Every resource created here is released in `dispose`. Driving-world content is supplied by
+ * the streaming terrain/road/vegetation systems; alternative look-dev scenes use this same scene.
  */
 export class SceneManager {
   readonly scene: Scene;
@@ -131,8 +131,9 @@ export class SceneManager {
     const aspect = Number.isFinite(options.aspect) && options.aspect > 0 ? options.aspect : 1;
 
     this.#config = config;
-    this.#sunDistance = config.lighting.sunDistance;
+    this.#sunDistance = metersToThreeUnits(config.lighting.sunDistance);
     this.scene = new Scene();
+    this.scene.userData['metersPerThreeUnit'] = METERS_PER_THREE_UNIT;
     // No fog is created here - not disabled, absent. Distance fog and the
     // height-fog node were deleted (owner direction, 2026-10-16): the scene
     // has no `fog` and no `fogNode`, and nothing downstream can re-add one
@@ -141,18 +142,20 @@ export class SceneManager {
     this.camera = new PerspectiveCamera(
       config.camera.fov,
       aspect,
-      config.camera.near,
-      config.camera.far,
+      metersToThreeUnits(config.camera.near),
+      metersToThreeUnits(config.camera.far),
     );
-    this.camera.position.set(...config.camera.position);
-    this.camera.lookAt(...config.camera.target);
+    const cameraPosition = metersToThreePoint(config.camera.position);
+    const cameraTarget = metersToThreePoint(config.camera.target);
+    this.camera.position.set(...cameraPosition);
+    this.camera.lookAt(...cameraTarget);
 
     this.controls = new OrbitControls(this.camera, options.canvas);
-    this.controls.target.set(...config.camera.target);
+    this.controls.target.set(...cameraTarget);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = config.camera.dampingFactor;
-    this.controls.minDistance = config.camera.minDistance;
-    this.controls.maxDistance = config.camera.maxDistance;
+    this.controls.minDistance = metersToThreeUnits(config.camera.minDistance);
+    this.controls.maxDistance = metersToThreeUnits(config.camera.maxDistance);
     this.controls.maxPolarAngle = config.camera.maxPolarAngle;
     this.controls.update();
 
@@ -165,7 +168,7 @@ export class SceneManager {
     this.#sun = createSun(config);
     // The configured sun position is the initial direction; `applyDaylight` replaces it once the
     // application has resolved the time of day, and `focusSun` places the light from it each frame.
-    this.#sunOffset = new Vector3(...config.lighting.sunPosition).normalize();
+    this.#sunOffset = new Vector3(...metersToThreePoint(config.lighting.sunPosition)).normalize();
     this.#csm = attachCascades(this.#sun, config);
 
     /**
@@ -223,8 +226,8 @@ export class SceneManager {
       if (this.#config.environment.useAsBackground) {
         this.scene.background = texture;
         this.scene.backgroundIntensity = 1;
-        // The HDRI *is* the backdrop on this tier (tier C). The procedural sky draws at the far
-        // plane with depth writes off, so leaving it visible would paint straight over the HDRI.
+        // When ?envbg=1 selects the HDRI as a look-dev backdrop, hide the procedural dome;
+        // otherwise its far-plane geometry would paint over the environment texture.
         this.#sky.visible = false;
       }
       // Swapping environments at runtime (the studio's HDRI switcher does) must not leak the
@@ -380,7 +383,7 @@ export class SceneManager {
     return this.#godraysLight;
   }
 
-  /** Fog was removed completely; diagnostics keep reporting the proof. */
+  /** Fog is disabled; diagnostics keep reporting the proof. */
   get fogMode(): 'off' {
     return 'off';
   }
@@ -393,9 +396,8 @@ export class SceneManager {
    * lighting all come from the same `DaylightState`. Nothing recomputes the sun separately, so the
    * sky, the shadows, and the light on the car can never disagree about where the sun is.
    *
-   * The procedural sky always follows the clock. When the configuration makes the HDRI the backdrop
-   * (tier C) that texture is a fixed daylight capture, so only its intensity is modulated — the sky
-   * does not redden. That limitation is recorded in the handoff rather than hidden.
+   * The procedural sky always follows the clock. When `?envbg=1` selects the HDRI backdrop for look-dev, that
+   * texture is a fixed daylight capture, so only its intensity is modulated — the sky does not redden.
    */
   applyDaylight(state: DaylightState): void {
     const direction = this.#sunDirection.set(
@@ -602,12 +604,13 @@ function createGodraysLight(config: RenderConfig): DirectionalLight {
   light.name = 'godrays-sun';
   light.castShadow = true;
   light.shadow.mapSize.set(godrays.shadowMapSize, godrays.shadowMapSize);
-  light.shadow.camera.left = -godrays.shadowExtentMeters;
-  light.shadow.camera.right = godrays.shadowExtentMeters;
-  light.shadow.camera.top = godrays.shadowExtentMeters;
-  light.shadow.camera.bottom = -godrays.shadowExtentMeters;
-  light.shadow.camera.near = 1;
-  light.shadow.camera.far = config.lighting.sunDistance * 4;
+  const extent = metersToThreeUnits(godrays.shadowExtentMeters);
+  light.shadow.camera.left = -extent;
+  light.shadow.camera.right = extent;
+  light.shadow.camera.top = extent;
+  light.shadow.camera.bottom = -extent;
+  light.shadow.camera.near = metersToThreeUnits(1);
+  light.shadow.camera.far = metersToThreeUnits(config.lighting.sunDistance * 4);
   light.shadow.bias = config.shadows.bias;
   light.shadow.normalBias = config.shadows.normalBias;
   light.target.name = 'godrays-sun-target';
@@ -627,15 +630,16 @@ function createSun(config: RenderConfig): DirectionalLight {
     config.lighting.sunIntensity,
   );
   sun.name = 'sun';
-  sun.position.set(...config.lighting.sunPosition);
+  sun.position.set(...metersToThreePoint(config.lighting.sunPosition));
   sun.castShadow = true;
   sun.shadow.mapSize.set(config.shadows.mapSize, config.shadows.mapSize);
-  sun.shadow.camera.left = -config.shadows.cameraBounds;
-  sun.shadow.camera.right = config.shadows.cameraBounds;
-  sun.shadow.camera.top = config.shadows.cameraBounds;
-  sun.shadow.camera.bottom = -config.shadows.cameraBounds;
-  sun.shadow.camera.near = config.shadows.cameraNear;
-  sun.shadow.camera.far = config.shadows.cameraFar;
+  const bounds = metersToThreeUnits(config.shadows.cameraBounds);
+  sun.shadow.camera.left = -bounds;
+  sun.shadow.camera.right = bounds;
+  sun.shadow.camera.top = bounds;
+  sun.shadow.camera.bottom = -bounds;
+  sun.shadow.camera.near = metersToThreeUnits(config.shadows.cameraNear);
+  sun.shadow.camera.far = metersToThreeUnits(config.shadows.cameraFar);
   sun.shadow.bias = config.shadows.bias;
   sun.shadow.normalBias = config.shadows.normalBias;
   // Only consulted by the VSM filter; ignored by PCF.
@@ -658,9 +662,9 @@ function attachCascades(sun: DirectionalLight, config: RenderConfig): CSMShadowN
   }
   const node = new CSMShadowNode(sun, {
     cascades: csm.cascades,
-    maxFar: Math.min(csm.maxFar, config.camera.far),
+    maxFar: metersToThreeUnits(Math.min(csm.maxFar, config.camera.far)),
     mode: csm.mode,
-    lightMargin: csm.lightMargin,
+    lightMargin: metersToThreeUnits(csm.lightMargin),
   });
   // `fade` is a public property of the node; the pinned type definitions predate it.
   node.fade = csm.fade;

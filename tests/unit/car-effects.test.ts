@@ -1,4 +1,4 @@
-import { PerspectiveCamera } from 'three';
+import type { WebGPURenderer } from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 import { VEHICLE_EFFECTS_CONFIG } from '../../src/config/vehicle-effects';
 import { VEHICLE_CONFIG } from '../../src/config/vehicle';
@@ -67,54 +67,79 @@ const telemetry: VehicleTelemetry = {
   distanceTravelled: 0,
 };
 
-const camera = new PerspectiveCamera(55, 1, 0.1, 500);
-camera.position.set(0, 4, 10);
-camera.lookAt(0, 0, 0);
-camera.updateMatrixWorld(true);
+function createComputeRecorder(): { renderer: WebGPURenderer; calls: unknown[][] } {
+  const calls: unknown[][] = [];
+  const renderer = {
+    compute(nodes: unknown): void {
+      calls.push(Array.isArray(nodes) ? nodes : [nodes]);
+    },
+  } as unknown as WebGPURenderer;
+  return { renderer, calls };
+}
 
-describe('batched car effects', () => {
-  it('emits exhaust, tire smoke, gear sparks, and high-speed flow within fixed tier pools', () => {
+describe('GPU-compute vehicle effects', () => {
+  it('queues bounded emitter requests and batches their compute work on WebGPU', () => {
     const effects = new CarEffects('C');
+    const { renderer, calls } = createComputeRecorder();
+    effects.configureBackend('webgpu', renderer);
+    expect(effects.simulationMode).toBe('webgpu-compute');
+    expect(effects.root.children.every((child) => child.visible)).toBe(true);
+
     const velocity = { x: 0, y: 0, z: -20 };
+    let smokeRequests = 0;
     for (let frame = 0; frame < 10; frame += 1) {
-      effects.update(0.1, pose, telemetry, wheels, velocity, camera);
+      effects.update(0.1, pose, telemetry, wheels, velocity);
+      smokeRequests += effects.lastSpawnRequests.smoke;
     }
-    expect(effects.activeParticleCounts.smoke).toBeGreaterThan(0);
-    expect(effects.activeParticleCounts.airflow).toBe(0);
+    expect(smokeRequests).toBeGreaterThan(0);
+    expect(effects.lastSpawnRequests.airflow).toBe(0);
 
     const fast = { ...telemetry, speedMps: 50, speedKph: 180, forwardSpeed: 50 };
+    let airflowRequests = 0;
     for (let frame = 0; frame < 5; frame += 1) {
-      effects.update(0.1, pose, fast, wheels, { x: 0, y: 0, z: -50 }, camera);
+      effects.update(0.1, pose, fast, wheels, { x: 0, y: 0, z: -50 });
+      airflowRequests += effects.lastSpawnRequests.airflow;
     }
-    expect(effects.activeParticleCounts.airflow).toBeGreaterThan(0);
+    expect(airflowRequests).toBeGreaterThan(0);
 
-    effects.update(
-      1 / 60,
-      pose,
-      { ...fast, gear: 2, shifting: true },
-      wheels,
-      { x: 0, y: 0, z: -50 },
-      camera,
+    effects.update(1 / 60, pose, { ...fast, gear: 2, shifting: true }, wheels, {
+      x: 0,
+      y: 0,
+      z: -50,
+    });
+    expect(effects.lastSpawnRequests.sparks).toBe(VEHICLE_EFFECTS_CONFIG.shiftSparks.countByTier.C);
+    expect(calls.length).toBe(16);
+    expect(calls.every((batch) => batch.length === 3)).toBe(true);
+    expect(calls.at(-1)).toHaveLength(3);
+    expect(calls.at(-1)?.every((node) => (node as { isComputeNode?: boolean }).isComputeNode)).toBe(
+      true,
     );
-    expect(effects.activeParticleCounts.sparks).toBe(
-      VEHICLE_EFFECTS_CONFIG.shiftSparks.countByTier.C,
-    );
-    expect(effects.root.children).toHaveLength(3);
 
-    // Long runs overwrite bounded ring-buffer slots instead of allocating particles forever.
-    for (let frame = 0; frame < 100; frame += 1) {
-      effects.update(0.1, pose, { ...fast, gear: 2 }, wheels, { x: 0, y: 0, z: -50 }, camera);
-    }
-    const counts = effects.activeParticleCounts;
+    // Fixed instance counts stay equal to the existing C-tier budgets; no CPU particle list is kept.
     const budget = VEHICLE_EFFECTS_CONFIG.particleCapacityByTier.C;
-    expect(counts.smoke).toBeLessThanOrEqual(budget.smoke);
-    expect(counts.sparks).toBeLessThanOrEqual(budget.sparks);
-    expect(counts.airflow).toBeLessThanOrEqual(budget.airflow);
+    expect((effects.root.children[0] as { count: number }).count).toBe(budget.airflow);
+    expect((effects.root.children[1] as { count: number }).count).toBe(budget.smoke);
+    expect((effects.root.children[2] as { count: number }).count).toBe(budget.sparks);
 
     effects.shiftBy(256, -512);
     effects.reset();
-    expect(effects.activeParticleCounts).toEqual({ smoke: 0, sparks: 0, airflow: 0 });
+    expect(effects.lastSpawnRequests).toEqual({ smoke: 0, sparks: 0, airflow: 0 });
     effects.dispose();
     expect(effects.root.children).toHaveLength(0);
+  });
+
+  it('disables compute effects on WebGL2 instead of using a CPU simulation fallback', () => {
+    const effects = new CarEffects('C');
+    const { renderer, calls } = createComputeRecorder();
+    effects.configureBackend('webgl2', renderer);
+    expect(effects.simulationMode).toBe('webgl2-disabled');
+    expect(effects.root.children.every((child) => !child.visible)).toBe(true);
+
+    for (let frame = 0; frame < 20; frame += 1) {
+      effects.update(0.1, pose, telemetry, wheels, { x: 0, y: 0, z: -20 });
+    }
+    expect(calls).toHaveLength(0);
+    expect(effects.lastSpawnRequests).toEqual({ smoke: 0, sparks: 0, airflow: 0 });
+    effects.dispose();
   });
 });

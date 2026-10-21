@@ -581,7 +581,7 @@ export class Engine {
     this.#contextLostHandlers.clear();
     this.#contextRestoredHandlers.clear();
     this.#timer.dispose();
-    this.#chain?.pipeline.dispose();
+    this.#chain?.dispose();
     this.#chain = null;
     this.#renderer.dispose();
   }

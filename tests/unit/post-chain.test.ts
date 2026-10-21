@@ -235,11 +235,13 @@ describe('post stack per tier', () => {
       expect(ao.resolutionScale).toBeGreaterThan(0);
       expect(ao.resolutionScale).toBeLessThanOrEqual(1);
       expect(ao.radius).toBeGreaterThan(0);
-      expect(ao.thickness).toBeGreaterThan(0);
+      expect(ao.bias).toBeGreaterThan(0);
       expect(ao.intensity).toBeGreaterThanOrEqual(0);
       expect(ao.intensity).toBeLessThanOrEqual(1);
       expect(Number.isInteger(ao.samples)).toBe(true);
       expect(ao.samples).toBeGreaterThan(0);
+      expect(ao.blurEnabled).toBe(true);
+      expect(ao.blurSharpness).toBeGreaterThan(0);
     }
   });
 });
@@ -524,7 +526,7 @@ describe('contact shadows and SSGI', () => {
     expect(resolvePostEffects(applyTier(RENDER_CONFIG, 'C'))).not.toContain('motionBlur');
   });
 
-  it('replaces GTAO with SSGI on the high tier instead of stacking both occlusion terms', () => {
+  it('replaces SSAO with SSGI on the high tier instead of stacking both occlusion terms', () => {
     const tierA = resolvePostEffects(applyTier(RENDER_CONFIG, 'A'));
     expect(tierA).toContain('ssgi');
     expect(tierA).not.toContain('ao');

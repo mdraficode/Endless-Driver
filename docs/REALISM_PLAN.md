@@ -143,8 +143,7 @@ procedurally-lit scenes look flat next to baked ones. Three options, in increasi
   volumetric lighting as a by-product, because it solves radiance in a volume.
 
   **Status (Phase 3): the SSGI option shipped.** `SSGINode` runs on the high tier as
-  `beauty × ssao + diffuse × gi` ahead of the temporal resolve, _replacing_ GTAO there (two
-  occlusion terms would double-darken). Measured: studio A/B MAD 4.4 (shadowed sides lift);
+  `beauty × ssao + diffuse × gi` ahead of the temporal resolve, _replacing_ SSAO there (two occlusion terms would double-darken). Measured: studio A/B MAD 4.4 (shadowed sides lift);
   the open route at noon barely moves (0.6) — there is no occlusion for bounce to work with
   until Phases 4–5 build real geometry. The cascades bet below is unchanged: it remains the
   Phase 7 go/no-go, not a Phase 3 promise.

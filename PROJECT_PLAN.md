@@ -1,15 +1,15 @@
 # Endless Driver — Project Plan and Implementation Instructions
 
-**Planning baseline:** 2026-10-13 · **Visual-fidelity revision:** 2026-10-14 · **Status updated:** 2026-10-20  
-**Project stage:** Phase 4 built scope delivered; Phase 5 in progress; Phase 6 authorized after Phase 5 acceptance; Phase 9 urban-systems track authorized and active; Phases 7–8 gated  
-**Development authorization:** Phases 1–6 remain sequenced as recorded; Phase 9 is separately authorized to proceed in parallel with the open Phase 5 visual gate. Phase 3 code complete with named-hardware frame-budget validation open.  
+**Planning baseline:** 2026-10-13 · **Visual-fidelity revision:** 2026-10-14 · **Status updated:** 2026-10-21  
+**Project stage:** Phase 4 built scope delivered; Phase 5 acceptance open; broad Phase 6 renderer/material work authorized; Phase 9 urban-systems track authorized and active; Phases 7–8 gated  
+**Development authorization:** The owner opened broad Phase 6 on 2026-10-20 despite pending Phase 5 acceptance. Phase 9 is separately authorized in parallel. Phase 3 code complete with named-hardware frame-budget validation open.  
 **Visual target:** [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) — rural Hinode remains; a fictional megacity district is an authorized addition. Forza-Horizon-class presentation remains an engineering target, with evidence and feasibility boundaries in [`docs/RESEARCH_AAA_FIDELITY.md`](docs/RESEARCH_AAA_FIDELITY.md)  
 **GitHub destination:** Public [`mdraficode/Endless-Driver`](https://github.com/mdraficode/Endless-Driver), branch `main`  
 **Remote synchronization:** Scaffold, documentation, Phase 1, and Phase 2 pushed and verified on `main`; CI runs on each push
 
 The original requested technical scope is retained in [`docs/PROJECT_BRIEF.md`](docs/PROJECT_BRIEF.md).
 
-> This is the implementation specification, not a claim that the game is complete. Phases 1–4 provide the runtime, vehicle foundation, renderer/asset pipeline, terrain/roads, and initial world systems. Phase 5 remains in progress; Phase 6 is authorized after Phase 5 acceptance; a separate Phase 9 urban-systems track was authorized on 2026-10-19 and may proceed in parallel. Phases 7–8 remain gated. The latest owner report (2026-10-20) says earlier non-FPS issues are resolved, but FPS remains unstable; Phase 5 acceptance is still open pending measured evidence and explicit acceptance. Keep gameplay terrain non-white and snow-free. Rendering is Three.js + Rapier with HDRI image-based lighting, ACES tone mapping, and screen-space approximations—not hardware ray tracing.
+> This is the implementation specification, not a claim that the game is complete. Phases 1–4 provide the runtime, vehicle foundation, renderer/asset pipeline, terrain/roads, and initial world systems. Phase 5 acceptance remains open pending evidence and explicit acceptance; the owner broadly authorized Phase 6 on 2026-10-20 despite that gate. Phase 9 is separately authorized in parallel; Phases 7–8 remain gated. The latest owner report says FPS remains unstable and earlier non-FPS issues are resolved; no named-device measurements or formal Phase 5 visual acceptance have been recorded. Keep gameplay terrain non-white and snow-free. Rendering is Three.js + Rapier with automatic WebGPU/WebGL2 selection, HDRI image-based lighting, AgX tone mapping by default, and screen-space approximations—not hardware ray tracing.
 
 ## Contents
 
@@ -66,7 +66,7 @@ Build a browser-based, single-player 3D driving experience with convincing vehic
 | Terrain noise      | simplex-noise + a seeded random source                              | Deterministic sampling; never use unseeded randomness for world generation.                                                                                                                            |
 | Renderer path      | `WebGPURenderer` (`three/webgpu`) with the automatic WebGL2 backend | One rendering layer, two backends. WebGPU gives compute, storage textures and the TSL post-processing stack; the WebGL2 backend keeps the ~18% of browsers without WebGPU running the same code paths. |
 | Shading language   | TSL (Three.js Shading Language) node materials                      | `ShaderMaterial`/`onBeforeCompile` do not run on the WebGPU backend, so custom shading is written once in TSL and compiled to WGSL or GLSL.                                                            |
-| Post-processing    | `RenderPipeline` + TSL display nodes                                | Built-in GTAO, SSR, SSGI, TAAU/TRAA, bloom, DOF, motion blur, god rays, grain, LUT grading; `EffectComposer`/pmndrs are WebGL-only and are not used.                                                   |
+| Post-processing    | `RenderPipeline` + TSL display nodes                                | Built-in SSAO, SSR, SSGI, TAAU/TRAA, bloom, DOF, motion blur, god rays, grain, LUT grading; `EffectComposer`/pmndrs are WebGL-only and are not used.                                                   |
 | Asset pipeline     | `gltf-transform` + meshopt/Draco + KTX2/Basis                       | Textures stay GPU-compressed (4–8× less VRAM), geometry stays small, every asset carries a licence record.                                                                                             |
 | Tests              | Vitest; browser automation added with relevant phases               | Pure logic and headless physics tests first; browser input and rendering checks later.                                                                                                                 |
 | Package management | npm with exact direct versions and a committed lockfile             | `npm ci` reproduces installs; upgrade packages deliberately, not implicitly between sessions.                                                                                                          |
@@ -214,7 +214,7 @@ The baseline is acceptable only if the required curve-driven traction and handli
 
 - Start with render radius 3 chunks on desktop and 2 on mobile; near physics coverage is a separate radius with speed-aware look-ahead. Tune using measured costs.
 - Use terrain stitch skirts or tested edge stitching between different LODs; matching equal-LOD edges alone is insufficient.
-- Use instancing/thin instances for repeated vegetation, distance-based building/prop LOD, shadow-caster limits, and fog for far boundaries.
+- Use instancing/thin instances for repeated vegetation, distance-based building/prop LOD, shadow-caster limits, and clear far-boundary visibility; keep fog and atmospheric veils disabled per owner direction.
 - Store persistent positions as chunk coordinates plus local offsets. Render and simulate near the current origin.
 - Rebase around a provisional 1,024 m displacement threshold at a safe physics boundary. Shift physics, meshes, cameras, previous/current interpolation snapshots, particles, and other local state together. Phase 4 adds streaming/origin tests, and any temporal-effect history introduced in Phase 3 (TAAU, SSR, motion blur) is reset or shifted at the same boundary.
 - Repeated long-distance travel must plateau in active chunks, colliders, CPU buffers, and GPU resources.
@@ -231,7 +231,7 @@ the evidence and the feasibility boundaries. This section defines the architectu
    dominate perceived realism.
 2. **Material truth.** Physically-based values, packed ORM maps, detail layers that survive close inspection, and
    automotive paint with base coat, flake, and clearcoat.
-3. **Depth and atmosphere.** Aerial perspective, fog tied to the sky, light shafts at low sun, dust and mist.
+3. **Depth without a veil.** Preserve readable distance through layered geometry, scale cues, shadows and horizon composition. Keep fog/mist/global atmospheric veils disabled per owner direction; low-sun shafts remain tier-gated.
 4. **Density where you look.** High-frequency detail near the camera (parallax occlusion mapping, splat layers,
    vegetation), impostors and simplified LODs far away — never uniform detail.
 5. **The world changes.** Time of day, weather, and season transform the same road visually _and_ physically.
@@ -244,12 +244,8 @@ the evidence and the feasibility boundaries. This section defines the architectu
 - **TSL for all custom shading.** Node materials replace custom GLSL. The Phase 1 procedural ground grid and sky
   are ported when the renderer migration happens; a source guard prevents new `ShaderMaterial`/`onBeforeCompile`
   usage.
-- **Post-processing is one ordered `RenderPipeline`**: scene render → optional SSGI/SSR/AO (screen-space, tiered) →
-  volumetric/atmospheric passes → bloom → DOF → motion blur → tone mapping → grading LUT → grain/chromatic
-  aberration/vignette → anti-aliasing/upscale (TAAU/TRAA, FXAA/SMAA on the low tier). Tone mapping and colour-space
-  conversion happen exactly once, at the pipeline end.
-- **Colour pipeline:** linear-sRGB working space, PMREM environment lighting, ACES/AgX tone mapping, LUT-based
-  grading per time-of-day preset, and no double conversion anywhere in the chain.
+- **Post-processing is one ordered `RenderPipeline`**: scene render/MRT normals+depth → SSAO or tier-gated SSGI (replacement) / SSR → optional low-sun shafts (no fog/atmospheric veil) → restrained optional bloom → DOF → motion blur → tone mapping → grading LUT → grain/chromatic aberration/vignette → TAAU/TRAA or SMAA/FXAA. Tone mapping and colour-space conversion happen exactly once at the pipeline end; gameplay-wide bloom remains off.
+- **Colour pipeline:** linear-sRGB working space, PMREM environment lighting from CC0 HDRIs, AgX tone mapping by default (ACES/neutral remain selectable), LUT-based grading per time-of-day preset, and no double conversion anywhere in the chain.
 - **Image quality:** temporal anti-aliasing with dynamic resolution scaling and hysteresis; minimum scale 0.6–0.7
   depending on tier; sharpening on the upscale path.
 
@@ -260,7 +256,7 @@ the evidence and the feasibility boundaries. This section defines the architectu
 - Exposure control that survives full 24 h transitions without clipping or crushed shadows.
 - **Cascaded shadow maps** (`CSM.js`/`CSMShadowNode`) with per-tier cascade counts, stable near-field resolution,
   and no visible seams; **contact/screen-space shadows** ground small props and foliage.
-- Optional god rays / volumetric light shafts on the high tier; cheaper depth-fog approximations below that.
+- Optional god rays / volumetric light shafts on the high tier; fog remains disabled across tiers per owner direction.
 
 ### Materials
 
@@ -288,16 +284,16 @@ visible and physical. Seasonal presentation is anchored to the regions in `docs/
 harbour, sakura river road, rice terraces, maple gorge, cedar pass, highland plateau, snow-country onsen village,
 small town), so the same district reads as a different place in each season:
 
-| Season | Presentation                                                        | Driving influence                                  |
-| ------ | ------------------------------------------------------------------- | -------------------------------------------------- |
-| Spring | Green vegetation, occasional rain, damp surfaces, wildflowers       | Wet traction, puddle drag                          |
-| Summer | Warm sunlight, dry foliage and roads, dust and heat haze            | Baseline grip, dust plumes                         |
-| Autumn | Warm foliage, leaf litter, falling leaves, mud                      | Reduced off-road traction, mud rolling resistance  |
-| Winter | Snow accumulation masks, colder light, bounded snowfall, bare trees | Snow/ice grip reduction, controlled sliding, churn |
+| Season | Presentation                                                          | Driving influence                                  |
+| ------ | --------------------------------------------------------------------- | -------------------------------------------------- |
+| Spring | Green vegetation, occasional rain, damp surfaces, wildflowers         | Wet traction, puddle drag                          |
+| Summer | Warm sunlight, dry foliage and roads, physically meaningful dust only | Baseline grip, dust plumes                         |
+| Autumn | Warm foliage, leaf litter, falling leaves, mud                        | Reduced off-road traction, mud rolling resistance  |
+| Winter | Snow accumulation masks, colder light, bounded snowfall, bare trees   | Snow/ice grip reduction, controlled sliding, churn |
 
 - Seasonal variants are generated from one master material set (an in-house equivalent of the "winteriser"
   workflow: frost/snow masks driven by slope, height, and curvature), not authored twice.
-- Weather is independent of season and includes rain, storms, dust, fog, and snow, with the sky, clouds, light
+- Weather is independent of season and includes rain, storms, dust, and snow, with the sky, clouds, light
   colour, wind, and exposure driven from one weather state.
 - Traction is driven by explicit surface state (dry/wet/snow/ice/mud/gravel), never by texture colour. Phase 7
   verifies that the same corner taken at the same speed produces measurably different telemetry per season.
@@ -345,21 +341,21 @@ Automatic transmission is the default. The brief allows Shift for nitro or shift
 
 These are **initial budgets to validate**, not measured results. The tier definitions and per-system gates are normative in [`docs/VISUAL_TARGET.md`](docs/VISUAL_TARGET.md) §3; this table adds the geometric and memory budgets. Reference device models, browser versions, display resolution, and the measurement procedure are frozen in Phase 3, when the renderer and effect stack actually exist.
 
-| Budget                                    | Low/mobile                         | Balanced                        | High/desktop                                         |
-| ----------------------------------------- | ---------------------------------- | ------------------------------- | ---------------------------------------------------- |
-| Frame target                              | 60 FPS goal; 30 fallback           | 60 FPS                          | 60+ where hardware permits                           |
-| Device-pixel-ratio cap                    | 1.0 initially                      | 1.5 initially                   | 2.0 maximum, subject to resolution cap               |
-| Render radius                             | 2 chunks                           | 3 chunks                        | 3–4 after profiling                                  |
-| Draw calls, indicative ceiling            | 200                                | 350                             | 500                                                  |
-| Visible triangles, indicative ceiling     | 250k                               | 600k                            | 1M                                                   |
-| Texture GPU allocation, estimated ceiling | 128 MB                             | 192 MB                          | 256 MB                                               |
-| Shadows                                   | Small map/single cascade or off    | Limited cascades                | Profiled CSM                                         |
-| Bloom                                     | Off or lightweight                 | Lightweight                     | On, bounded buffers                                  |
-| SSAO / motion blur                        | Off / off                          | Optional / off                  | Optional / opt-in                                    |
-| Weather/foliage particles                 | Strongly capped                    | Moderate                        | Higher but bounded                                   |
-| Anti-aliasing                             | FXAA/SMAA                          | TAAU                            | TAAU/TRAA                                            |
-| Reflections                               | Environment IBL + Aohara clearcoat | SSR half-res + probes (pending) | SSR + probes (pending); Aohara wet-look is local PBR |
-| Volumetrics                               | Fog only                           | Height/depth fog + light shafts | Volumetric fog/dust, god rays                        |
+| Budget                                    | Low/mobile                         | Balanced                         | High/desktop                                         |
+| ----------------------------------------- | ---------------------------------- | -------------------------------- | ---------------------------------------------------- |
+| Frame target                              | 60 FPS goal; 30 fallback           | 60 FPS                           | 60+ where hardware permits                           |
+| Device-pixel-ratio cap                    | 1.0 initially                      | 1.5 initially                    | 2.0 maximum, subject to resolution cap               |
+| Render radius                             | 2 chunks                           | 3 chunks                         | 3–4 after profiling                                  |
+| Draw calls, indicative ceiling            | 200                                | 350                              | 500                                                  |
+| Visible triangles, indicative ceiling     | 250k                               | 600k                             | 1M                                                   |
+| Texture GPU allocation, estimated ceiling | 128 MB                             | 192 MB                           | 256 MB                                               |
+| Shadows                                   | Small map/single cascade or off    | Limited cascades                 | Profiled CSM                                         |
+| Gameplay-wide bloom                       | Off                                | Off                              | Off; source-local optics only                        |
+| SSAO / motion blur                        | Off / off                          | Optional / off                   | Optional / opt-in                                    |
+| Weather/foliage particles                 | Strongly capped                    | Moderate                         | Higher but bounded                                   |
+| Anti-aliasing                             | FXAA/SMAA                          | TAAU                             | TAAU/TRAA                                            |
+| Reflections                               | Environment IBL + Aohara clearcoat | SSR half-res + probes (pending)  | SSR + probes (pending); Aohara wet-look is local PBR |
+| Atmosphere                                | Fog disabled; sky only             | Fog disabled; sky + light shafts | Fog disabled; sky + light shafts/god rays            |
 
 - A 60 FPS frame is approximately 16.7 ms total. CPU and GPU overlap; do not add overlapping timings as if they were independent serial costs.
 - Begin with a 2 ms per-frame streaming/upload work budget and measure its impact. The budget may need subdivision or idle scheduling.
@@ -397,7 +393,7 @@ valid and are extended, not replaced.
 | 1     | Engine, loop, resize/DPR handling, orbit debug camera, reference lighting, diagnostics, disposal (ADR 0002)                                                      | `fbb48a4`, CI green                                            |
 | 2     | Rapier world + custom raycast force layer, slip-friction drift, smoothed keyboard input, damped chase camera, placeholder car meshes bound to physics (ADR 0003) | `b85c8ba`, `307efaa`, CI green; evidence in `/phase2-evidence` |
 
-**Phases 1–4 are implemented; Phase 5 is in progress with visual acceptance still open; Phase 6 is authorized after Phase 5 acceptance; Phase 9 is separately authorized and active. Phases 7–8 remain gated. Phase 3 code is complete; named-hardware frame-budget validation is still open.**
+**Phases 1–4 are implemented; Phase 5 visual acceptance remains open; broad Phase 6 renderer/material work is authorized despite that gate; Phase 9 is separately authorized and active. Phases 7–8 remain gated. Phase 3 code is complete; named-hardware frame-budget validation is still open.**
 
 ### Phase 3 — Renderer migration, lighting, post-processing, asset and material pipeline
 
@@ -408,14 +404,11 @@ everything visual afterwards is authored on top of it.
 
 1. `WebGPURenderer` (`three/webgpu`) with automatic WebGL2-backend fallback, a forced-backend debug switch, and a
    capability probe reported in diagnostics; the Phase 1/2 GLSL-era material code is either ported to TSL or removed.
-2. Colour pipeline: linear-sRGB working space, PMREM environment IBL from CC0 HDRIs, ACES/AgX tone mapping applied
-   exactly once, LUT grading per time-of-day preset, exposure driven by the sun.
-3. Dynamic sky and sun: atmospheric scattering sky blended with HDRI environment lighting, a time-of-day clock, and
-   light colour/intensity/direction curves that hold up from pre-dawn to night (headlights and streetlight pools are
-   part of the phase, not a later surprise).
+2. Colour pipeline: linear-sRGB working space, PMREM environment IBL from CC0 HDRIs, AgX tone mapping by default
+   (ACES/neutral selectable) exactly once, LUT grading per time-of-day preset, exposure driven by the sun.
+3. Dynamic sky and sun: procedural sky with HDRI environment lighting, a time-of-day clock, and light colour/intensity/direction curves that hold up from pre-dawn to night (headlights and streetlight pools are part of the phase, not a later surprise). Keep fog, haze and global atmospheric veils disabled.
 4. Cascaded shadow maps (`CSM.js`/`CSMShadowNode`) with per-tier cascade counts, plus screen-space contact shadows.
-5. `RenderPipeline` post stack: GTAO, SSR (tier-gated), bloom, DOF, motion blur, grain, chromatic aberration,
-   vignette, sharpening — each individually toggleable and measurable.
+5. `RenderPipeline` post stack: SSAO (SSGI replaces it at high tier), SSR (tier-gated), optional thresholded bloom comparison, DOF, motion blur, grain, chromatic aberration, vignette, sharpening — each individually configurable and measurable. Gameplay-wide bloom stays off.
 6. Anti-aliasing/upscaling: TAAU/TRAA with dynamic resolution scaling and hysteresis, FXAA/SMAA on the low tier.
 7. Asset pipeline: `gltf-transform`-based optimize/LOD/quantize/meshopt/KTX2 chain wired into the build, with an
    asset manifest, per-asset budgets, and a licence register (`docs/ASSET_POLICY.md`).
@@ -441,9 +434,9 @@ everything visual afterwards is authored on top of it.
 | --- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | `WebGPURenderer` + fallback + debug switch | **Done** — backend resolved after `init()` and reported in the HUD; `?backend=webgl\|auto` forces the path for comparison; all Phase 1/2 GLSL-era material code ported to TSL and source-guarded                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | 2   | Colour pipeline (IBL, tone map once, LUT)  | **Partial** — linear-sRGB working space, HDRI environment IBL, tone mapping applied exactly once in the `RenderPipeline`, exposure driven by the sun every frame, a linear-light time-of-day grade stage, and a real display-referred look LUT (`lut-hinode-film-17`, project-generated, 17³) with a live trim; per-preset grading curves are pending                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| 3   | Dynamic sky and sun                        | **Partial** — Preetham sky with clouds, sun disc, and fog tint from sun elevation; a time-of-day clock (`?time=`) driving sun direction/colour/intensity, ambient fill, environment intensity, exposure, fog, scattering, and the grade, verified from pre-dawn to night; headlights and streetlights pending                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| 3   | Dynamic sky and sun                        | **Partial** — Preetham sky with clouds and sun disc; a time-of-day clock (`?time=`) drives sun direction/colour/intensity, ambient fill, environment intensity, exposure, scattering, and grade; fog remains disabled. Headlights/streetlights are independently tracked by their world systems                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | 4   | Cascaded shadow maps                       | **Done** — `CSMShadowNode` with configurable cascades/maxFar/fade following the render camera and per-tier cascade counts; screen-space contact shadows shipped (a depth march towards the sun, tiers B/A, daylight-gated), measured to darken only where surfaces meet                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| 5   | `RenderPipeline` post stack                | **Partial** — shipped: ambient occlusion (GTAO, per-tier resolution), TAAU with dynamic resolution, motion blur (per-object and camera, driven by a shared velocity attachment), depth of field with a smoothed focus plane, the time-of-day grade, bloom, the look LUT, chromatic aberration, RCAS sharpening, film grain, and a custom TSL vignette; all individually toggleable and reported in the HUD. God rays shipped (tier A, daylight-driven tint, HDR stage after motion blur), contact shadows shipped (scene-stage depth march, tiers B/A), SSGI shipped (high tier, replacing GTAO in its composite). Pending: SSR — tier-declared, awaiting its first real surface (Phase 6 car, Phase 7 wet road)                                                                                                                               |
+| 5   | `RenderPipeline` post stack                | **Partial** — shipped: SSAO (per-tier settings), TAAU with dynamic resolution, motion blur (per-object and camera, driven by a shared velocity attachment), depth of field with a smoothed focus plane, time-of-day grade, optional thresholded bloom, look LUT, chromatic aberration, RCAS sharpening, film grain, and custom TSL vignette; effects are individually configurable and reported in the HUD. God rays are tier-gated (no fog), contact shadows use a scene-stage depth march on B/A, and SSGI replaces SSAO in its composite on the high tier. Gameplay-wide bloom and atmospheric veils stay off. Pending: SSR — tier-declared, awaiting its first real surface (Phase 6 car, Phase 7 wet road)                                                                                                                                |
 | 6   | Anti-aliasing and upscaling                | **Partial** — TAAU with time-based dynamic resolution is the strategy on tiers B/A; tier C keeps FXAA and permits bounded scene-pass scaling with a higher floor (linear upscale; no temporal reconstruction). The controller has a dead band, a 0.5 s adjustment interval and smaller steps, and the HUD reports the active reconstruction/AA path and scale. SMAA remains the fallback whenever the temporal path is off; MSAA is unused by default. The temporal-stability metric shipped with the route harness (12-frame flat-region σ, TAA on/off arms) — a static burst under deterministic software rendering measures jitter convergence, not in-motion shimmer, so validating TAA still needs moving-camera captures on real GPU hardware. No named-device frame-rate stability is claimed. Pending: a like-for-like TRAA comparison |
 | 7   | Asset pipeline                             | **Partial** — pinned fetch, manifest, licence register, hash verification, and `CREDITS.md` generation are in and enforced by `npm run check`; the model side (optimize → LOD → quantize → meshopt → KTX2) starts with the first model assets                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | 8   | Material library + look-dev scenes         | **Partial** — `?scene=studio` renders a 14-material sphere grid (3 paints, chrome, aluminium, rubber, glass, water, and 6 ground materials) under any archived HDRI, at any hour, with environment rotation, an IBL on/off comparison, a close-up view per material, and the scanned PBR set applied to the material that asks for it. Sharing the world's lighting is the point: it is a second composition root over the same engine, scene manager, and post chain. The 2 km validation route shipped (`?scene=route`): 3 stations × 4 times of day = 12 fixed bookmarks, captured by `npm run capture:route`, SSIM-diffed against the accepted baseline committed in `baseline/route/`. Pending: the car turntable (needs Phase 6)                                                                                                         |
@@ -480,6 +473,8 @@ baseline was regenerated in this commit because tier B's chain gained contact sh
 `baseline/route/README.md`. **Phase 3 is code-complete.** What remains before it can be called _accepted_:
 frame-budget validation on named hardware, which only the owner can run (the sandbox has no GPU); the
 route bookmarks were captured on tiers A and C as well as B for the record. At that checkpoint, Phase 4 was still gated; it was authorized later on 2026-10-15 and its built scope is recorded below.
+
+**Superseding direction (2026-10-21):** The above measurements record the historical height-fog/ACES experiment, not current settings. Owner direction now disables all gameplay fog/mist/haze/global atmospheric veils, and AgX is the default tone curve; ACES remains selectable for comparison. See the current renderer status and `docs/VISUAL_TARGET.md`.
 
 **Historical gate:** Phase 4 was authorized on 2026-10-15 and its built scope is delivered below. Phase 3's named-hardware frame-budget validation remains open.
 
@@ -615,7 +610,7 @@ owner's hardware frame-budget validation.
 
 **Owner correction (2026-10-18):** gameplay terrain has no snow layer: the reserved fourth splat channel is zero, snow is not loaded by the terrain material, and high ground uses exposed rock/soil. This is a code-level safeguard, not a claim that the owner's white-ground report is visually resolved; acceptance requires a stable, readable owner-device capture.
 
-**Current gates (2026-10-20):** Phase 5 remains open pending FPS evidence and formal owner acceptance; Phase 6 is authorized only after Phase 5 acceptance. Phase 9 Urban Systems is separately authorized and may proceed in parallel. Phases 7–8 remain gated.
+**Current gates (2026-10-21):** the owner reports earlier non-FPS issues resolved, but Phase 5 acceptance remains open pending FPS evidence and formal owner acceptance. Phase 6 is broadly authorized despite that open gate. Phase 9 Urban Systems remains separately authorized. Phases 7–8 remain gated.
 
 ### Phase 5 — Environment detail: vegetation, props, atmosphere
 
@@ -629,8 +624,9 @@ owner's hardware frame-budget validation.
    selection driven by the same parameters as the terrain.
 3. Props and roadside detail: rocks, barriers, signs, buildings, poles — instanced, LOD'd, with parallax-correct
    facades where the budget allows.
-4. Atmosphere: height/depth fog tied to the sky, light shafts at low sun, dust and mist volumes, lit particles, and
-   screen-space contact shadows grounding props and foliage.
+4. Atmosphere: retain the procedural sky and tier-gated low-sun light shafts; keep height/distance fog,
+   dust/mist volumes and atmospheric veils disabled per owner direction. Use screen-space contact shadows to
+   ground props and foliage.
 5. Placement/debug tooling: seed preview, density scalers, and a diagnostics readout of instance counts per system.
 
 **Implemented Phase 5 increment (2026-10-18):** terrain and vegetation now share a bounded velocity lead (1.4 s,
@@ -664,7 +660,7 @@ do not establish that the wind is visible, artifact-free, or within a device fra
 - Foliage lighting reads correctly at dawn/dusk, not only at noon.
 - For the requested mobile and desktop coverage, record frame-time median/p95 and FPS on named representative devices at stated tiers/resolutions; code-level adaptation alone is not FPS acceptance.
 
-**Stop:** Finish Phase 5 and receive acceptance before beginning the already-authorized Phase 6.
+**Phase gate:** Phase 5 acceptance remains open; the owner separately authorized broad Phase 6 work on 2026-10-20.
 
 ### Phase 6 — The car: hero model, materials, and vehicle fidelity
 
@@ -672,22 +668,24 @@ Combined with [`docs/REALISM_PLAN.md`](docs/REALISM_PLAN.md) §3 Ranks 7 and 8: 
 wet-surface reflections, and deliberate imperfection — wear, dirt accumulation, brake dust, rubber laid on kerbs —
 which is the difference between a clean render and a photographed one.
 
-**Depends on:** Accepted Phase 5 and user authorization; this phase needs the owner's car-asset decision (§7 of
-`docs/VISUAL_TARGET.md`, and §5 of `docs/RESEARCH_AAA_FIDELITY.md`).
+**Authorization:** Broad Phase 6 work was explicitly opened on 2026-10-20 despite pending Phase 5 acceptance. Phase 5 remains a separate open gate; the owner has not selected a replacement hero-car asset, so preserve the fictional, unbadged in-house placeholder and use free/open sources only if assets are added. Phase 7 weather/seasons and Phase 8 polish are not included.
 
 **Deliverables**
 
-1. Hero car asset through a legal route (royalty-free purchase with a recorded licence, commissioned/in-house build,
-   or the in-house generic coupe as the interim), optimized to 100k–200k triangles with LOD halving.
+1. Hero car asset through a free/open legal route (in-house build or a free asset with a recorded licence;
+   no purchases), with the unbadged in-house generic coupe retained as the interim, optimized to 100k–200k triangles with LOD halving.
 2. Model binding contract: named nodes/anchors for wheels, steering wheel, brake/reverse lights, doors where
    present, a cockpit anchor, and an `asset.json` descriptor validated by tests.
-3. Automotive paint: base coat + flake + clearcoat `MeshPhysicalMaterial` (with per-paint variants: metallic,
-   pearl, matte, satin), glass, chrome, rubber, plastics, light lenses, and dirt/water/snow masks.
-4. Vehicle systems refined: more contact samples per wheel, torque/gearing/braking curves tuned against handling
-   scenarios, wet/snow traction, and a telemetry channel that the HUD and tests read.
+3. Automotive paint: base coat + flake + clearcoat node material (with per-paint variants: metallic, pearl, matte,
+   satin), glass, chrome, rubber, plastics and light lenses. Use CC0-first maps only where they represent real opaque
+   surfaces; transparent glass and emissives get no fabricated maps. Dirt/water/snow accumulation masks remain Phase 7.
+4. Vehicle systems refined: more contact samples per wheel, dry-road torque/gearing/braking curves tuned against handling
+   scenarios, and a telemetry channel that the HUD and tests read. Wet/snow traction belongs to separately gated Phase 7.
 5. Cockpit camera with a normalized anchor, interior visibility driven by the model, and mirror/wiper hooks that
    Phase 7 can drive with weather.
 6. Brake lights, indicators, headlights, and shadows; screenshots at the fixed bookmarks for review.
+
+**Implemented renderer/material foundation (2026-10-21):** the renderer prefers WebGPU with automatic WebGL2 fallback (`?backend=webgl` forces WebGL2), defaults to AgX, and can display the loaded Radiance HDRI as a background via `?envbg=1`. The existing look LUT was authored under ACES; the AgX/LUT interaction remains for visual review. The TSL `RenderPipeline` carries MRT normals/depth into SSAO, retains SMAA/TAAU, and exposes restrained thresholded bloom only as an explicit comparison switch to preserve the no-global-bloom gameplay decision. CC0-first opaque scanned surfaces bind sRGB albedo, tangent-space normals, and linear AO/roughness/metalness through a shared helper with large-surface macro variation; glass/emissives have no fabricated maps. The placeholder vehicle uses node-based physical materials. World scale is converted at scene boundaries as 1 Three.js unit = 1 m. Vehicle particles use fixed-capacity TSL storage/compute on WebGPU and are disabled on WebGL2 rather than CPU-simulated. This is implementation scope only: the hero car remains a placeholder; no visual acceptance or device-performance result is established; automated checks remain pending until after the initial push.
 
 **Acceptance**
 
@@ -711,7 +709,7 @@ on real hardware, and "no" is an acceptable outcome that leaves SSGI and probes 
 
 **Deliverables**
 
-1. Weather system: rain, storms, snow, fog, and dust as coordinated states driving sky, clouds, light colour,
+1. Weather system: rain, storms, snow, and dust as coordinated states driving sky, clouds, light colour,
    wind, exposure, particles, and spray.
 2. Seasonal world variants generated from one master material set (slope/height/curvature-driven snow and frost
    masks, leaf litter, foliage variants), with the dev HUD switching season/weather/time of day.
@@ -769,7 +767,7 @@ settings, camera gestures/polish, and the final quality pass.
 
 ### Phase 9 — Urban Systems: Aohara Metropolis
 
-**Authorization (2026-10-19):** the owner authorized this new track to begin immediately, despite the unresolved Phase 5 visual-acceptance gate. Phase 9 may proceed alongside Phases 5–6; Phase 6 still requires Phase 5 acceptance. This does **not** authorize Phase 7 weather/seasons or Phase 8 final polish.
+**Authorization (2026-10-19, with follow-up 2026-10-20):** the owner authorized this new track to begin immediately, despite the unresolved Phase 5 visual-acceptance gate. Phase 9 may proceed alongside Phases 5–6; broad Phase 6 work was separately authorized on 2026-10-20 despite Phase 5 acceptance remaining open. This does **not** authorize Phase 7 weather/seasons or Phase 8 final polish.
 
 **District decision:** add a fictional Japanese megacity district to the existing fictional Hinode region. Preserve every rural Hinode district and its no-white-ground requirement; do not replace or urbanize the rural world. Aohara Metropolis is a bounded, vertically dense addition, connected to the existing rural road graph by a city-access connector; a separate highway/expressway link remains future work. The dimensions and streaming footprint must be measured before expanding the world bounds.
 
@@ -830,21 +828,21 @@ CI verifies the checks actually present. A green scaffold CI does not certify ve
 
 ### Execution status
 
-| Milestone                                                   | State                                                                                                                                         |
-| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Initial planning/scaffold                                   | Complete and saved to the canonical public repository                                                                                         |
-| Initial GitHub push                                         | Verified on `main`; first CI run passed                                                                                                       |
-| Phase 1                                                     | Complete (ADR 0002), pushed as `fbb48a4`, CI green                                                                                            |
-| Phase 2                                                     | Complete (ADR 0003), pushed as `b85c8ba` + `307efaa`, CI green, evidence bundle archived                                                      |
-| Visual-fidelity research and re-plan                        | Complete 2026-10-14: `docs/RESEARCH_AAA_FIDELITY.md`, `docs/VISUAL_TARGET.md`, ADR 0004, this plan revision                                   |
-| Free-and-open sourcing, region, brand, audio, photo mode    | Resolved 2026-10-14: `docs/ASSET_SOURCES.md`, `CREDITS.md`, ADR 0005, region brief (§6/§9 references)                                         |
-| Phase 3 — renderer, lighting, post, asset/material pipeline | Code complete; named-hardware frame-budget validation remains open                                                                            |
-| Phase 4 — terrain, roads, streaming                         | Built scope delivered 2026-10-15; bridges/tunnels deferred                                                                                    |
-| Phase 5 — vegetation, props, atmosphere                     | **Authorized 2026-10-18; FPS code check passed at `7f33b23`; device measurements and formal acceptance remain open**                          |
-| Phase 6 — hero car, materials, vehicle fidelity             | **Authorized 2026-10-18; after Phase 5 acceptance**                                                                                           |
-| Phase 7 — weather, seasons, surface behaviour               | Gated — requires explicit owner instruction                                                                                                   |
-| Phase 8 — mobile, HUD, cameras, settings, polish            | Gated — requires explicit owner instruction                                                                                                   |
-| Phase 9 — urban systems / Aohara Metropolis                 | **Authorized 2026-10-19; facade detail checked/deployed; bounded infill/actor increment implemented, full check pending; visual review open** |
+| Milestone                                                    | State                                                                                                                                         |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Initial planning/scaffold                                    | Complete and saved to the canonical public repository                                                                                         |
+| Initial GitHub push                                          | Verified on `main`; first CI run passed                                                                                                       |
+| Phase 1                                                      | Complete (ADR 0002), pushed as `fbb48a4`, CI green                                                                                            |
+| Phase 2                                                      | Complete (ADR 0003), pushed as `b85c8ba` + `307efaa`, CI green, evidence bundle archived                                                      |
+| Visual-fidelity research and re-plan                         | Complete 2026-10-14: `docs/RESEARCH_AAA_FIDELITY.md`, `docs/VISUAL_TARGET.md`, ADR 0004, this plan revision                                   |
+| Free-and-open sourcing, region, brand, audio, photo mode     | Resolved 2026-10-14: `docs/ASSET_SOURCES.md`, `CREDITS.md`, ADR 0005, region brief (§6/§9 references)                                         |
+| Phase 3 — renderer, lighting, post, asset/material pipeline  | Code complete; named-hardware frame-budget validation remains open                                                                            |
+| Phase 4 — terrain, roads, streaming                          | Built scope delivered 2026-10-15; bridges/tunnels deferred                                                                                    |
+| Phase 5 — vegetation, props, atmosphere                      | **Authorized 2026-10-18; FPS code check passed at `7f33b23`; device measurements and formal acceptance remain open**                          |
+| Phase 6 — renderer/material foundation and hero car fidelity | **Broadly authorized 2026-10-20 despite pending Phase 5 acceptance**                                                                          |
+| Phase 7 — weather, seasons, surface behaviour                | Gated — requires explicit owner instruction                                                                                                   |
+| Phase 8 — mobile, HUD, cameras, settings, polish             | Gated — requires explicit owner instruction                                                                                                   |
+| Phase 9 — urban systems / Aohara Metropolis                  | **Authorized 2026-10-19; facade detail checked/deployed; bounded infill/actor increment implemented, full check pending; visual review open** |
 
 See `docs/SESSION_HANDOFF.md` for the verified original commit, remote CI evidence, authentication limitations, and the next-session procedure.
 
@@ -888,7 +886,7 @@ The AAA-fidelity target makes asset sourcing a first-class engineering concern (
 | Large-distance precision errors                         | Chunk-relative global coordinates and synchronized floating-origin rebasing.                                                                                                  |
 | Asset payload and licensing                             | Small optimized GLBs/textures, lazy loading, verified redistribution rights, manifest/credits.                                                                                |
 | Memory leaks across long drives                         | Ownership tracking, disposal tests, repeated unload/reload and travel soaks.                                                                                                  |
-| WebGPU/custom shader incompatibility                    | WebGL2 baseline; optional, separately tested WGSL/WebGPU variants.                                                                                                            |
+| WebGPU/custom shader incompatibility                    | One TSL/WebGPURenderer path with automatic WebGL2 fallback; exercise both backends where hardware permits and keep compute-only effects disabled on WebGL2.                   |
 | Heavy weather/post effects obscure driving              | Quality budgets, reduced-motion settings, optional effects, readable HUD.                                                                                                     |
 | TSL/WebGPU migration invalidates Phase 1–2 shaders      | The Phase 3 migration ports or deletes the remaining GLSL-era code in one commit and adds a guard that fails on new `onBeforeCompile`/`ShaderMaterial` usage.                 |
 | WebGPU absent on a meaningful share of browsers         | One render layer with the WebGL2 backend; both backends are exercised in the same test runs; the tier matrix states what each backend loses.                                  |
@@ -973,4 +971,4 @@ References guide implementation; pinned package APIs must still be checked at th
 
 ---
 
-**Next permitted development action:** arrange owner-device visual review of gameplay ground colour (not white/snowy), ground-cover density/pop-in, tree streaming and foliage readability; separately review the current building detail and Aohara lane readability. The previously reported `src/config/props.ts` failure was not reproduced: the current TypeScript check and 21 props-config tests pass, but the historical log is unavailable so its original cause is unknown. The 2026-10-20 increment passes local automated checks but is not visual/device acceptance. Continue only within the independently authorized Phase 5 remainder and Phase 9 Aohara scope; Phase 6 remains gated by Phase 5 acceptance and Phases 7–8 remain gated. The latest Aohara increment adds 240 graph-aligned streetlamps, varied low-rise/venue architecture, unbadged banners and billboards, plus nearest-focus architectural light pools within explicit tier budgets; the wet-look clearcoat and local Gaussian optics remain city-only. The follow-up geometry audit exposes a cloned static-footprint snapshot for tests, checks all 55 Aohara building footprints pairwise with a 0.75 m expansion, and tests more than 1,000 driver-sized probes along sampled urban road and sidewalk positions. It found and corrected central high-rise sidewalk encroachment and adjacent footprint overlap. These are deterministic geometry/collision checks only, not visual acceptance, manual driveability, or device-performance evidence. The latest Phase 5 increment adds bounded TSL leaf sway to authored/scanned vegetation (Tier C off, B 0.035 m, A 0.065 m); its visible effect and device cost remain unverified. The default Central Avenue start, pinned `?spawn=<id>` choices, explicit `?spawn=random` and rural Hinode are unchanged. Arrange owner review of `?scene=city&time=23.5` and a manual night drive from `?spawn=aohara-city&time=23.5`. Phase 5 visual acceptance remains open; Phase 6 remains sequenced after that acceptance; Phases 7–8 remain gated. AI pedestrians/vehicles, further city expansion and grade-separated/highway links remain future work.
+**Next permitted development action:** complete and validate the authorized Phase 6 renderer/material increment using the GitHub-first workflow. The current code includes WebGPU auto-fallback, AgX, HDRI background comparison, MRT/SSAO, scanned PBR maps with TSL macro variation, metric units, node-based placeholder-car materials and WebGPU-compute vehicle particles disabled on WebGL2. Automated validation remains pending until after the initial push; visual acceptance and device performance are separate. Phase 5 acceptance remains open despite broad Phase 6 authorization; no owner-device visual or FPS evidence is recorded. Preserve the default Central Avenue start, pinned `?spawn=<id>`, `?spawn=random`, rural Hinode, no global bloom, no fog, and the Aohara static-only wet-look. Phase 7 weather/seasons and Phase 8 polish remain gated.

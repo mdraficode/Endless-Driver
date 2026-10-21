@@ -108,11 +108,11 @@ describe('applying a tier', () => {
     expect(a.shadows.mapSize).toBeGreaterThan(b.shadows.mapSize);
     expect(c.shadows.csm.maxFar).toBeLessThan(a.shadows.csm.maxFar);
 
-    // Backend: no tier may restate it — the verified WebGL2 default comes from
-    // the base config and survives every tier (round 9).
-    expect(c.renderer.backendPreference).toBe('webgl');
-    expect(b.renderer.backendPreference).toBe('webgl');
-    expect(a.renderer.backendPreference).toBe('webgl');
+    // Backend: no tier may restate it — auto WebGPU with the built-in WebGL2 fallback
+    // comes from the base config and survives every tier.
+    expect(c.renderer.backendPreference).toBe('auto');
+    expect(b.renderer.backendPreference).toBe('auto');
+    expect(a.renderer.backendPreference).toBe('auto');
     // Anti-aliasing: no MSAA on any tier. Tier C resolves with FXAA and the desktop tiers resolve
     // temporally — and temporal accumulation requires MSAA off, so `antialias` is false at both ends while
     // the *strategy* differs. The mode is the thing that scales, not the sample count.
@@ -203,7 +203,7 @@ describe('forced-backend debug switch', () => {
     expect(autoForced).not.toBe(base);
     expect(autoForced.renderer.backendPreference).toBe('auto');
     expect(autoForced.shadows).toEqual(base.shadows);
-    expect(base.renderer.backendPreference).toBe('webgl');
+    expect(base.renderer.backendPreference).toBe('auto');
   });
 
   describe('gameplay clarity: no bloom veil at any tier', () => {

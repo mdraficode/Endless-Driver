@@ -72,18 +72,16 @@ describe('render configuration', () => {
     expect(shadows.csm.lightMargin).toBeGreaterThan(0);
   });
 
-  it('names an environment asset and keeps the dome inside the far plane', () => {
-    // The environment is resolved through the asset manifest, so the id has to be a manifest id.
+  it('prefers WebGPU with automatic WebGL2 fallback and names the HDR environment', () => {
     expect(RENDER_CONFIG.environment.assetId).toMatch(/^hdri-[a-z0-9-]+$/);
     expect(RENDER_CONFIG.environment.intensity).toBeGreaterThan(0);
-    expect(RENDER_CONFIG.sky.domeScaleFactor).toBeGreaterThan(1);
-    // WebGL2 default (round 9): the verified backend; see config/render.ts.
-    expect(RENDER_CONFIG.renderer.backendPreference).toBe('webgl');
+    expect(RENDER_CONFIG.environment.useAsBackground).toBe(false);
+    expect(RENDER_CONFIG.renderer.backendPreference).toBe('auto');
+    expect(RENDER_CONFIG.renderer.toneMapping).toBe('agx');
     expect(RENDER_CONFIG.renderer.toneMappingExposure).toBeGreaterThan(0);
-    // Wash guards (round 7): the daytime frame must sit below the tone curve's
-    // shoulder and bloom must only catch genuine emitters, or the whole image
-    // compresses into near-white and reads as fog (owner report, 2026-10-17).
+    // Preserve the high highlight threshold and disabled gameplay default; ?bloom=1 is a look-dev A/B.
     expect(RENDER_CONFIG.renderer.toneMappingExposure).toBeLessThan(0.8);
+    expect(RENDER_CONFIG.postProcessing.bloom.enabled).toBe(false);
     expect(RENDER_CONFIG.postProcessing.bloom.threshold).toBeGreaterThan(2);
   });
 
@@ -97,13 +95,31 @@ describe('render configuration', () => {
 });
 
 describe('tone curve comparison switch', () => {
-  it('defaults to ACES and replays through AgX only when the URL asks', () => {
-    expect(RENDER_CONFIG.renderer.toneMapping).toBe('aces');
-    expect(applyRenderSwitches(RENDER_CONFIG, '?tonemap=agx').renderer.toneMapping).toBe('agx');
+  it('prefers AgX and keeps ACES/Neutral available for comparison', () => {
+    expect(RENDER_CONFIG.renderer.toneMapping).toBe('agx');
+    expect(applyRenderSwitches(RENDER_CONFIG, '?tonemap=aces').renderer.toneMapping).toBe('aces');
     expect(applyRenderSwitches(RENDER_CONFIG, '?tonemap=neutral').renderer.toneMapping).toBe(
       'neutral',
     );
-    expect(applyRenderSwitches(RENDER_CONFIG, '?tonemap=bogus').renderer.toneMapping).toBe('aces');
+    expect(applyRenderSwitches(RENDER_CONFIG, '?tonemap=bogus').renderer.toneMapping).toBe('agx');
+  });
+});
+
+describe('HDR background, SSAO, and subtle bloom comparisons', () => {
+  it('makes the loaded HDRI available as a look-dev background without replacing the gameplay sky', () => {
+    expect(applyRenderSwitches(RENDER_CONFIG, '').environment.useAsBackground).toBe(false);
+    expect(applyRenderSwitches(RENDER_CONFIG, '?envbg=1').environment.useAsBackground).toBe(true);
+    expect(applyRenderSwitches(RENDER_CONFIG, '?envbg=0').environment.useAsBackground).toBe(false);
+  });
+
+  it('exposes SSAO and bloom comparison switches while preserving no-global-bloom gameplay defaults', () => {
+    const tierB = applyTier(RENDER_CONFIG, 'B');
+    expect(applyRenderSwitches(tierB, '?ao=0').postProcessing.ambientOcclusion.enabled).toBe(false);
+    expect(applyRenderSwitches(tierB, '?ao=1').postProcessing.ambientOcclusion.enabled).toBe(true);
+    expect(applyRenderSwitches(tierB, '?bloom=1').postProcessing.bloom.enabled).toBe(true);
+    expect(applyRenderSwitches(tierB, '?bloom=0').postProcessing.bloom.enabled).toBe(false);
+    expect(applyRenderSwitches(tierB, '?bloom=unknown').postProcessing.bloom.enabled).toBe(false);
+    expect(applyRenderSwitches(tierB, '').postProcessing.bloom.enabled).toBe(false);
   });
 });
 

@@ -1,6 +1,6 @@
 # Visual target: the look we are building toward, and how we will know we got there
 
-**Status:** specification, updated 2026-10-19 · **rural region and sourcing decisions resolved 2026-10-14; additional fictional megacity district authorized 2026-10-19**  
+**Status:** specification, updated 2026-10-21 · **rural region and sourcing decisions resolved 2026-10-14; additional fictional megacity district authorized 2026-10-19; broad Phase 6 work authorized 2026-10-20 while Phase 5 acceptance remains open**  
 **Companion documents:** [`docs/RESEARCH_AAA_FIDELITY.md`](RESEARCH_AAA_FIDELITY.md) (evidence and feasibility),
 [`docs/ASSET_SOURCES.md`](ASSET_SOURCES.md) (the verified free-and-open asset register backing every claim here),
 [`PROJECT_PLAN.md`](../PROJECT_PLAN.md) §6–§11 (the phased plan),
@@ -21,8 +21,7 @@ Everything visual in this project must serve at least one of these. If a feature
    light reads as a toy.
 2. **Material truth.** Every surface is physically-based: measured albedo ranges, correct roughness/metalness,
    packed ORM maps, detail layers that survive close inspection, and automotive paint with clearcoat and flake.
-3. **Depth and atmosphere.** Aerial perspective, distance fog tied to the sky, god rays at low sun, dust/mist,
-   and horizon-scale composition. Distance should feel _deep_, not clipped.
+3. **Depth without a veil.** Layered terrain, scale cues, shadows and horizon composition should make distance feel deep while preserving clear sightlines. Fog, mist and global atmospheric veils stay disabled per owner direction; low-sun shafts remain tier-gated.
 4. **Density where you look.** Detail is budgeted by distance: high-frequency near-field detail (POM, splat
    layers, grass, gravel, cracks, kerbs), impostors and simplified LODs far away. Never uniform detail.
 5. **The world changes.** Time of day, weather, and season visibly transform the same road — sky, light colour,
@@ -44,12 +43,12 @@ owns it. "Tier" refers to §3.
 | Exposure control that survives dawn/dusk/night transitions                                           | No clipping of the sky or crushed shadows across a 24 h sweep at fixed camera; histogram spread stays inside bounds            | 3     |
 | Urban night sources: soft Gaussian halation plus subtle diffraction/starbursts, gated by darkness    | At night each flare remains confined to its lamp/signal; daylight gates it off; road markings stay legible with no global veil | 9     |
 | Cascaded shadows: sharp and stable near camera, extended range at distance                           | Shadow map resolution ≥ 1024 per near cascade, ≤ 1 px shimmer when the camera moves 1 m laterally, no visible cascade seams    | 3     |
-| Aerial perspective + distance fog consistent with sky colour                                         | Distant hills desaturate toward sky colour; toggling aerial perspective off is immediately obvious                             | 3, 5  |
+| Clear distance readability with fog and haze disabled                                                | Distant hills remain identifiable and do not collapse into a grey/white veil across daylight and night bookmark captures       | 3, 5  |
 | God rays / light shafts at low sun on the high tier                                                  | Visible under tree canopies and through gaps at sun elevation < 15°, no banding, disabled below the high tier                  | 3, 7  |
 
 ### 2.2 Terrain and roads
 
-**Owner correction (2026-10-18):** gameplay terrain must not render white/snow ground. The active splat is grass, soil, and rock only; snow is not loaded or weighted in the current gameplay material. The owner-reported white ground remains unresolved until a stable, readable owner-device capture confirms the scene. Seasonal snow belongs to the gated Phase 7 scope and must not reappear in the default gameplay world.
+**Owner correction (2026-10-18; latest report 2026-10-20):** gameplay terrain must not render white/snow ground. The active splat is grass, soil, and rock only; snow is not loaded or weighted in the current gameplay material. The owner now reports earlier non-FPS issues resolved, but no new stable, readable owner-device capture or formal Phase 5 acceptance is recorded. Seasonal snow belongs to the gated Phase 7 scope and must not reappear in the default gameplay world.
 
 | Target                                                                                                          | Measurable check                                                                                                                         | Phase |
 | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----- |
@@ -70,7 +69,7 @@ owns it. "Tier" refers to §3.
 | Contact/screen-space shadows beneath small props and foliage                          | Rocks and grass clumps are visually anchored (no floating), shadow contact density scales with tier                         | 3, 5  |
 | Props: rocks, barriers, signs, poles, fences with correct scale and material response | Scale check against the car (1.8 m tall reference); no intersected/oversized props in the drive route                       | 5     |
 
-**Implementation note (2026-10-20):** the initial ground-cover batch has fixed instance-pool caps of 16k / 42k / 100k for C/B/A and is reported separately from tree/prop instances. The cap is not proof that a given streaming window reaches 100k, that the cover is continuous, or that it meets frame budgets; actual counts, LOD/pop-in, fixed-bookmark appearance, and owner-device performance remain to be validated. Its TSL wind/backlight uses the existing daylight and tier pipeline. New building surfaces use the current HDRI image-based lighting and ACES tone mapping with TSL PBR variation; this does not add SSR or hardware ray tracing. Phase 5 visual acceptance remains open.
+**Implementation note (2026-10-20):** the initial ground-cover batch has fixed instance-pool caps of 16k / 42k / 100k for C/B/A and is reported separately from tree/prop instances. The cap is not proof that a given streaming window reaches 100k, that the cover is continuous, or that it meets frame budgets; actual counts, LOD/pop-in, fixed-bookmark appearance, and owner-device performance remain to be validated. Its TSL wind/backlight uses the existing daylight and tier pipeline. New building surfaces use the current HDRI image-based lighting and AgX tone mapping by default with TSL PBR variation; this does not add SSR or hardware ray tracing. Phase 5 visual acceptance remains open.
 
 ### 2.4 The car (Phase 6)
 
@@ -96,20 +95,20 @@ does not start the hero-car, weather, or broader Phase 8 work.
 | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ----- |
 | Rain: falling particles, wet road roughness + puddles, spray, wipers, reduced grip                      | Road reflections appear in puddles, spray trails the car, grip reduces measurably in the physics telemetry         | 7     |
 | Snow: accumulation masks on surfaces, tracks/churn, reduced grip, snow-dust particles                   | Snow accumulates on terrain props and the car; the wear layer follows the driven path                              | 7     |
-| Autumn/spring: foliage swaps, leaf drift, mud; summer: dry dust and heat haze                           | Each season at a fixed camera produces a distinct, recognisable palette and asset set                              | 7     |
+| Autumn/spring: foliage swaps, leaf drift, mud; summer: dry dust only, with heat haze disabled           | Each season at a fixed camera produces a distinct, recognisable palette and asset set                              | 7     |
 | Season changes are physical, not only cosmetic                                                          | The same corner taken at the same speed shows different slip angles between summer and winter (recorded telemetry) | 7     |
 | Day/night lighting: headlights, taillights, brake lights, street/implicit lights, darker night exposure | Night drive reads as night while the road stays navigable; lights bloom without washing out the frame              | 3, 7  |
 
 ### 2.6 Post-processing and image quality (Phase 3, tuned per tier)
 
-| Target                                                                                                                                 | Measurable check                                                                                                                                  | Phase |
-| -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
-| Tone mapping + colour grading pipeline (ACES/AgX + LUT) applied exactly once                                                           | No double tone mapping (grey/washed look); grading LUT visible in the look-dev scene                                                              | 3     |
-| Bloom, GTAO/SSAO, SSR, DOF (photography), speed-gated motion blur (camera), grain, chromatic aberration, vignette as one ordered chain | Each effect individually toggleable with a visible-on/off reference; motion blur stays exactly zero through 120 km/h and ramps by 195 km/h on B/A | 3     |
-| Temporal AA / upscaling with dynamic resolution                                                                                        | Edges resolve cleanly at 0.7× scale; no persistent ghosting on fast camera pans                                                                   | 3     |
-| Contact shadows grounding props against the sun                                                                                        | Contact darkening at surface junctions on the sun side; median frame pixel untouched                                                              | 3     |
-| Bounced diffuse light (SSGI, high tier)                                                                                                | Shadowed sides lift with neighbour colour; replaces (never stacks on) GTAO                                                                        | 3     |
-| No artefact regressions on the WebGL2 fallback path                                                                                    | Identical scene validated on `?webgl` with the documented per-backend differences                                                                 | 3     |
+| Target                                                                                                                                                     | Measurable check                                                                                                                                  | Phase |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| Tone mapping + colour grading pipeline (ACES/AgX + LUT) applied exactly once                                                                               | No double tone mapping (grey/washed look); grading LUT visible in the look-dev scene                                                              | 3     |
+| SSAO/SSGI, restrained optional bloom, SSR, DOF (photography), speed-gated motion blur (camera), grain, chromatic aberration, vignette as one ordered chain | Each effect individually toggleable with a visible-on/off reference; motion blur stays exactly zero through 120 km/h and ramps by 195 km/h on B/A | 3     |
+| Temporal AA / upscaling with dynamic resolution                                                                                                            | Edges resolve cleanly at 0.7× scale; no persistent ghosting on fast camera pans                                                                   | 3     |
+| Contact shadows grounding props against the sun                                                                                                            | Contact darkening at surface junctions on the sun side; median frame pixel untouched                                                              | 3     |
+| Bounced diffuse light (SSGI, high tier)                                                                                                                    | Shadowed sides lift with neighbour colour; replaces (never stacks on) SSAO                                                                        | 3     |
+| No artefact regressions on the WebGL2 fallback path                                                                                                        | Identical scene validated on `?webgl` with the documented per-backend differences                                                                 | 3     |
 
 ---
 
@@ -120,20 +119,20 @@ recorded in every performance claim.
 
 | System                                         | Tier C: mobile/low                                     | Tier B: desktop balanced                                        | Tier A: desktop high                                            |
 | ---------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------- | --------------------------------------------------------------- |
-| Renderer path                                  | WebGL2 backend                                         | WebGPU (WebGL2 fallback)                                        | WebGPU                                                          |
+| Renderer path                                  | WebGPU preferred; automatic WebGL2 fallback            | WebGPU preferred; automatic WebGL2 fallback                     | WebGPU                                                          |
 | Resolution                                     | DPR ≤ 1.0, FXAA scene scale 0.72–1.0 (spatial upscale) | DPR ≤ 1.5, TAAU scene scale 0.80–1.0                            | DPR ≤ 2.0 with resolution cap, TAAU scale 0.75–1.0              |
 | Anti-aliasing                                  | FXAA (SMAA by switch); no temporal reconstruction      | TAAU + dynamic resolution                                       | TAAU + dynamic resolution, higher scale floor                   |
 | Shadows                                        | 1–2 cascades, 1024                                     | 3 cascades, 2048                                                | 4 cascades, 2048–4096                                           |
-| Ambient occlusion                              | Off or baked                                           | GTAO (half res)                                                 | GTAO full res                                                   |
+| Ambient occlusion                              | Off or baked                                           | SSAO (half res)                                                 | SSGI composite (replaces SSAO)                                  |
 | Reflections                                    | Environment IBL + Aohara local clearcoat               | SSR (half res) + probes (pending)                               | SSR + probes (pending); Aohara wet-look is local PBR            |
 | Terrain layers                                 | 2                                                      | 3                                                               | 4 + POM                                                         |
 | Vegetation                                     | Impostors, ≤ 20k; TSL sway off                         | LOD1–2, ≤ 80k; TSL sway ≤ 0.035 m                               | Full LOD0 near, ≤ 200k; TSL sway ≤ 0.065 m                      |
 | Runtime foliage chunks generated per frame     | 1                                                      | 2                                                               | 3                                                               |
-| Clouds/atmosphere                              | HDRI sky + fog                                         | Sky + layered clouds + fog                                      | Sky + volumetric cloud/light shafts where enabled               |
+| Clouds/atmosphere                              | HDRI IBL + clear procedural sky; no fog                | Sky + clouds; no fog                                            | Sky + clouds/light shafts where enabled; no fog                 |
 | Urban night lights                             | Faint local halo + 2-axis starburst, few active lights | Soft halo + restrained 4-axis starburst, capped lights/windows  | Full local halo + subtle 4-axis starburst, source-isolated      |
 | Aohara facade panes/frames + structure details | 2,400 / 512                                            | 4,800 / 1,024                                                   | 7,200 / 1,600                                                   |
 | Vehicle particles / shutter                    | ≤ 32 smoke, 6 sparks, 4 airflow marks; no blur         | ≤ 64 smoke, 10 sparks, 10 airflow marks; 0–0.28 high-speed blur | ≤ 88 smoke, 14 sparks, 16 airflow marks; 0–0.36 high-speed blur |
-| Post stack                                     | Tone map + grade; no global bloom                      | + GTAO + DOF + TAAU; no global bloom                            | + SSR (pending) + grain; no global bloom                        |
+| Post stack                                     | Tone map + grade; SSAO off; no global bloom            | + SSAO + DOF + TAAU; no global bloom                            | + SSGI (replaces SSAO) + grain; no global bloom                 |
 | Target frame                                   | 30–60 FPS                                              | 60 FPS                                                          | 60+ FPS where hardware permits                                  |
 
 Budgets from `PROJECT_PLAN.md` §8 remain the reference; every tier gate is validated on **named hardware** with
@@ -151,9 +150,9 @@ the reason for it are shown in the HUD, so every quality report can name the con
 
 Two documented deviations from the table above:
 
-- **Tier C's renderer path.** The table says "WebGL2 backend"; the implementation leaves the backend on `auto`,
-  because pinning the older API on a device that supports WebGPU would surrender performance for no quality gain.
-  The WebGL2 fallback still engages wherever WebGPU is unavailable, and `?backend=webgl` forces it for comparison.
+- **Tier C's renderer path.** All tiers leave the backend on `auto`, preferring WebGPU when available and using
+  automatic WebGL2 fallback otherwise; pinning the older API on a device that supports WebGPU would surrender
+  capability for no quality gain. `?backend=webgl` forces the fallback for comparison.
 - **Anti-aliasing and scaling.** Implemented: MSAA, FXAA, SMAA, and TAAU with dynamic resolution. Tiers B/A use
   TAAU reconstruction; Tier C keeps temporal history and motion vectors off, but permits bounded scene-pass scaling
   through its FXAA/SMAA path (floor 0.72) to trade detail for fill-rate. Spatial AA linearly upscales and cannot
@@ -166,8 +165,8 @@ order, and every effect is individually toggleable through configuration:
 
 | Stage                   | Effects                                                                                                      | State   |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------ | ------- |
-| Scene (linear HDR)      | ambient occlusion (GTAO), applied via the scene pass                                                         | Shipped |
-| Scene-stage HDR         | SSGI composite (tier A; replaces GTAO), contact shadows (tiers B/A)                                          | Shipped |
+| Scene (linear HDR)      | ambient occlusion (SSAO), applied via the scene pass                                                         | Shipped |
+| Scene-stage HDR         | SSGI composite (tier A; replaces SSAO), contact shadows (tiers B/A)                                          | Shipped |
 | Temporal resolve        | TAAU + dynamic resolution (wraps the scene pass)                                                             | Shipped |
 | Linear HDR              | motion blur (shutter), god rays (tier A), time-of-day grade, bloom, depth of field                           | Shipped |
 | Pre-sRGB                | SMAA (fallback when the temporal path is off)                                                                | Shipped |
@@ -175,6 +174,8 @@ order, and every effect is individually toggleable through configuration:
 | Display-referred        | look LUT, chromatic aberration, sharpening (RCAS), grain, vignette                                           | Shipped |
 | Post-sRGB               | FXAA                                                                                                         | Shipped |
 | Pending                 | screen-space reflections (SSR) — tier-declared; its first real surface is the Phase 6 car / Phase 7 wet road | Not yet |
+
+**Renderer/material upgrade (2026-10-21):** WebGPURenderer prefers WebGPU with automatic WebGL2 fallback, AgX is the default tone curve, and `?envbg=1` displays the loaded Radiance HDRI instead of the procedural sky. The TSL scene pass keeps MRT normals/depth for SSAO and supports SMAA/TAAU; `?bloom=1` exposes only a restrained high-threshold comparison. Scanned opaque surfaces bind sRGB albedo, tangent-space normals, and linear AO/roughness/metalness maps plus large-surface macro variation. Placeholder vehicle materials are node-based; glass/emissives have no fabricated maps. `1 Three.js unit = 1 m` is enforced at scene boundaries. Fixed-capacity vehicle effects use TSL compute on WebGPU and are disabled on WebGL2. This is implementation status, not image-quality acceptance or device performance evidence; checks and visual review remain separate.
 
 Global bloom is currently disabled in gameplay at all tiers. The earlier global bloom A/B washed out the frame
 and made the horizon read like fog; Phase 9 therefore adds only source-local Gaussian halos and subtle diffraction
@@ -187,7 +188,7 @@ object for nothing.
 The time-of-day grade is in the linear stage on purpose. It is a per-frame RGB multiplier resolved from the clock
 (`src/environment/EnvironmentClock.ts`) and needed because a _captured_ HDRI backdrop can only be dimmed — it cannot
 redden as the sun drops, so dawn and dusk would otherwise read as a dimmed noon under a bright sky. Grading before
-the tone curve warms the sky, the fog, and the shadowed sides of the world together, and cannot clip highlights
+the tone curve warms the sky and the shadowed sides of the world together, and cannot clip highlights
 because the tone curve runs afterwards. A LUT, when it lands, belongs in the same place.
 
 Two ordering constraints are not preferences and must survive future edits: **SMAA requires pre-sRGB input while
@@ -257,14 +258,14 @@ this increment. This bounded prototype is not represented as a completed megacit
 
 | District                            | Road character                                                                          | What it is for                                                                             | Primary seasonal payoff                             |
 | ----------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------- |
-| **Kaiun Coast** (海運海岸)          | Fast coastal expressway, sweepers, a long causeway                                      | Speed, sea horizon, wide skies, sunset runs                                                | Summer haze, winter storm swell                     |
-| **Hinode Harbour**                  | Harbour loop, container port, fish market lanes                                         | Water reflections, industrial light at night                                               | Rain-slick neon, fog                                |
+| **Kaiun Coast** (海運海岸)          | Fast coastal expressway, sweepers, a long causeway                                      | Speed, sea horizon, wide skies, sunset runs                                                | Summer sea-glare, winter storm swell                |
+| **Hinode Harbour**                  | Harbour loop, container port, fish market lanes                                         | Water reflections, industrial light at night                                               | Rain-slick neon, clear night silhouettes            |
 | **Yūhi Town** (夕陽町)              | Tight grid of narrow lanes, crossings, alleys                                           | The everyday Japan look: vending machines, wires, konbini, izakaya                         | Rain, snow, matsuri lanterns                        |
 | **Aohara Metropolis**               | Dense multi-lane avenues, signalized intersections, elevated and underground connectors | Added high-rise skyline, urban traffic and pedestrian systems; never replaces rural Hinode | Night windows, local street-light glow, reflections |
 | **Take-no-Michi** (竹の道)          | Narrow lane through a bamboo grove toward a shrine                                      | Landmark moment: torii, stone lanterns, moss, stepping-stone shadows                       | Green all year; snow on bamboo in winter            |
 | **Chiyo River & Sakura Avenue**     | River road lined with sakura, two bridges                                               | The postcard: blossom tunnels, petals on asphalt                                           | Spring, overwhelmingly                              |
 | **Momiji Gorge** (紅葉峡)           | Winding gorge road, river, waterfalls, short tunnels                                    | Technical corners, tunnels, canyon light                                                   | Autumn maple colour, leaf litter, wet road          |
-| **Kiri Pass** (霧峠)                | Classic touge: hairpins, guardrails, convex mirrors, morning mist                       | The drift road; canyon walls of sugi cedar                                                 | Mud, falling leaves, first snow                     |
+| **Kiri Pass** (霧峠)                | Classic touge: hairpins, guardrails, convex mirrors, clear sunrise                      | The drift road; canyon walls of sugi cedar                                                 | Mud, falling leaves, first snow                     |
 | **Shirasagi Terraces** (白鷺の棚田) | Single-lane farm roads between paddies, raised beds                                     | Open sky, mirror-flat water, rice green/gold                                               | Flooded-spring mirror, harvest gold, snow fields    |
 | **Hokuto Highlands** (北斗高原)     | Open plateau sweepers, susuki grass, volcanic ash                                       | Big sky, wind, dirt pull-offs, rally-ish routes                                            | Silver grass, frost, deep snow                      |
 | **Ginzan Onsen** (銀山温泉)         | Snow-country village lanes, steep approach road                                         | Winter hub: lanterns, steam, wooden buildings                                              | Heavy snow, ice, night glow                         |
@@ -290,7 +291,7 @@ bells. Each one is a budgeted prop (≤ 5k tris) that pays for itself at every c
 
 Sky-driven lighting (never a hand-tuned "sunny" look baked into materials); saturated but not cartoonish foliage;
 asphalt that is grey-brown rather than blue-black, with visible wet film in rain; restrained grading at midday and
-warm, low-contrast lift at golden hour; mist and haze treated as content, not as a bug. Any look that requires
+warm, low-contrast lift at golden hour; no artificial fog, mist, haze or global atmospheric veil. Any look that requires
 standing still to look good is rejected.
 
 ---

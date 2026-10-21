@@ -1,9 +1,9 @@
 # Session Handoff — Endless Driver
 
-**Updated:** 2026-10-20  
-**Current stage:** Phase 4 built scope delivered; Phase 5 implementation continues with FPS stability and formal acceptance open; Phase 6 remains gated on Phase 5 acceptance; Phase 9 Urban Systems is separately authorized in parallel; Phase 3 named-hardware frame-budget validation remains open  
-**Authorized development phases:** Phases 1–6 remain sequenced as recorded, plus Phase 9 in parallel; Phases 7–8 remain gated  
-**Next action:** Implement and validate the owner-authorized bounded mobile/desktop FPS response and denser Aohara street. The owner reports that earlier non-FPS issues are resolved, but FPS remains unstable; no device-specific target or measurement was supplied. Do not claim stable device FPS without named-device evidence. Phase 5 acceptance remains open, Phase 6 must not start, and the separately authorized Phase 9 work may continue within scope.
+**Updated:** 2026-10-21  
+**Current stage:** Phase 5 acceptance remains open; broad Phase 6 renderer/material implementation is underway in a fresh `/tmp/endless-driver` clone at `61bca6bb1763d5183797abf5a6c2630a1a391522`. The owner most recently reports FPS remains unstable but earlier non-FPS issues resolved; no named-device target or measurements exist. Phase 9 remains separately authorized; Phase 3 named-hardware validation is open.  
+**Authorized development phases:** Phase 6 is broadly authorized despite the open Phase 5 acceptance gate; this is not Phase 5 acceptance and does not open Phases 7–8. Phase 9 remains separately authorized.  
+**Next action:** Documentation updates for the current Phase 6 authorization/renderer foundation are in place. Finish reviewing the full uncommitted source/documentation diff; `npm run format` and `git diff --check` have passed. Commit and push the milestone before running project checks, then verify remote SHA/workflows. Do not claim project checks, CI, visual acceptance, or device FPS that have not run.
 
 > **Re-plan (2026-10-14, decisions resolved):** the owner rejected the Phase 2 presentation and set a
 > Forza-Horizon-class visual target. Research and specification are complete and committed alongside
@@ -31,8 +31,14 @@
 | Implement Phase 2 (vehicle physics, keyboard smoothing, dynamic chase camera)                        | Done — see sections 3–5                                                                                                    |
 | Reach “Forza Horizon level” visuals (realistic car, environment aesthetics, seasons, roads, terrain) | Re-plan complete 2026-10-14; implementation gated — see section 9                                                          |
 | Use only free/open premium assets, no payments; region = rural Japan                                 | Resolved 2026-10-14 — `docs/ASSET_SOURCES.md` (API-verified sources), ADR 0005, region brief in `docs/VISUAL_TARGET.md` §5 |
-| Work in phase order; Phases 5–6 authorized 2026-10-18, Phases 7–8 gated                              | Phase 5 in progress; complete it before starting Phase 6                                                                   |
+| Work in phase order; Phases 5–6 authorized 2026-10-18, Phases 7–8 gated                              | Phase 6 broadly authorized 2026-10-20 despite pending Phase 5 acceptance; Phases 7–8 remain gated                          |
 | Add a fictional Japanese megacity district with night lighting first; keep rural Hinode intact       | Phase 9 separately authorized 2026-10-19; Aohara grid/night block wired into the driving world; local checks passed        |
+
+## Current continuation state (2026-10-21)
+
+The fresh clone is at `/tmp/endless-driver`; its starting `main` SHA is `61bca6bb1763d5183797abf5a6c2630a1a391522`. `npm ci` completed successfully. Phase 6 code and documentation edits are present but uncommitted. `npm run format` and `git diff --check` passed; no project checks have run in this clone yet. Current work covers metric-unit boundaries, WebGPU-first/automatic-WebGL2 renderer selection, AgX, optional HDRI background, scanned-surface PBR/macro variation, SSAO configuration, and fixed-capacity WebGPU-compute vehicle effects (disabled on WebGL2). No global fog/mist/haze or gameplay-wide bloom is authorized. The hero vehicle model and the look-dev/device evidence remain outstanding.
+
+The owner-authorized Phase 6 scope is broad even though Phase 5 acceptance remains open. Do not infer acceptance or open Phases 7–8. The owner's latest report is that non-FPS issues are resolved and FPS remains unstable; prior tier-budgeted FPS work has already been pushed, but no named device, browser, tier, resolution, target or new performance measurements were provided.
 
 Phase 2 was authorized with these constraints, all honored: Rapier **or** Cannon-es allowed (Rapier
 chosen — sole physics authority, never two solvers); the slip-friction/drift behaviour is an explicit

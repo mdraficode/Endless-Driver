@@ -67,9 +67,12 @@ migrated.
 All later phases continue to treat **Rapier** as the simulation source of truth, and any
 renderer-side interpolation remains presentation-only.
 
-> **Addendum (round 9, 2026-10-17).** The shipped default backend is WebGL2
-> (`backendPreference: 'webgl'`): it is the only path this project's captures,
-> tests and CI verify. WebGPU remains implemented behind the same TSL node graph
-> and returns to default status once captures from real hardware prove it —
-> consistent with ADR 0001 ("WebGL2 is the baseline; WebGPU is optional after
-> compatibility and cost validation").
+> **Historical addendum (round 9, 2026-10-17; superseded 2026-10-20).** The
+> then-shipped default backend was WebGL2 (`backendPreference: 'webgl'`), pending
+> hardware validation. This records the earlier baseline; it is no longer the
+> renderer preference.
+>
+> **Owner authorization (2026-10-20).** The owner requested `WebGPURenderer` with
+> automatic WebGL2 fallback. The default preference is now `auto`; WebGPU runs
+> when available, and `?backend=webgl` forces WebGL2 for comparison. The broad
+> Phase 6 opening is independent of the still-open Phase 5 acceptance gate.
