@@ -10,7 +10,7 @@ import {
   Object3D,
 } from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
-import { uv, vec2, vertexColor } from 'three/tsl';
+import { uv, vertexColor } from 'three/tsl';
 
 import { configureTiledSurface, SurfaceTextureLibrary } from '../assets/SurfaceTextureLibrary';
 import { bindScannedPbrMaps } from './scanned-pbr';
