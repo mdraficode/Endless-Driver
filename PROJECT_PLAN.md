@@ -673,6 +673,10 @@ The owner reports Phase 5 passed but says world-detail depth/enrichment is still
 
 Preserve CC0-first sourcing and fictional unbadged identity. No fog, mist, haze, global atmospheric veil, rain, standing water, traction changes or global bloom; Phases 7–8 remain gated.
 
+**Progress (2026-10-21):** the code/config audit is complete at the contract level (not a device-performance or draw-call measurement). The natural-layer increment is pushed through `ec7e13a09373891a83882b503918cd42a2e7eec0`: deterministic district/surface-aware grass, fern, wildflower and static stone accents reuse the existing terrain sampler, preparation window and shared TSL material. The original total ground-cover pools remain C/B/A = 16k/42k/100k and are partitioned by style (C 11k/2k/1.5k/1.5k; B 29k/6k/4k/3k; A 70k/15k/8k/7k). Per-style counts/caps are exposed in diagnostics; no collision/grip, weather, particle, or new asset work is introduced. Deterministic style, geometry height, partition, and instanced-world integration tests were added. After push, the full local `npm run check` passed (58 files / 499 tests; 17 assets / 39,714,769 bytes; production build); remote `main` matched. A GitHub CI run for this SHA was not visible in the workflow-page check, and no runtime visual/device/performance acceptance is claimed.
+
+**Next:** add sparse Aohara streetscape/building-site detail with explicit lane, road, crossing, sidewalk, corner and spawn clearance; add deterministic placement tests; then integrate natural and urban totals into tier budgets and verify chunk edges, streaming, disposal and diagnostics. The source/config audit identified street-level urban furniture and per-style diagnostics as gaps; no numeric draw-call or device-cost claims are available.
+
 ### Phase 6 — The car: hero model, materials, and vehicle fidelity
 
 Combined with [`docs/REALISM_PLAN.md`](docs/REALISM_PLAN.md) §3 Ranks 7 and 8: reflection probes for car-body and
