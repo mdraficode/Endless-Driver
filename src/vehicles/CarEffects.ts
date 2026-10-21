@@ -15,7 +15,7 @@ import type { RendererBackendName } from '../config/render';
 import type { TierId } from '../config/tiers';
 import { rotateVec3ByQuat, vec3, type Vec3 } from '../shared/vector';
 import type { VehiclePose, VehicleTelemetry, WheelState } from './types';
-import { GpuParticlePool, type ParticleSpawn } from './GpuParticlePool';
+import { GpuParticlePool } from './GpuParticlePool';
 import { resolveAirflowIntensity, resolveTireSmokeStrength } from './vehicle-effects';
 
 /**

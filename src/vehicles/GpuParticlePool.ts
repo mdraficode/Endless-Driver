@@ -6,7 +6,6 @@ import {
   DoubleSide,
   DynamicDrawUsage,
   InstancedMesh,
-  NormalBlending,
   PlaneGeometry,
   Vector3,
 } from 'three';
