@@ -161,13 +161,13 @@ The asset question is the binding constraint on "realistic", so it is a planning
   **(b)** buy a royalty-free game-ready model and record its licence in the asset manifest; **(c)** ship a
   "generic coupe" built procedurally/by code to a high material standard as an interim hero, with correct
   proportions, panel gaps, glass, wheels, and paint.
-- **Resolved 2026-10-14 and clarified 2026-10-22 (owner): free/open only, no purchases.** The player car is an
-  in-house, unbadged fictional **Kaminari** GT roadster; Ferrari California is only a broad body-class reference,
-  not a source mesh or branding template. External models are eligible only when provenance, licence and suitability
-  are verifiable. The Unity Fan CC0 concept cars and the audited CC0 RGS_Dev FBX pack are not incorporated. The current
-  code-authored roadster passes a <20k-triangle/≤12-Mesh automated budget test at `cdcd8f1`. See the verified
-  sourcing decision and candidate audit in [`docs/ASSET_SOURCES.md`](ASSET_SOURCES.md) §3.5. The earlier (b)-then-(a)
-  recommendation is superseded.
+- **Resolved 2026-10-14; vehicle clarification 2026-10-22 (owner): free/open only, no purchases.** The owner now
+  wants the exact Ferrari California body with logos and number plate removed, but only if it meets the CC0-only
+  hero-content rule, its provenance/license is verifiable, and the separate rights to the underlying Ferrari design are documented. CC-BY/CC0 alone do not grant third-party
+  design/trademark rights. No reviewed candidate meets this condition, so the current in-house unbadged Kaminari GT
+  remains. It passes a <20k-triangle/≤12-Mesh automated budget test at `cdcd8f1`. The exact-model audit and sources
+  are in [`docs/ASSET_SOURCES.md`](ASSET_SOURCES.md) §3.5. The earlier generic-body-class-only direction and (b)-then-(a)
+  sourcing recommendation are superseded.
 
 **Pipeline for whatever we source** (all of this is engine-agnostic and self-owned):
 

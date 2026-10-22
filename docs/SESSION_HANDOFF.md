@@ -1,9 +1,9 @@
 # Session Handoff — Endless Driver
 
 **Updated:** 2026-10-22  
-**Current stage:** The owner reports Phase 5 passed; do not describe its acceptance as open. The requested world-detail sequence remains complete through `f98adfb`; the verified PBR base is `ceaa1846a61ebf66af9806c93c5556cb309425fe` (59 test files / 504 tests, 19 assets / 44,913,263 bytes, production build; Validate #170 and Pages Deploy #160 succeeded). The vehicle increment is pushed at `cdcd8f1d6952581c93744de4d073454059b094c5`; full `npm run check` passed (61 test files / 509 tests; 19 assets / 44,913,263 bytes; production build), and GitHub Validate #179 / Pages Deploy #169 passed for that SHA. The local and remote `main` matched at this SHA. The owner selected Ferrari California only as a broad body-class reference, approved external vehicle assets only if source/license are verifiable and suitable, and selected buses, rigid trucks, semi-trailer rigs, and farm tractors. The CC0 RGS_Dev pack was audited but its FBX-only stylized meshes are not included. No visual/device acceptance, manual-drive review or FPS claim is made.  
+**Current stage:** The owner reports Phase 5 passed; do not describe its acceptance as open. The requested world-detail sequence remains complete through `f98adfb`; the verified PBR base is `ceaa1846a61ebf66af9806c93c5556cb309425fe`. Vehicle/traffic code remains at `cdcd8f1d6952581c93744de4d073454059b094c5`; full `npm run check` passed there (61 test files / 509 tests, 19 assets / 44,913,263 bytes and production build), and Validate #179 / Pages Deploy #169 succeeded. The latest pre-asset-audit revision, `52643828aa522965aa8a66e159bc057b47d34f64`, also passed the full check; Validate #180 and Pages Deploy #170 succeeded. The owner now wants the exact Ferrari California body without logos or number plate, but only under the existing CC0-only hero-asset rule and with separate, verifiable Ferrari design permissions. The viewer and audited listings do not meet that bar; no model or vehicle code has changed, and the original unbadged Kaminari roadster remains. Buses, rigid trucks, semi-trailer rigs, and farm tractors remain the selected traffic classes. No visual/device acceptance, manual-drive review or FPS claim is made.  
 **Authorized development phases:** Phase 5 is owner-reported passed; world-detail enrichment is follow-up scope. Phase 6 is broadly authorized, Phase 9 remains separately authorized, and none of this opens Phases 7–8.  
-**Next action:** Automated code validation is complete at `cdcd8f1`; proceed with browser/runtime visual review and manual Aohara driving, then collect representative mobile/desktop frame-time evidence if the owner supplies target devices. No specific FPS target or named-device acceptance has been provided. Preserve tier budgets, no-fog/no-mist/no-haze, no global bloom, CC0-first sourcing, Aohara-only static wet-look, existing spawns, rural Hinode and relaxing balance. Do not claim visual or device-performance acceptance without evidence.
+**Next action:** Complete and push the documentation-only asset decision update, then run the full project check and verify the remote SHA/CI. Do not integrate an exact Ferrari model unless both CC0 model provenance/license and the separate design permissions are verified. Runtime visual review, manual Aohara driving, and named-device frame-time evidence remain outstanding; no named-device acceptance or stable-FPS claim is available. Preserve tier budgets, no-fog/no-mist/no-haze, no global bloom, CC0-first sourcing, Aohara-only static wet-look, existing spawns, rural Hinode and relaxing balance.
 
 > **Re-plan (2026-10-14, decisions resolved):** the owner rejected the Phase 2 presentation and set a
 > Forza-Horizon-class visual target. Research and specification are complete and committed alongside
@@ -38,7 +38,7 @@
 
 The vehicle implementation commit is `cdcd8f1d6952581c93744de4d073454059b094c5`; local and remote `main` matched at that code checkpoint. The full local `npm run check` passed at that commit (format, lint, GLSL guard, both TypeScript checks, 61 test files / 509 tests, 19 assets / 44,913,263 bytes, production build), as did GitHub Validate #179 and Pages Deploy #169. This status refresh changes documentation only; it does not alter that tested implementation. The production Pages URL responded. The public-reference analysis treats Slow Roads, the Three.js WebGPU materials gallery and +360º Car Visualizer as fidelity targets only and does not claim to know their undisclosed renderer internals.
 
-The automated-check-verified increment adds `CarVisual.ts` as an original unbadged Kaminari GT two-seat roadster, with a long-hood/open-cabin silhouette, authored metallic/clearcoat paint, map-free glazing/interior/rubber/metal, physics-driven wheel pivots, steering-wheel movement and local brake-lamp response. Ferrari California is only the broad body-class reference; no brand badge or reference mesh is copied. The same increment adds code-authored instanced passenger cars, city buses, rigid trucks, semi-trailer rigs and farm tractors to Aohara. The C/B/A traffic counts remain 6/12/18, pedestrians and city tiers stay unchanged, and longer vehicle lengths are accounted for in signal queues. These actors remain visual-only with no moving colliders. Full local checks and both GitHub workflows pass at `cdcd8f1`; no runtime screenshot or manual-drive review is documented.
+The automated-check-verified increment adds `CarVisual.ts` as an original unbadged Kaminari GT two-seat roadster, with a long-hood/open-cabin silhouette, authored metallic/clearcoat paint, map-free glazing/interior/rubber/metal, physics-driven wheel pivots, steering-wheel movement and local brake-lamp response. At that increment the owner used Ferrari California only as a broad body-class reference. The later 2026-10-22 clarification supersedes that: the owner wants the exact Ferrari California body without logos or number plate, but only with a verifiable CC0 hero-model source/license and separate Ferrari design permissions. The +360º visualizer provides no source/license, and the exact-model candidates audited so far do not qualify; no model or code change is authorized absent that evidence, so the current in-house car remains. See `docs/ASSET_SOURCES.md` §3.5. The same increment adds code-authored instanced passenger cars, city buses, rigid trucks, semi-trailer rigs and farm tractors to Aohara. The C/B/A traffic counts remain 6/12/18, pedestrians and city tiers stay unchanged, and longer vehicle lengths are accounted for in signal queues. These actors remain visual-only with no moving colliders. Full local checks and both GitHub workflows pass at `cdcd8f1`; no runtime screenshot or manual-drive review is documented.
 
 The CC0 RGS_Dev/OgA vehicle pack's included `License.txt` was read and explicitly says CC0/public-domain and commercial use. The ZIP contains FBX-only roadster/bus/truck/trailer files, no tractor, and a stylized low-poly visual style; it is not included because the runtime model pipeline is GLTF/GLB-based and no reproducible FBX conversion was introduced. The Innerscene CC0 GLB bus was not locally inspected and is not used. No third-party vehicle file, new dependency, manifest entry, or new credit is added.
 
@@ -273,8 +273,9 @@ Forza Horizon does for its settings.
 
 1. **There is no free, licence-clean, production-grade hero car adopted for this project.** The CC0 Sketchfab
    “Unity Fan” concept-car series (200k–760k tris, unbranded, author-declared public-domain dedication) was a candidate,
-   not an integrated stand-in. The 2026-10-22 owner clarification selected an original in-house Kaminari GT roadster,
-   with Ferrari California only as a broad body-class reference; no marketplace, brand marks or ripped assets.
+   not an integrated stand-in. The owner later clarified they want the exact Ferrari California body without logos or
+   number plate, but only if it meets the CC0-only hero-model rule and separate design rights are verifiable. No candidate
+   qualifies; the original in-house Kaminari GT remains in place. No marketplace purchase, ripped asset, or badge/logo.
 2. **Music is the weakest free category** — good CC0/CC-BY pools exist, but they are not an AAA licensed
    soundtrack. The plan commits to a curated, season-matched CC0/CC-BY playlist and states the limitation.
 
@@ -282,6 +283,24 @@ Forza Horizon does for its settings.
 not quality. If free content cannot reach a bar, we author it in-house or document the gap; we never request a
 purchase.
 
+## 68. Exact Ferrari California rights audit and conditional asset decision (2026-10-22)
+
+**Owner instruction:** The owner superseded the earlier broad-body-class reference with a request for the exact Ferrari
+California body, with logos and number plate removed. They chose free/open-only sourcing; under the existing asset
+policy, a hero vehicle must be CC0, and the underlying Ferrari design permissions must also be verifiable. A CC license
+alone does not grant third-party design/trademark rights.
+
+**Audit outcome:** The +360º visualizer exposes no source mesh, provenance, or reuse license. The reviewed Sketchfab
+models either identify Racing Master/CSR2 game-model origins, use CC-BY-NC-SA, or are AI-generated; a paid model is
+outside the no-purchase constraint. None establishes the separate Ferrari permissions. Details and references are in
+`docs/ASSET_SOURCES.md` §3.5.
+
+**Decision and scope:** No model qualifies. Do not extract or integrate the visualizer model or any reviewed candidate.
+The existing code-authored, unbadged Kaminari GT and traffic remain unchanged; this increment changes documentation
+only. Runtime visual/device acceptance and manual-driving evidence remain outstanding.
+
+**Validation:** The repository workflow requires pushing the documentation update before running the full project
+check. Record the pushed SHA and check/CI outcome here after that run.
 **Next action:** owner authorizes Phase 3 (renderer migration, lighting, post stack, asset/material pipeline);
 only then does implementation start.
 

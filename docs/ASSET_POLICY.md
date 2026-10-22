@@ -9,10 +9,12 @@ The project's initial `UNLICENSED` status does not replace or remove dependency 
 ## Standing rule (owner instruction, 2026-10-14)
 
 **Free and open only. No purchases, ever.** CC0 is the default; CC-BY is an attributed exception only where no CC0
-asset of comparable quality exists; everything paid, account-gated, NC/ND, marketplace-"freebie", AI-generated, or
-brand-trademarked is excluded. The verified source register, per-asset-class plan, and the honest ceiling of free
-sourcing are in [`docs/ASSET_SOURCES.md`](ASSET_SOURCES.md); the decision is ADR 0005. Nothing in this policy may
-be relaxed to obtain an asset — if free content cannot reach the bar, we author it ourselves or document the gap.
+asset of comparable quality exists; everything paid, account-gated, NC/ND, marketplace-"freebie", or AI-generated is
+excluded. Brand/trade-dress use requires separate, verifiable rights. The owner's latest exact-Ferrari-California
+request is conditional on a verifiable CC0 hero-model license/provenance (CC-BY is excluded for hero content under ADR 0005) and permission covering the underlying design; logos
+and the number plate must be absent. No candidate currently meets that bar, so the current unbadged in-house car stays.
+The verified source register and audit are in [`docs/ASSET_SOURCES.md`](ASSET_SOURCES.md); the decision is ADR 0005.
+If free content cannot reach the bar, author it in-house or document the gap; do not weaken the rule.
 
 ## Preferred sources (visual-fidelity re-plan, 2026-10-14)
 
@@ -25,11 +27,11 @@ The owner requires Forza-Horizon-class visuals, which makes sourcing a first-cla
   allowed only with a per-asset licence record, the terms that apply, and the download date. The
   era of the whole Megascans library being free for everyone ended 2024-12-31, and free-of-charge is
   not the same as licensed for redistribution.
-- **Cars:** never ripped game assets; never manufacturer names, logos, or trade dress. The current player visual
-  is a code-authored, unbadged GT roadster under the fictional "Kaminari" marque. The owner's Ferrari California
-  selection is a broad convertible/GT body-class reference only, not permission to reproduce a specific car. The
-  Unity Fan and RGS_Dev CC0 candidates are not runtime dependencies; see `docs/ASSET_SOURCES.md` §3.5. No purchases
-  are involved at any point.
+- **Cars:** never use a ripped/converted game mesh. The latest owner request is for the exact Ferrari California
+  body without logos or number plate, but only under the free/open-only policy and only if a CC0 hero-model source/license
+  and separate underlying-design permissions are verifiable. CC-BY/CC0 declarations alone do not establish third-party brand/design
+  rights. The audit found no qualifying source, so retain the current code-authored, unbadged Kaminari GT roadster.
+  Unity Fan and RGS_Dev remain unused candidates; see `docs/ASSET_SOURCES.md` §3.5. No purchase is authorized.
 - Audio, if it is ever added, follows the same rules and needs its own scope decision.
 
 ## Before adding an asset
