@@ -320,18 +320,16 @@ function creditsSection(assets) {
   const rows = assets
     .map((asset) => {
       const maps = asset.files.map((file) => `\`${file.path}\``).join(', ');
-      return `- **${asset.name}** — ${asset.source.creator} — [source](${asset.source.url}) — ${asset.source.licence}\n  - file: ${maps}`;
+      const licence = asset.source.licenceUrl
+        ? `[${asset.source.licence}](${asset.source.licenceUrl})`
+        : asset.source.licence;
+      const requiredAttribution = asset.source.licence?.startsWith('CC-BY')
+        ? `\n  - **Required attribution:** ${asset.source.attribution}`
+        : '';
+      return `- **${asset.name}** — ${asset.source.creator} — [source](${asset.source.url}) — ${licence}\n  - file: ${maps}${requiredAttribution}`;
     })
     .join('\n');
-  return `## Assets used
-
-All assets below are CC0 (public domain). Attribution is not required by the licence; the creators are
-listed because their work deserves the credit, not because the licence asks for it.
-
-${rows}
-
-\`retrieved\` and \`sha256\` for each file are recorded in \`public/assets/manifest.json\`.
-`;
+  return `## Assets used\n\nEach entry is listed under its own licence. CC0 assets require no attribution, but their creators and sources are recorded. For CC BY assets, the **Required attribution** text must accompany redistribution and is also shown in the in-game credits view.\n\n${rows}\n\n\`retrieved\`, source hashes, and runtime SHA-256 values are recorded in \`public/assets/manifest.json\`.\n`;
 }
 
 async function main() {

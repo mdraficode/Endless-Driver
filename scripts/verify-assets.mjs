@@ -21,6 +21,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { formatBytes, requireBudget } from './asset-budgets.mjs';
+import { HERO_CAR, HERO_WHEELS } from './hero-car/constants.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC_DIR = join(ROOT, 'public');
@@ -76,6 +77,10 @@ for (const asset of manifest.assets) {
       typeof asset.source.attribution === 'string' && asset.source.attribution.length > 0,
       `${label}: CC-BY assets must carry an attribution string`,
     );
+    require_(
+      typeof asset.source.licenceUrl === 'string' && asset.source.licenceUrl.startsWith('https://'),
+      `${label}: CC-BY assets must carry a canonical licence URL`,
+    );
   }
   require_(
     Array.isArray(asset.files) && asset.files.length > 0,
@@ -107,13 +112,53 @@ for (const asset of manifest.assets) {
     credits.includes(asset.source.url),
     `${label}: CREDITS.md does not reference ${asset.source.url}`,
   );
+  if (asset.source?.licence?.startsWith('CC-BY')) {
+    require_(
+      credits.includes(asset.source.attribution),
+      `${label}: CREDITS.md does not include the exact required attribution`,
+    );
+  }
 
+  if (asset.id === HERO_CAR.id) {
+    await verifyHeroRecord(label, asset);
+  }
   if (asset.kind === 'model') {
     await verifyModel(label, asset);
   }
   if (asset.kind === 'lut') {
     await verifyLut(label, asset);
   }
+}
+
+function verifyHeroRecord(label, asset) {
+  require_(asset.kind === 'model', `${label}: the player hero must be a model asset`);
+  require_(asset.assetClass === HERO_CAR.budgetClass, `${label}: hero budget class is incorrect`);
+  require_(asset.source?.creator === HERO_CAR.creator, `${label}: hero creator does not match the selected source`);
+  require_(asset.source?.licence === HERO_CAR.licence, `${label}: hero licence must be CC BY 4.0`);
+  require_(asset.source?.licenceUrl === HERO_CAR.licenceUrl, `${label}: hero licence URL is not canonical`);
+  require_(asset.source?.url === HERO_CAR.sourceUrl, `${label}: hero source URL does not match the selected listing`);
+  require_(asset.source?.attribution === HERO_CAR.attribution, `${label}: hero attribution has drifted from the approved source/modification notice`);
+  require_(asset.source?.archiveSha256 === HERO_CAR.archiveSha256, `${label}: sanitized archive hash is missing or incorrect`);
+
+  const sources = asset.sourceFiles ?? [];
+  const archive = sources.find((source) => source.path === HERO_CAR.archiveName);
+  const fbx = sources.find((source) => source.path === HERO_CAR.fbxPath);
+  const media = sources.find((source) => source.path === HERO_CAR.mediaPath);
+  require_(archive?.sha256 === HERO_CAR.archiveSha256, `${label}: source archive is not hash-pinned`);
+  require_(archive?.bytes === HERO_CAR.archiveBytes, `${label}: source archive byte count is incorrect`);
+  require_(fbx?.sha256 === HERO_CAR.fbxSha256, `${label}: source FBX hash is incorrect`);
+  require_(media?.sha256 === HERO_CAR.mediaSha256, `${label}: sanitized dashboard media hash is incorrect`);
+  require_(asset.verification?.sourceFbxSha256 === HERO_CAR.fbxSha256, `${label}: conversion report does not identify the pinned FBX`);
+
+  const neutralMedia = asset.verification?.neutralMedia;
+  require_(neutralMedia?.sourceSha256 === HERO_CAR.mediaSha256, `${label}: neutral media was not verified`);
+  require_(neutralMedia?.material === 'media', `${label}: neutral media is not bound to the source media material`);
+  require_(
+    Array.isArray(neutralMedia?.glbImageNames) && neutralMedia.glbImageNames.some((name) => /media/i.test(name)),
+    `${label}: neutral media image is missing from the GLB`,
+  );
+  const modelFile = asset.files?.find((file) => file.slot === 'model');
+  require_(modelFile?.path === HERO_CAR.modelPath, `${label}: hero GLB is not at the pinned runtime path`);
 }
 
 /**
@@ -209,9 +254,10 @@ async function verifyModel(label, asset) {
     );
   }
 
-  // Every level the manifest advertises must exist as a node in the file the runtime will load.
+  // Every level the manifest advertises must exist as a hierarchy node in the file the runtime loads.
   const declared = asset.pipeline?.lods ?? [];
-  const nodes = new Map((json.nodes ?? []).map((node) => [node.name, node]));
+  const nodesArray = json.nodes ?? [];
+  const nodes = new Map(nodesArray.map((node, index) => [node.name, { node, index }]));
   require_(
     declared.length >= budget.minLods,
     `${label}: ${declared.length} level(s) of detail, minimum is ${budget.minLods}`,
@@ -221,21 +267,93 @@ async function verifyModel(label, asset) {
     `${label}: ${declared.length} level(s) of detail, maximum is ${budget.maxLods}`,
   );
 
+  function countNodeTriangles(index, stack = new Set()) {
+    const node = nodesArray[index];
+    if (!node || stack.has(index)) return 0;
+    stack.add(index);
+    let total = 0;
+    if (Number.isInteger(node.mesh)) {
+      const mesh = json.meshes?.[node.mesh];
+      for (const primitive of mesh?.primitives ?? []) {
+        const accessorIndex = Number.isInteger(primitive.indices)
+          ? primitive.indices
+          : primitive.attributes?.POSITION;
+        const count = json.accessors?.[accessorIndex]?.count ?? 0;
+        const mode = primitive.mode ?? 4;
+        if (mode === 4) total += Math.floor(count / 3);
+        else if (mode === 5 || mode === 6) total += Math.max(0, count - 2);
+      }
+    }
+    for (const child of node.children ?? []) total += countNodeTriangles(child, stack);
+    stack.delete(index);
+    return total;
+  }
+
+  function subtreeIndices(index, into = new Set()) {
+    if (into.has(index)) return into;
+    into.add(index);
+    for (const child of nodesArray[index]?.children ?? []) subtreeIndices(child, into);
+    return into;
+  }
+
   let previous = Infinity;
   for (const level of declared) {
-    const node = nodes.get(level.node);
+    const entry = nodes.get(level.node);
+    require_(Boolean(entry), `${label}: the manifest advertises a "${level.node}" node that is not in the file`);
+    if (!entry) continue;
+    const actualTriangles = countNodeTriangles(entry.index);
     require_(
-      Boolean(node),
-      `${label}: the manifest advertises a "${level.node}" node that is not in the file`,
+      actualTriangles === level.triangles,
+      `${label}: ${level.node} decodes to ${actualTriangles} triangles, manifest says ${level.triangles}`,
     );
-    if (!node) continue;
-    const mesh = (json.meshes ?? [])[node.mesh];
-    require_(Boolean(mesh), `${label}: ${level.node} references a mesh that is not in the file`);
     require_(
       level.triangles < previous,
       `${label}: ${level.node} has ${level.triangles} triangles, not fewer than the level before it (${previous})`,
     );
     previous = level.triangles;
+  }
+
+  if (asset.id === HERO_CAR.id) {
+    const wheelConfig = JSON.parse(
+      await readFile(join(ROOT, 'src', 'config', 'vehicle-wheels.json'), 'utf8'),
+    );
+    for (const level of declared) {
+      const lod = nodes.get(level.node);
+      if (!lod) continue;
+      const inside = subtreeIndices(lod.index);
+      for (const wheel of HERO_WHEELS) {
+        const pivotName = `wheel-${wheel.key}-lod${level.level}`;
+        const spinnerName = `wheel-spinner-${wheel.key}-lod${level.level}`;
+        const pivotEntry = nodes.get(pivotName);
+        const spinnerEntry = nodes.get(spinnerName);
+        require_(Boolean(pivotEntry), `${label}: missing ${pivotName}`);
+        require_(Boolean(spinnerEntry), `${label}: missing ${spinnerName}`);
+        if (!pivotEntry || !spinnerEntry) continue;
+        require_(inside.has(pivotEntry.index), `${label}: ${pivotName} is outside ${level.node}`);
+        require_(inside.has(spinnerEntry.index), `${label}: ${spinnerName} is outside ${level.node}`);
+        require_(!Number.isInteger(pivotEntry.node.mesh), `${label}: ${pivotName} must be an empty pivot`);
+        require_(
+          (pivotEntry.node.children ?? []).includes(spinnerEntry.index),
+          `${label}: ${spinnerName} is no longer a child of ${pivotName}`,
+        );
+        const expected = [
+          wheel.side === 'left' ? -wheelConfig.halfTrack : wheelConfig.halfTrack,
+          wheelConfig.anchorY - wheelConfig.restLength,
+          wheel.axle === 'front' ? wheelConfig.frontZ : wheelConfig.rearZ,
+        ];
+        const actual = pivotEntry.node.translation ?? [0, 0, 0];
+        require_(
+          actual.length === 3 && actual.every((value, axis) => Math.abs(value - expected[axis]) <= 0.012),
+          `${label}: ${pivotName} does not match the configured wheel centre`,
+        );
+      }
+      const steeringName = `steering-wheel-pivot-lod${level.level}`;
+      const steering = nodes.get(steeringName);
+      require_(Boolean(steering), `${label}: missing ${steeringName}`);
+      if (steering) require_(inside.has(steering.index), `${label}: ${steeringName} is outside ${level.node}`);
+    }
+    const lod0Level = declared[0];
+    require_(file.triangles === lod0Level?.triangles, `${label}: model file triangle count differs from lod0`);
   }
 
   const lod0 = declared[0];
@@ -250,6 +368,8 @@ async function verifyModel(label, asset) {
     `${label}: ${formatBytes(file.bytes)} exceeds the ${asset.assetClass} budget of ${formatBytes(budget.maxBytes)}`,
   );
 }
+
+require_(seen.has(HERO_CAR.id), `required player hero model ${HERO_CAR.id} is not in the manifest`);
 
 if (problems.length > 0) {
   console.error(`asset verification failed (${problems.length} problem(s)):`);

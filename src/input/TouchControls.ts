@@ -1,7 +1,7 @@
 import { TOUCH_CONTROL_CONFIG } from '../config/input';
 import { joystickSteer, TouchStateTracker, type TouchDriveState } from './touch-state';
 
-export type TouchCommand = 'reset' | 'toggleCamera' | 'toggleDiagnostics';
+export type TouchCommand = 'reset' | 'toggleCamera' | 'toggleDiagnostics' | 'toggleCredits';
 
 export interface TouchControlsOptions {
   /** Called with the aggregated driving state whenever any thumb moves. */
@@ -20,7 +20,7 @@ export interface TouchControlsOptions {
  *
  * Layout is landscape-first racing-game standard: a steering joystick under the left
  * thumb, BRAKE/GAS pedals under the right, handbrake above the brake, and small
- * camera/reset/fullscreen buttons top-right. Every control tracks its own pointer ids
+ * credits/diagnostics/camera/reset/fullscreen buttons top-right. Every control tracks its own pointer ids
  * (multi-touch is the whole point: steer and accelerate at the same time), all state
  * funnels through `TouchStateTracker`, and the surface publishes into the same
  * `InputManager` seam the keyboard uses — the car cannot tell thumbs from keys.
@@ -212,6 +212,11 @@ export class TouchControls {
     // --- Utility buttons (top-right) ---
     const utilities = document.createElement('div');
     utilities.className = 'touch-utilities';
+    const creditsButton = make('touch-utility', '©', 'Open asset credits');
+    creditsButton.addEventListener('click', () => {
+      creditsButton.blur();
+      this.#options.onCommand('toggleCredits');
+    });
     const diagnosticsButton = make('touch-utility', '📊', 'Toggle diagnostics');
     diagnosticsButton.addEventListener('click', () => {
       diagnosticsButton.blur();
@@ -232,7 +237,7 @@ export class TouchControls {
       fullscreenButton.blur();
       void TouchControls.requestLandscape();
     });
-    utilities.append(diagnosticsButton, cameraButton, resetButton, fullscreenButton);
+    utilities.append(creditsButton, diagnosticsButton, cameraButton, resetButton, fullscreenButton);
 
     this.#root.append(joystick, handbrake, pedals, utilities);
 

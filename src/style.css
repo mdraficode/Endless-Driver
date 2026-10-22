@@ -58,6 +58,191 @@ body {
   color: #fecaca;
 }
 
+/* Manifest-backed asset credits; desktop button and touch-utility entry share the same panel. */
+.credits-toggle {
+  position: absolute;
+  top: max(0.75rem, env(safe-area-inset-top));
+  right: max(0.75rem, env(safe-area-inset-right));
+  z-index: 25;
+  min-height: 2.75rem;
+  padding: 0.45rem 0.85rem;
+  border: 1px solid rgb(94 234 212 / 45%);
+  border-radius: 9999px;
+  background: rgb(9 14 24 / 84%);
+  color: #ccfbf1;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+}
+
+.credits-toggle:hover,
+.credits-toggle:focus-visible {
+  border-color: #5eead4;
+  background: rgb(19 78 74 / 88%);
+}
+
+.credits-toggle:focus-visible,
+.credits-close:focus-visible,
+.credits-links a:focus-visible {
+  outline: 2px solid #5eead4;
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  body.touch-enabled .credits-toggle {
+    display: none;
+  }
+}
+
+.credits-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+    max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  background: rgb(2 6 12 / 76%);
+  backdrop-filter: blur(8px);
+  overscroll-behavior: contain;
+}
+
+.credits-overlay[hidden] {
+  display: none;
+}
+
+.credits-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(48rem, 100%);
+  max-height: min(86dvh, 54rem);
+  overflow: hidden;
+  border: 1px solid rgb(148 163 184 / 35%);
+  border-radius: 1rem;
+  background: rgb(9 14 24 / 97%);
+  box-shadow: 0 22px 70px rgb(0 0 0 / 60%);
+  color: #e2e8f0;
+}
+
+.credits-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.15rem 0.6rem;
+}
+
+.credits-header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  letter-spacing: 0.02em;
+}
+
+.credits-close {
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid rgb(148 163 184 / 35%);
+  border-radius: 9999px;
+  background: rgb(30 41 59 / 80%);
+  color: #e2e8f0;
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.credits-intro {
+  margin: 0;
+  padding: 0 1.15rem 0.75rem;
+  color: #94a3b8;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.credits-list {
+  display: grid;
+  gap: 0.65rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.25rem 1.15rem 1.15rem;
+  list-style: none;
+  overscroll-behavior: contain;
+}
+
+.credits-entry {
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgb(148 163 184 / 18%);
+  border-radius: 0.7rem;
+  background: rgb(15 23 42 / 76%);
+}
+
+.credits-entry h3 {
+  margin: 0 0 0.18rem;
+  font-size: 0.92rem;
+  font-weight: 650;
+}
+
+.credits-byline,
+.credits-files {
+  margin: 0.1rem 0 0.35rem;
+  color: #94a3b8;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.credits-links {
+  display: flex;
+  gap: 0.8rem;
+  margin: 0.3rem 0 0.15rem;
+  font-size: 0.76rem;
+}
+
+.credits-links a {
+  color: #67e8f9;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.credits-required-label {
+  margin: 0.5rem 0 0.15rem;
+  color: #fde68a;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.credits-attribution {
+  margin: 0;
+  color: #fef3c7;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 38rem) {
+  .credits-dialog {
+    max-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2rem);
+    border-radius: 0.8rem;
+  }
+
+  .credits-header {
+    padding: 0.8rem 0.85rem 0.55rem;
+  }
+
+  .credits-intro {
+    padding-right: 0.85rem;
+    padding-left: 0.85rem;
+  }
+
+  .credits-list {
+    padding-right: 0.85rem;
+    padding-left: 0.85rem;
+  }
+}
+
 /*
  * Material studio panel.
  *

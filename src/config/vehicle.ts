@@ -8,6 +8,8 @@
  *
  * Loads and forces are in SI units. Forward is -Z, up is +Y, right is +X (see docs/ARCHITECTURE.md).
  */
+import wheelMeasurements from './vehicle-wheels.json';
+
 export interface ChassisConfig {
   /** Collision box half extents (x, y, z) in meters; the body origin is the box center. */
   readonly halfExtents: readonly [number, number, number];
@@ -222,13 +224,8 @@ export const VEHICLE_CONFIG: VehicleConfig = {
     outOfBoundsY: -20,
   },
   wheels: {
-    radius: 0.34,
-    width: 0.24,
-    halfTrack: 0.78,
-    frontZ: -1.35,
-    rearZ: 1.35,
-    anchorY: 0,
-    restLength: 0.37,
+    // Shared with the offline hero-car alignment pipeline; one source of truth for wheel geometry.
+    ...wheelMeasurements,
     minLength: 0.12,
     maxLength: 0.5,
     stiffness: 33000,

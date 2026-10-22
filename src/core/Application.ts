@@ -20,7 +20,7 @@ import { yawFromQuat, type Vec3 } from '../shared/vector';
 import { DiagnosticsOverlay, type DiagnosticsSnapshot } from '../ui/DiagnosticsOverlay';
 import { Car } from '../vehicles/Car';
 import { CarEffects } from '../vehicles/CarEffects';
-import { CarVisual } from '../vehicles/CarVisual';
+import { PlayerCarVisual } from '../vehicles/PlayerCarVisual';
 import { resolveHighSpeedMotionBlurIntensity } from '../vehicles/vehicle-effects';
 import type { VehiclePose, VehicleTelemetry } from '../vehicles/types';
 import { ChaseCamera } from '../cameras/ChaseCamera';
@@ -103,7 +103,7 @@ export class Application {
   readonly #car: Car;
 
   readonly #terrainSampler: TerrainSampler;
-  readonly #carVisual: CarVisual;
+  readonly #carVisual: PlayerCarVisual;
   readonly #carEffects: CarEffects;
   readonly #input: InputManager;
 
@@ -200,7 +200,7 @@ export class Application {
         terrainSampler.normalAt(x + this.#origin.offset.x, z + this.#origin.offset.z),
     });
 
-    this.#carVisual = new CarVisual();
+    this.#carVisual = new PlayerCarVisual();
     this.#scene.addObject(this.#carVisual.root);
 
     this.#chaseCamera = new ChaseCamera(CHASE_CAMERA_CONFIG, this.#engine.viewport.aspect);
@@ -330,6 +330,8 @@ export class Application {
     if (!this.#engine.isInitialized) {
       await this.#engine.init();
       this.#carEffects.configureBackend(this.#engine.backend, this.#engine.renderer);
+      // Load the detailed, compressed hero asynchronously; the authored visual remains visible while it arrives.
+      void this.#carVisual.load(this.#engine.renderer);
       await this.#loadEnvironment();
       await this.#scene.loadContentSurfaces();
       await this.#loadLook();
@@ -437,6 +439,8 @@ export class Application {
           this.#input.requestReset();
         } else if (command === 'toggleDiagnostics') {
           this.toggleDiagnostics();
+        } else if (command === 'toggleCredits') {
+          document.querySelector<HTMLButtonElement>('#credits-toggle')?.click();
         } else {
           this.#input.requestToggleCamera();
         }
@@ -737,6 +741,7 @@ export class Application {
     this.#scene.update(delta);
 
     const activeCamera = this.#activeCamera();
+    this.#carVisual.updateForCamera(activeCamera.position);
     const telemetry = this.#car.telemetry;
     this.#carEffects.update(delta, pose, telemetry, this.#car.wheels, this.#car.body.linvel());
     this.#engine.setMotionBlurIntensity(

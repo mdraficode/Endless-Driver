@@ -35,6 +35,17 @@ export const MODEL_BUDGETS = {
     maxLods: 3,
   },
   /**
+   * The player hero: the only model meant to be inspected from the chase camera and cockpit, so it
+   * may keep a 2K texture set and the source-scale mesh while still carrying three measured LODs.
+   */
+  hero: {
+    maxBytes: 18_000_000,
+    maxTriangles: 125_000,
+    maxTextureSize: 2048,
+    minLods: 3,
+    maxLods: 3,
+  },
+  /**
    * A scanned tree: the dominant silhouette of the world, seen from every distance at once —
    * roadside at 5 m and a hillside forest at 300 m in the same frame. Three levels are the
    * minimum that covers that range without a visible switch, and the triangle ceiling is what

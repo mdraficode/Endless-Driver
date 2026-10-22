@@ -13,11 +13,7 @@ below for completeness rather than to satisfy a licence.
 
 ## Required credit lines
 
-_No required third-party credit line is committed yet._ The selected CC-BY hero-car candidate is pending conversion and manifest registration; once shipped, its exact attribution will be generated here and displayed in the in-game credits view.
-
-```text
-"<Asset name>" by <Creator> — <Source URL> — <Licence> (modifications: <summary>)
-```
+When a CC BY asset is present, the manifest-derived **Assets used** section below contains its exact required attribution. That text is also displayed in the in-game credits view and must accompany redistribution.
 
 ## Assets used
 

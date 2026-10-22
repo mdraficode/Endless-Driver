@@ -1,0 +1,9 @@
+{
+  "radius": 0.34,
+  "width": 0.24,
+  "halfTrack": 0.78,
+  "frontZ": -1.35,
+  "rearZ": 1.35,
+  "anchorY": 0,
+  "restLength": 0.37
+}

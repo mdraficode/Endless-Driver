@@ -28,6 +28,8 @@ export interface AssetManifestSource {
   readonly url: string;
   readonly creator: string;
   readonly licence: string;
+  /** Canonical licence URL, present where one exists. */
+  readonly licenceUrl?: string;
   readonly attribution: string;
   readonly retrieved: string;
 }

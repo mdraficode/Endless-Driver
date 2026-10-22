@@ -18,6 +18,7 @@ import { RouteApplication, type RouteDiagnostics } from './lab/RouteApplication'
 import { UrbanNightApplication, type UrbanNightDiagnostics } from './lab/UrbanNightApplication';
 import type { DiagnosticsSnapshot } from './ui/DiagnosticsOverlay';
 import { Minimap } from './ui/Minimap';
+import { CreditsPanel } from './ui/CreditsPanel';
 import { yawFromQuat } from './shared/vector';
 
 export interface EndlessDriverDebugHandle {
@@ -161,7 +162,12 @@ declare global {
 const canvas = document.querySelector<HTMLCanvasElement>('#viewport-canvas');
 const overlayRoot = document.querySelector<HTMLElement>('#diagnostics-overlay');
 const studioPanelRoot = document.querySelector<HTMLElement>('#studio-panel');
+const creditsButton = document.querySelector<HTMLButtonElement>('#credits-toggle');
+const creditsRoot = document.querySelector<HTMLElement>('#credits-root');
 const statusElement = document.querySelector<HTMLElement>('#scene-status');
+if (creditsButton && creditsRoot) {
+  void new CreditsPanel(creditsButton, creditsRoot).load();
+}
 
 function setStatus(message: string | null, tone: 'info' | 'error' = 'info'): void {
   if (!statusElement) {
