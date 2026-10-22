@@ -4,7 +4,7 @@
 **Date:** 2026-10-14
 **Phase:** Cross-cutting; governs Phases 3–8
 
-**Supersession note (2026-10-22):** ADR 0007 amended §1's blanket exclusion of AI-generated galleries and account-gated sources. Those sources may now be used only under ADR 0007's exact-item license verification, owner-approval, no-purchase, brand-rights, and pinned-pipeline controls; the CC0-first/CC-BY exception/CC0-only hero hierarchy remains. The remainder of this decision is unchanged.
+**Supersession note (2026-10-23):** ADR 0007 amended the source-category rules on 2026-10-22; ADR 0008 now supersedes only ADR 0005 §1/§4's CC0-only hero-vehicle restriction. The owner permits compatible free licences including CC BY 4.0 for a hero asset with required attribution. No-purchase, exact-item licence verification, provenance, redistribution, brand/design, and reproducible-pipeline requirements remain. The earlier sections below record the original 2026-10-14 decision and are superseded only where stated. CC-BY is not permission to ship recognizable real-car trade dress.
 
 ## Context
 

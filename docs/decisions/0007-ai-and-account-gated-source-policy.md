@@ -3,7 +3,7 @@
 **Status:** Accepted 2026-10-22 (owner instruction)  
 **Date:** 2026-10-22  
 **Scope:** All future asset sourcing and project work  
-**Supersedes:** ADR 0005 §1's blanket exclusion of AI-generated galleries and account-gated sources, and ADR 0004 §5's no-account-gated-model constraint, only to the extent stated below. All other ADR 0004/0005 decisions, including the existing license hierarchy, remain in force.
+**Supersedes:** ADR 0005 §1's blanket exclusion of AI-generated galleries and account-gated sources, and ADR 0004 §5's no-account-gated-model constraint, only to the extent stated below. **Hero licence restriction superseded on 2026-10-23:** ADR 0008 permits compatible CC-BY 4.0 hero content with attribution; no-purchase, account, brand/design, and verification controls remain. All other ADR 0004/0005 decisions remain in force.
 
 ## Context
 
