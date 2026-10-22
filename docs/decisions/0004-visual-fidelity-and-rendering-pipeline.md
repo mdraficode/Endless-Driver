@@ -4,6 +4,8 @@
 **Date:** 2026-10-14
 **Phase:** Cross-cutting; governs Phase 3 and every phase after it
 
+**Supersession note (2026-10-22):** ADR 0007 supersedes §5's no-account-gated-model constraint for free sources and permits AI-generated assets under its exact-item license, owner-approval, and rights-check controls; the existing CC0-first/CC-BY exception/CC0-only hero hierarchy remains. All rendering, tier, quality, and pipeline requirements here remain unchanged.
+
 ## Context
 
 Phase 2 shipped a working car on a flat grey arena: a gradient-sky shader, one directional light
@@ -91,8 +93,8 @@ may only assert correctness — never frame rate.
 
 ### 5. Content sourcing is engineering, with the car as the binding constraint
 
-- External environment and vehicle assets are **free/open only, CC0-first**; any other permissive licence, attribution, provenance and redistribution terms must be verified and recorded before use. No paid or account-gated models.
-- **No ripped game assets; no badges, logos or number plate.** The latest owner request is for an exact Ferrari California body, but only if the source meets the CC0-only hero-content rule, its provenance/license is verifiable, and separate rights to the underlying design are documented. CC0/CC-BY alone does not establish those third-party rights. No current candidate qualifies; keep the original in-house unbadged Kaminari GT until one does.
+- External environment and vehicle assets remain **free/open only, CC0-first**; any other permissive licence, attribution, provenance and redistribution terms must be verified and recorded before use. Under ADR 0007, free account-gated and AI-generated sources are now allowed after exact-item review and owner approval. No paid plans, purchases, or credits.
+- **No ripped game assets; no uncleared badges, logos or number plates.** The owner broadened the hero search from exact Ferrari California to any manufacturer and selected a generic Meshy red supercar candidate, marked CC0 and AI-generated. The candidate is not acquired; item-level rights, source terms, badge-like details and brand/design suitability remain unverified. CC0/CC-BY alone does not establish third-party design rights. Keep the original in-house unbadged Kaminari GT until the selected model passes all rights, quality and pipeline gates.
 - Every external asset passes the automated pipeline — prune/dedupe → LODs → quantization → **meshopt** geometry compression → **KTX2/Basis** textures → budget check — driven by the asset manifest, not by hand. Textures are capped at 1024/2048 (a single 4096² RGBA8 texture costs ~89 MB of VRAM uncompressed). Code-authored Three.js geometry is tracked by tests, not the third-party manifest.
 - Budgets: the current player roadster is tested below 20k triangles and at no more than 12 rendered Mesh objects at `cdcd8f1`; any future imported high-detail model requires a separate 100k–200k LOD budget plus verified suitability/licence. Props ≤ 5k; foliage via atlases and impostors.
 

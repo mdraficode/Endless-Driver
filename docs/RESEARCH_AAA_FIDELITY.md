@@ -157,17 +157,8 @@ The asset question is the binding constraint on "realistic", so it is a planning
   are usually unbranded concepts, not recognisable production cars.
 - Recognisable modern cars require either a manufacturer licence or an artist building a **generic, unbranded**
   design from scratch. We will not use ripped assets or brand marks.
-- Practical options: **(a)** commission/build one in-house hero car in Blender (~2–4 weeks of skilled artist time);
-  **(b)** buy a royalty-free game-ready model and record its licence in the asset manifest; **(c)** ship a
-  "generic coupe" built procedurally/by code to a high material standard as an interim hero, with correct
-  proportions, panel gaps, glass, wheels, and paint.
-- **Resolved 2026-10-14; vehicle clarification 2026-10-22 (owner): free/open only, no purchases.** The owner now
-  wants the exact Ferrari California body with logos and number plate removed, but only if it meets the CC0-only
-  hero-content rule, its provenance/license is verifiable, and the separate rights to the underlying Ferrari design are documented. CC-BY/CC0 alone do not grant third-party
-  design/trademark rights. No reviewed candidate meets this condition, so the current in-house unbadged Kaminari GT
-  remains. It passes a <20k-triangle/≤12-Mesh automated budget test at `cdcd8f1`. The exact-model audit and sources
-  are in [`docs/ASSET_SOURCES.md`](ASSET_SOURCES.md) §3.5. The earlier generic-body-class-only direction and (b)-then-(a)
-  sourcing recommendation are superseded.
+- Practical options under the owner's no-purchase rule: **(a)** build one in-house hero car in Blender (~2–4 weeks of skilled artist time); **(b)** acquire a free/open game-ready model (including an owner-approved free account-gated source) and record its licence in the asset manifest; or **(c)** ship a "generic coupe" built procedurally/by code to a high material standard as an interim hero, with correct proportions, panel gaps, glass, wheels, and paint.
+- **Owner decision updated 2026-10-22:** the owner first referenced Ferrari California, then broadened the hero search to any make and selected a generic red Meshy supercar candidate, marked CC0 and AI-generated. The owner also changed the global asset policy to permit AI-generated and free account-gated sources under ADR 0007, while retaining the no-purchase rule, CC0-only hero requirement, and separate brand/design-rights checks. The exact account terms, downloaded file, provenance and badge/trade-dress suitability remain unverified; no external model is integrated, so the code-authored unbadged Kaminari GT remains. It passes a <20k-triangle/≤12-Mesh automated budget test at `cdcd8f1`. See [`docs/ASSET_SOURCES.md`](ASSET_SOURCES.md) §3.5 for candidate and audit status.
 
 **Pipeline for whatever we source** (all of this is engine-agnostic and self-owned):
 

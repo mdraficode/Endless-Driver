@@ -6,15 +6,11 @@
 
 The project's initial `UNLICENSED` status does not replace or remove dependency licenses. Choosing an open-source project license later does not automatically permit redistribution of purchased or restricted assets.
 
-## Standing rule (owner instruction, 2026-10-14)
+## Standing rule (owner amendment 2026-10-22; ADR 0007 supplements ADR 0005)
 
-**Free and open only. No purchases, ever.** CC0 is the default; CC-BY is an attributed exception only where no CC0
-asset of comparable quality exists; everything paid, account-gated, NC/ND, marketplace-"freebie", or AI-generated is
-excluded. Brand/trade-dress use requires separate, verifiable rights. The owner's latest exact-Ferrari-California
-request is conditional on a verifiable CC0 hero-model license/provenance (CC-BY is excluded for hero content under ADR 0005) and permission covering the underlying design; logos
-and the number plate must be absent. No candidate currently meets that bar, so the current unbadged in-house car stays.
-The verified source register and audit are in [`docs/ASSET_SOURCES.md`](ASSET_SOURCES.md); the decision is ADR 0005.
-If free content cannot reach the bar, author it in-house or document the gap; do not weaken the rule.
+**Free/open only. No purchases, fees, or paid credits.** CC0 remains preferred; CC-BY is an attributed exception only for suitable non-hero content and remains excluded for hero vehicles. The owner now permits AI-generated assets and free account-gated sources for all future project work, provided the exact asset has a verified license and its provenance, modification, self-hosting, redistribution, and intended-use terms are confirmed under the standing hierarchy (CC0 preferred; CC-BY only as the attributed exception for non-hero content; CC0-only for hero vehicles). New accounts and sources require owner approval; paid plans, upgrades, API access, or credits are not authorized. NC/ND and marketplace-"freebie" licenses remain excluded. Trademark, trade-dress, and recognizable vehicle-design rights remain separate from copyright licensing, and logos/number plates must be absent unless separately cleared. Hero vehicles remain CC0-only.
+
+The owner broadened the hero-car search from the exact Ferrari California to any manufacturer and selected a generic red Meshy supercar listing as a candidate. It is marked CC0 and AI-generated, but account access/terms, the downloadable file, badge-like details, brand/design suitability, and reproducible conversion have not been verified. No account has been created and no model has been downloaded or integrated; retain the current unbadged in-house car until every gate passes. The exact source and audit are in [`docs/ASSET_SOURCES.md`](ASSET_SOURCES.md), and the policy amendment is ADR 0007. If a free source cannot reach the bar, author in-house or document the gap; do not weaken the remaining rules.
 
 ## Preferred sources (visual-fidelity re-plan, 2026-10-14)
 
@@ -23,15 +19,8 @@ The owner requires Forza-Horizon-class visuals, which makes sourcing a first-cla
 
 - **CC0 first** for environment content: Poly Haven (HDRIs, PBR textures, models) and ambientCG.
   CC0 still gets recorded in the manifest — "no attribution required" is not "no provenance".
-- **Paid / non-CC0 sources** (Fab/Megascans free starter collection, purchased models, subscriptions):
-  allowed only with a per-asset licence record, the terms that apply, and the download date. The
-  era of the whole Megascans library being free for everyone ended 2024-12-31, and free-of-charge is
-  not the same as licensed for redistribution.
-- **Cars:** never use a ripped/converted game mesh. The latest owner request is for the exact Ferrari California
-  body without logos or number plate, but only under the free/open-only policy and only if a CC0 hero-model source/license
-  and separate underlying-design permissions are verifiable. CC-BY/CC0 declarations alone do not establish third-party brand/design
-  rights. The audit found no qualifying source, so retain the current code-authored, unbadged Kaminari GT roadster.
-  Unity Fan and RGS_Dev remain unused candidates; see `docs/ASSET_SOURCES.md` §3.5. No purchase is authorized.
+- **Free account-gated and AI-generated sources:** allowed after owner approval and exact-item review under ADR 0007. A free download is not automatically redistributable; verify the exact-item license and applicable platform terms under the existing hierarchy (CC0 preferred, CC-BY only as an attributed non-hero exception, CC0-only for hero vehicles). No paid plans, subscriptions, upgrades, or paid credits are authorized. Fab/Megascans remains excluded where the applicable terms are not CC0-compatible.
+- **Cars:** never use a ripped/converted game mesh. The owner broadened the hero search from exact Ferrari California to any manufacturer and selected Meshy's generic red Italian-supercar-inspired concept, marked CC0 and AI-generated. This is a candidate only; item-level license/provenance, terms, download, badge-like marks, trade dress, and design suitability still need verification. CC0 alone does not clear recognizable real vehicle designs. Keep the current code-authored, unbadged Kaminari GT roadster until the source and build gates pass; see `docs/ASSET_SOURCES.md` §3.5. No purchase or paid access is authorized.
 - Audio, if it is ever added, follows the same rules and needs its own scope decision.
 
 ## Before adding an asset
@@ -41,7 +30,7 @@ The owner requires Forza-Horizon-class visuals, which makes sourcing a first-cla
 3. Determine required attribution, share-alike conditions, commercial-use restrictions, and whether source distribution is forbidden.
 4. Check separate trademark/brand, music, voice, and other rights. A realistic branded car model may have additional restrictions.
 5. Save appropriate license/credit evidence and inventory metadata. Never include purchase credentials or receipts containing private payment details in Git.
-6. Obtain user approval for paid assets, asset-source decisions, or additional accounts/services.
+6. Obtain owner approval for new sources and account creation/use; no paid assets, plans, subscriptions, credits, or upgrades are authorized.
 7. Normalize units, axes, pivots, node names, and material maps; document modifications.
 8. Optimize, measure, and test the asset against the target device tier.
 

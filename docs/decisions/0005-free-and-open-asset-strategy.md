@@ -4,6 +4,8 @@
 **Date:** 2026-10-14
 **Phase:** Cross-cutting; governs Phases 3–8
 
+**Supersession note (2026-10-22):** ADR 0007 amended §1's blanket exclusion of AI-generated galleries and account-gated sources. Those sources may now be used only under ADR 0007's exact-item license verification, owner-approval, no-purchase, brand-rights, and pinned-pipeline controls; the CC0-first/CC-BY exception/CC0-only hero hierarchy remains. The remainder of this decision is unchanged.
+
 ## Context
 
 ADR 0004 left five questions open for the owner: car asset route, brand policy, region, audio scope, and photo
@@ -29,9 +31,11 @@ sources surveyed and licence-checked).
   question): a credit line is text naming the artist, not a payment or a restriction, and the alternative is
   recreating those few props ourselves for no gain. The exception can be closed at any time by swapping those props
   for in-house versions.
-- **Excluded permanently:** anything paid or account-gated with redistribution limits; NC/ND terms; marketplace
-  "freebie" licences; AI-generated asset galleries (unauditable provenance); ripped or converted game assets; badges,
-  logos or number plates. Any exact branded body design requires separate, verifiable rights.
+- **Excluded at adoption (2026-10-14; amended by ADR 0007):** anything paid or account-gated with redistribution
+  limits; NC/ND terms; marketplace "freebie" licences; ripped or converted game assets; badges, logos or number
+  plates. AI-generated galleries and free account-gated sources are no longer categorically excluded; use them only
+  under ADR 0007's exact-item license/provenance, owner-approval, and redistribution checks. Any recognizable branded
+  body design still requires separate, verifiable rights.
 - Every asset is fetched by a pinned, reproducible script, recorded in `public/assets/manifest.json` with source,
   creator, licence, and hash, and optimized through the project pipeline before it enters the repository. The gate
   becomes a check in `npm run check` in Phase 3.
@@ -51,28 +55,29 @@ bark, trident-maple bark, stone walls, tatami, bamboo walls) map directly onto t
 **Composite, not a copy.** The region is built from CC0 materials and in-house props; it is not photogrammetry of a
 real place and will never be described as one.
 
-### 3. Brand policy: unbadged presentation; conditional exact-body request
+### 3. Brand policy: unbadged presentation; current generic-model candidate
 
-The default is a fictional, unbadged hero car under the **"Kaminari"** marque, with no badges, logos or number plate.
-On 2026-10-22 the owner clarified they want the exact Ferrari California body, but only if the model meets the
-CC0-only hero-content rule, its provenance/license is verifiable, and separate permission for the Ferrari design/trade
-dress is documented. The request is not a
-license grant; without that evidence, the car remains fictional and in-house. Other signage and world content stay
-fictional/unbranded.
+The default remains a fictional, unbadged hero car under the **"Kaminari"** marque, with no badges, logos or number plate.
+The owner initially asked about the exact Ferrari California body, then on 2026-10-22 broadened the search to any make and
+selected a generic Meshy red supercar listing. That item is AI-generated and marked CC0; it is only a candidate, and the
+owner's policy amendment is recorded in ADR 0007. Any recognizable real vehicle design still requires separate, verifiable
+rights; absent those rights, inspect/remove identifying details and retain a fictional, unbadged presentation. Other signage
+and world content stay fictional/unbranded.
 
 ### 4. Car: current in-house model; no unverified stand-in
 
-The current player vehicle is an original code-authored GT roadster under the fictional **Kaminari** marque. It is not
-the exact Ferrari California requested. The procedural model has clearcoat paint, map-free glazing/interior/rubber/metal,
-a visible cabin, pose-driven wheels and steering, and local brake lamps. Its automated test enforces fewer than 20k
-triangles and at most 12 rendered Mesh objects; the full check passed at `cdcd8f1`.
+The current player vehicle is an original code-authored GT roadster under the fictional **Kaminari** marque. It remains the
+runtime vehicle while the newly selected generic Meshy candidate is unacquired and unverified. The procedural model has
+clearcoat paint, map-free glazing/interior/rubber/metal, a visible cabin, pose-driven wheels and steering, and local brake
+lamps. Its automated test enforces fewer than 20k triangles and at most 12 rendered Mesh objects; the full check passed
+at `cdcd8f1`.
 
-External models are optional, not required for the build. Use an exact Ferrari model only if it meets the existing
-CC0-only hero-content rule, its provenance/license, suitability, reproducible conversion path, and separate rights to
-the underlying design are verifiable. CC0 alone is insufficient to establish design rights; the audited candidates so
-far do not qualify (see `docs/ASSET_SOURCES.md` §3.5). The CC0
-RGS_Dev pack was not integrated because it is stylized and FBX-only. The current car remains in-house with no
-third-party vehicle files or manifest entry.
+External models are optional, not required for the build. Any replacement hero vehicle must meet the CC0-only hero-content
+rule, have verifiable provenance, suitability, and a reproducible conversion path, and pass separate rights clearance for
+any recognizable design. CC0 alone is insufficient to establish brand/design rights. The selected Meshy item is marked
+CC0 and described in `docs/ASSET_SOURCES.md` §3.5, but the account terms, exact download, badge-like details, and design
+suitability remain unverified. The CC0 RGS_Dev pack was not integrated because it is stylized and FBX-only. No third-party
+vehicle files or manifest entry are currently shipped.
 
 ### 5. Audio: free sample libraries plus a project-owned synthesis layer
 
