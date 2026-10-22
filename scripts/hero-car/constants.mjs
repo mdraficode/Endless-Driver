@@ -5,6 +5,7 @@ export const HERO_CAR = {
   sourceUrl:
     'https://sketchfab.com/3d-models/generic-sport-coupe-car-820a13c4831c41959ce75e6c2014e882',
   licence: 'CC-BY-4.0',
+  archiveLicenceText: 'Creative Commons Attribution 4.0 International (CC BY 4.0)',
   licenceUrl: 'https://creativecommons.org/licenses/by/4.0/',
   attribution:
     'Generic Sport Coupé Car by MMC Works, from https://sketchfab.com/3d-models/generic-sport-coupe-car-820a13c4831c41959ce75e6c2014e882; licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). The supplied archive replaces textures/media.png with a neutral dashboard screen. The game conversion aligns the model to the vehicle physics, creates LODs, and optimizes textures and geometry for runtime.',

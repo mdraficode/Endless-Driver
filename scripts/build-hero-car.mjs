@@ -136,7 +136,7 @@ async function extractArchive(archivePath) {
   const media = join(extractDir, HERO_CAR.mediaPath);
   run('unzip', ['-qq', archivePath, '-d', extractDir]);
   const attribution = await readFile(join(extractDir, 'ATTRIBUTION.txt'), 'utf8');
-  for (const required of [HERO_CAR.creator, HERO_CAR.licence, HERO_CAR.licenceUrl, HERO_CAR.sourceUrl]) {
+  for (const required of [HERO_CAR.creator, HERO_CAR.archiveLicenceText, HERO_CAR.licenceUrl, HERO_CAR.sourceUrl]) {
     assert(attribution.includes(required), `archive attribution does not contain ${required}`);
   }
   assert(
