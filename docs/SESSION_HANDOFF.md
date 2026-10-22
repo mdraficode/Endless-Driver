@@ -1899,7 +1899,6 @@ This is a narrow continuation of the appearance-only review authorized with the 
 
 **Outcome/next decision:** No suitable verified free replacement has been found. Keep the code-authored Kaminari roadster. Ask the owner whether to continue searching at the current visual bar, accept a stylized CC0 car for a separate full asset/pipeline review, or keep/improve the in-house car. No project code, runtime asset, manifest, or credits entry changed during this audit.
 
-
 ## 70. Continued free hero-car source audit (2026-10-22)
 
 **Owner direction and hard gates:** After reviewing the earlier alternatives, the owner chose **continue searching** at the existing Forza-Horizon-class visual bar. The target remains a generic red hero car from any manufacturer, with AI-generated and free account-gated sources allowed under ADR 0007, but the hero must be CC0 and must pass separate provenance and trademark/trade-dress/design review. No purchase, paid subscription, credit, or paid API use is allowed. Do not request credentials or verification codes, use the owner's authenticated browser session, create any new source account without owner approval, bypass anti-abuse controls, download a model, or run the pinned asset pipeline until an exact candidate is approved and every gate passes. Keep the in-house Kaminari roadster.
