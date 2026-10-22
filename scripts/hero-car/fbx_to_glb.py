@@ -9,6 +9,7 @@ Geometry compression and KTX2 encoding happen in the Node pipeline that follows.
 from __future__ import annotations
 
 import argparse
+import gc
 import hashlib
 import json
 import math
@@ -249,13 +250,16 @@ def relink_textures(textures_dir: Path, texture_map_path: Path):
             if not output_path.is_file():
                 raise RuntimeError(f"preprocessed image is missing: {output_path}")
             color_space = source_image.colorspace_settings.name
+            # The media texture's alpha channel is data regardless of its RGB interpretation, so the
+            # base-color and alpha nodes can share the same sRGB image without a duplicate datablock.
+            if source_name == "media.png":
+                color_space = "sRGB"
             key = (source_name, color_space)
             replacement = replacements.get(key)
             if replacement is None:
                 replacement = bpy.data.images.load(str(output_path), check_existing=False)
                 replacement.name = source_image.name
                 replacement.colorspace_settings.name = color_space
-                replacement.pack()
                 replacements[key] = replacement
                 used.append({
                     "source": source_name,
@@ -294,6 +298,14 @@ def relink_textures(textures_dir: Path, texture_map_path: Path):
     if Path(bpy.path.abspath(base_link.from_node.image.filepath)).name != mapping["mediaOutput"]:
         raise RuntimeError("the media material does not use the sanitized media.png image")
 
+    # The FBX importer has already decoded the original 4K maps into Blender memory. Once every
+    # material node points at the preprocessed, hash-verified replacements, release those originals
+    # rather than keeping both texture sets live during the GLB export.
+    replacement_pointers = {image.as_pointer() for image in replacements.values()}
+    for image in list(bpy.data.images):
+        if image.as_pointer() not in replacement_pointers:
+            bpy.data.images.remove(image, do_unlink=True)
+    gc.collect()
     return used
 
 
@@ -498,6 +510,10 @@ def main():
     # explicitly named vehicle hierarchy reaches the GLB; copied mesh materials keep their textures.
     for source in source_objects:
         bpy.data.objects.remove(source, do_unlink=True)
+    for mesh in list(bpy.data.meshes):
+        if mesh.users == 0:
+            bpy.data.meshes.remove(mesh)
+    gc.collect()
     bpy.context.view_layer.update()
     lod0_meshes = [obj for obj in descendants(lod0) if obj.type == "MESH"]
     target_bounds = bounds(mesh_world_points(lod0_meshes))
