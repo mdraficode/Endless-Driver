@@ -59,25 +59,26 @@ real place and will never be described as one.
 
 The default remains a fictional, unbadged hero car under the **"Kaminari"** marque, with no badges, logos or number plate.
 The owner initially asked about the exact Ferrari California body, then on 2026-10-22 broadened the search to any make and
-selected a generic Meshy red supercar listing. That item is AI-generated and marked CC0; it is only a candidate, and the
-owner's policy amendment is recorded in ADR 0007. Any recognizable real vehicle design still requires separate, verifiable
-rights; absent those rights, inspect/remove identifying details and retain a fictional, unbadged presentation. Other signage
-and world content stay fictional/unbranded.
+selected a generic Meshy red supercar listing. That item is AI-generated and marked CC0, but the user reports its download
+requires a subscription and chose a free-download alternative; no paid access is authorized. The policy amendment is recorded
+in ADR 0007. Any recognizable real vehicle design still requires separate, verifiable rights; absent those rights, inspect/remove
+identifying details and retain a fictional, unbadged presentation. Other signage and world content stay fictional/unbranded.
 
 ### 4. Car: current in-house model; no unverified stand-in
 
 The current player vehicle is an original code-authored GT roadster under the fictional **Kaminari** marque. It remains the
-runtime vehicle while the newly selected generic Meshy candidate is unacquired and unverified. The procedural model has
-clearcoat paint, map-free glazing/interior/rubber/metal, a visible cabin, pose-driven wheels and steering, and local brake
-lamps. Its automated test enforces fewer than 20k triangles and at most 12 rendered Mesh objects; the full check passed
-at `cdcd8f1`.
+runtime vehicle; no third-party hero asset has been downloaded or integrated. Meshy's CC0 listing is blocked by a user-reported
+subscription requirement. The verified no-login Grab3D 1980s Sports Car is stylized below the target; the BlendSwap base mesh
+remains unresolved and unsuitable as a finished model. The procedural car has clearcoat paint, map-free glazing/interior/rubber/metal,
+a visible cabin, pose-driven wheels and steering, and local brake lamps. Its automated test enforces fewer than 20k triangles
+and at most 12 rendered Mesh objects; the full check passed at `cdcd8f1`.
 
 External models are optional, not required for the build. Any replacement hero vehicle must meet the CC0-only hero-content
 rule, have verifiable provenance, suitability, and a reproducible conversion path, and pass separate rights clearance for
-any recognizable design. CC0 alone is insufficient to establish brand/design rights. The selected Meshy item is marked
-CC0 and described in `docs/ASSET_SOURCES.md` §3.5, but the account terms, exact download, badge-like details, and design
-suitability remain unverified. The CC0 RGS_Dev pack was not integrated because it is stylized and FBX-only. No third-party
-vehicle files or manifest entry are currently shipped.
+any recognizable design. CC0 alone is insufficient to establish brand/design rights. The selected Meshy item is marked CC0 and described in `docs/ASSET_SOURCES.md` §3.5, but download reportedly requires a
+subscription and no model file is available. BlendSwap and Grab3D alternatives are documented in §3.5; none currently meets
+both the rights/access and Forza-Horizon-class quality gates. The CC0 RGS_Dev pack was not integrated because it is stylized
+and FBX-only. No third-party vehicle files or manifest entry are currently shipped.
 
 ### 5. Audio: free sample libraries plus a project-owned synthesis layer
 
