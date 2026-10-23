@@ -9,6 +9,7 @@ import {
   describeTierDetail,
   readBackendRequest,
   readTierRequest,
+  resolveBackendPreference,
   resolveTier,
   type TierEnvironment,
 } from './core/QualityTier';
@@ -110,22 +111,32 @@ export function readStudioRequest(search: string): StudioRequest {
 }
 
 /**
- * Resolves the render configuration for this device: tier first (it decides the backend preference,
- * pixel-ratio cap, and shadow budget), then any forced-backend switch, then the switchable post
- * effects — which come last so that `?dof=1` can re-enable on a constrained device what the tier
+ * Resolves the render configuration for this device: tier first (pixel-ratio cap and shadow budget),
+ * then an explicit backend request or the Android/WebGPU compatibility default, then the switchable
+ * post effects — which come last so that `?dof=1` can re-enable on a constrained device what the tier
  * switched off, and `?lut=none` can remove a look without a code change.
  */
 function resolveRenderConfig(): { config: RenderConfig; tier: ReturnType<typeof resolveTier> } {
   const tier = resolveTier(probeEnvironment());
-  const backendPreference = readBackendRequest(window.location.search);
+  const requestedBackend = readBackendRequest(window.location.search);
+  const isAndroid = /Android/i.test(navigator.userAgent);
+  const webGpuAvailable =
+    typeof (navigator as Navigator & { gpu?: unknown }).gpu !== 'undefined';
+  const backendPreference = resolveBackendPreference(requestedBackend, {
+    isAndroid,
+    webGpuAvailable,
+  });
   const config = applyRenderSwitches(
     applyBackendOverride(applyTier(RENDER_CONFIG, tier.id), backendPreference),
     window.location.search,
   );
-  console.info(
-    `Endless Driver: ${describeTierDetail(tier)}` +
-      (backendPreference === null ? '' : `, backend forced to ${backendPreference}`),
-  );
+  const backendNote =
+    requestedBackend !== null
+      ? `, backend forced to ${requestedBackend}`
+      : isAndroid && webGpuAvailable
+        ? ', Android WebGPU compatibility default: WebGL2'
+        : '';
+  console.info(`Endless Driver: ${describeTierDetail(tier)}${backendNote}`);
   return { config, tier };
 }
 

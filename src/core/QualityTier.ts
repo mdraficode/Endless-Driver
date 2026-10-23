@@ -202,6 +202,24 @@ export function applyBackendOverride(
   return { ...config, renderer: { ...config.renderer, backendPreference: preference } };
 }
 
+/**
+ * Selects a backend override for known Android/WebGPU compatibility failures.
+ *
+ * Android browsers that expose WebGPU can still have device/driver paths that initialize but render
+ * a black frame. The supported WebGL2 backend is used there by default; `?backend=auto` is an
+ * explicit opt-in to the browser's automatic WebGPU selection for comparison. Everywhere else the
+ * renderer keeps its project-wide `auto` preference and performs its normal WebGL2 fallback.
+ */
+export function resolveBackendPreference(
+  requested: RenderConfig['renderer']['backendPreference'] | null,
+  environment: { readonly isAndroid: boolean; readonly webGpuAvailable: boolean },
+): RenderConfig['renderer']['backendPreference'] | null {
+  if (requested !== null) {
+    return requested;
+  }
+  return environment.isAndroid && environment.webGpuAvailable ? 'webgl' : null;
+}
+
 /** Human-readable tier label for logs and the HUD, e.g. `B · desktop default`. */
 export function describeTier(resolution: TierResolution): string {
   const definition = TIER_DEFINITIONS[resolution.id];

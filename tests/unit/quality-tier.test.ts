@@ -7,6 +7,7 @@ import {
   describeTier,
   readBackendRequest,
   readTierRequest,
+  resolveBackendPreference,
   resolveTier,
   type TierEnvironment,
 } from '../../src/core/QualityTier';
@@ -204,6 +205,19 @@ describe('forced-backend debug switch', () => {
     expect(webglForced.renderer.backendPreference).toBe('webgl');
     expect(webglForced.shadows).toEqual(base.shadows);
     expect(base.renderer.backendPreference).toBe('auto');
+  });
+
+  it('defaults Android devices with WebGPU to the compatible WebGL2 backend', () => {
+    expect(
+      resolveBackendPreference(null, { isAndroid: true, webGpuAvailable: true }),
+    ).toBe('webgl');
+    expect(resolveBackendPreference(null, { isAndroid: true, webGpuAvailable: false })).toBeNull();
+    expect(resolveBackendPreference(null, { isAndroid: false, webGpuAvailable: true })).toBeNull();
+    // Explicit query choices take precedence, including `?backend=auto` for diagnostics.
+    expect(resolveBackendPreference('auto', { isAndroid: true, webGpuAvailable: true })).toBe('auto');
+    expect(resolveBackendPreference('webgl', { isAndroid: false, webGpuAvailable: true })).toBe(
+      'webgl',
+    );
   });
 
   describe('gameplay clarity: no bloom veil at any tier', () => {
