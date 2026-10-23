@@ -47,11 +47,15 @@ import { createFoliageWindPositionNode, resolveFoliageWindAmplitude } from './fo
 import {
   generateChunkVegetation,
   hash01,
-  TREE_SPECIES,
+  vegetationVariantCount,
   type VegetationPlacement,
 } from './vegetation-placement';
 
-export { generateChunkVegetation, type VegetationPlacement } from './vegetation-placement';
+export {
+  generateChunkVegetation,
+  vegetationVariantCount,
+  type VegetationPlacement,
+} from './vegetation-placement';
 import { TREE_COLLISION } from '../config/districts';
 import { VEGETATION_SPECIES } from './districts';
 import { loadScannedSpecies, type ScannedSpecies } from './scanned-vegetation';
@@ -393,7 +397,7 @@ export class VegetationWorld {
     }
     material.roughness = 0.95;
     for (const species of VEGETATION_SPECIES) {
-      const variants = TREE_SPECIES.has(species) ? 3 : species === 'bamboo' ? 2 : 2;
+      const variants = vegetationVariantCount(species);
       for (let variant = 0; variant < variants; variant += 1) {
         const geometry = buildSpeciesGeometry(species, variant);
         const mesh = new InstancedMesh(
@@ -453,7 +457,7 @@ export class VegetationWorld {
       if (species === 'rock') {
         continue;
       }
-      const variants = TREE_SPECIES.has(species) ? 3 : 2;
+      const variants = vegetationVariantCount(species);
       for (let variant = 0; variant < variants; variant += 1) {
         const mesh = new InstancedMesh(buildCrownGeometry(species, variant), material, 40);
         mesh.castShadow = true;
@@ -567,7 +571,7 @@ export class VegetationWorld {
       };
       const comma = key.indexOf(':');
       const speciesName = key.slice(0, comma) as VegetationSpecies;
-      const variants = TREE_SPECIES.has(speciesName) ? 3 : 2;
+      const variants = vegetationVariantCount(speciesName);
       const capacity = Math.floor(SPECIES_CAPACITY[speciesName] / variants);
       const pools: ScannedPool[] = [];
       for (const lod of species.lods) {
@@ -953,7 +957,10 @@ export class VegetationWorld {
         const entry = this.#meshes.find(
           (candidate) =>
             candidate.species === placement.species && candidate.variant === placement.variant,
-        )!;
+        );
+        if (entry === undefined) {
+          throw new Error(`vegetation has no mesh pool for ${standingKey}`);
+        }
         const index = counts.get(entry.mesh)!;
         if (index >= entry.mesh.instanceMatrix.count) {
           continue;

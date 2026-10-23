@@ -47,6 +47,11 @@ export const TREE_SPECIES: ReadonlySet<VegetationSpecies> = new Set([
   'bamboo',
 ]);
 
+/** Number of geometry/instanced-mesh variants registered for a species. */
+export function vegetationVariantCount(species: VegetationSpecies): number {
+  return TREE_SPECIES.has(species) ? 3 : 2;
+}
+
 /** Slope/altitude gate per species, before district multipliers apply. */
 function speciesGate(
   species: VegetationSpecies,
@@ -169,7 +174,7 @@ export function generateChunkVegetation(
       }
       placements.push({
         species,
-        variant: Math.floor(hash01(ix, iz, 41) * 3),
+        variant: Math.floor(hash01(ix, iz, 41) * vegetationVariantCount(species)),
         x,
         y: height - 0.12,
         z,

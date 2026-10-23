@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { DISTRICTS } from '../../src/config/districts';
+import { DISTRICTS, VEGETATION_CONFIG } from '../../src/config/districts';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
 import { AOHARA_DISTRICT_CONFIG } from '../../src/config/urban-district';
 import { districtAt, groundTintAt, speciesMultipliersAt } from '../../src/world/districts';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
-import { generateChunkVegetation } from '../../src/world/vegetation';
+import { generateChunkVegetation, vegetationVariantCount } from '../../src/world/vegetation';
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
+import type { TerrainSampler } from '../../src/world/terrain-height';
 
 /**
  * Districts and their vegetation, pinned as pure functions of the eternal map:
@@ -55,6 +56,28 @@ describe('vegetation placement', () => {
     const b = generateChunkVegetation(sampler, -4, -8);
     expect(a).toEqual(b);
     expect(a.length).toBeGreaterThan(0);
+  });
+
+  it('keeps generated rock variants within the registered mesh pool', () => {
+    const steepSampler: TerrainSampler = {
+      config: TERRAIN_CONFIG,
+      heightAt: () => 200,
+      normalAt: () => ({ x: Math.sqrt(0.75), y: 0.5, z: 0 }),
+    };
+    const rockOnlyConfig = {
+      ...VEGETATION_CONFIG,
+      baseDensity: { conifer: 0, broadleaf: 0, sakura: 0, bamboo: 0, rock: 1 },
+    };
+    const placements = generateChunkVegetation(steepSampler, 1000, 1000, rockOnlyConfig);
+
+    expect(placements.length).toBeGreaterThan(0);
+    expect(placements.every((placement) => placement.species === 'rock')).toBe(true);
+    expect(vegetationVariantCount('rock')).toBe(2);
+    expect(
+      placements.every(
+        (placement) => placement.variant < vegetationVariantCount(placement.species),
+      ),
+    ).toBe(true);
   });
 
   it('never plants in the road corridor or on the spawn pad', () => {
