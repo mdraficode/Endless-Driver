@@ -2,6 +2,7 @@ import './style.css';
 import { Application, type ApplicationOptions } from './core/Application';
 import { RENDER_CONFIG, applyRenderSwitches, type RenderConfig } from './config/render';
 import { WORLD_CONFIG } from './config/world';
+import { DEFAULT_SPAWN_ID, SPAWN_POINTS } from './config/spawns';
 import { loadRapier } from './physics/RapierModule';
 import {
   applyBackendOverride,
@@ -22,6 +23,7 @@ import { Minimap } from './ui/Minimap';
 import { CreditsPanel } from './ui/CreditsPanel';
 import { LandscapeFallback } from './ui/LandscapeFallback';
 import { LoadingScreen } from './ui/LoadingScreen';
+import { StartLocationSelector } from './ui/StartLocationSelector';
 import { yawFromQuat } from './shared/vector';
 
 export interface EndlessDriverDebugHandle {
@@ -181,6 +183,16 @@ const studioPanelRoot = document.querySelector<HTMLElement>('#studio-panel');
 const creditsButton = document.querySelector<HTMLButtonElement>('#credits-toggle');
 const creditsRoot = document.querySelector<HTMLElement>('#credits-root');
 const statusElement = document.querySelector<HTMLElement>('#scene-status');
+const routePickerRoot = document.querySelector<HTMLElement>('#route-picker');
+const routeSelect = document.querySelector<HTMLSelectElement>('#route-select');
+if (
+  routePickerRoot !== null &&
+  routeSelect !== null &&
+  readSceneRequest(window.location.search) === 'drive'
+) {
+  routePickerRoot.hidden = false;
+  new StartLocationSelector(routeSelect, SPAWN_POINTS, DEFAULT_SPAWN_ID);
+}
 if (creditsButton && creditsRoot) {
   void new CreditsPanel(creditsButton, creditsRoot).load();
 }

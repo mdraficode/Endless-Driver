@@ -259,6 +259,64 @@ body {
   color: #fecaca;
 }
 
+/* Always-available start picker; changing it reloads into the selected spawn, then auto-starts. */
+.route-picker {
+  position: fixed;
+  top: calc(max(0.75rem, env(safe-area-inset-top)) + 178px);
+  left: max(0.75rem, env(safe-area-inset-left));
+  z-index: 45;
+  width: min(16rem, calc(100vw - 1.5rem));
+  padding: 0.65rem 0.75rem 0.55rem;
+  border: 1px solid rgb(148 163 184 / 28%);
+  border-radius: 0.9rem;
+  background: rgb(9 14 24 / 82%);
+  color: #e2e8f0;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 24%);
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+
+.route-picker[hidden] {
+  display: none;
+}
+
+.route-picker-label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.route-picker-eyebrow {
+  color: #99f6e4;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.route-picker-select {
+  width: 100%;
+  min-height: 2.6rem;
+  padding: 0.4rem 2rem 0.4rem 0.65rem;
+  border: 1px solid rgb(94 234 212 / 40%);
+  border-radius: 0.6rem;
+  background: rgb(15 23 42 / 94%);
+  color: #f8fafc;
+  font: inherit;
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.route-picker-select:focus-visible {
+  outline: 2px solid #5eead4;
+  outline-offset: 2px;
+}
+
+.route-picker-hint {
+  margin: 0.4rem 0 0;
+  color: rgb(203 213 225 / 72%);
+  font-size: 0.63rem;
+  line-height: 1.2;
+}
+
 /* Manifest-backed asset credits; desktop button and touch-utility entry share the same panel. */
 .credits-toggle {
   position: absolute;

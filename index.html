@@ -18,6 +18,15 @@
         aria-label="Endless Driver 3D viewport"
       ></canvas>
       <div id="diagnostics-overlay" class="pointer-events-none absolute inset-0"></div>
+      <aside id="route-picker" class="route-picker" aria-label="Choose a starting location" hidden>
+        <label class="route-picker-label" for="route-select">
+          <span class="route-picker-eyebrow">START LOCATION</span>
+          <select id="route-select" class="route-picker-select" aria-label="Starting location">
+            <option value="aohara-city">Aohara Metropolis — Central Avenue</option>
+          </select>
+        </label>
+        <p class="route-picker-hint">A fresh drive starts automatically after switching.</p>
+      </aside>
       <div id="touch-controls" class="pointer-events-none absolute inset-0" hidden></div>
       <section id="loading-screen" class="loading-screen" aria-hidden="true" hidden>
         <div class="loading-screen-grid" aria-hidden="true"></div>
@@ -27,7 +36,7 @@
           </div>
           <p class="loading-eyebrow">OPEN-ROAD DRIVING</p>
           <h1 class="loading-title">ENDLESS <span>DRIVER</span></h1>
-          <p class="loading-description">Aohara Central Avenue is getting ready.</p>
+          <p class="loading-description">Your selected starting point is getting ready.</p>
           <div class="loading-progress-copy">
             <span id="loading-stage-label">Starting the Aohara drive…</span>
             <span id="loading-percent" class="loading-percent">0%</span>
