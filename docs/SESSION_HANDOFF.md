@@ -1997,4 +1997,3 @@ This is a narrow continuation of the appearance-only review authorized with the 
 **Archive and rights:** `source-archives/hero-car-candidate-neutral-screen.zip` is the owner-supplied 79,563,959-byte ZIP, SHA-256 `222b8a9322a94305a5065d9adb56836c93451f040baea45dca4e774ba8f178e6`. Its internal `ATTRIBUTION.txt` records only replacement of `textures/media.png` with a neutral dashboard screen. The source is MMC Works’ Generic Sport Coupé Car under CC BY 4.0; its listing, attribution, modifications, and exact hash are already represented in the asset manifest and `CREDITS.md`. See `source-archives/README.md`.
 
 **Storage boundary:** keep the archive at the repository path above, outside `public/` and `public/assets/`. It is for recovery/build use only; the Pages deployment must continue to serve only the optimized runtime GLB. Once the remote commit is verified, remove the local Arena copy and scratch clone.
-
