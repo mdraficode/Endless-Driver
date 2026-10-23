@@ -364,6 +364,27 @@ async function verifyModel(label, asset) {
     const wheelConfig = JSON.parse(
       await readFile(join(ROOT, 'src', 'config', 'vehicle-wheels.json'), 'utf8'),
     );
+    const bodyBounds = asset.verification?.bodyBoundsMeters;
+    const bodyBottom = bodyBounds?.min?.[1];
+    const tireBottom = wheelConfig.anchorY - wheelConfig.restLength - wheelConfig.radius;
+    const tireTop = wheelConfig.anchorY - wheelConfig.restLength + wheelConfig.radius;
+    require_(
+      Array.isArray(bodyBounds?.min) &&
+        Array.isArray(bodyBounds?.max) &&
+        Array.isArray(bodyBounds?.size) &&
+        bodyBounds.min.length === 3 &&
+        bodyBounds.max.length === 3 &&
+        bodyBounds.size.length === 3 &&
+        [...bodyBounds.min, ...bodyBounds.max].every(Number.isFinite) &&
+        bodyBounds.size.every((value) => Number.isFinite(value) && value > 0),
+      `${label}: hero body bounds are missing or invalid`,
+    );
+    require_(
+      Number.isFinite(bodyBottom) &&
+        bodyBottom >= tireBottom - 0.18 &&
+        bodyBottom <= tireTop + 0.1,
+      `${label}: hero body lower bound is vertically detached from the configured wheels`,
+    );
     for (const level of declared) {
       const lod = nodes.get(level.node);
       if (!lod) continue;

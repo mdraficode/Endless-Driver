@@ -288,6 +288,25 @@ function validateBlenderReport(report, wheelConfig, textureMapping) {
     report.transform.bounds.size.every((value) => Number.isFinite(value) && value > 0),
     'target bounds are invalid',
   );
+  const bodyBounds = report.transform.bodyBounds;
+  assert(
+    bodyBounds &&
+      Array.isArray(bodyBounds.min) &&
+      bodyBounds.min.length === 3 &&
+      Array.isArray(bodyBounds.max) &&
+      bodyBounds.max.length === 3 &&
+      Array.isArray(bodyBounds.size) &&
+      bodyBounds.size.length === 3 &&
+      [...bodyBounds.min, ...bodyBounds.max].every(Number.isFinite) &&
+      bodyBounds.size.every((value) => Number.isFinite(value) && value > 0),
+    'transformed hero body bounds are invalid',
+  );
+  const tireBottom = wheelConfig.anchorY - wheelConfig.restLength - wheelConfig.radius;
+  const tireTop = wheelConfig.anchorY - wheelConfig.restLength + wheelConfig.radius;
+  assert(
+    bodyBounds.min[1] >= tireBottom - 0.18 && bodyBounds.min[1] <= tireTop + 0.1,
+    `hero body lower bound y=${bodyBounds.min[1]} is vertically detached from its configured wheels`,
+  );
   assert(
     report.transform.scale.x > 0 && report.transform.scale.length > 0,
     'model transform scales are invalid',
@@ -536,7 +555,7 @@ function buildManifestEntry({ archive, extracted, report, built }) {
       outputBytes: built.bytes,
       reductions: [
         `Blender ${HERO_CAR.blenderVersion} FBX import and transform bake`,
-        'Convert source +Y-forward/+Z-up to game +Y-up/-Z-forward; align all four wheel centres to VEHICLE_CONFIG',
+        'Convert source +Y-forward/+Z-up to game +Y-up/-Z-forward; apply the same wheel-centred origin to body and wheel geometry',
         'Preserve separate four wheel pivots and steering-wheel pivot; omit the unused unskinned 92-bone source armature',
         'Three full hierarchy LODs; Blender Decimate ratios 1.0, 0.45, 0.15',
         `Texture resize cap ${MAX_TEXTURE_SIZE}px; DirectX normal-map green channel flipped to OpenGL convention`,
@@ -550,7 +569,7 @@ function buildManifestEntry({ archive, extracted, report, built }) {
         ratio: level.ratio,
       })),
       notes:
-        'The source is a multi-mesh vehicle with a separate, unskinned 92-bone rig. Mesh world transforms are baked, while steering and wheel pivots remain explicit nodes. Wheels are aligned to the same JSON measurements consumed by src/config/vehicle.ts. textures/media.png from the supplied archive is hash-verified and remains the media material base-color texture; DirectX-suffixed normal maps are converted to OpenGL tangent-space convention. Design identity remains subject to the documented visual review gate.',
+        'The source is a multi-mesh vehicle with a separate, unskinned 92-bone rig. Mesh world transforms are baked with one wheel-centred source-to-game affine transform; steering and wheel pivots remain explicit nodes. Wheel centres and body lower-bound clearance are checked against the same JSON measurements consumed by src/config/vehicle.ts. textures/media.png from the supplied archive is hash-verified and remains the media material base-color texture; DirectX-suffixed normal maps are converted to OpenGL tangent-space convention. Design identity remains subject to the documented visual review gate.',
     },
     sourceFiles,
     files: [file],
@@ -569,6 +588,7 @@ function buildManifestEntry({ archive, extracted, report, built }) {
       blenderVersion: report.blenderVersion,
       sourceFbxSha256: HERO_CAR.fbxSha256,
       targetBoundsMeters: report.transform.bounds,
+      bodyBoundsMeters: report.transform.bodyBounds,
       wheelAlignment: report.wheelPivots,
       textureProcessing: report.textures,
     },

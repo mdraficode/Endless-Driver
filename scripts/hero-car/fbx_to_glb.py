@@ -418,6 +418,10 @@ def main():
         (0.0, scale_z, 0.0, 0.0),
         (0.0, 0.0, 0.0, 1.0),
     ))
+    # Static body meshes must use the same translated source-to-game mapping as the wheel pivots.
+    # Without this origin offset, the pivots sit at the configured wheel centres while the whole
+    # body remains in source-origin space (notably lifting the chassis clear of its wheels).
+    body_axis = Matrix.Translation(map_point(Vector((0.0, 0.0, 0.0)))) @ axis
     all_source_bounds = bounds(mesh_world_points(source_meshes))
     collection = bpy.data.collections.new("MMC Works Hero Car")
     scene.collection.children.link(collection)
@@ -426,7 +430,7 @@ def main():
     rig = new_empty(collection, "car-rig-lod0", lod0)
     body_group = new_empty(collection, "car-body-lod0", rig)
     for source in body_meshes:
-        make_mesh(collection, source, f"{source.name}-lod0", body_group, axis @ source.matrix_world)
+        make_mesh(collection, source, f"{source.name}-lod0", body_group, body_axis @ source.matrix_world)
 
     steering_points = list(mesh_world_points(steering_meshes))
     steering_bounds = bounds(steering_points)
@@ -482,7 +486,10 @@ def main():
     # Static body pieces are joined into one multi-material mesh, the steering assembly into one
     # pivoted mesh, and each wheel's tire/rim into one spinner mesh. This preserves materials and
     # pivots while cutting the source's 84 mesh objects to six draw objects per LOD.
-    join_mesh_objects([obj for obj in body_group.children if obj.type == "MESH"], "car-body-surfaces-lod0")
+    body_surface = join_mesh_objects(
+        [obj for obj in body_group.children if obj.type == "MESH"],
+        "car-body-surfaces-lod0",
+    )
     join_mesh_objects([obj for obj in steering_pivot.children if obj.type == "MESH"], "steering-wheel-assembly-lod0")
     for key, _source_name, _side, _axle in WHEEL_SOURCES:
         spinner = bpy.data.objects[f"wheel-spinner-{key}-lod0"]
@@ -517,6 +524,7 @@ def main():
     bpy.context.view_layer.update()
     lod0_meshes = [obj for obj in descendants(lod0) if obj.type == "MESH"]
     target_bounds = bounds(mesh_world_points(lod0_meshes))
+    target_body_bounds = bounds(mesh_world_points([body_surface]))
 
     bpy.ops.object.select_all(action="DESELECT")
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -563,6 +571,7 @@ def main():
             "sourceWheelRadiusMeters": source_wheel_radius,
             "scale": {"x": scale_x, "verticalAndWheelRadius": scale_y, "length": scale_z},
             "bounds": target_bounds,
+            "bodyBounds": target_body_bounds,
         },
         "wheelPivots": wheel_pivot_report,
         "steeringPivot": "steering-wheel-pivot-lod0",

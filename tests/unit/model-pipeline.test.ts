@@ -2,6 +2,7 @@ import { Document, type Mesh, type Primitive } from '@gltf-transform/core';
 import { describe, expect, it } from 'vitest';
 import { countMeshTriangles, mergePositionSeams } from '../../scripts/lib/geometry.mjs';
 import { MODEL_BUDGETS, MODEL_LOD_RATIOS, requireBudget } from '../../scripts/asset-budgets.mjs';
+import { VEHICLE_CONFIG } from '../../src/config/vehicle';
 import manifest from '../../public/assets/manifest.json';
 
 /**
@@ -100,6 +101,26 @@ describe('mergePositionSeams', () => {
     const again = mergePositionSeams(primitive);
     expect(again.removed).toBe(0);
     expect(again.after).toBe(again.before);
+  });
+});
+
+describe('hero body and wheel alignment', () => {
+  it('keeps the body lower edge within the configured tire envelope', () => {
+    const hero = manifest.assets.find((asset) => asset.id === 'hero-car-mmc-generic-sport-coupe');
+    if (!hero) throw new Error('the pinned hero asset is missing from the manifest');
+    const bodyBounds = hero.verification?.bodyBoundsMeters;
+    if (!bodyBounds) throw new Error('the hero conversion did not record transformed body bounds');
+
+    const { anchorY, restLength, radius } = VEHICLE_CONFIG.wheels;
+    const tireBottom = anchorY - restLength - radius;
+    const tireTop = anchorY - restLength + radius;
+    const bodyBottom = bodyBounds.min[1];
+    if (bodyBottom === undefined) throw new Error('the hero body bounds omitted its Y coordinate');
+
+    // The lower body should meet the tire/arch region, not float a large distance above the wheels
+    // because its source-origin translation was omitted from the conversion.
+    expect(bodyBottom).toBeGreaterThanOrEqual(tireBottom - 0.18);
+    expect(bodyBottom).toBeLessThanOrEqual(tireTop + 0.1);
   });
 });
 
