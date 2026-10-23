@@ -701,7 +701,9 @@ export class Application {
         CHASE_ORBIT_CONFIG,
       )
     ) {
+      // A fresh drive input returns either free-look camera to the forward road view.
       this.#chaseCamera.resetOrbit();
+      this.#cockpitCamera.resetLook();
     }
     this.#driveInputActive = driveInputActive;
 

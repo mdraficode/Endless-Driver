@@ -307,7 +307,7 @@ describe('cockpit camera', () => {
     expect(camera.camera.quaternion.angleTo(forwardOrientation)).toBeGreaterThan(0.5);
   });
 
-  it('keeps steering and corner motion restrained, and resetLook returns gaze to forward', () => {
+  it('smoothly recenters free-look to the forward view when reset', () => {
     const camera = new CockpitCamera(COCKPIT_CAMERA_CONFIG, 1);
     camera.snapTo(pose(), telemetry());
     camera.lookBySwipe(240, 0, 720);
@@ -322,12 +322,22 @@ describe('cockpit camera', () => {
     const cornerOrientation = camera.camera.quaternion.clone();
     expect(cornerOrientation.angleTo(new Quaternion())).toBeLessThan(1.4);
 
-    camera.resetLook();
-    camera.snapTo(pose(), telemetry());
     const forwardOrientation = new Quaternion().setFromAxisAngle(
       new Vector3(1, 0, 0),
       COCKPIT_CAMERA_CONFIG.forwardPitchRadians,
     );
-    expect(camera.camera.quaternion.angleTo(forwardOrientation)).toBeCloseTo(0, 6);
+    const initialAngle = camera.camera.quaternion.angleTo(forwardOrientation);
+    expect(initialAngle).toBeGreaterThan(0.5);
+
+    camera.resetLook();
+    camera.update(1 / 60, pose(), telemetry());
+    const firstRecenteredAngle = camera.camera.quaternion.angleTo(forwardOrientation);
+    expect(firstRecenteredAngle).toBeGreaterThan(0);
+    expect(firstRecenteredAngle).toBeLessThan(initialAngle);
+
+    for (let frame = 0; frame < 60; frame += 1) {
+      camera.update(1 / 60, pose(), telemetry());
+    }
+    expect(camera.camera.quaternion.angleTo(forwardOrientation)).toBeLessThan(0.001);
   });
 });
