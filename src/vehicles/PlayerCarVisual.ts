@@ -87,7 +87,10 @@ export class PlayerCarVisual {
         }
         model.dispose();
       }
-      console.warn('Endless Driver: hero model could not be loaded; keeping the authored fallback.', error);
+      console.warn(
+        'Endless Driver: hero model could not be loaded; keeping the authored fallback.',
+        error,
+      );
       return false;
     }
   }
@@ -107,7 +110,9 @@ export class PlayerCarVisual {
     const frontStates = pose.wheels.filter((wheel) => wheel.isFront);
     const steeringRotation =
       frontStates.length > 0
-        ? -(frontStates.reduce((total, wheel) => total + wheel.steerAngle, 0) / frontStates.length) * 2.1
+        ? -(
+            frontStates.reduce((total, wheel) => total + wheel.steerAngle, 0) / frontStates.length
+          ) * 2.1
         : 0;
     for (const lod of this.#lodNodes) {
       for (const [index, binding] of WHEEL_BINDINGS.entries()) {

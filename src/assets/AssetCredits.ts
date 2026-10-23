@@ -27,9 +27,7 @@ export function listAssetCredits(manifest: AssetManifest): readonly AssetCredit[
     licence: asset.source.licence,
     sourceUrl: asset.source.url,
     licenceUrl: asset.source.licenceUrl ?? null,
-    requiredAttribution: asset.source.licence.startsWith('CC-BY')
-      ? asset.source.attribution
-      : null,
+    requiredAttribution: asset.source.licence.startsWith('CC-BY') ? asset.source.attribution : null,
     files: asset.files.map((file) => file.path),
   }));
 }

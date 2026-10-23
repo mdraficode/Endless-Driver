@@ -132,7 +132,9 @@ describe('PlayerCarVisual', () => {
         expect(pivot?.rotation.y).toBe(state.steerAngle);
         expect(spinner?.rotation.x).toBe(state.spinAngle);
       }
-      expect(model.object.getObjectByName(`steering-wheel-pivot-lod${level}`)?.rotation.z).toBeCloseTo(-0.42);
+      expect(
+        model.object.getObjectByName(`steering-wheel-pivot-lod${level}`)?.rotation.z,
+      ).toBeCloseTo(-0.42);
     }
 
     expect(visual.updateForCamera(new Vector3(0, 0, 10))).toBe(2);

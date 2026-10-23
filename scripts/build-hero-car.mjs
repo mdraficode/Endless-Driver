@@ -14,15 +14,7 @@
  */
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import {
-  copyFile,
-  mkdir,
-  readFile,
-  readdir,
-  rm,
-  stat,
-  writeFile,
-} from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NodeIO, VertexLayout } from '@gltf-transform/core';
@@ -62,7 +54,9 @@ function parseArguments() {
   const archive = index >= 0 ? args[index + 1] : process.env.HERO_CAR_ARCHIVE;
   if (!archive) {
     usage();
-    throw new Error('the original user-supplied archive is required; no network fetch is attempted');
+    throw new Error(
+      'the original user-supplied archive is required; no network fetch is attempted',
+    );
   }
   return resolve(archive);
 }
@@ -115,12 +109,13 @@ async function verifyArchive(archivePath) {
     `source archive SHA-256 ${digest} does not match the selected archive ${HERO_CAR.archiveSha256}`,
   );
   run('unzip', ['-tq', archivePath]);
-  const entries = run('unzip', ['-Z1', archivePath])
-    .split(/\r?\n/)
-    .filter(Boolean);
+  const entries = run('unzip', ['-Z1', archivePath]).split(/\r?\n/).filter(Boolean);
   assert(entries.length === 23, `archive contains ${entries.length} entries; expected 23`);
   for (const entry of entries) {
-    assert(!entry.startsWith('/') && !entry.split('/').includes('..'), `unsafe archive path: ${entry}`);
+    assert(
+      !entry.startsWith('/') && !entry.split('/').includes('..'),
+      `unsafe archive path: ${entry}`,
+    );
   }
   for (const required of [HERO_CAR.fbxPath, HERO_CAR.mediaPath, 'ATTRIBUTION.txt']) {
     assert(entries.includes(required), `source archive is missing ${required}`);
@@ -136,7 +131,12 @@ async function extractArchive(archivePath) {
   const media = join(extractDir, HERO_CAR.mediaPath);
   run('unzip', ['-qq', archivePath, '-d', extractDir]);
   const attribution = await readFile(join(extractDir, 'ATTRIBUTION.txt'), 'utf8');
-  for (const required of [HERO_CAR.creator, HERO_CAR.archiveLicenceText, HERO_CAR.licenceUrl, HERO_CAR.sourceUrl]) {
+  for (const required of [
+    HERO_CAR.creator,
+    HERO_CAR.archiveLicenceText,
+    HERO_CAR.licenceUrl,
+    HERO_CAR.sourceUrl,
+  ]) {
     assert(attribution.includes(required), `archive attribution does not contain ${required}`);
   }
   assert(
@@ -147,7 +147,13 @@ async function extractArchive(archivePath) {
   assert(fbxDigest === HERO_CAR.fbxSha256, `extracted FBX hash mismatch: ${fbxDigest}`);
   const mediaDigest = await sha256File(media);
   assert(mediaDigest === HERO_CAR.mediaSha256, `sanitized media hash mismatch: ${mediaDigest}`);
-  return { extractDir, fbx, media, fbxBytes: (await stat(fbx)).size, mediaBytes: (await stat(media)).size };
+  return {
+    extractDir,
+    fbx,
+    media,
+    fbxBytes: (await stat(fbx)).size,
+    mediaBytes: (await stat(media)).size,
+  };
 }
 
 async function pathExists(path) {
@@ -173,7 +179,10 @@ async function preprocessTextures(sourceDir, outputDir) {
   for (const sourceName of files) {
     const sourcePath = join(sourceDir, sourceName);
     const directXNormal = /_Normal_DirectX\.(png|jpe?g)$/i.test(sourceName);
-    const outputStem = basename(sourceName, extname(sourceName)).replace(/_Normal_DirectX$/i, '_Normal_OpenGL');
+    const outputStem = basename(sourceName, extname(sourceName)).replace(
+      /_Normal_DirectX$/i,
+      '_Normal_OpenGL',
+    );
     const outputName = `${outputStem}.png`;
     assert(!outputNames.has(outputName), `two source images would produce ${outputName}`);
     outputNames.add(outputName);
@@ -181,7 +190,11 @@ async function preprocessTextures(sourceDir, outputDir) {
     const metadata = await sharp(sourcePath, { failOn: 'error', sequentialRead: true }).metadata();
     assert(metadata.width && metadata.height, `texture has no dimensions: ${sourceName}`);
     const image = sharp(sourcePath, { failOn: 'error', sequentialRead: true });
-    const scale = Math.min(1, MAX_TEXTURE_SIZE / metadata.width, MAX_TEXTURE_SIZE / metadata.height);
+    const scale = Math.min(
+      1,
+      MAX_TEXTURE_SIZE / metadata.width,
+      MAX_TEXTURE_SIZE / metadata.height,
+    );
     const resized = scale < 1;
     const { data: sourcePixels, info } = await image
       .resize({
@@ -199,7 +212,11 @@ async function preprocessTextures(sourceDir, outputDir) {
       const sourceChannels = channels;
       channels = sourceChannels === 1 ? 3 : 4;
       pixels = Buffer.alloc(info.width * info.height * channels);
-      for (let sourceOffset = 0, targetOffset = 0; sourceOffset < sourcePixels.length; sourceOffset += sourceChannels, targetOffset += channels) {
+      for (
+        let sourceOffset = 0, targetOffset = 0;
+        sourceOffset < sourcePixels.length;
+        sourceOffset += sourceChannels, targetOffset += channels
+      ) {
         const gray = sourcePixels[sourceOffset] ?? 0;
         pixels[targetOffset] = gray;
         pixels[targetOffset + 1] = gray;
@@ -251,15 +268,30 @@ function verifyBlenderVersion(blender) {
 function validateBlenderReport(report, wheelConfig, textureMapping) {
   assert(report.blenderVersion === HERO_CAR.blenderVersion, 'Blender report version mismatch');
   assert(report.source.fbxSha256 === HERO_CAR.fbxSha256, 'Blender imported a different FBX');
-  assert(report.source.meshObjects === 84 && report.source.triangles === 114070, 'Blender source geometry does not match the pinned FBX');
-  assert(report.neutralMedia.sourceSha256 === HERO_CAR.mediaSha256, 'neutral dashboard texture hash mismatch');
+  assert(
+    report.source.meshObjects === 84 && report.source.triangles === 114070,
+    'Blender source geometry does not match the pinned FBX',
+  );
+  assert(
+    report.neutralMedia.sourceSha256 === HERO_CAR.mediaSha256,
+    'neutral dashboard texture hash mismatch',
+  );
   assert(report.neutralMedia.material === 'media', 'neutral dashboard material binding changed');
   assert(report.lods.length === 3, `expected 3 LODs; received ${report.lods.length}`);
-  assert(report.lods[0].triangles <= requireBudget(HERO_CAR.budgetClass).maxTriangles, 'LOD0 exceeds hero triangle budget');
+  assert(
+    report.lods[0].triangles <= requireBudget(HERO_CAR.budgetClass).maxTriangles,
+    'LOD0 exceeds hero triangle budget',
+  );
   assert(report.lods[0].triangles > report.lods[1].triangles, 'LOD1 must be cheaper than LOD0');
   assert(report.lods[1].triangles > report.lods[2].triangles, 'LOD2 must be cheaper than LOD1');
-  assert(report.transform.bounds.size.every((value) => Number.isFinite(value) && value > 0), 'target bounds are invalid');
-  assert(report.transform.scale.x > 0 && report.transform.scale.length > 0, 'model transform scales are invalid');
+  assert(
+    report.transform.bounds.size.every((value) => Number.isFinite(value) && value > 0),
+    'target bounds are invalid',
+  );
+  assert(
+    report.transform.scale.x > 0 && report.transform.scale.length > 0,
+    'model transform scales are invalid',
+  );
   assert(report.transform.scale.verticalAndWheelRadius > 0, 'model vertical scale is invalid');
 
   const tolerance = 0.012;
@@ -268,12 +300,23 @@ function validateBlenderReport(report, wheelConfig, textureMapping) {
     const measured = report.wheelPivots[wheel.key];
     assert(measured, `Blender report is missing the ${wheel.key} pivot`);
     const targetX = wheel.side === 'left' ? -wheelConfig.halfTrack : wheelConfig.halfTrack;
-    assert(Math.abs(measured.target[0] - targetX) <= tolerance, `${wheel.key} target half-track is misaligned`);
-    assert(Math.abs(measured.target[1] - (wheelConfig.anchorY - wheelConfig.restLength)) <= tolerance, `${wheel.key} rest height is misaligned`);
-    assert(Math.abs(measured.target[2] - expectedZ[wheel.axle]) <= tolerance, `${wheel.key} axle is misaligned`);
+    assert(
+      Math.abs(measured.target[0] - targetX) <= tolerance,
+      `${wheel.key} target half-track is misaligned`,
+    );
+    assert(
+      Math.abs(measured.target[1] - (wheelConfig.anchorY - wheelConfig.restLength)) <= tolerance,
+      `${wheel.key} rest height is misaligned`,
+    );
+    assert(
+      Math.abs(measured.target[2] - expectedZ[wheel.axle]) <= tolerance,
+      `${wheel.key} axle is misaligned`,
+    );
   }
   assert(
-    textureMapping.textures.every((texture) => texture.width <= MAX_TEXTURE_SIZE && texture.height <= MAX_TEXTURE_SIZE),
+    textureMapping.textures.every(
+      (texture) => texture.width <= MAX_TEXTURE_SIZE && texture.height <= MAX_TEXTURE_SIZE,
+    ),
     `at least one processed texture exceeds ${MAX_TEXTURE_SIZE}px`,
   );
 }
@@ -309,8 +352,16 @@ function validateHierarchy(document, report, wheelConfig) {
     const lod = byName.get(level.node);
     assert(lod, `GLB is missing LOD root ${level.node}`);
     const actualTriangles = countTreeTriangles(lod);
-    assert(actualTriangles === level.triangles, `${level.node} decodes to ${actualTriangles} triangles, expected ${level.triangles}`);
-    lods.push({ level: level.level, node: level.node, triangles: actualTriangles, ratio: level.ratio });
+    assert(
+      actualTriangles === level.triangles,
+      `${level.node} decodes to ${actualTriangles} triangles, expected ${level.triangles}`,
+    );
+    lods.push({
+      level: level.level,
+      node: level.node,
+      triangles: actualTriangles,
+      ratio: level.ratio,
+    });
 
     const suffix = `-lod${level.level}`;
     for (const wheel of HERO_WHEELS) {
@@ -325,15 +376,24 @@ function validateHierarchy(document, report, wheelConfig) {
         wheel.axle === 'front' ? wheelConfig.frontZ : wheelConfig.rearZ,
       ];
       const actual = pivot.getTranslation();
-      assert(actual.every((value, index) => Math.abs(value - expected[index]) <= 0.012), `${nodeName} translation changed in the GLB`);
+      assert(
+        actual.every((value, index) => Math.abs(value - expected[index]) <= 0.012),
+        `${nodeName} translation changed in the GLB`,
+      );
       const spinner = byName.get(`wheel-spinner-${wheel.key}${suffix}`);
-      assert(spinner && pivot.listChildren().includes(spinner), `${nodeName} lost its child spinner`);
+      assert(
+        spinner && pivot.listChildren().includes(spinner),
+        `${nodeName} lost its child spinner`,
+      );
       wheelPivots[wheel.key] ??= {};
       wheelPivots[wheel.key][String(level.level)] = nodeName;
     }
     const steeringName = `steering-wheel-pivot${suffix}`;
     const steering = byName.get(steeringName);
-    assert(steering && subtreeNodes(lod).includes(steering), `GLB is missing steering pivot ${steeringName}`);
+    assert(
+      steering && subtreeNodes(lod).includes(steering),
+      `GLB is missing steering pivot ${steeringName}`,
+    );
     steeringPivots.push(steeringName);
   }
   return { lods, wheelPivots, steeringPivots, nodeNames: nodes.map((node) => node.getName()) };
@@ -355,7 +415,10 @@ async function optimizeAndVerify(rawGlbPath, outputTemp, blenderReport, wheelCon
   const document = await io.read(rawGlbPath);
   const before = validateHierarchy(document, blenderReport, wheelConfig);
   const lod0Node = findNode(document.getRoot(), 'lod0');
-  assert(lod0Node && countTreeTriangles(lod0Node) === blenderReport.lods[0].triangles, 'LOD0 triangle count changed during import');
+  assert(
+    lod0Node && countTreeTriangles(lod0Node) === blenderReport.lods[0].triangles,
+    'LOD0 triangle count changed during import',
+  );
 
   await document.transform(dedup(), prune());
   const { textures } = await encodeKtx2(document, {
@@ -379,13 +442,18 @@ async function optimizeAndVerify(rawGlbPath, outputTemp, blenderReport, wheelCon
     (json.images ?? []).every((image) => image.mimeType === 'image/ktx2'),
     'optimized GLB contains a non-KTX2 texture',
   );
-  const mediaNames = (json.images ?? []).map((image) => image.name ?? '').filter((name) => /media/i.test(name));
+  const mediaNames = (json.images ?? [])
+    .map((image) => image.name ?? '')
+    .filter((name) => /media/i.test(name));
   assert(mediaNames.length > 0, 'the neutral media texture did not survive GLB export');
   for (const node of json.nodes ?? []) {
     for (const key of ['translation', 'scale']) {
       const value = node[key];
       if (value !== undefined) {
-        assert(Array.isArray(value) && value.every(Number.isFinite), `${node.name} has an invalid ${key}`);
+        assert(
+          Array.isArray(value) && value.every(Number.isFinite),
+          `${node.name} has an invalid ${key}`,
+        );
       }
     }
   }
@@ -394,8 +462,14 @@ async function optimizeAndVerify(rawGlbPath, outputTemp, blenderReport, wheelCon
   const after = validateHierarchy(reread, blenderReport, wheelConfig);
   const budget = requireBudget(HERO_CAR.budgetClass);
   const info = await stat(outputTemp);
-  assert(info.size <= budget.maxBytes, `hero GLB is ${formatBytes(info.size)}, above ${formatBytes(budget.maxBytes)}`);
-  assert(after.lods.length >= budget.minLods && after.lods.length <= budget.maxLods, 'hero LOD count is outside its budget');
+  assert(
+    info.size <= budget.maxBytes,
+    `hero GLB is ${formatBytes(info.size)}, above ${formatBytes(budget.maxBytes)}`,
+  );
+  assert(
+    after.lods.length >= budget.minLods && after.lods.length <= budget.maxLods,
+    'hero LOD count is outside its budget',
+  );
   assert(after.lods[0].triangles <= budget.maxTriangles, 'hero LOD0 exceeds its triangle budget');
 
   return {
@@ -504,7 +578,9 @@ function buildManifestEntry({ archive, extracted, report, built }) {
 async function main() {
   const archivePath = parseArguments();
   const archive = await verifyArchive(archivePath);
-  console.log(`Source archive verified: ${formatBytes(archive.bytes)} · ${archive.sha256.slice(0, 12)}`);
+  console.log(
+    `Source archive verified: ${formatBytes(archive.bytes)} · ${archive.sha256.slice(0, 12)}`,
+  );
   const blender = process.env.BLENDER_BIN ?? 'blender';
   const blenderVersion = verifyBlenderVersion(blender);
   const basisu = await basisuAvailable();
@@ -514,7 +590,10 @@ async function main() {
   const extracted = await extractArchive(archivePath);
   const sourceTextureDir = join(extracted.extractDir, 'textures');
   const processedTextureDir = join(CACHE_ROOT, 'processed-textures');
-  const { mapping: textureMapping, mapPath } = await preprocessTextures(sourceTextureDir, processedTextureDir);
+  const { mapping: textureMapping, mapPath } = await preprocessTextures(
+    sourceTextureDir,
+    processedTextureDir,
+  );
   const wheelConfig = JSON.parse(await readFile(WHEEL_CONFIG_PATH, 'utf8'));
   const rawGlb = join(CACHE_ROOT, 'hero-car-blender.glb');
   const reportPath = join(CACHE_ROOT, 'conversion-report.json');
@@ -522,25 +601,29 @@ async function main() {
   await rm(rawGlb, { force: true });
   await rm(finalTemp, { force: true });
 
-  run(blender, [
-    '--background',
-    '--factory-startup',
-    '--python',
-    PYTHON_SCRIPT,
-    '--',
-    '--input',
-    extracted.fbx,
-    '--textures',
-    processedTextureDir,
-    '--texture-map',
-    mapPath,
-    '--output',
-    rawGlb,
-    '--report',
-    reportPath,
-    '--wheel-config',
-    WHEEL_CONFIG_PATH,
-  ], { stdio: 'inherit' });
+  run(
+    blender,
+    [
+      '--background',
+      '--factory-startup',
+      '--python',
+      PYTHON_SCRIPT,
+      '--',
+      '--input',
+      extracted.fbx,
+      '--textures',
+      processedTextureDir,
+      '--texture-map',
+      mapPath,
+      '--output',
+      rawGlb,
+      '--report',
+      reportPath,
+      '--wheel-config',
+      WHEEL_CONFIG_PATH,
+    ],
+    { stdio: 'inherit' },
+  );
   assert(await pathExists(rawGlb), 'Blender did not write its intermediate GLB');
   const report = JSON.parse(await readFile(reportPath, 'utf8'));
   validateBlenderReport(report, wheelConfig, textureMapping);
@@ -573,7 +656,9 @@ async function main() {
   }
 
   console.log(`Built ${HERO_CAR.id}: ${formatBytes(built.bytes)}, ${built.textures} KTX2 textures`);
-  console.log(`LOD triangles: ${built.hierarchy.lods.map((level) => level.triangles.toLocaleString()).join(' → ')}`);
+  console.log(
+    `LOD triangles: ${built.hierarchy.lods.map((level) => level.triangles.toLocaleString()).join(' → ')}`,
+  );
   console.log(`SHA-256: ${built.sha256}`);
   console.log(`Output: ${OUTPUT_PATH}`);
 }

@@ -133,32 +133,69 @@ for (const asset of manifest.assets) {
 function verifyHeroRecord(label, asset) {
   require_(asset.kind === 'model', `${label}: the player hero must be a model asset`);
   require_(asset.assetClass === HERO_CAR.budgetClass, `${label}: hero budget class is incorrect`);
-  require_(asset.source?.creator === HERO_CAR.creator, `${label}: hero creator does not match the selected source`);
+  require_(
+    asset.source?.creator === HERO_CAR.creator,
+    `${label}: hero creator does not match the selected source`,
+  );
   require_(asset.source?.licence === HERO_CAR.licence, `${label}: hero licence must be CC BY 4.0`);
-  require_(asset.source?.licenceUrl === HERO_CAR.licenceUrl, `${label}: hero licence URL is not canonical`);
-  require_(asset.source?.url === HERO_CAR.sourceUrl, `${label}: hero source URL does not match the selected listing`);
-  require_(asset.source?.attribution === HERO_CAR.attribution, `${label}: hero attribution has drifted from the approved source/modification notice`);
-  require_(asset.source?.archiveSha256 === HERO_CAR.archiveSha256, `${label}: sanitized archive hash is missing or incorrect`);
+  require_(
+    asset.source?.licenceUrl === HERO_CAR.licenceUrl,
+    `${label}: hero licence URL is not canonical`,
+  );
+  require_(
+    asset.source?.url === HERO_CAR.sourceUrl,
+    `${label}: hero source URL does not match the selected listing`,
+  );
+  require_(
+    asset.source?.attribution === HERO_CAR.attribution,
+    `${label}: hero attribution has drifted from the approved source/modification notice`,
+  );
+  require_(
+    asset.source?.archiveSha256 === HERO_CAR.archiveSha256,
+    `${label}: sanitized archive hash is missing or incorrect`,
+  );
 
   const sources = asset.sourceFiles ?? [];
   const archive = sources.find((source) => source.path === HERO_CAR.archiveName);
   const fbx = sources.find((source) => source.path === HERO_CAR.fbxPath);
   const media = sources.find((source) => source.path === HERO_CAR.mediaPath);
-  require_(archive?.sha256 === HERO_CAR.archiveSha256, `${label}: source archive is not hash-pinned`);
-  require_(archive?.bytes === HERO_CAR.archiveBytes, `${label}: source archive byte count is incorrect`);
+  require_(
+    archive?.sha256 === HERO_CAR.archiveSha256,
+    `${label}: source archive is not hash-pinned`,
+  );
+  require_(
+    archive?.bytes === HERO_CAR.archiveBytes,
+    `${label}: source archive byte count is incorrect`,
+  );
   require_(fbx?.sha256 === HERO_CAR.fbxSha256, `${label}: source FBX hash is incorrect`);
-  require_(media?.sha256 === HERO_CAR.mediaSha256, `${label}: sanitized dashboard media hash is incorrect`);
-  require_(asset.verification?.sourceFbxSha256 === HERO_CAR.fbxSha256, `${label}: conversion report does not identify the pinned FBX`);
+  require_(
+    media?.sha256 === HERO_CAR.mediaSha256,
+    `${label}: sanitized dashboard media hash is incorrect`,
+  );
+  require_(
+    asset.verification?.sourceFbxSha256 === HERO_CAR.fbxSha256,
+    `${label}: conversion report does not identify the pinned FBX`,
+  );
 
   const neutralMedia = asset.verification?.neutralMedia;
-  require_(neutralMedia?.sourceSha256 === HERO_CAR.mediaSha256, `${label}: neutral media was not verified`);
-  require_(neutralMedia?.material === 'media', `${label}: neutral media is not bound to the source media material`);
   require_(
-    Array.isArray(neutralMedia?.glbImageNames) && neutralMedia.glbImageNames.some((name) => /media/i.test(name)),
+    neutralMedia?.sourceSha256 === HERO_CAR.mediaSha256,
+    `${label}: neutral media was not verified`,
+  );
+  require_(
+    neutralMedia?.material === 'media',
+    `${label}: neutral media is not bound to the source media material`,
+  );
+  require_(
+    Array.isArray(neutralMedia?.glbImageNames) &&
+      neutralMedia.glbImageNames.some((name) => /media/i.test(name)),
     `${label}: neutral media image is missing from the GLB`,
   );
   const modelFile = asset.files?.find((file) => file.slot === 'model');
-  require_(modelFile?.path === HERO_CAR.modelPath, `${label}: hero GLB is not at the pinned runtime path`);
+  require_(
+    modelFile?.path === HERO_CAR.modelPath,
+    `${label}: hero GLB is not at the pinned runtime path`,
+  );
 }
 
 /**
@@ -299,7 +336,10 @@ async function verifyModel(label, asset) {
   let previous = Infinity;
   for (const level of declared) {
     const entry = nodes.get(level.node);
-    require_(Boolean(entry), `${label}: the manifest advertises a "${level.node}" node that is not in the file`);
+    require_(
+      Boolean(entry),
+      `${label}: the manifest advertises a "${level.node}" node that is not in the file`,
+    );
     if (!entry) continue;
     const actualTriangles = countNodeTriangles(entry.index);
     require_(
@@ -330,8 +370,14 @@ async function verifyModel(label, asset) {
         require_(Boolean(spinnerEntry), `${label}: missing ${spinnerName}`);
         if (!pivotEntry || !spinnerEntry) continue;
         require_(inside.has(pivotEntry.index), `${label}: ${pivotName} is outside ${level.node}`);
-        require_(inside.has(spinnerEntry.index), `${label}: ${spinnerName} is outside ${level.node}`);
-        require_(!Number.isInteger(pivotEntry.node.mesh), `${label}: ${pivotName} must be an empty pivot`);
+        require_(
+          inside.has(spinnerEntry.index),
+          `${label}: ${spinnerName} is outside ${level.node}`,
+        );
+        require_(
+          !Number.isInteger(pivotEntry.node.mesh),
+          `${label}: ${pivotName} must be an empty pivot`,
+        );
         require_(
           (pivotEntry.node.children ?? []).includes(spinnerEntry.index),
           `${label}: ${spinnerName} is no longer a child of ${pivotName}`,
@@ -343,17 +389,22 @@ async function verifyModel(label, asset) {
         ];
         const actual = pivotEntry.node.translation ?? [0, 0, 0];
         require_(
-          actual.length === 3 && actual.every((value, axis) => Math.abs(value - expected[axis]) <= 0.012),
+          actual.length === 3 &&
+            actual.every((value, axis) => Math.abs(value - expected[axis]) <= 0.012),
           `${label}: ${pivotName} does not match the configured wheel centre`,
         );
       }
       const steeringName = `steering-wheel-pivot-lod${level.level}`;
       const steering = nodes.get(steeringName);
       require_(Boolean(steering), `${label}: missing ${steeringName}`);
-      if (steering) require_(inside.has(steering.index), `${label}: ${steeringName} is outside ${level.node}`);
+      if (steering)
+        require_(inside.has(steering.index), `${label}: ${steeringName} is outside ${level.node}`);
     }
     const lod0Level = declared[0];
-    require_(file.triangles === lod0Level?.triangles, `${label}: model file triangle count differs from lod0`);
+    require_(
+      file.triangles === lod0Level?.triangles,
+      `${label}: model file triangle count differs from lod0`,
+    );
   }
 
   const lod0 = declared[0];
