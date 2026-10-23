@@ -12,10 +12,12 @@ import { MeshPhysicalNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import {
+  trafficVehicleCountFor,
   URBAN_ACTIVITY_TIER_BUDGET,
   URBAN_CITY_CONFIG,
   type TrafficSignalAspect,
 } from '../config/urban-city';
+import type { TrafficIntensity } from '../config/game-preferences';
 import { AOHARA_DISTRICT_CONFIG } from '../config/urban-district';
 import type { TierId } from '../config/tiers';
 import { clamp } from '../shared/math';
@@ -332,6 +334,8 @@ export function advanceTrafficWithSignal(
 
 export interface UrbanStreetActivityOptions {
   readonly physics?: PhysicsWorld;
+  /** Runtime traffic budget; pedestrians remain at the selected tier's fixed budget. */
+  readonly trafficIntensity?: TrafficIntensity;
   /** World-space position of the activity's parent city root. */
   readonly origin?: readonly [number, number, number];
 }
@@ -372,7 +376,9 @@ export class UrbanStreetActivity {
     this.#physics = options.physics ?? null;
     this.#worldOrigin = options.origin ?? [0, 0, 0];
     this.root.name = 'aohara-urban-street-activity';
-    this.#vehiclesByRoute = this.#createVehicles(budget.trafficVehicles);
+    this.#vehiclesByRoute = this.#createVehicles(
+      trafficVehicleCountFor(tier, options.trafficIntensity ?? 'standard'),
+    );
     this.#vehicles = this.#vehiclesByRoute.flat();
     this.#trafficQueueScratch = this.#vehiclesByRoute.map((vehicles) =>
       vehicles.map((vehicle) => ({ vehicleIndex: vehicle.index, distanceToSignal: 0 })),

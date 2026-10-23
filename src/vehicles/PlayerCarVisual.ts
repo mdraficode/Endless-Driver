@@ -1,6 +1,7 @@
 import { Group, Object3D, Vector3 } from 'three';
 import { loadModelAsset, type LoadedModel } from '../assets/ModelAsset';
 import { COCKPIT_CAMERA_CONFIG } from '../config/camera';
+import type { PlayerCarModel } from '../config/game-preferences';
 import { VEHICLE_CONFIG } from '../config/vehicle';
 import { CarVisual } from './CarVisual';
 import {
@@ -49,10 +50,16 @@ export class PlayerCarVisual {
   #loadAttempted = false;
   #fallbackDisposed = false;
   #disposed = false;
+  readonly #selectedModel: PlayerCarModel;
 
-  constructor() {
+  constructor(selectedModel: PlayerCarModel = 'generic-sport-coupe') {
+    this.#selectedModel = selectedModel;
     this.root.name = 'player-car-visual';
     this.root.add(this.#fallback.root);
+  }
+
+  get model(): PlayerCarModel {
+    return this.#selectedModel;
   }
 
   get isHeroModelLoaded(): boolean {
@@ -61,7 +68,9 @@ export class PlayerCarVisual {
 
   /** Model-specific seat point: the hero uses its measured left-hand steering-wheel position. */
   get cockpitEyeAnchor(): readonly [number, number, number] {
-    return this.#loaded === null ? FALLBACK_COCKPIT_EYE_ANCHOR : COCKPIT_CAMERA_CONFIG.eyeAnchor;
+    return this.#selectedModel === 'generic-sport-coupe' && this.#loaded !== null
+      ? COCKPIT_CAMERA_CONFIG.eyeAnchor
+      : FALLBACK_COCKPIT_EYE_ANCHOR;
   }
 
   /**
@@ -69,6 +78,7 @@ export class PlayerCarVisual {
    * the authored roadster stays visible, and no unverified or partially bound model replaces it.
    */
   async load(renderer: object): Promise<boolean> {
+    if (this.#selectedModel === 'kaminari-gt-roadster') return false;
     if (this.#loaded !== null) return true;
     if (this.#loadAttempted) return false;
     this.#loadAttempted = true;

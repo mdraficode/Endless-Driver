@@ -1,6 +1,6 @@
 # Configuration and tuning data
 
-**Status:** Partially implemented; `render.ts` is live, later-phase configs are placeholders.
+**Status (updated 2026-10-23):** Render tiers and persistent player preferences are implemented; later-phase configs remain in their owning modules.
 
 ## Responsibility
 
@@ -9,13 +9,15 @@ phases) vehicle, world, and weather parameters.
 
 ## Implemented
 
-- `render.ts` — Phase 1 render configuration: pixel-ratio cap (2), frame-delta clamp, camera/debug
-  camera setup, shadow map and sun parameters, sky, ground/grid, reference
-  props, and diagnostics cadence.
+- `render.ts` — Render configuration: pixel-ratio cap, frame-delta clamp, gameplay/debug camera setup,
+  shadows, sun, sky, ground/grid, reference props, post effects, and diagnostics cadence.
+- `tiers.ts` — C/B/A device-quality contracts and overrides.
+- `game-preferences.ts` — localStorage validation/defaults for the user's graphics tier, Aohara traffic
+  intensity, player-car model, startup camera, and steering response.
 
 ## Planned work
 
-Quality presets and device tiers (Phase 3), vehicle/drivetrain tuning (Phases 2/6), and world
-generation/streaming parameters (Phase 4).
+Further device-tier tuning, vehicle/drivetrain work in the vehicle modules, and world
+generation/streaming parameters in the world modules.
 
 See [the project plan](../../PROJECT_PLAN.md) and [architecture](../../docs/ARCHITECTURE.md).

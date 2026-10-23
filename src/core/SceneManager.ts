@@ -49,6 +49,8 @@ export interface SceneManagerOptions {
   readonly content?: SceneContentFactory;
   /** Resolved quality tier id, forwarded to streamed content for detail budgets. */
   readonly qualityTier?: string;
+  /** Player-selected traffic amount, forwarded to the Aohara driving activity. */
+  readonly trafficIntensity?: import('../config/game-preferences').TrafficIntensity;
   /**
    * The shared terrain sampler (Phase 4), forwarded to the content factory. One instance
    * is created by `Application` so the visual chunks and the physics heightfields sample
@@ -191,6 +193,9 @@ export class SceneManager {
       ...(options.terrainSampler !== undefined ? { terrainSampler: options.terrainSampler } : {}),
       ...(options.renderer !== undefined ? { renderer: options.renderer } : {}),
       ...(options.qualityTier !== undefined ? { qualityTier: options.qualityTier } : {}),
+      ...(options.trafficIntensity !== undefined
+        ? { trafficIntensity: options.trafficIntensity }
+        : {}),
     });
 
     this.scene.add(this.#sky, ambient, this.#sun, this.#sun.target, this.#content.root);

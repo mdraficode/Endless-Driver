@@ -3,6 +3,12 @@ import { Application, type ApplicationOptions } from './core/Application';
 import { RENDER_CONFIG, applyRenderSwitches, type RenderConfig } from './config/render';
 import { WORLD_CONFIG } from './config/world';
 import { DEFAULT_SPAWN_ID, SPAWN_POINTS } from './config/spawns';
+import {
+  readGamePreferences,
+  saveGamePreferences,
+  type GamePreferences,
+} from './config/game-preferences';
+import { trafficVehicleCountFor } from './config/urban-city';
 import { loadRapier } from './physics/RapierModule';
 import {
   applyBackendOverride,
@@ -24,7 +30,8 @@ import { CreditsPanel } from './ui/CreditsPanel';
 import { LandscapeFallback } from './ui/LandscapeFallback';
 import { LoadingScreen } from './ui/LoadingScreen';
 import { FullscreenOnStart } from './ui/FullscreenOnStart';
-import { StartLocationSelector } from './ui/StartLocationSelector';
+import { urlForSpawn } from './ui/StartLocationSelector';
+import { PauseMenu } from './ui/PauseMenu';
 import { yawFromQuat } from './shared/vector';
 
 export interface EndlessDriverDebugHandle {
@@ -121,8 +128,13 @@ export function readStudioRequest(search: string): StudioRequest {
  * post effects — which come last so that `?dof=1` can re-enable on a constrained device what the tier
  * switched off, and `?lut=none` can remove a look without a code change.
  */
-function resolveRenderConfig(): { config: RenderConfig; tier: ReturnType<typeof resolveTier> } {
-  const tier = resolveTier(probeEnvironment());
+function resolveRenderConfig(
+  preferences: GamePreferences = readGamePreferences(),
+): { config: RenderConfig; tier: ReturnType<typeof resolveTier> } {
+  const requestedTier =
+    readTierRequest(window.location.search) ??
+    (preferences.graphicsTier === 'auto' ? null : preferences.graphicsTier);
+  const tier = resolveTier({ ...probeEnvironment(), requested: requestedTier });
   const requestedBackend = readBackendRequest(window.location.search);
   const isAndroid = /Android/i.test(navigator.userAgent);
   const webGpuAvailable = typeof (navigator as Navigator & { gpu?: unknown }).gpu !== 'undefined';
@@ -182,22 +194,12 @@ const fullscreenOnStart = new FullscreenOnStart();
 const landscapeFallback = appRoot === null ? null : new LandscapeFallback(appRoot);
 const overlayRoot = document.querySelector<HTMLElement>('#diagnostics-overlay');
 const studioPanelRoot = document.querySelector<HTMLElement>('#studio-panel');
-const creditsButton = document.querySelector<HTMLButtonElement>('#credits-toggle');
+const pauseToggleButton = document.querySelector<HTMLButtonElement>('#pause-toggle');
+const pauseMenuRoot = document.querySelector<HTMLElement>('#pause-menu-root');
 const creditsRoot = document.querySelector<HTMLElement>('#credits-root');
+const creditsPanel = creditsRoot === null ? null : new CreditsPanel(creditsRoot);
+if (creditsPanel !== null) void creditsPanel.load();
 const statusElement = document.querySelector<HTMLElement>('#scene-status');
-const routePickerRoot = document.querySelector<HTMLElement>('#route-picker');
-const routeSelect = document.querySelector<HTMLSelectElement>('#route-select');
-if (
-  routePickerRoot !== null &&
-  routeSelect !== null &&
-  readSceneRequest(window.location.search) === 'drive'
-) {
-  routePickerRoot.hidden = false;
-  new StartLocationSelector(routeSelect, SPAWN_POINTS, DEFAULT_SPAWN_ID);
-}
-if (creditsButton && creditsRoot) {
-  void new CreditsPanel(creditsButton, creditsRoot).load();
-}
 
 function setStatus(message: string | null, tone: 'info' | 'error' = 'info'): void {
   if (!statusElement) {
@@ -214,6 +216,21 @@ function reportStartupFailure(error: unknown): void {
     loadingScreen?.fail(message);
   }
   console.error('Endless Driver failed to start.', error);
+}
+
+function persistPreference<K extends keyof GamePreferences>(
+  key: K,
+  value: GamePreferences[K],
+): boolean {
+  const current = readGamePreferences();
+  const next = { ...current, [key]: value } as GamePreferences;
+  return saveGamePreferences(next);
+}
+
+function restartCurrentDrive(clearGraphicsOverride: boolean): void {
+  const url = new URL(window.location.href);
+  if (clearGraphicsOverride) url.searchParams.delete('tier');
+  window.location.assign(url.toString());
 }
 
 function isDebugEnabled(): boolean {
@@ -243,7 +260,13 @@ async function startDrivingScene(): Promise<void> {
     // backend asynchronously. `start()` awaits the renderer and the environment HDRI.
     const rapier = await loadRapier();
     loadingScreen?.update(0.14, 'Physics ready — selecting the graphics profile…');
-    const { config, tier } = resolveRenderConfig();
+    const preferences = readGamePreferences();
+    const effectivePreferences: GamePreferences = {
+      ...preferences,
+      graphicsTier:
+        readTierRequest(window.location.search) ?? preferences.graphicsTier,
+    };
+    const { config, tier } = resolveRenderConfig(preferences);
 
     const startHour = readTimeRequest(window.location.search);
     const spawnId = readSpawnRequest(window.location.search);
@@ -258,6 +281,10 @@ async function startDrivingScene(): Promise<void> {
       tier,
       clock: startHour === null ? undefined : { startHour },
       ...(spawnId === undefined ? {} : { spawnId }),
+      carModel: preferences.carModel,
+      trafficIntensity: preferences.trafficIntensity,
+      cameraMode: preferences.cameraMode,
+      steeringSensitivity: preferences.steeringSensitivity,
     };
 
     application = new Application(options);
@@ -271,6 +298,36 @@ async function startDrivingScene(): Promise<void> {
       }
     }
     await application.start();
+    if (pauseToggleButton !== null && pauseMenuRoot !== null) {
+      const diagnostics = application.getDiagnostics();
+      new PauseMenu({
+        root: pauseMenuRoot,
+        triggerButton: pauseToggleButton,
+        preferences: effectivePreferences,
+        spawnPoints: SPAWN_POINTS,
+        currentSpawnId: diagnostics.spawnId,
+        defaultSpawnId: DEFAULT_SPAWN_ID,
+        activeTier: tier.id,
+        activeRenderer: diagnostics.rendererBackend,
+        activeTrafficVehicleCount: trafficVehicleCountFor(tier.id, preferences.trafficIntensity),
+        onPause: () => application.stop(),
+        onResume: () => {
+          void application.start().catch(reportStartupFailure);
+        },
+        onRestart: restartCurrentDrive,
+        onApplySpawn: (selectedSpawnId, clearGraphicsOverride) => {
+          const url = new URL(
+            urlForSpawn(window.location.href, selectedSpawnId, DEFAULT_SPAWN_ID),
+          );
+          if (clearGraphicsOverride) url.searchParams.delete('tier');
+          window.location.assign(url.toString());
+        },
+        onPreferenceChange: persistPreference,
+        onOpenCredits: (source) => creditsPanel?.open(source),
+        isCreditsOpen: () => creditsPanel?.isOpen ?? false,
+        onFullscreen: (event) => fullscreenOnStart.request(event),
+      });
+    }
     // Minimap HUD (owner request, 2026-10-18): heading-up scope with the road
     // and trail networks and an edge arrow to the next point of interest.
     // `?map=0` hides it for clean captures; a failure never blocks the boot.

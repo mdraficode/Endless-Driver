@@ -1,3 +1,4 @@
+import type { TrafficIntensity } from './game-preferences';
 import type { TierId } from './tiers';
 
 /** Shared Aohara lighting, crossing and sidewalk tuning for the look-dev block and driving district. */
@@ -140,18 +141,36 @@ export const URBAN_NIGHT_TIER_BUDGET: Readonly<Record<TierId, UrbanNightTierBudg
 export interface UrbanActivityTierBudget {
   /** Deterministic low-rise Aohara infill buildings added to existing street blocks. */
   readonly infillBuildings: number;
-  /** Instanced, visual-only vehicle actors; they do not participate in physics. */
+  /** Standard-intensity vehicle count before the player-selected traffic multiplier. */
   readonly trafficVehicles: number;
   /** Instanced pedestrians kept on sidewalks; crossings and right-of-way are not simulated. */
   readonly pedestrians: number;
 }
 
-/** Conservative, fixed city-activity budgets; these are caps, not device-FPS measurements. */
+/** Conservative Aohara baseline budgets; they are configuration counts, not device-FPS measurements. */
 export const URBAN_ACTIVITY_TIER_BUDGET: Readonly<Record<TierId, UrbanActivityTierBudget>> = {
   C: { infillBuildings: 6, trafficVehicles: 6, pedestrians: 12 },
   B: { infillBuildings: 9, trafficVehicles: 12, pedestrians: 24 },
   A: { infillBuildings: 12, trafficVehicles: 18, pedestrians: 36 },
 };
+
+/** Traffic is the only activity budget scaled by the player-facing traffic-intensity setting. */
+export function trafficVehicleCountFor(
+  tier: TierId,
+  intensity: TrafficIntensity = 'standard',
+): number {
+  const baseline = URBAN_ACTIVITY_TIER_BUDGET[tier].trafficVehicles;
+  switch (intensity) {
+    case 'off':
+      return 0;
+    case 'light':
+      return Math.floor(baseline / 2);
+    case 'standard':
+      return baseline;
+    case 'busy':
+      return Math.ceil(baseline * 1.5);
+  }
+}
 
 export interface UrbanStreetFurnitureTierBudget {
   /** Long, low benches placed at the outer edge of the accessible sidewalk clear zone. */

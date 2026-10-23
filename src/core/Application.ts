@@ -4,6 +4,12 @@ import {
   DEBUG_CAMERA_CONFIG,
   type CameraMode,
 } from '../config/camera';
+import {
+  STEERING_SENSITIVITY_SCALE,
+  type PlayerCarModel,
+  type SteeringSensitivity,
+  type TrafficIntensity,
+} from '../config/game-preferences';
 import { RENDER_CONFIG, type RenderConfig } from '../config/render';
 import { ROAD_NETWORK_CONFIG } from '../config/roads';
 import { ORIGIN_CONFIG } from '../config/origin';
@@ -70,6 +76,14 @@ export interface ApplicationOptions {
   readonly spawnId?: string;
   /** Random source used only when `spawnId` is explicitly `random`; injectable for tests/captures. */
   readonly spawnRandom?: () => number;
+  /** Persistent player-selected visual car model. */
+  readonly carModel?: PlayerCarModel;
+  /** Player-selected Aohara traffic activity budget. */
+  readonly trafficIntensity?: TrafficIntensity;
+  /** Optional camera selected on startup. */
+  readonly cameraMode?: CameraMode;
+  /** Applied to normalized steering input after smoothing. */
+  readonly steeringSensitivity?: SteeringSensitivity;
 }
 
 type StatusTone = 'info' | 'error';
@@ -129,6 +143,7 @@ export class Application {
   readonly #statusElement: HTMLElement | null;
   readonly #onLoadingProgress: ((progress: LoadingProgress) => void) | null;
   readonly #tier: TierResolution;
+  readonly #steeringSensitivity: SteeringSensitivity;
   readonly #clock: EnvironmentClock;
   readonly #daylightController: DaylightController;
   #daylight: DaylightState | null = null;
@@ -158,6 +173,8 @@ export class Application {
   constructor(options: ApplicationOptions) {
     this.#config = options.config ?? RENDER_CONFIG;
     this.#worldConfig = options.worldConfig ?? WORLD_CONFIG;
+    this.#cameraMode = options.cameraMode ?? 'chase';
+    this.#steeringSensitivity = options.steeringSensitivity ?? 'standard';
 
     // One terrain sampler feeds the visual chunks (via SceneManager's content) and the
     // physics heightfields: ground you see and ground you drive on are the same function.
@@ -194,6 +211,9 @@ export class Application {
       terrainSampler,
       renderer: this.#engine.renderer,
       ...(options.tier !== undefined ? { qualityTier: options.tier.id } : {}),
+      ...(options.trafficIntensity !== undefined
+        ? { trafficIntensity: options.trafficIntensity }
+        : {}),
     });
     this.#engine.setGodraysLight(this.#scene.godraysLight);
 
@@ -209,7 +229,7 @@ export class Application {
         terrainSampler.normalAt(x + this.#origin.offset.x, z + this.#origin.offset.z),
     });
 
-    this.#carVisual = new PlayerCarVisual();
+    this.#carVisual = new PlayerCarVisual(options.carModel ?? 'generic-sport-coupe');
     this.#scene.addObject(this.#carVisual.root);
 
     this.#chaseCamera = new ChaseCamera(CHASE_CAMERA_CONFIG, this.#engine.viewport.aspect);
@@ -492,8 +512,6 @@ export class Application {
           this.#input.requestReset();
         } else if (command === 'toggleDiagnostics') {
           this.toggleDiagnostics();
-        } else if (command === 'toggleCredits') {
-          document.querySelector<HTMLButtonElement>('#credits-toggle')?.click();
         } else {
           this.#input.requestToggleCamera();
         }
@@ -663,7 +681,13 @@ export class Application {
     // 1. Input becomes intent. Smoothing runs on frame time; the vehicle consumes it per step.
     this.#input.update(delta);
     const actions = this.#input.actions;
-    this.#car.setActions(actions);
+    this.#car.setActions({
+      ...actions,
+      steer: Math.max(
+        -1,
+        Math.min(1, actions.steer * STEERING_SENSITIVITY_SCALE[this.#steeringSensitivity]),
+      ),
+    });
     const driveInputActive = isDriveInputActive(
       actions.throttle,
       actions.brake,

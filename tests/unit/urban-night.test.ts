@@ -3,6 +3,7 @@ import { MeshPhysicalNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu
 import { describe, expect, it } from 'vitest';
 
 import {
+  trafficVehicleCountFor,
   resolveTrafficSignalAspect,
   resolveUrbanNightGain,
   resolveUrbanStreetLightCoverage,
@@ -210,7 +211,32 @@ describe('Aohara city night-lighting rules', () => {
     }
   });
 
-  it('keeps city activity caps bounded and increasing across C/B/A tiers', () => {
+  it('applies the selected traffic intensity without changing pedestrian budgets', () => {
+    expect(trafficVehicleCountFor('C', 'light')).toBe(3);
+    expect(trafficVehicleCountFor('C', 'standard')).toBe(6);
+    expect(trafficVehicleCountFor('C', 'busy')).toBe(9);
+    expect(trafficVehicleCountFor('B', 'off')).toBe(0);
+    expect(trafficVehicleCountFor('B', 'light')).toBe(6);
+    expect(trafficVehicleCountFor('B', 'busy')).toBe(18);
+    expect(trafficVehicleCountFor('A', 'light')).toBe(9);
+    expect(trafficVehicleCountFor('A', 'standard')).toBe(18);
+    expect(trafficVehicleCountFor('A', 'busy')).toBe(27);
+
+    const off = new UrbanStreetActivity('B', { trafficIntensity: 'off' });
+    const light = new UrbanStreetActivity('B', { trafficIntensity: 'light' });
+    const busy = new UrbanStreetActivity('B', { trafficIntensity: 'busy' });
+    expect(off.getContentStats()).toMatchObject({ urbanTrafficVehicles: 0, urbanTrafficBatches: 0 });
+    expect(off.getContentStats().urbanPedestrians).toBe(URBAN_ACTIVITY_TIER_BUDGET.B.pedestrians);
+    expect(light.getContentStats().urbanTrafficVehicles).toBe(6);
+    expect(light.getContentStats().urbanPedestrians).toBe(URBAN_ACTIVITY_TIER_BUDGET.B.pedestrians);
+    expect(busy.getContentStats().urbanTrafficVehicles).toBe(18);
+    expect(busy.getContentStats().urbanPedestrians).toBe(URBAN_ACTIVITY_TIER_BUDGET.B.pedestrians);
+    off.dispose();
+    light.dispose();
+    busy.dispose();
+  });
+
+  it('keeps baseline city activity budgets bounded and increasing across C/B/A tiers', () => {
     expect(URBAN_ACTIVITY_TIER_BUDGET.C).toEqual({
       infillBuildings: 6,
       trafficVehicles: 6,

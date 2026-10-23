@@ -83,6 +83,9 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
           ],
           ...(urbanNetwork === null ? {} : { roadNetwork: urbanNetwork }),
           ...(context.physics === undefined ? {} : { physics: context.physics }),
+          ...(context.trafficIntensity === undefined
+            ? {}
+            : { trafficIntensity: context.trafficIntensity }),
           networkIntegrated: true,
           surfaceTextures,
         });

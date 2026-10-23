@@ -3,12 +3,7 @@ import { listAssetCredits, type AssetCredit } from '../assets/AssetCredits';
 
 /** Manifest-driven, keyboard-accessible attribution view for the running game. */
 export class CreditsPanel {
-  readonly #button: HTMLButtonElement;
   readonly #root: HTMLElement;
-  readonly #toggle = (): void => {
-    if (this.#root.hidden) this.open();
-    else this.close();
-  };
   readonly #onKeyDown = (event: KeyboardEvent): void => {
     if (event.key === 'Escape' && !this.#root.hidden) {
       event.preventDefault();
@@ -16,20 +11,21 @@ export class CreditsPanel {
     }
   };
   #closeButton: HTMLButtonElement | null = null;
+  #returnFocus: HTMLElement | null = null;
 
-  constructor(button: HTMLButtonElement, root: HTMLElement) {
-    this.#button = button;
+  constructor(root: HTMLElement) {
     this.#root = root;
     this.#root.classList.add('credits-overlay');
     this.#root.hidden = true;
-    this.#button.setAttribute('aria-haspopup', 'dialog');
-    this.#button.setAttribute('aria-expanded', 'false');
-    this.#button.addEventListener('click', this.#toggle);
     this.#render([], 'Loading asset credits…');
     this.#root.addEventListener('click', (event) => {
       if (event.target === this.#root) this.close();
     });
     this.#root.addEventListener('keydown', this.#onKeyDown);
+  }
+
+  get isOpen(): boolean {
+    return !this.#root.hidden;
   }
 
   /** Fetches the same-origin manifest; a missing credits file never blocks driving. */
@@ -46,18 +42,19 @@ export class CreditsPanel {
     this.#render(credits);
   }
 
-  open(): void {
+  open(returnFocus: HTMLElement | null = null): void {
+    this.#returnFocus = returnFocus;
     this.#root.hidden = false;
-    this.#button.setAttribute('aria-expanded', 'true');
-    this.#button.setAttribute('aria-label', 'Close asset credits');
     this.#closeButton?.focus();
   }
 
   close(): void {
     this.#root.hidden = true;
-    this.#button.setAttribute('aria-expanded', 'false');
-    this.#button.setAttribute('aria-label', 'Open asset credits');
-    if (this.#button.getClientRects().length > 0) this.#button.focus();
+    const returnFocus = this.#returnFocus;
+    this.#returnFocus = null;
+    if (returnFocus?.isConnected && returnFocus.getClientRects().length > 0) {
+      returnFocus.focus();
+    }
   }
 
   #render(credits: readonly AssetCredit[], errorMessage?: string): void {

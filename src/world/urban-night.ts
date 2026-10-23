@@ -1022,6 +1022,8 @@ export interface UrbanNightWorldOptions {
   readonly networkIntegrated?: boolean;
   /** Shared static-world map owner; omitted for a standalone city look-dev scene. */
   readonly surfaceTextures?: SurfaceTextureLibrary;
+  /** Player-selectable traffic amount for the integrated driving city. */
+  readonly trafficIntensity?: import('../config/game-preferences').TrafficIntensity;
 }
 
 /**
@@ -1182,6 +1184,9 @@ export class UrbanNightWorld implements SceneContent {
     this.#activity = this.#networkIntegrated
       ? new UrbanStreetActivity(tier, {
           ...(options.physics === undefined ? {} : { physics: options.physics }),
+          ...(options.trafficIntensity === undefined
+            ? {}
+            : { trafficIntensity: options.trafficIntensity }),
           origin: [originX, originY, originZ],
         })
       : null;

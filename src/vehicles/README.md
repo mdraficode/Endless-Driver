@@ -1,6 +1,6 @@
 # Vehicle systems
 
-**Status:** Phase 2 vehicle simulation is implemented; the player visual loads the attributed MMC Works hero coupé with an authored fail-soft roadster, pose-driven wheels/steering, impact animation and model-specific cockpit eye anchors. Manual visual/device review remains separate.
+**Status (updated 2026-10-23):** Phase 2 simulation and the requested in-game model selector are implemented at code level. The default is the attributed MMC Works Generic Sport Coupé; the player may select the project-authored unbadged Kaminari GT Roadster. Both use the existing pose-driven visual/impact path and model-specific cockpit eye anchors; manual visual/device review remains separate.
 
 ## Responsibility
 
@@ -17,7 +17,7 @@ never Rapier's `DynamicRayCastVehicleController`.
 | `Drivetrain.ts`      | Torque curve, gear ratios, automatic up/down shifts with a torque cut, forward/reverse engagement (the brake key doubles as reverse throttle), driven-wheel-derived rpm                                                                                          |
 | `Car.ts`             | Raycast suspension (four independent rays, spring/damper forces, anti-roll bars), tire forces applied at the contact patches as impulses before each fixed step, pose snapshots after, interpolated render poses, telemetry, reset/dispose                       |
 | `CarVisual.ts`       | Original unbadged two-seat GT roadster fallback built from project-owned Three.js geometry; per-wheel suspension/steer/spin pivots, visible open cabin, TSL automotive paint, untextured physical glazing, and local brake lamps. Reads interpolated poses only. |
-| `PlayerCarVisual.ts` | Loads the credited MMC Works generic coupé asynchronously with validated LOD/wheel/steering hierarchy; falls back to `CarVisual`, synchronizes non-destructive impact animation, and exposes the selected model's driver-eye anchor to the cockpit camera.       |
+| `PlayerCarVisual.ts` | Uses the pause-menu selection to load either the credited MMC Works generic coupé asynchronously with validated LOD/wheel/steering hierarchy or the authored `CarVisual` roadster; keeps fail-soft fallback behavior, non-destructive impact animation and model-specific cockpit eye anchors. |
 
 ## Invariants
 

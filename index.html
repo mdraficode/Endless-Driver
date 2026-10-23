@@ -18,15 +18,6 @@
         aria-label="Endless Driver 3D viewport"
       ></canvas>
       <div id="diagnostics-overlay" class="pointer-events-none absolute inset-0"></div>
-      <aside id="route-picker" class="route-picker" aria-label="Choose a starting location" hidden>
-        <label class="route-picker-label" for="route-select">
-          <span class="route-picker-eyebrow">START LOCATION</span>
-          <select id="route-select" class="route-picker-select" aria-label="Starting location">
-            <option value="aohara-city">Aohara Metropolis — Central Avenue</option>
-          </select>
-        </label>
-        <p class="route-picker-hint">A fresh drive starts automatically after switching.</p>
-      </aside>
       <div id="touch-controls" class="pointer-events-none absolute inset-0" hidden></div>
       <section id="loading-screen" class="loading-screen" aria-hidden="true" hidden>
         <div class="loading-screen-grid" aria-hidden="true"></div>
@@ -60,14 +51,18 @@
       </section>
       <div id="studio-panel" class="studio-panel" hidden></div>
       <button
-        id="credits-toggle"
-        class="credits-toggle"
+        id="pause-toggle"
+        class="pause-toggle"
         type="button"
-        aria-controls="credits-root"
-        aria-label="Open asset credits"
+        aria-controls="pause-menu-root"
+        aria-haspopup="dialog"
+        aria-expanded="false"
+        aria-label="Open pause menu"
+        hidden
       >
-        Credits
+        <span aria-hidden="true">Ⅱ</span>
       </button>
+      <div id="pause-menu-root" hidden></div>
       <div id="credits-root" hidden></div>
       <div
         id="scene-status"

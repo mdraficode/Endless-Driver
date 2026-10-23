@@ -93,6 +93,8 @@ export interface SceneContentContext {
    * full density at tier C melted software rasterisers, 2026-10-18).
    */
   readonly qualityTier?: string;
+  /** Player-selected Aohara traffic amount; the activity system preserves tier-specific safety caps. */
+  readonly trafficIntensity?: import('../config/game-preferences').TrafficIntensity;
 }
 
 /** Builds a scene's content. Called once, by `SceneManager`, during construction. */

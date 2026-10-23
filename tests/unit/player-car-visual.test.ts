@@ -106,6 +106,21 @@ describe('PlayerCarVisual', () => {
     warning.mockRestore();
   });
 
+  it('uses the selected authored roadster without downloading the other model', async () => {
+    const visual = new PlayerCarVisual('kaminari-gt-roadster');
+    visual.sync(POSE);
+
+    await expect(visual.load({})).resolves.toBe(false);
+    expect(visual.model).toBe('kaminari-gt-roadster');
+    expect(visual.isHeroModelLoaded).toBe(false);
+    expect(loadModelAssetMock).not.toHaveBeenCalled();
+    expect(visual.root.children).toHaveLength(1);
+    expect(visual.root.children[0]?.name).toBe('kaminari-gt-roadster');
+    expect(visual.root.children[0]?.position.toArray()).toEqual([7, 2, -4]);
+
+    visual.dispose();
+  });
+
   it('swaps to the GLB, syncs every LOD pivot, and selects distance LODs', async () => {
     const model = createLoadedHero();
     loadModelAssetMock.mockResolvedValue(model);
