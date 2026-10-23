@@ -27,6 +27,7 @@ Thumbs.db
 # Portable exports live outside the repository
 *.bundle
 *.zip
+!source-archives/hero-car-candidate-neutral-screen.zip
 
 # Reproducible model sources (re-fetched by scripts/build-models.mjs)
 .asset-cache/

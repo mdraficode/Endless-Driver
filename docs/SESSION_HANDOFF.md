@@ -1989,3 +1989,12 @@ This is a narrow continuation of the appearance-only review authorized with the 
 **Verification:** the code commit and push preceded testing, as instructed. Targeted cockpit/car-visual/touge tests passed (3 files / 9 tests). Full `npm run check` passed on `9d8395a`: Prettier, ESLint, GLSL guard, both TypeScript checks, 70 test files / 535 tests, `assets:verify` (20 assets / 47,814,431 bytes), and production build. Non-fatal existing Three.js non-indexed-geometry and Vite large-chunk warnings remain. This is automated code evidence only: no browser visual review, manual drive, owner-device check, or FPS/performance acceptance was performed.
 
 **Current status:** `9d8395a` is pushed to `origin/main`. The code work in this narrow request is complete. Continue only with owner/device visual review or further specifically authorized changes; do not infer camera comfort, route visual quality, FPS stability, or Phase 7/other Phase 8 authorization from tests.
+
+## 77. Owner-directed GitHub archival of the sanitized hero source (2026-10-23)
+
+**Owner direction:** the owner instructed that the full sanitized source archive be pushed to the public GitHub repository for later retrieval, then removed from the Arena workspace. This supersedes earlier handling in §§71–75 that treated the archive as an uncommitted local cache.
+
+**Archive and rights:** `source-archives/hero-car-candidate-neutral-screen.zip` is the owner-supplied 79,563,959-byte ZIP, SHA-256 `222b8a9322a94305a5065d9adb56836c93451f040baea45dca4e774ba8f178e6`. Its internal `ATTRIBUTION.txt` records only replacement of `textures/media.png` with a neutral dashboard screen. The source is MMC Works’ Generic Sport Coupé Car under CC BY 4.0; its listing, attribution, modifications, and exact hash are already represented in the asset manifest and `CREDITS.md`. See `source-archives/README.md`.
+
+**Storage boundary:** keep the archive at the repository path above, outside `public/` and `public/assets/`. It is for recovery/build use only; the Pages deployment must continue to serve only the optimized runtime GLB. Once the remote commit is verified, remove the local Arena copy and scratch clone.
+
