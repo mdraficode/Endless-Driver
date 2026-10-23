@@ -261,6 +261,25 @@ export class Application {
     this.#syncDebugCamera(initialPose, true);
 
     this.#unsubscribers = [
+      this.#physics.addCollisionHandler((event) => {
+        if (!event.started || (event.bodyA !== this.#car.body && event.bodyB !== this.#car.body)) {
+          return;
+        }
+        const other = event.bodyA === this.#car.body ? event.bodyB : event.bodyA;
+        const carVelocity = this.#car.body.linvel();
+        const otherVelocity = other?.linvel() ?? { x: 0, y: 0, z: 0 };
+        const relativeSpeed = Math.hypot(
+          carVelocity.x - otherVelocity.x,
+          carVelocity.z - otherVelocity.z,
+        );
+        const carPosition = this.#car.body.translation();
+        const otherPosition = other?.translation() ?? carPosition;
+        const yaw = yawFromQuat(this.#car.rotation);
+        const lateralOffset =
+          (otherPosition.x - carPosition.x) * Math.cos(yaw) -
+          (otherPosition.z - carPosition.z) * Math.sin(yaw);
+        this.#carVisual.triggerImpact(relativeSpeed, lateralOffset);
+      }),
       this.#engine.onResize((viewport) => {
         this.#scene.resize(viewport);
         this.#chaseCamera.resize(viewport.aspect);
@@ -411,6 +430,7 @@ export class Application {
     const y = this.#terrainSampler.heightAt(x, z);
     this.#car.reset([x - this.#origin.offset.x, y + 0.7, z - this.#origin.offset.z], yaw);
     this.#carEffects.reset();
+    this.#carVisual.resetImpact();
     this.#physics.resetAccumulator();
     const pose = this.#car.getInterpolatedPose(0);
     this.#chaseCamera.snapTo(pose);
@@ -647,6 +667,7 @@ export class Application {
         spawn.yaw,
       );
       this.#carEffects.reset();
+      this.#carVisual.resetImpact();
       this.#physics.resetAccumulator();
       const pose = this.#car.getInterpolatedPose(0);
       this.#chaseCamera.snapTo(pose);
@@ -679,6 +700,10 @@ export class Application {
         const impacts = hits.filter((hit) => hit.impact);
         if (impacts.length > 0) {
           this.#scene.applyVegetationHits(impacts);
+          const strongest = impacts.reduce((best, hit) =>
+            hit.impactSpeed > best.impactSpeed ? hit : best,
+          );
+          this.#carVisual.triggerImpact(strongest.impactSpeed, strongest.lateralOffset);
         }
       }
       // Buildings stop the car; poles fold. Same response contract as trees.
@@ -694,6 +719,15 @@ export class Application {
       );
       for (const hit of townHits) {
         applyCollisionResponse(this.#car.body, hit);
+      }
+      const strongestTownHit = townHits
+        .filter((hit) => hit.impact)
+        .reduce<(typeof townHits)[number] | null>(
+          (best, hit) => (best === null || hit.impactSpeed > best.impactSpeed ? hit : best),
+          null,
+        );
+      if (strongestTownHit !== null) {
+        this.#carVisual.triggerImpact(strongestTownHit.impactSpeed, strongestTownHit.lateralOffset);
       }
     }
 
@@ -720,6 +754,7 @@ export class Application {
     // 3. Presentation interpolates between the last two authoritative poses.
     const pose = this.#car.getInterpolatedPose(this.#physics.interpolationAlpha);
     this.#carVisual.sync(pose);
+    this.#carVisual.updateImpact(delta);
     this.#scene.focusSun(pose.position);
     // Ground follows the same point as the light: terrain chunks stream and heightfield
     // colliders slide their window with the car, each inside its own budget.

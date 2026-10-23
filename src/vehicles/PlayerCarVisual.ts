@@ -2,6 +2,11 @@ import { Group, Object3D, Vector3 } from 'three';
 import { loadModelAsset, type LoadedModel } from '../assets/ModelAsset';
 import { VEHICLE_CONFIG } from '../config/vehicle';
 import { CarVisual } from './CarVisual';
+import {
+  advanceVehicleImpact,
+  createVehicleImpactState,
+  triggerVehicleImpact,
+} from './VehicleImpact';
 import { WHEEL_INDEX, type VehiclePose } from './types';
 
 export const PLAYER_HERO_CAR_ASSET_ID = 'hero-car-mmc-generic-sport-coupe';
@@ -33,6 +38,7 @@ interface ModelLodNodes {
 export class PlayerCarVisual {
   readonly root = new Group();
   readonly #fallback = new CarVisual();
+  readonly #impact = createVehicleImpactState();
   #loaded: LoadedModel | null = null;
   #lodNodes: readonly ModelLodNodes[] = [];
   #lastPose: VehiclePose | null = null;
@@ -129,6 +135,26 @@ export class PlayerCarVisual {
       }
       lod.steeringWheel.rotation.z = steeringRotation;
     }
+  }
+
+  /** Adds a brief physical-impact shudder to the chassis presentation; the mesh is never deformed. */
+  triggerImpact(relativeSpeedMetersPerSecond: number, side = 0): void {
+    triggerVehicleImpact(this.#impact, relativeSpeedMetersPerSecond, side);
+  }
+
+  /** Applies the transient impact pose after the authoritative physics pose is synchronized. */
+  updateImpact(deltaSeconds: number): void {
+    const impact = advanceVehicleImpact(this.#impact, deltaSeconds);
+    const chassis = this.#loaded === null ? this.#fallback.root : this.root;
+    chassis.position.y += impact.bounceMeters;
+    chassis.rotation.x += impact.pitchRadians;
+    chassis.rotation.z += impact.rollRadians;
+  }
+
+  resetImpact(): void {
+    this.#impact.intensity = 0;
+    this.#impact.ageSeconds = 1;
+    this.#impact.side = 0;
   }
 
   /** Selects the model LOD from its distance to the currently active camera. */

@@ -371,7 +371,8 @@ export class Car {
       this.#rapier.ColliderDesc.cuboid(halfWidth, halfHeight, halfLength)
         .setDensity(0)
         .setFriction(0.35)
-        .setRestitution(0.05),
+        .setRestitution(0.05)
+        .setActiveEvents(this.#rapier.ActiveEvents.COLLISION_EVENTS),
       body,
     );
 
