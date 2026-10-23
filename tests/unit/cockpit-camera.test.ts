@@ -102,11 +102,7 @@ describe('cockpit camera', () => {
     const frames = 60;
     for (let frame = 1; frame <= frames; frame += 1) {
       const distance = (speedMps * elapsedSeconds * frame) / frames;
-      camera.update(
-        elapsedSeconds / frames,
-        pose([0, 0, -distance]),
-        telemetry({ speedMps }),
-      );
+      camera.update(elapsedSeconds / frames, pose([0, 0, -distance]), telemetry({ speedMps }));
     }
 
     expect(camera.camera.position.z).toBeCloseTo(
