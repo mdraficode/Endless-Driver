@@ -1,6 +1,6 @@
 # User interface
 
-**Status (2026-10-23):** The right-corner pause control and in-game home menu are implemented. The game still auto-starts when ready; the menu is not a startup Play gate. Menu settings persist locally and are applied on restart. Automated checks and manual visual review are pending for this increment.
+**Status (2026-10-23):** The right-corner pause control and in-game home menu are implemented and `npm run check` passes at `73495f7`. The game still auto-starts when ready; the menu is not a startup Play gate. Menu settings persist locally and are applied on restart. Manual visual/device review remains pending.
 
 ## Responsibility
 
