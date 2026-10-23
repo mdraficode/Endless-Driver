@@ -20,7 +20,7 @@ export const HERO_CAR = {
   modelPath: 'assets/models/hero-car-mmc-generic-sport-coupe.glb',
   budgetClass: 'hero',
   lodRatios: [1, 0.45, 0.15],
-  maxTextureSize: 2048,
+  maxTextureSize: 1024,
   retrievalDate: '2026-10-23',
 };
 

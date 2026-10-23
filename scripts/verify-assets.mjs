@@ -196,6 +196,10 @@ function verifyHeroRecord(label, asset) {
     modelFile?.path === HERO_CAR.modelPath,
     `${label}: hero GLB is not at the pinned runtime path`,
   );
+  require_(
+    asset.pipeline?.resolution === String(HERO_CAR.maxTextureSize),
+    `${label}: hero texture resize cap must be ${HERO_CAR.maxTextureSize}px`,
+  );
 }
 
 /**
@@ -289,6 +293,9 @@ async function verifyModel(label, asset) {
       image.mimeType === 'image/ktx2',
       `${label}: ${file.path} carries a ${image.mimeType} image, expected KTX2`,
     );
+  }
+  if (asset.id === HERO_CAR.id) {
+    verifyHeroTextureDimensions(label, buffer, json, jsonLength);
   }
 
   // Every level the manifest advertises must exist as a hierarchy node in the file the runtime loads.
@@ -418,6 +425,72 @@ async function verifyModel(label, asset) {
     file.bytes <= budget.maxBytes,
     `${label}: ${formatBytes(file.bytes)} exceeds the ${asset.assetClass} budget of ${formatBytes(budget.maxBytes)}`,
   );
+}
+
+/**
+ * Reads each hero KTX2 header without decoding it. The verified maximum texture dimensions are a
+ * mobile video-memory budget: universal KTX2 can be transcoded to RGBA on devices without a usable
+ * block-compressed format, where a 2K map costs many times its download size.
+ */
+function verifyHeroTextureDimensions(label, buffer, json, jsonLength) {
+  const binaryHeaderOffset = 20 + jsonLength;
+  if (binaryHeaderOffset + 8 > buffer.length) {
+    require_(false, `${label}: hero GLB has no complete binary chunk header`);
+    return;
+  }
+
+  const binaryLength = buffer.readUInt32LE(binaryHeaderOffset);
+  const binaryType = buffer
+    .subarray(binaryHeaderOffset + 4, binaryHeaderOffset + 8)
+    .toString('ascii');
+  const binaryStart = binaryHeaderOffset + 8;
+  if (binaryType !== 'BIN\u0000' || binaryLength > buffer.length - binaryStart) {
+    require_(false, `${label}: hero GLB has an invalid binary chunk`);
+    return;
+  }
+
+  const identifier = Buffer.from([
+    0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a,
+  ]);
+  let checked = 0;
+  for (const image of json.images ?? []) {
+    const view = json.bufferViews?.[image.bufferView];
+    if (!view) {
+      require_(false, `${label}: hero image ${image.name ?? checked} has no embedded buffer view`);
+      continue;
+    }
+    const imageOffset = binaryStart + (view.byteOffset ?? 0);
+    const imageLength = view.byteLength ?? 0;
+    if (
+      imageLength < 28 ||
+      imageOffset < binaryStart ||
+      imageOffset + imageLength > binaryStart + binaryLength
+    ) {
+      require_(
+        false,
+        `${label}: hero image ${image.name ?? checked} has an invalid KTX2 range`,
+      );
+      continue;
+    }
+    if (!buffer.subarray(imageOffset, imageOffset + 12).equals(identifier)) {
+      require_(false, `${label}: hero image ${image.name ?? checked} is not KTX2`);
+      continue;
+    }
+
+    const width = buffer.readUInt32LE(imageOffset + 20);
+    const height = buffer.readUInt32LE(imageOffset + 24);
+    require_(
+      width > 0 && height > 0,
+      `${label}: hero image ${image.name ?? checked} has invalid dimensions ${width}x${height}`,
+    );
+    require_(
+      width <= HERO_CAR.maxTextureSize && height <= HERO_CAR.maxTextureSize,
+      `${label}: hero image ${image.name ?? checked} is ${width}x${height}, ` +
+        `exceeding the ${HERO_CAR.maxTextureSize}px memory budget`,
+    );
+    checked += 1;
+  }
+  require_(checked > 0, `${label}: no embedded hero KTX2 images were checked`);
 }
 
 require_(seen.has(HERO_CAR.id), `required player hero model ${HERO_CAR.id} is not in the manifest`);
