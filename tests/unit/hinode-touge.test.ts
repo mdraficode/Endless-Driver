@@ -23,7 +23,7 @@ describe('optional Hinode Touge route', () => {
     expect(start.id).toBe('hinode-touge');
     expect(start.x).toBe(HINODE_TOUGE_START.x);
     expect(surface.id).toBe('asphalt');
-    expect(tougeEdges).toHaveLength(9);
+    expect(tougeEdges).toHaveLength(8);
     expect(tougeEdges.every((edge) => edge.halfWidthMeters < ruralHalfWidth)).toBe(true);
     expect(tougeEdges.every((edge) => edge.shoulderMeters === 1.2)).toBe(true);
     expect(tougeEdges.every((edge) => edge.maxGrade === 0.18)).toBe(true);

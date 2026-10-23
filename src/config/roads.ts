@@ -14,10 +14,10 @@ export type RoadClass = 'rural' | 'touge' | 'city-access' | 'urban-local' | 'urb
 
 /** Optional volcano-side switchback start; the default remains Aohara Central Avenue. */
 export const HINODE_TOUGE_START = {
-  id: 'hinode-touge-start',
-  x: -1000,
-  z: -1460,
-  yaw: 1.39,
+  id: 'volcano-view',
+  x: -880,
+  z: -1420,
+  yaw: 1.24,
 } as const;
 
 export interface RoadNodeConfig {
@@ -128,7 +128,6 @@ export const ROAD_NETWORK_CONFIG: RoadNetworkConfig = {
     { id: 'north-bend', x: -90, z: -560 },
     { id: 'cedar-pass', x: -430, z: -1010 },
     { id: 'volcano-view', x: -880, z: -1420 },
-    HINODE_TOUGE_START,
     { id: 'touge-north-1', x: -1230, z: -1540 },
     { id: 'touge-east-1', x: -1100, z: -1670 },
     { id: 'touge-north-2', x: -1370, z: -1760 },
@@ -154,7 +153,6 @@ export const ROAD_NETWORK_CONFIG: RoadNetworkConfig = {
     { from: 'west-fields', to: 'south-fields', via: [[-300, 540]] },
     // Optional Hinode Touge: a narrow, connected switchback loop climbing around Hinode-dake.
     // Its own road class keeps the Aohara grid and the original rural roads unchanged.
-    touge('volcano-view', HINODE_TOUGE_START.id, [[-920, -1440]]),
     touge(HINODE_TOUGE_START.id, 'touge-north-1', [
       [-920, -1480],
       [-820, -1640],
