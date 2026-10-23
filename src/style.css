@@ -38,10 +38,31 @@ body {
   position: fixed;
   top: 0;
   left: 100vw;
+  left: 100dvw;
   width: var(--landscape-width);
   height: var(--landscape-height);
   transform: rotate(90deg);
   transform-origin: top left;
+}
+
+/*
+ * CSS safety net: some mobile/in-app browsers withhold touch metadata from JavaScript at first
+ * paint. Keep the game surface landscape-sized on coarse-pointer portrait screens regardless.
+ */
+@media (orientation: portrait) and (pointer: coarse),
+  (orientation: portrait) and (any-pointer: coarse) {
+  #app {
+    position: fixed;
+    top: 0;
+    left: 100vw;
+    left: 100dvw;
+    width: 100vh;
+    width: 100dvh;
+    height: 100vw;
+    height: 100dvw;
+    transform: rotate(90deg);
+    transform-origin: top left;
+  }
 }
 
 #viewport-canvas {

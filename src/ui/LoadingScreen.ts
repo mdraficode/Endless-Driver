@@ -34,6 +34,10 @@ export class LoadingScreen {
   }
 
   show(label = 'Starting the Aohara drive…'): void {
+    if (this.#hideTimer !== null) {
+      window.clearTimeout(this.#hideTimer);
+      this.#hideTimer = null;
+    }
     this.#finished = false;
     this.#fraction = 0;
     this.#root.hidden = false;
@@ -55,6 +59,9 @@ export class LoadingScreen {
     this.#progress.setAttribute('aria-valuenow', String(percent));
     this.#percent.textContent = `${percent}%`;
     this.#label.textContent = label;
+    if (this.#fraction >= 1) {
+      this.#finish();
+    }
   }
 
   /** The overlay only completes after the renderer has submitted its first playable frame. */
@@ -63,6 +70,12 @@ export class LoadingScreen {
       return;
     }
     this.update(1, 'Ready — the drive starts automatically');
+  }
+
+  #finish(): void {
+    if (this.#finished) {
+      return;
+    }
     this.#finished = true;
     this.#root.dataset['state'] = 'ready';
     this.#root.classList.add('loading-screen-complete');

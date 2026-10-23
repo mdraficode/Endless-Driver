@@ -62,10 +62,16 @@ export class TouchControls {
     if (typeof window === 'undefined') {
       return false;
     }
+    const navigatorWithMobileHint = navigator as Navigator & {
+      userAgentData?: { readonly mobile?: boolean };
+    };
     return (
       window.matchMedia?.('(pointer: coarse)').matches === true ||
+      window.matchMedia?.('(any-pointer: coarse)').matches === true ||
+      navigatorWithMobileHint.userAgentData?.mobile === true ||
+      /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
       'ontouchstart' in window ||
-      (navigator?.maxTouchPoints ?? 0) > 0
+      (navigator.maxTouchPoints ?? 0) > 0
     );
   }
 

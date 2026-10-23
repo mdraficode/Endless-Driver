@@ -27,9 +27,14 @@ export class LandscapeFallback {
 
   constructor(root: HTMLElement, forceTouch = false) {
     this.#root = root;
+    const navigatorWithMobileHint = navigator as Navigator & {
+      userAgentData?: { readonly mobile?: boolean };
+    };
     this.#isTouchDevice =
       forceTouch ||
       window.matchMedia?.('(pointer: coarse)').matches === true ||
+      window.matchMedia?.('(any-pointer: coarse)').matches === true ||
+      navigatorWithMobileHint.userAgentData?.mobile === true ||
       /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
       (navigator.maxTouchPoints ?? 0) > 0;
     window.addEventListener('resize', this.#handleChange, { passive: true });
