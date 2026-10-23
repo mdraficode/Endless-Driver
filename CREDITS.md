@@ -17,7 +17,7 @@ When a CC BY asset is present, the manifest-derived **Assets used** section belo
 
 ## Assets used
 
-All third-party assets below are CC0 (public domain). Attribution is not required by the licence; the creators are listed because their work deserves the credit, not because the licence asks for it. The project-generated LUT is marked separately.
+Each entry is listed under its own licence. CC0 assets require no attribution, but their creators and sources are recorded. For CC BY assets, the **Required attribution** text must accompany redistribution and is also shown in the in-game credits view.
 
 - **Bamboo Tunnel — 1K HDR** — Dimitrios Savva, Jarod Guest — [source](https://polyhaven.com/a/bamboo_tunnel) — CC0-1.0
   - file: `assets/hdri/bamboo_tunnel_1k.hdr`
@@ -25,6 +25,9 @@ All third-party assets below are CC0 (public domain). Attribution is not require
   - file: `assets/hdri/cedar_bridge_sunset_1k.hdr`
 - **Ninomaru Teien (Tokyo garden) — 1K HDR** — Greg Zaal — [source](https://polyhaven.com/a/ninomaru_teien) — CC0-1.0
   - file: `assets/hdri/ninomaru_teien_1k.hdr`
+- **Generic Sport Coupé Car — MMC Works** — MMC Works — [source](https://sketchfab.com/3d-models/generic-sport-coupe-car-820a13c4831c41959ce75e6c2014e882) — [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
+  - file: `assets/models/hero-car-mmc-generic-sport-coupe.glb`
+  - **Required attribution:** Generic Sport Coupé Car by MMC Works, from https://sketchfab.com/3d-models/generic-sport-coupe-car-820a13c4831c41959ce75e6c2014e882; licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). The supplied archive replaces textures/media.png with a neutral dashboard screen. The game conversion aligns the model to the vehicle physics, creates LODs, and optimizes textures and geometry for runtime.
 - **Hinode Film** — Endless Driver project (generated) — [source](https://github.com/mdraficode/Endless-Driver/blob/main/scripts/build-lut.mjs) — Project-Generated
   - file: `assets/luts/hinode-film-17.cube`
 - **Boulder 01 — 1K scanned prop** — James Ray Cock — [source](https://polyhaven.com/a/boulder_01) — CC0-1.0
@@ -58,4 +61,4 @@ All third-party assets below are CC0 (public domain). Attribution is not require
 - **Snow 01 — 1K PBR set** — Rob Tuytel — [source](https://polyhaven.com/a/snow_01) — CC0-1.0
   - file: `assets/textures/snow_01_1k_diff_1k.jpg`, `assets/textures/snow_01_1k_nor_gl_1k.jpg`, `assets/textures/snow_01_1k_rough_1k.jpg`, `assets/textures/snow_01_1k_arm_1k.jpg`, `assets/textures/snow_01_1k_disp_1k.jpg`
 
-`retrieved` and `sha256` for each file are recorded in `public/assets/manifest.json`.
+`retrieved`, source hashes, and runtime SHA-256 values are recorded in `public/assets/manifest.json`.

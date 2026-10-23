@@ -89,6 +89,431 @@
       ]
     },
     {
+      "id": "hero-car-mmc-generic-sport-coupe",
+      "kind": "model",
+      "name": "Generic Sport Coupé Car — MMC Works",
+      "assetClass": "hero",
+      "source": {
+        "url": "https://sketchfab.com/3d-models/generic-sport-coupe-car-820a13c4831c41959ce75e6c2014e882",
+        "creator": "MMC Works",
+        "licence": "CC-BY-4.0",
+        "licenceUrl": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "Generic Sport Coupé Car by MMC Works, from https://sketchfab.com/3d-models/generic-sport-coupe-car-820a13c4831c41959ce75e6c2014e882; licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). The supplied archive replaces textures/media.png with a neutral dashboard screen. The game conversion aligns the model to the vehicle physics, creates LODs, and optimizes textures and geometry for runtime.",
+        "retrieved": "2026-10-23",
+        "pinnedUrl": "https://sketchfab.com/3d-models/generic-sport-coupe-car-820a13c4831c41959ce75e6c2014e882",
+        "archiveSha256": "222b8a9322a94305a5065d9adb56836c93451f040baea45dca4e774ba8f178e6"
+      },
+      "role": "Player hero car: realistic, unbranded sport coupé appearance; loaded asynchronously with the authored roadster retained as a fail-soft fallback.",
+      "pipeline": {
+        "resolution": "2048",
+        "sourceBytes": 79563959,
+        "outputBytes": 4922068,
+        "reductions": [
+          "Blender 4.3.2 FBX import and transform bake",
+          "Convert source +Y-forward/+Z-up to game +Y-up/-Z-forward; align all four wheel centres to VEHICLE_CONFIG",
+          "Preserve separate four wheel pivots and steering-wheel pivot; omit the unused unskinned 92-bone source armature",
+          "Three full hierarchy LODs; Blender Decimate ratios 1.0, 0.45, 0.15",
+          "Texture resize cap 2048px; DirectX normal-map green channel flipped to OpenGL convention",
+          "EXT_meshopt_compression (high)",
+          "KHR_texture_basisu (KTX2, Basis ETC1S, quality 170)"
+        ],
+        "lods": [
+          {
+            "level": 0,
+            "node": "lod0",
+            "triangles": 114070,
+            "ratio": 1
+          },
+          {
+            "level": 1,
+            "node": "lod1",
+            "triangles": 51323,
+            "ratio": 0.45
+          },
+          {
+            "level": 2,
+            "node": "lod2",
+            "triangles": 17104,
+            "ratio": 0.15
+          }
+        ],
+        "notes": "The source is a multi-mesh vehicle with a separate, unskinned 92-bone rig. Mesh world transforms are baked, while steering and wheel pivots remain explicit nodes. Wheels are aligned to the same JSON measurements consumed by src/config/vehicle.ts. textures/media.png from the supplied archive is hash-verified and remains the media material base-color texture; DirectX-suffixed normal maps are converted to OpenGL tangent-space convention. Design identity remains subject to the documented visual review gate."
+      },
+      "sourceFiles": [
+        {
+          "path": "hero-car-candidate-neutral-screen.zip",
+          "provenance": "user-supplied sanitized archive",
+          "bytes": 79563959,
+          "sha256": "222b8a9322a94305a5065d9adb56836c93451f040baea45dca4e774ba8f178e6"
+        },
+        {
+          "path": "source/coupe-sport-generic-mmc.fbx",
+          "bytes": 44455948,
+          "sha256": "4d11eb251bd0958a749368befc30ac308cc80f226de82b5a98019718cb011206"
+        },
+        {
+          "path": "textures/media.png",
+          "bytes": 6708,
+          "sha256": "a9770ac049a95fe7037eccec1189948934306b510487d201378f666e77a40e8c",
+          "note": "Neutral dashboard media texture retained from the supplied sanitized archive."
+        }
+      ],
+      "files": [
+        {
+          "slot": "model",
+          "path": "assets/models/hero-car-mmc-generic-sport-coupe.glb",
+          "bytes": 4922068,
+          "sha256": "32ab940b350a634684e3d9f58dfe6b0d0d12826b25f5802d8409861497ad1d39",
+          "format": "glb",
+          "triangles": 114070,
+          "textures": 17
+        }
+      ],
+      "verification": {
+        "extensionsUsed": [
+          "EXT_meshopt_compression",
+          "KHR_materials_specular",
+          "KHR_mesh_quantization",
+          "KHR_texture_basisu"
+        ],
+        "images": 17,
+        "nodes": [
+          "car-body-surfaces-lod0",
+          "steering-wheel-assembly-lod0",
+          "steering-wheel-pivot-lod0",
+          "car-body-lod0",
+          "wheel-assembly-front-left-lod0",
+          "wheel-spinner-front-left-lod0",
+          "wheel-front-left-lod0",
+          "wheel-assembly-front-right-lod0",
+          "wheel-spinner-front-right-lod0",
+          "wheel-front-right-lod0",
+          "wheel-assembly-rear-left-lod0",
+          "wheel-spinner-rear-left-lod0",
+          "wheel-rear-left-lod0",
+          "wheel-assembly-rear-right-lod0",
+          "wheel-spinner-rear-right-lod0",
+          "wheel-rear-right-lod0",
+          "car-rig-lod0",
+          "lod0",
+          "car-body-surfaces-lod1",
+          "steering-wheel-assembly-lod1",
+          "steering-wheel-pivot-lod1",
+          "car-body-lod1",
+          "wheel-assembly-front-left-lod1",
+          "wheel-spinner-front-left-lod1",
+          "wheel-front-left-lod1",
+          "wheel-assembly-front-right-lod1",
+          "wheel-spinner-front-right-lod1",
+          "wheel-front-right-lod1",
+          "wheel-assembly-rear-left-lod1",
+          "wheel-spinner-rear-left-lod1",
+          "wheel-rear-left-lod1",
+          "wheel-assembly-rear-right-lod1",
+          "wheel-spinner-rear-right-lod1",
+          "wheel-rear-right-lod1",
+          "car-rig-lod1",
+          "lod1",
+          "car-body-surfaces-lod2",
+          "steering-wheel-assembly-lod2",
+          "steering-wheel-pivot-lod2",
+          "car-body-lod2",
+          "wheel-assembly-front-left-lod2",
+          "wheel-spinner-front-left-lod2",
+          "wheel-front-left-lod2",
+          "wheel-assembly-front-right-lod2",
+          "wheel-spinner-front-right-lod2",
+          "wheel-front-right-lod2",
+          "wheel-assembly-rear-left-lod2",
+          "wheel-spinner-rear-left-lod2",
+          "wheel-rear-left-lod2",
+          "wheel-assembly-rear-right-lod2",
+          "wheel-spinner-rear-right-lod2",
+          "wheel-rear-right-lod2",
+          "car-rig-lod2",
+          "lod2"
+        ],
+        "wheelPivots": {
+          "front-left": {
+            "0": "wheel-front-left-lod0",
+            "1": "wheel-front-left-lod1",
+            "2": "wheel-front-left-lod2"
+          },
+          "front-right": {
+            "0": "wheel-front-right-lod0",
+            "1": "wheel-front-right-lod1",
+            "2": "wheel-front-right-lod2"
+          },
+          "rear-left": {
+            "0": "wheel-rear-left-lod0",
+            "1": "wheel-rear-left-lod1",
+            "2": "wheel-rear-left-lod2"
+          },
+          "rear-right": {
+            "0": "wheel-rear-right-lod0",
+            "1": "wheel-rear-right-lod1",
+            "2": "wheel-rear-right-lod2"
+          }
+        },
+        "steeringPivots": [
+          "steering-wheel-pivot-lod0",
+          "steering-wheel-pivot-lod1",
+          "steering-wheel-pivot-lod2"
+        ],
+        "neutralMedia": {
+          "sourcePath": "textures/media.png",
+          "sourceSha256": "a9770ac049a95fe7037eccec1189948934306b510487d201378f666e77a40e8c",
+          "material": "media",
+          "glbImageNames": [
+            "media"
+          ]
+        },
+        "blenderVersion": "4.3.2",
+        "sourceFbxSha256": "4d11eb251bd0958a749368befc30ac308cc80f226de82b5a98019718cb011206",
+        "targetBoundsMeters": {
+          "min": [
+            -1.0596083402633667,
+            -0.7104498744010925,
+            -1.914771318435669
+          ],
+          "max": [
+            1.0596081018447876,
+            1.217539668083191,
+            2.4230763912200928
+          ],
+          "size": [
+            2.1192164421081543,
+            1.9279895424842834,
+            4.337847709655762
+          ]
+        },
+        "wheelAlignment": {
+          "front-left": {
+            "sourceNode": "Coupe-Wheel.Ft.L",
+            "node": "wheel-front-left-lod0",
+            "source": [
+              0.8385809063911438,
+              -1.1567082405090332,
+              0.38040509819984436
+            ],
+            "target": [
+              -0.7812482118606567,
+              -0.369549423456192,
+              -1.350916862487793
+            ],
+            "side": "left",
+            "axle": "front",
+            "sourceTireWidth": 0.3094524145126343,
+            "targetTireWidth": 0.24,
+            "wheelWidthScale": 0.7755635074878413
+          },
+          "front-right": {
+            "sourceNode": "Coupe-Wheel.Ft.R",
+            "node": "wheel-front-right-lod0",
+            "source": [
+              -0.8332949876785278,
+              -1.1547106504440308,
+              0.3804038166999817
+            ],
+            "target": [
+              0.7765468955039978,
+              -0.36955058574676514,
+              -1.3490830659866333
+            ],
+            "side": "right",
+            "axle": "front",
+            "sourceTireWidth": 0.3094525933265686,
+            "targetTireWidth": 0.24,
+            "wheelWidthScale": 0.7755630593366055
+          },
+          "rear-left": {
+            "sourceNode": "Coupe-Wheel.Bk.L",
+            "node": "wheel-rear-left-lod0",
+            "source": [
+              0.83590167760849,
+              1.784671664237976,
+              0.37940409779548645
+            ],
+            "target": [
+              -0.778751790523529,
+              -0.3704496920108795,
+              1.3493374586105347
+            ],
+            "side": "left",
+            "axle": "rear",
+            "sourceTireWidth": 0.357685923576355,
+            "targetTireWidth": 0.24,
+            "wheelWidthScale": 0.6709797176258387
+          },
+          "rear-right": {
+            "sourceNode": "Coupe-Wheel.Bk.R",
+            "node": "wheel-rear-right-lod0",
+            "source": [
+              -0.840707004070282,
+              1.7861151695251465,
+              0.37940341234207153
+            ],
+            "target": [
+              0.783453106880188,
+              -0.37045028805732727,
+              1.3506625890731812
+            ],
+            "side": "right",
+            "axle": "rear",
+            "sourceTireWidth": 0.3576861023902893,
+            "targetTireWidth": 0.24,
+            "wheelWidthScale": 0.6709793821905999
+          }
+        },
+        "textureProcessing": [
+          {
+            "source": "Car_Body_Base_Color.png",
+            "output": "Car_Body_Base_Color.png",
+            "colorSpace": "sRGB",
+            "imageName": "Car_Body_Base_Color.png.001"
+          },
+          {
+            "source": "Car_Body_Normal_DirectX.png",
+            "output": "Car_Body_Normal_OpenGL.png",
+            "colorSpace": "Non-Color",
+            "imageName": "Car_Body_Normal_DirectX.png.001"
+          },
+          {
+            "source": "Car_Body_Roughness.png",
+            "output": "Car_Body_Roughness.png",
+            "colorSpace": "Non-Color",
+            "imageName": "Car_Body_Roughness.png.001"
+          },
+          {
+            "source": "Car_Body_Metallic.png",
+            "output": "Car_Body_Metallic.png",
+            "colorSpace": "Non-Color",
+            "imageName": "Car_Body_Metallic.png.001"
+          },
+          {
+            "source": "front-grille-texture.png",
+            "output": "front-grille-texture.png",
+            "colorSpace": "sRGB",
+            "imageName": "front-grille-texture.png.003"
+          },
+          {
+            "source": "front-grille-texture.png",
+            "output": "front-grille-texture.png",
+            "colorSpace": "Non-Color",
+            "imageName": "front-grille-texture.png.004"
+          },
+          {
+            "source": "interior_Base_Color.png",
+            "output": "interior_Base_Color.png",
+            "colorSpace": "sRGB",
+            "imageName": "interior_Base_Color.png.001"
+          },
+          {
+            "source": "interior_Normal_DirectX.png",
+            "output": "interior_Normal_OpenGL.png",
+            "colorSpace": "Non-Color",
+            "imageName": "interior_Normal_DirectX.png.001"
+          },
+          {
+            "source": "interior_Roughness.png",
+            "output": "interior_Roughness.png",
+            "colorSpace": "Non-Color",
+            "imageName": "interior_Roughness.png.001"
+          },
+          {
+            "source": "interior_Metallic.png",
+            "output": "interior_Metallic.png",
+            "colorSpace": "Non-Color",
+            "imageName": "interior_Metallic.png.001"
+          },
+          {
+            "source": "mechanics_Base_Color.png",
+            "output": "mechanics_Base_Color.png",
+            "colorSpace": "sRGB",
+            "imageName": "mechanics_Base_Color.png.001"
+          },
+          {
+            "source": "mechanics_Normal_DirectX.png",
+            "output": "mechanics_Normal_OpenGL.png",
+            "colorSpace": "Non-Color",
+            "imageName": "mechanics_Normal_DirectX.png.001"
+          },
+          {
+            "source": "mechanics_Roughness.png",
+            "output": "mechanics_Roughness.png",
+            "colorSpace": "Non-Color",
+            "imageName": "mechanics_Roughness.png.001"
+          },
+          {
+            "source": "mechanics_Metallic.png",
+            "output": "mechanics_Metallic.png",
+            "colorSpace": "Non-Color",
+            "imageName": "mechanics_Metallic.png.001"
+          },
+          {
+            "source": "media.png",
+            "output": "media.png",
+            "colorSpace": "sRGB",
+            "imageName": "media.png.002"
+          },
+          {
+            "source": "tire-low-diffuse.png",
+            "output": "tire-low-diffuse.png",
+            "colorSpace": "sRGB",
+            "imageName": "tire-low-diffuse.002"
+          },
+          {
+            "source": "tire-low-normal.png",
+            "output": "tire-low-normal.png",
+            "colorSpace": "Non-Color",
+            "imageName": "tire-low-normal.001"
+          },
+          {
+            "source": "tire-low-roughness.png",
+            "output": "tire-low-roughness.png",
+            "colorSpace": "Non-Color",
+            "imageName": "tire-low-roughness.001"
+          },
+          {
+            "source": "tire-low-diffuse.png",
+            "output": "tire-low-diffuse.png",
+            "colorSpace": "Non-Color",
+            "imageName": "tire-low-diffuse.003"
+          },
+          {
+            "source": "wheel-brake-disc_Base_Color.png",
+            "output": "wheel-brake-disc_Base_Color.png",
+            "colorSpace": "sRGB",
+            "imageName": "wheel-brake-disc_Base_Color.png.002"
+          },
+          {
+            "source": "wheel-brake-disc_Normal_DirectX.png",
+            "output": "wheel-brake-disc_Normal_OpenGL.png",
+            "colorSpace": "Non-Color",
+            "imageName": "wheel-brake-disc_Normal_DirectX.png.001"
+          },
+          {
+            "source": "wheel-brake-disc_roughness.png",
+            "output": "wheel-brake-disc_roughness.png",
+            "colorSpace": "Non-Color",
+            "imageName": "wheel-brake-disc_roughness.png.001"
+          },
+          {
+            "source": "wheel-brake-disc_Metallic.png",
+            "output": "wheel-brake-disc_Metallic.png",
+            "colorSpace": "Non-Color",
+            "imageName": "wheel-brake-disc_Metallic.png.001"
+          },
+          {
+            "source": "wheel-brake-disc_Base_Color.png",
+            "output": "wheel-brake-disc_Base_Color.png",
+            "colorSpace": "Non-Color",
+            "imageName": "wheel-brake-disc_Base_Color.png.003"
+          }
+        ]
+      }
+    },
+    {
       "id": "lut-hinode-film-17",
       "kind": "lut",
       "name": "Hinode Film",
@@ -222,7 +647,11 @@
           "KHR_texture_basisu"
         ],
         "images": 3,
-        "nodes": ["lod1", "lod2", "lod0"]
+        "nodes": [
+          "lod1",
+          "lod2",
+          "lod0"
+        ]
       }
     },
     {
@@ -401,7 +830,11 @@
           "KHR_texture_transform"
         ],
         "images": 9,
-        "nodes": ["lod0", "lod1", "lod2"]
+        "nodes": [
+          "lod0",
+          "lod1",
+          "lod2"
+        ]
       }
     },
     {
@@ -580,7 +1013,11 @@
           "KHR_texture_transform"
         ],
         "images": 9,
-        "nodes": ["lod0", "lod1", "lod2"]
+        "nodes": [
+          "lod0",
+          "lod1",
+          "lod2"
+        ]
       }
     },
     {
@@ -759,7 +1196,11 @@
           "KHR_texture_transform"
         ],
         "images": 6,
-        "nodes": ["lod0", "lod1", "lod2"]
+        "nodes": [
+          "lod0",
+          "lod1",
+          "lod2"
+        ]
       }
     },
     {
@@ -917,7 +1358,11 @@
           "KHR_texture_transform"
         ],
         "images": 9,
-        "nodes": ["lod0", "lod1", "lod2"]
+        "nodes": [
+          "lod0",
+          "lod1",
+          "lod2"
+        ]
       }
     },
     {
@@ -1025,7 +1470,11 @@
           "KHR_texture_basisu"
         ],
         "images": 3,
-        "nodes": ["lod1", "lod2", "lod0"]
+        "nodes": [
+          "lod1",
+          "lod2",
+          "lod0"
+        ]
       }
     },
     {
@@ -1538,5 +1987,5 @@
       ]
     }
   ],
-  "updated": "2026-10-21"
+  "updated": "2026-10-23"
 }

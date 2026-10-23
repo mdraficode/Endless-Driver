@@ -4,7 +4,7 @@
 licence fees, no restricted licences — and do not compromise the visual target to get them. Find premium-looking
 open models and audio first, then build.
 
-**Owner's amendment (2026-10-23; ADR 0008 supersedes the hero CC0-only restriction):** AI-generated and free account-gated sources remain eligible only after exact-item review, but the owner now permits free licences that clearly allow intended use and redistribution—including CC BY 4.0 with attribution—for the hero car. No purchases, paid access, or unapproved new accounts. The selected MMC Works Generic Sport Coupé Car is pending conversion/runtime integration; see §3.5.
+**Owner's amendment (2026-10-23; ADR 0008 supersedes the hero CC0-only restriction):** AI-generated and free account-gated sources remain eligible only after exact-item review, but the owner now permits free licences that clearly allow intended use and redistribution—including CC BY 4.0 with attribution—for the hero car. No purchases, paid access, or unapproved new accounts. The selected MMC Works Generic Sport Coupé Car is integrated through the reproducible conversion/runtime pipeline; see §3.5.
 
 This document is the verified answer to "what premium-looking free content actually exists for this game?" It is
 the sourcing plan for `docs/VISUAL_TARGET.md`; `docs/ASSET_POLICY.md` holds the rules, `public/assets/manifest.json`
@@ -103,7 +103,7 @@ gives us LOD variants for free, which is exactly what the tier matrix needs.
   **built or kitbashed in-house** from CC0 materials. This is deliberate: it keeps the look consistent and avoids a
   patchwork of community assets with unknown scale.
 
-### 3.5 The car — selected generic CC-BY candidate; integration pending
+### 3.5 The car — integrated generic CC-BY hero asset
 
 The target remains a realistic sports coupé with no visible manufacturer branding, plates, badges, or uncleared recognizable production-car design. On 2026-10-23 the owner directed “Integrate the model” and relaxed the former CC0-only hero rule to permit free licences that clearly allow the intended use and redistribution, including CC BY 4.0 with attribution.
 
@@ -111,11 +111,11 @@ The target remains a realistic sports coupé with no visible manufacturer brandi
 
 **Visual/design screening:** four local renders (`/tmp/hero-car-review/front-three-quarter.png`, `front.png`, `side.png`, and `rear-three-quarter.png`) show no visible exterior logo, badge, or plate and no unambiguous production-car identity. The FBX contains the internal name `ModelLbmw`; MMC Works also has a separate BMW M3 E46 project. Neither fact establishes this candidate's identity. The current visual gate is provisionally clear, not legal clearance; stop if closer geometry review reveals a specific real-car design or uncleared branding.
 
-**Integration state:** the last pre-policy source baseline was `a3c07caa39dfb587bfc94a02f8fc30b386d7ce12`; the external model had not yet been converted, added to the manifest, or wired into runtime. The current change is policy/handoff documentation only; no model code or asset has been integrated. The code-authored `CarVisual` remains active. The required pipeline must hash-check the owner-provided archive, convert FBX to GLB reproducibly, preserve PBR materials and all four wheel pivots, map source X-width/Y-length/Z-up into game +Y-up/-Z-forward coordinates, align wheel centres to the physics config, preserve the sanitized media, generate/budget LODs, and emit meshopt/KTX2 output. Runtime load must fail soft to the existing fallback.
+**Integration state:** the pinned, no-network build command `npm run assets:hero -- --archive /home/user/hero-car-candidate-neutral-screen.zip` hash-checks the owner archive and FBX, preprocesses textures, converts with Blender 4.3.2, aligns the game axes and wheel centres to the shared vehicle config, preserves four wheel pivots and the steering pivot, creates three LODs, then optimizes with meshopt and KTX2/Basis. The generated `public/assets/models/hero-car-mmc-generic-sport-coupe.glb` is 4,922,068 bytes with 17 KTX2 images and LOD triangle counts 114,070 / 51,323 / 17,104. The asset manifest records the archive, FBX, and sanitized media hashes plus pipeline settings; `CREDITS.md` and the in-game credits view include the exact CC BY 4.0 attribution. `PlayerCarVisual` loads asynchronously, synchronizes physics-driven wheel/steering pivots, selects LOD by camera distance, and retains `CarVisual` as fail-soft fallback. `npm run assets:verify` passes (20 assets / 49,835,331 bytes); the full project check and browser/manual visual review remain pending. The owner’s archive remains a local build input and must not be committed.
 
-**Required credit:** “Generic Sport Coupé Car” by MMC Works, with links to the [source listing](https://sketchfab.com/3d-models/generic-sport-coupe-car-820a13c4831c41959ce75e6c2014e882) and [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), and an indication of modifications (neutral dashboard media, axis/scale alignment, DirectX-normal conversion, LOD/mesh/texture optimization). The generated `CREDITS.md` and in-game credits view must both carry the attribution before the game is publicly distributed.
+**Required credit:** “Generic Sport Coupé Car” by MMC Works, with links to the [source listing](https://sketchfab.com/3d-models/generic-sport-coupe-car-820a13c4831c41959ce75e6c2014e882) and [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), and an indication of modifications (neutral dashboard media, axis/scale alignment, DirectX-normal conversion, LOD/mesh/texture optimization). The generated `CREDITS.md` and in-game credits view both carry the exact required attribution before the game is publicly distributed.
 
-The prior 2026-10-22 Ferrari, Meshy, BlendSwap, Grab3D, Innerscene, and Unity Fan searches are historical source-audit evidence in `docs/SESSION_HANDOFF.md` §§68–70. Those rejected leads do not change the current MMC Works selection or authorize a different asset. The remaining gates are reproducible conversion, manifest/licence checks, runtime integration, and visual validation.
+The prior 2026-10-22 Ferrari, Meshy, BlendSwap, Grab3D, Innerscene, and Unity Fan searches are historical source-audit evidence in `docs/SESSION_HANDOFF.md` §§68–70. Those rejected leads do not change the current MMC Works selection or authorize a different asset. The pipeline, manifest/licence checks, and runtime integration are implemented; the full project check, CI/deploy, and browser/manual visual validation remain.
 
 ### 3.6 Audio — **premium SFX, good-not-AAA music**
 
@@ -156,7 +156,7 @@ Every one of these is free, open source, and already part of the workflow or pla
 
 Said plainly so expectations stay honest:
 
-1. **Hero-car integration is in progress.** MMC Works' generic sports coupé (CC BY 4.0) is selected under ADR 0008; the local four-view visual screen is provisionally clear and the owner supplied a sanitized, hash-identified source archive. The optimized GLB, manifest entry, generated attribution paths, runtime wiring, and project checks remain pending; keep `CarVisual` active as fallback until they pass.
+1. **Hero-car integration is implemented.** MMC Works' generic sports coupé (CC BY 4.0) is selected under ADR 0008; the local four-view visual screen is provisionally clear and the owner supplied a sanitized, hash-identified source archive. The optimized GLB, manifest entry, generated attribution paths, and fail-soft runtime wiring are present; `npm run assets:verify` passes. The full project check, CI/deploy, and browser/manual visual validation remain. Keep `CarVisual` as the loader fallback.
 2. **No AAA licensed soundtrack.** We get good, season-matched CC0/CC-BY music, not an official festival soundtrack.
 3. **Japan-specific landmark photogrammetry is scarce in CC0.** Real Japanese shrines/torii in the wild are either
    CC-BY community models or not free at all. Our world is a **composite, fictional prefecture** built from CC0
