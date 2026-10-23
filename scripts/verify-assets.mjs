@@ -466,10 +466,7 @@ function verifyHeroTextureDimensions(label, buffer, json, jsonLength) {
       imageOffset < binaryStart ||
       imageOffset + imageLength > binaryStart + binaryLength
     ) {
-      require_(
-        false,
-        `${label}: hero image ${image.name ?? checked} has an invalid KTX2 range`,
-      );
+      require_(false, `${label}: hero image ${image.name ?? checked} has an invalid KTX2 range`);
       continue;
     }
     if (!buffer.subarray(imageOffset, imageOffset + 12).equals(identifier)) {
