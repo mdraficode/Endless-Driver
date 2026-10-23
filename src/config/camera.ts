@@ -48,7 +48,7 @@ export interface CockpitCameraConfig {
  * motion cue.
  */
 export const COCKPIT_CAMERA_CONFIG: CockpitCameraConfig = {
-  eyeAnchor: [-0.39, 0.48, 0.9],
+  eyeAnchor: [-0.39, 0.52, 0.9],
   positionLagSeconds: 0.065,
   orientationLagSeconds: 0.09,
   lookLagSeconds: 0.12,
