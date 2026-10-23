@@ -1,6 +1,6 @@
 # User interface
 
-**Status (2026-10-23):** The pause/home menu is implemented and the latest local check passed at `de947b0`. The owner reported that restart/apply navigation exits fullscreen, the minimap can overlay the menu, and fullscreen should request landscape orientation. The fix now rebuilds the drive in-page, hides/reparents the minimap, and attempts a native landscape lock; validation and target-device review are pending. Auto-start remains unchanged.
+**Status (2026-10-23):** Restart/apply now rebuilds the drive in-page without navigation, so fullscreen can persist; the minimap is hidden while paused and parented under `#app`; fullscreen entry attempts a native landscape lock where supported. Full `npm run check` passes at `84b3b09`; manual target-device review remains pending. Auto-start is unchanged.
 
 ## Responsibility
 
