@@ -2071,3 +2071,13 @@ This is a narrow continuation of the appearance-only review authorized with the 
 **Verification:** code commit `18fd2a7` was pushed before the focused fullscreen suite (1 file / 5 tests), which passed. The first full check stopped at Prettier because the input README table needed formatting; formatting-only commit `ec03e55` was pushed before rerunning. After the portrait-orientation retry was moved to pointerup, commit `7d1fb8e` was pushed before the final full check. `npm run check` passed on `7d1fb8e`: Prettier, ESLint, GLSL guard, both TypeScript checks, 73 test files / 552 tests, `assets:verify` (20 assets / 47,814,431 bytes), and production build. Existing non-fatal Three.js non-indexed-geometry and large-chunk warnings remain. No real Android device/browser reproduction or owner retest has been performed; automated checks do not prove device behavior.
 
 **Next step:** hard-refresh the normal HTTPS game page on Android Chrome and test one touch/release. Startup fullscreen remains best-effort, but the first touch release now invokes the request on the activation-capable event. If it remains windowed, report whether the explicit ⛶ button works and share any browser console error; do not treat this fix as device-verified until the owner confirms.
+
+## 85. Owner reports cockpit camera shows roof instead of driver view (2026-10-24)
+
+**Owner report:** cockpit mode frames the car roof rather than the steering wheel and forward windscreen expected from a driver's seat.
+
+**Likely cause:** the earlier framing change raised and moved the hero eye rearward to keep the entire outer windshield boundary in view. The projection tests proved those distant landmarks were on-screen but did not constrain the eye to remain below the roof and in the cabin; no manual visual acceptance had been performed.
+
+**Fix prepared:** move the hero eye from `[-0.39, 0.52, 0.9]` to `[-0.39, 0.3, 0.5]`, below the coupé roof line and just behind the measured left-hand wheel. Move the open-cabin roadster eye from `[0.39, 0.76, 0.72]` to `[0.39, 0.72, 0.45]`, forward of its roll hoop and closer to the right-hand wheel. Update projection tests to check in-cabin eye constraints and representative windshield, steering-wheel, and dashboard points rather than requiring every outer window pillar at the cost of a roof-mounted view.
+
+**Validation state:** implementation and regression-test changes must be committed and pushed before any test/build/browser check, per owner instruction. No manual visual review or owner-device retest has been performed.

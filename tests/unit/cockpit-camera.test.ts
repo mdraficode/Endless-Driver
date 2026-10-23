@@ -87,54 +87,57 @@ describe('cockpit camera', () => {
     ).toBeCloseTo(0, 6);
   });
 
-  it('frames the full hero windscreen, steering wheel, and dashboard from the driver seat', () => {
+  it('keeps the hero eye inside the cabin and frames the windshield, wheel, and dashboard', () => {
     const camera = new CockpitCamera(COCKPIT_CAMERA_CONFIG, 1.5);
     camera.snapTo(pose(), telemetry());
 
-    // Measured windscreen and steering-wheel bounds from the shipped generic-coupé GLB.
-    const [
-      windshieldTopLeft,
-      windshieldTopRight,
-      windshieldBottomLeft,
-      windshieldBottomRight,
-      ,
-      ,
-      steeringWheelTop,
-      steeringWheelBottom,
-      dashboard,
-    ] = expectLandmarksInFrame(camera, [
-      [-0.466, 0.423, 0.081],
-      [0.466, 0.423, 0.081],
-      [-0.744, 0.118, -0.452],
-      [0.744, 0.118, -0.452],
-      [-0.662, 0.03, -0.127],
-      [-0.159, 0.03, -0.127],
-      [-0.411, 0.213, -0.127],
-      [-0.411, -0.153, -0.127],
-      [0, 0.15, -0.45],
-    ]);
+    const [, eyeHeight, eyeDepth] = COCKPIT_CAMERA_CONFIG.eyeAnchor;
+    // Measured GLB landmarks: keep the eye below the windscreen roofline and near the wheel,
+    // rather than moving it over the roof just to fit both outer windscreen pillars.
+    expect(eyeHeight).toBeGreaterThan(0.213);
+    expect(eyeHeight).toBeLessThan(0.423);
+    expect(eyeDepth).toBeGreaterThan(-0.127);
+    expect(eyeDepth).toBeLessThan(0.7);
 
-    expect(windshieldTopLeft!.y).toBeGreaterThan(windshieldBottomLeft!.y);
-    expect(windshieldTopRight!.y).toBeGreaterThan(windshieldBottomRight!.y);
-    expect(steeringWheelTop!.y + steeringWheelBottom!.y).toBeLessThan(2 * dashboard!.y);
+    const [windshieldTop, windshieldBottom, steeringWheelTop, steeringWheelBottom, dashboard] =
+      expectLandmarksInFrame(camera, [
+        [0, 0.423, 0.081],
+        [0, 0.118, -0.452],
+        [-0.411, 0.213, -0.127],
+        [-0.411, -0.153, -0.127],
+        [0, 0.15, -0.45],
+      ]);
+
+    expect(windshieldTop!.y).toBeGreaterThan(windshieldBottom!.y);
+    expect(windshieldTop!.y).toBeGreaterThan(dashboard!.y);
+    expect(steeringWheelTop!.y).toBeGreaterThan(steeringWheelBottom!.y);
+    expect(steeringWheelBottom!.y).toBeLessThan(dashboard!.y);
   });
 
-  it('frames the roadster windscreen, steering wheel, and dashboard from its open cabin', () => {
+  it('keeps the roadster eye in its open cabin and frames the windshield, wheel, and dashboard', () => {
     const camera = new CockpitCamera(COCKPIT_CAMERA_CONFIG, 1.5);
     camera.setEyeAnchor(FALLBACK_COCKPIT_EYE_ANCHOR);
     camera.snapTo(pose(), telemetry());
 
-    expectLandmarksInFrame(camera, [
-      [-0.52, 0.86, -0.1],
-      [0.52, 0.86, -0.1],
-      [-0.61, 0.29, -0.55],
-      [0.61, 0.29, -0.55],
-      [0.212, 0.56, -0.06],
-      [0.568, 0.56, -0.06],
-      [0.39, 0.382, -0.06],
-      [0.39, 0.738, -0.06],
-      [0, 0.34, -0.46],
-    ]);
+    const [, eyeHeight, eyeDepth] = FALLBACK_COCKPIT_EYE_ANCHOR;
+    expect(eyeHeight).toBeGreaterThan(0.56);
+    expect(eyeHeight).toBeLessThan(0.75);
+    expect(eyeDepth).toBeGreaterThan(-0.06);
+    expect(eyeDepth).toBeLessThan(0.65);
+
+    const [windshieldTop, windshieldBottom, steeringWheelTop, steeringWheelBottom, dashboard] =
+      expectLandmarksInFrame(camera, [
+        [0, 0.86, -0.1],
+        [0, 0.29, -0.55],
+        [0.39, 0.738, -0.06],
+        [0.39, 0.382, -0.06],
+        [0, 0.34, -0.46],
+      ]);
+
+    expect(windshieldTop!.y).toBeGreaterThan(windshieldBottom!.y);
+    expect(windshieldTop!.y).toBeGreaterThan(steeringWheelTop!.y);
+    expect(steeringWheelTop!.y).toBeGreaterThan(steeringWheelBottom!.y);
+    expect(steeringWheelBottom!.y).toBeLessThan(dashboard!.y);
   });
 
   it('smoothly widens the lens with speed and eases into an interior look-around', () => {
