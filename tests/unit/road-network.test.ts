@@ -162,7 +162,10 @@ describe('road network graph', () => {
         const point = edge.points[index] as (typeof edge.points)[number];
         const run = Math.hypot(point.x - previous.x, point.z - previous.z);
         const grade = Math.abs(point.y - previous.y) / Math.max(run, 0.001);
-        expect(grade, `${edge.id} segment ${index}`).toBeLessThanOrEqual(maxGrade + 1e-9);
+        expect(
+          grade,
+          `${edge.id} segment ${index}: ${previous.y} -> ${point.y} over ${run} m`,
+        ).toBeLessThanOrEqual(maxGrade + 1e-9);
       }
     }
   });
