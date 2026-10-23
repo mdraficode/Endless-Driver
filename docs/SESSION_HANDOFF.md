@@ -2007,3 +2007,15 @@ This is a narrow continuation of the appearance-only review authorized with the 
 **Orientation correction:** the existing page-level CSS rotation remains the fallback; native orientation lock is still best-effort from user gestures and cannot override OS rotation settings. Touch detection now includes `any-pointer: coarse` and mobile UA hints, and a CSS portrait/coarse-pointer safety net applies the landscape-sized quarter-turn even when a mobile/in-app browser withholds touch metadata from JavaScript. Touch-control visibility uses the same broader signals.
 
 **Verification:** implementation was pushed before tests. Full `npm run check` passed on `876c61d`: Prettier, ESLint, GLSL guard, both TypeScript checks, 70 test files / 536 tests, asset verification (20 assets / 47,814,431 bytes), and production build. Automated validation does not prove the affected phone's rendered orientation; owner-device retest remains required. No FPS claim is made.
+
+## 79. Startup failure: vegetation rock variant has no registered mesh (2026-10-23)
+
+**Owner report:** the game now displays `Could not start: Cannot read properties of undefined (reading 'mesh')` while loading.
+
+**Root cause:** `generateChunkVegetation` previously selected every species' variant with `floor(hash * 3)`. The vegetation renderer creates three pools for tree species but only two for rock, and scanned adoption likewise only provides `rock:0` and `rock:1`. Some rock placements therefore became `rock:2`; during the initial foliage rebuild, the mesh lookup returned `undefined` and the subsequent `.mesh` access threw the reported TypeError, rejecting startup.
+
+**Fix:** code commit `099cd014a4ae31cbece17fc178af5656beecd305` adds a shared species-specific variant-count helper and uses it both when generating placements and when constructing authored, crown, and scanned mesh pools. A missing-pool invariant now throws a descriptive error rather than an opaque property-access TypeError. The regression test uses a steep rock-only sampler to exercise placements and ensures their variants fit the registered pool.
+
+**Verification and deployment:** the code/test commit was pushed before running checks. Full `npm run check` passed: Prettier, ESLint, GLSL guard, both TypeScript checks, 70 test files / 537 tests, `assets:verify` (20 assets / 47,814,431 bytes), and production build. GitHub Validate [#237](https://github.com/mdraficode/Endless-Driver/actions/runs/39989226518) and Pages Deploy [#226](https://github.com/mdraficode/Endless-Driver/actions/runs/39989226362) succeeded. The deployed page and JS bundle return HTTP 200; the current bundle `assets/index-Dj7jnbEU.js` includes the new mesh-pool diagnostic. No real browser/device reproduction or owner-device retest was performed.
+
+**Next action:** ask the owner to hard-refresh the deployed default URL and confirm startup succeeds. If it still fails, request the exact URL, device/browser, screenshot, and console stack. Preserve the earlier auto-start/loading and page-level landscape fixes; no OS-level orientation claim, Phase 7 work, unrelated Phase 8 scope, visual acceptance, or FPS claim is made.
