@@ -7,6 +7,7 @@
  * Every point sits inside the road corridor's tree clearance and clear of buildings, on ground the
  * road carve has already flattened to a drivable grade.
  */
+import { HINODE_TOUGE_START } from './roads';
 import { AOHARA_DISTRICT_CONFIG } from './urban-district';
 
 export const DEFAULT_SPAWN_ID = 'aohara-city';
@@ -28,6 +29,13 @@ export const SPAWN_POINTS: readonly SpawnPoint[] = [
   { id: 'yuhi-town', label: 'Yūhi Town', x: 540, z: 300, yaw: -0.29 },
   { id: 'shirasagi-fields', label: 'Shirasagi Terraces', x: 60, z: 620, yaw: -1.29 },
   { id: 'west-highlands', label: 'West Highlands', x: -620, z: 330, yaw: -2.15 },
+  {
+    id: 'hinode-touge',
+    label: 'Hinode Touge — Volcano Ridge',
+    x: HINODE_TOUGE_START.x,
+    z: HINODE_TOUGE_START.z,
+    yaw: HINODE_TOUGE_START.yaw,
+  },
   {
     id: 'aohara-city',
     label: 'Aohara Metropolis — Central Avenue',
