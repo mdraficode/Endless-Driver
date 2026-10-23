@@ -35,7 +35,7 @@ function makeLoadingDom() {
       remove: (name: string) => classes.delete(name),
     },
   } as unknown as HTMLElement;
-  return { root, rootAttributes, progressAttributes, classes, bar, label, percent, retry };
+  return { root, rootAttributes, progressAttributes, classes, bar, label, percent, retry, dataset };
 }
 
 describe('startup progress', () => {
@@ -48,10 +48,10 @@ describe('startup progress', () => {
   });
 
   it('completes and hides after the first-frame progress reaches 100 percent', () => {
-    let hide: (() => void) | null = null;
+    const hideTimers: Array<() => void> = [];
     vi.stubGlobal('window', {
       setTimeout: (callback: () => void) => {
-        hide = callback;
+        hideTimers.push(callback);
         return 1;
       },
       clearTimeout: vi.fn(),
@@ -67,9 +67,9 @@ describe('startup progress', () => {
       expect(dom.dataset['state']).toBe('ready');
       expect(dom.percent.textContent).toBe('100%');
       expect(dom.classes.has('loading-screen-complete')).toBe(true);
-      expect(hide).not.toBeNull();
+      expect(hideTimers).toHaveLength(1);
 
-      hide?.();
+      hideTimers[0]?.();
       expect(dom.root.hidden).toBe(true);
       expect(dom.rootAttributes.get('aria-hidden')).toBe('true');
       expect(dom.classes.has('loading-screen-complete')).toBe(false);
