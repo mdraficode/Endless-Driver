@@ -1,9 +1,9 @@
 # Session Handoff — Endless Driver
 
 **Updated:** 2026-10-23  
-**Current stage:** Repository `/tmp/endless-driver`, branch `main`; code commit `9d8395a` is pushed to `origin/main`. The requested startup/home progress, landscape fallback, selector, Hinode touge route, Rapier player/traffic and traffic/traffic collision response, impact animation, model-specific cockpit camera, packed-dirt ridge cuts, guardrails and rockfall hazards are implemented. `npm run check` passed on `9d8395a`: 70 test files / 535 tests, 20 assets / 47,814,431 bytes verified, and production build. The implementation was committed and pushed before tests.  
+**Current stage:** Repository `mdraficode/Endless-Driver`, branch `main`; latest code commit `876c61d` is pushed. It fixes the reported 100% loading-overlay stall and strengthens the page-level landscape fallback for coarse-pointer portrait browsers. `npm run check` passed on `876c61d`: 70 test files / 536 tests, 20 assets / 47,814,431 bytes verified, and production build.  
 **Authorized scope:** only the specifically requested startup/orientation/cockpit items and Phase 9 traffic/route work; preserve Aohara Central Avenue as the default, do not begin Phase 7 weather/seasons or unrelated Phase 8 polish, and do not add visible vehicle deformation.  
-**Next action:** no additional code is required for this narrow increment. Manual driving, browser visual review, owner-device verification, and FPS/performance acceptance have not been performed; ask for those separately before claiming visual acceptance or expanding scope.
+**Next action:** ask the owner to retest the deployed page on the affected device. Manual device/orientation verification and FPS/performance acceptance remain pending; do not claim OS-level rotation or device acceptance without that retest.
 
 > **Re-plan (2026-10-14, decisions resolved):** the owner rejected the Phase 2 presentation and set a
 > Forza-Horizon-class visual target. Research and specification are complete and committed alongside
@@ -1997,3 +1997,13 @@ This is a narrow continuation of the appearance-only review authorized with the 
 **Archive and rights:** `source-archives/hero-car-candidate-neutral-screen.zip` is the owner-supplied 79,563,959-byte ZIP, SHA-256 `222b8a9322a94305a5065d9adb56836c93451f040baea45dca4e774ba8f178e6`. Its internal `ATTRIBUTION.txt` records only replacement of `textures/media.png` with a neutral dashboard screen. The source is MMC Works’ Generic Sport Coupé Car under CC BY 4.0; its listing, attribution, modifications, and exact hash are already represented in the asset manifest and `CREDITS.md`. See `source-archives/README.md`.
 
 **Storage boundary:** keep the archive at the repository path above, outside `public/` and `public/assets/`. It is for recovery/build use only; the Pages deployment must continue to serve only the optimized runtime GLB. Once the remote commit is verified, remove the local Arena copy and scratch clone.
+
+## 78. Owner report: startup overlay and portrait layout remain stuck (2026-10-23)
+
+**Owner report:** the game remains at the 100% loading screen, and the map/game surface remains portrait-oriented instead of using the requested landscape layout.
+
+**Startup finding and fix:** `Application` reports progress 1 after the first frame, but the entrypoint only forwarded that event to `LoadingScreen.update()`; no code called `complete()`. The progress bar reached 100%, while the overlay never entered its fade/hide state. `LoadingScreen` now treats normalized progress 1 as terminal, fades and hides after the first playable frame, and clears any pending hide timer when a new load is shown. Error states remain visible with the retry action.
+
+**Orientation correction:** the existing page-level CSS rotation remains the fallback; native orientation lock is still best-effort from user gestures and cannot override OS rotation settings. Touch detection now includes `any-pointer: coarse` and mobile UA hints, and a CSS portrait/coarse-pointer safety net applies the landscape-sized quarter-turn even when a mobile/in-app browser withholds touch metadata from JavaScript. Touch-control visibility uses the same broader signals.
+
+**Verification:** implementation was pushed before tests. Full `npm run check` passed on `876c61d`: Prettier, ESLint, GLSL guard, both TypeScript checks, 70 test files / 536 tests, asset verification (20 assets / 47,814,431 bytes), and production build. Automated validation does not prove the affected phone's rendered orientation; owner-device retest remains required. No FPS claim is made.
