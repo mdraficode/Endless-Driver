@@ -161,7 +161,7 @@ Said plainly so expectations stay honest:
    CC-BY community models or not free at all. Our world is a **composite, fictional prefecture** built from CC0
    materials plus in-house landmarks — not a scan of a real place, and we will never claim otherwise.
 4. **Specific real locations cannot be rebuilt.** Forza pays capture crews. We author a plausible, coherent region.
-5. **Full traffic AI and crowds remain bounded Phase 9 work.** The authorized visual-actor slice now has instanced passenger cars, city buses, rigid trucks, semi-trailer rigs and farm tractors, with totals fixed at C/B/A = 6/12/18 and no moving colliders. Pedestrians, crossings/right-of-way, vehicle collision truth, recovery and further population remain separate work.
+5. **Full traffic AI and crowds remain bounded Phase 9 work.** The traffic slice has instanced passenger cars, city buses, rigid trucks, semi-trailer rigs and farm tractors at C/B/A = 6/12/18, backed by origin-aware dynamic bodies in the shared Rapier world and transient, non-destructive impact feedback. Pedestrians remain sidewalk-only; crossings/right-of-way, extended recovery behavior and further population remain separate work.
 
 None of these stop the project hitting `docs/VISUAL_TARGET.md`; they define the ceiling of it.
 

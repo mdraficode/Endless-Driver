@@ -22,6 +22,7 @@ import {
 import type { RenderConfig } from '../config/render';
 import { METERS_PER_THREE_UNIT, metersToThreePoint, metersToThreeUnits } from '../config/units';
 import { WORLD_CONFIG, type WorldConfig } from '../config/world';
+import type { PhysicsWorld } from '../physics/PhysicsWorld';
 import type { DaylightState } from '../environment/EnvironmentClock';
 import type { Vec3 } from '../shared/vector';
 import { scaleBaseline } from '../environment/daylight-levels';
@@ -37,6 +38,8 @@ export interface SceneManagerOptions {
   readonly canvas: HTMLCanvasElement;
   readonly config: RenderConfig;
   readonly worldConfig?: WorldConfig;
+  /** Shared Rapier world for content-owned colliders. */
+  readonly physics?: PhysicsWorld;
   readonly aspect: number;
   /**
    * What occupies the scene. Defaults to the driving world; the studio look-dev scene passes its
@@ -184,6 +187,7 @@ export class SceneManager {
     this.#content = (options.content ?? createDrivingWorld)({
       config,
       worldConfig,
+      ...(options.physics !== undefined ? { physics: options.physics } : {}),
       ...(options.terrainSampler !== undefined ? { terrainSampler: options.terrainSampler } : {}),
       ...(options.renderer !== undefined ? { renderer: options.renderer } : {}),
       ...(options.qualityTier !== undefined ? { qualityTier: options.qualityTier } : {}),

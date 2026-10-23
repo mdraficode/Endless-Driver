@@ -25,6 +25,8 @@ describe('procedural Aohara traffic vehicle models', () => {
       }
       expect(bounds.max.z - bounds.min.z).toBeLessThan(model.lengthMeters + 0.35);
       expect(bounds.max.x - bounds.min.x).toBeLessThan(model.widthMeters + 0.25);
+      expect(bounds.max.y).toBeLessThan(model.heightMeters + 0.75);
+      expect(model.massKg).toBeGreaterThan(1000);
       expect(model.minimumSpeedMetersPerSecond).toBeGreaterThan(0);
       expect(model.maximumSpeedMetersPerSecond).toBeGreaterThan(model.minimumSpeedMetersPerSecond);
       expect(model.bodyColor).toBe(getTrafficVehicleSpec(type).bodyColor);

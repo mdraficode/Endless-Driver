@@ -175,10 +175,19 @@ export class Application {
       ],
     };
     this.#engine = new Engine({ canvas: options.canvas, config: this.#config });
+    this.#physics = new PhysicsWorld({
+      rapier: options.rapier,
+      worldConfig: this.#worldConfig,
+    });
+    // Terrain owns the ground from here; the spawn window must exist before the first step.
+    this.#physics.enableTerrain(terrainSampler);
+    // The driving-world factory also creates moving traffic bodies, so the shared physics world
+    // must exist before streamed content is constructed.
     this.#scene = new SceneManager({
       canvas: options.canvas,
       config: this.#config,
       worldConfig: this.#worldConfig,
+      physics: this.#physics,
       aspect: this.#engine.viewport.aspect,
       terrainSampler,
       renderer: this.#engine.renderer,
@@ -186,12 +195,6 @@ export class Application {
     });
     this.#engine.setGodraysLight(this.#scene.godraysLight);
 
-    this.#physics = new PhysicsWorld({
-      rapier: options.rapier,
-      worldConfig: this.#worldConfig,
-    });
-    // Terrain owns the ground from here; the spawn window must exist before the first step.
-    this.#physics.enableTerrain(terrainSampler);
     this.#car = new Car({
       rapier: options.rapier,
       physics: this.#physics,
@@ -262,10 +265,13 @@ export class Application {
 
     this.#unsubscribers = [
       this.#physics.addCollisionHandler((event) => {
-        if (!event.started || (event.bodyA !== this.#car.body && event.bodyB !== this.#car.body)) {
+        const carHandle = this.#car.body.handle;
+        const bodyAIsCar = event.bodyA?.handle === carHandle;
+        const bodyBIsCar = event.bodyB?.handle === carHandle;
+        if (!event.started || (!bodyAIsCar && !bodyBIsCar)) {
           return;
         }
-        const other = event.bodyA === this.#car.body ? event.bodyB : event.bodyA;
+        const other = bodyAIsCar ? event.bodyB : event.bodyA;
         const carVelocity = this.#car.body.linvel();
         const otherVelocity = other?.linvel() ?? { x: 0, y: 0, z: 0 };
         const relativeSpeed = Math.hypot(
@@ -622,9 +628,9 @@ export class Application {
     this.#scene.removeObject(this.#carVisual.root);
     this.#carVisual.dispose();
     this.#chaseCamera.dispose();
-    this.#physics.dispose();
     this.#overlay?.dispose();
     this.#scene.dispose();
+    this.#physics.dispose();
     this.#engine.dispose();
   }
 

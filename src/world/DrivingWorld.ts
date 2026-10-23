@@ -74,6 +74,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
             AOHARA_DISTRICT_CONFIG.centerZ,
           ],
           ...(urbanNetwork === null ? {} : { roadNetwork: urbanNetwork }),
+          ...(context.physics === undefined ? {} : { physics: context.physics }),
           networkIntegrated: true,
           surfaceTextures,
         });

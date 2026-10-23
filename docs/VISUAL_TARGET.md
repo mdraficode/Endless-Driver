@@ -248,8 +248,9 @@ city district; do not replace or urbanize any rural Hinode district. The Aohara 
 640 m classed grid with 16 blocks, 32 instanced high-rises, 22 authored low-rise shells (shops, casinos, mansions,
 townhouses and detached houses), tier-capped low-rise infill (6/9/12 buildings for C/B/A), an open-bowl stadium,
 abstract unbadged billboards, street banners and graph-aligned sidewalks, crossings and lighting. It also has 6/12/18
-visual-only avenue vehicles and 12/24/36 sidewalk pedestrians for C/B/A; vehicles follow signal-aware loops and
-pedestrians remain on sidewalks. These actors add no moving collision bodies, pedestrian crossings or full AI.
+avenue vehicles and 12/24/36 sidewalk pedestrians for C/B/A; vehicles follow signal-aware loops and pedestrians
+remain on sidewalks. Traffic now has origin-aware dynamic Rapier colliders and non-destructive impact animation;
+pedestrian crossings and full traffic recovery/AI remain outside this increment.
 Streetlamp spacing is 40 m (240 instanced poles at the current graph); active unshadowed pointlights are capped at
 6/8/12 total across C/B/A, split between street and architectural sources. Localized glow is source-bound; whole-frame
 bloom remains off. Aohara Central Avenue is the default game start; rural starts remain explicitly selectable.

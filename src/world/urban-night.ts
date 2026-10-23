@@ -50,6 +50,7 @@ import { bindScannedPbrMaps } from './scanned-pbr';
 import { UrbanStreetFurniture } from './urban-furniture';
 import type { RoadNetwork } from './road-network';
 import { UrbanStreetActivity } from './urban-activity';
+import type { PhysicsWorld } from '../physics/PhysicsWorld';
 import type { TownCarProbe, TownHit } from './town';
 import type { SceneContent, SceneContentContext } from './WorldContent';
 
@@ -1015,6 +1016,8 @@ export interface UrbanNightWorldOptions {
   readonly position?: readonly [number, number, number];
   /** Shared solved graph supplies the integrated city's sidewalk-aligned street-light placements. */
   readonly roadNetwork?: RoadNetwork;
+  /** Shared physics world for dynamic traffic when this city is mounted in the driving scene. */
+  readonly physics?: PhysicsWorld;
   /** Road ribbons/lanes/sidewalks/crossings come from RoadWorld in the driving composition. */
   readonly networkIntegrated?: boolean;
   /** Shared static-world map owner; omitted for a standalone city look-dev scene. */
@@ -1176,7 +1179,12 @@ export class UrbanNightWorld implements SceneContent {
     this.#cityTypologyStats = { ...typologyCounts, districtBanners: streetStats.bannerCount };
     this.#buildArchitecturalLights(budget.architecturalPointLights, architecturalFlare);
     this.#buildSignals(signalFlares);
-    this.#activity = this.#networkIntegrated ? new UrbanStreetActivity(tier) : null;
+    this.#activity = this.#networkIntegrated
+      ? new UrbanStreetActivity(tier, {
+          ...(options.physics === undefined ? {} : { physics: options.physics }),
+          origin: [originX, originY, originZ],
+        })
+      : null;
     if (this.#activity !== null) {
       this.root.add(this.#activity.root);
     }
@@ -1358,6 +1366,8 @@ export class UrbanNightWorld implements SceneContent {
       architecturalLightFocusGain: Number(this.#architecturalLightSpatialGain.toFixed(3)),
       ...(this.#activity?.getContentStats() ?? {
         urbanTrafficVehicles: 0,
+        urbanTrafficPhysicsBodies: 0,
+        urbanTrafficImpactFeedbacks: 0,
         urbanPedestrians: 0,
         urbanActivityBatches: 0,
       }),

@@ -2,6 +2,7 @@ import type { Object3D } from 'three';
 import type { RenderConfig } from '../config/render';
 import type { DaylightState } from '../environment/EnvironmentClock';
 import type { WorldConfig } from '../config/world';
+import type { PhysicsWorld } from '../physics/PhysicsWorld';
 import type { TerrainSampler } from './terrain-height';
 import type { TreeHitEvent, TreeVisualState } from './tree-collision';
 import type { TownCarProbe, TownHit } from './town';
@@ -71,6 +72,8 @@ export interface SceneContent {
 export interface SceneContentContext {
   readonly config: RenderConfig;
   readonly worldConfig: WorldConfig;
+  /** Shared Rapier world for content-owned dynamic actors, such as city traffic. */
+  readonly physics?: PhysicsWorld;
   /**
    * The shared terrain sampler (Phase 4). One instance is created by `Application` and the
    * same function feeds the visual chunks and the physics heightfields; content that builds

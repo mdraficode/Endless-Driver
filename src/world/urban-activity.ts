@@ -18,8 +18,18 @@ import {
 } from '../config/urban-city';
 import { AOHARA_DISTRICT_CONFIG } from '../config/urban-district';
 import type { TierId } from '../config/tiers';
+import { clamp } from '../shared/math';
+import { yawFromQuat } from '../shared/vector';
+import type { PhysicsCollisionEvent, PhysicsWorld } from '../physics/PhysicsWorld';
+import type { RapierRigidBody } from '../physics/RapierModule';
 import { TRAFFIC_VEHICLE_CLASSES, type TrafficVehicleClass } from '../config/traffic-vehicles';
 import { createTrafficVehicleModel, getTrafficVehicleSpec } from './traffic-vehicle-models';
+import {
+  advanceVehicleImpact,
+  createVehicleImpactState,
+  triggerVehicleImpact,
+  type VehicleImpactState,
+} from '../vehicles/VehicleImpact';
 
 const ROAD_Y = -0.46;
 const SIDEWALK_LIFT = 0.035;
@@ -68,8 +78,13 @@ interface TrafficVehicle {
   readonly type: TrafficVehicleClass;
   readonly instanceIndex: number;
   readonly lengthMeters: number;
+  readonly heightMeters: number;
   readonly speedMetersPerSecond: number;
   distance: number;
+  collisionHoldSeconds: number;
+  readonly impact: VehicleImpactState;
+  body: RapierRigidBody | null;
+  unregisterOriginAware: (() => void) | null;
 }
 
 interface Pedestrian {
@@ -87,6 +102,10 @@ interface TrafficQueueEntry {
 
 function wrapDistance(distance: number, routeLength: number): number {
   return ((distance % routeLength) + routeLength) % routeLength;
+}
+
+function wrapAngle(angle: number): number {
+  return ((((angle + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) - Math.PI;
 }
 
 function createRoute(
@@ -144,7 +163,7 @@ function buildTrafficRoutes(): readonly UrbanRoute[] {
   const lane = LANE_OFFSET_METERS;
 
   // Two deterministic one-way loops put opposing lanes on opposite sides of the centreline.
-  // Both cross the signalized central arterial and use its avenue phase; no traffic collider is added.
+  // Both cross the signalized central arterial and use its avenue phase.
   return [
     createRoute(
       [
@@ -311,10 +330,16 @@ export function advanceTrafficWithSignal(
   return wrapDistance(currentDistance + allowedTravel, routeLength);
 }
 
+export interface UrbanStreetActivityOptions {
+  readonly physics?: PhysicsWorld;
+  /** World-space position of the activity's parent city root. */
+  readonly origin?: readonly [number, number, number];
+}
+
 /**
- * Bounded, visual-only Aohara activity: instanced path-following vehicles and pedestrians, no second
- * physics solver and no moving colliders. Traffic obeys the avenue phase and keeps a class-length-aware
- * bumper gap; pedestrians stay on the four central-block sidewalks until crossing-right-of-way is implemented.
+ * Bounded Aohara activity: instanced route visuals backed by lightweight dynamic Rapier vehicles when
+ * the driving composition supplies physics. The shared solver owns vehicle-to-vehicle and player-to-traffic
+ * response; a gentle route motor returns traffic to its lane after an impact.
  */
 export class UrbanStreetActivity {
   readonly root = new Group();
@@ -327,6 +352,12 @@ export class UrbanStreetActivity {
     TRAFFIC_VEHICLE_CLASSES.map((type) => [type, 0] as const),
   );
   readonly #trafficMeshes = new Map<TrafficVehicleClass, InstancedMesh>();
+  readonly #physics: PhysicsWorld | null;
+  readonly #worldOrigin: readonly [number, number, number];
+  readonly #physicsUnsubscribers: (() => void)[] = [];
+  readonly #vehicleByCollider = new Map<number, TrafficVehicle>();
+  #trafficImpactCount = 0;
+  #signalAspect: TrafficSignalAspect = 'red';
   readonly #pedestrians: Pedestrian[];
   readonly #pedestrianBodyMesh: InstancedMesh;
   readonly #pedestrianHeadMesh: InstancedMesh;
@@ -336,8 +367,10 @@ export class UrbanStreetActivity {
   readonly #transform = new Object3D();
   #disposed = false;
 
-  constructor(tier: TierId) {
+  constructor(tier: TierId, options: UrbanStreetActivityOptions = {}) {
     const budget = URBAN_ACTIVITY_TIER_BUDGET[tier];
+    this.#physics = options.physics ?? null;
+    this.#worldOrigin = options.origin ?? [0, 0, 0];
     this.root.name = 'aohara-urban-street-activity';
     this.#vehiclesByRoute = this.#createVehicles(budget.trafficVehicles);
     this.#vehicles = this.#vehiclesByRoute.flat();
@@ -345,6 +378,13 @@ export class UrbanStreetActivity {
       vehicles.map((vehicle) => ({ vehicleIndex: vehicle.index, distanceToSignal: 0 })),
     );
     this.#pedestrians = this.#createPedestrians(budget.pedestrians);
+    this.#createTrafficBodies();
+    if (this.#physics !== null) {
+      this.#physicsUnsubscribers.push(
+        this.#physics.addPreStepHandler(this.#driveTrafficBodies),
+        this.#physics.addCollisionHandler(this.#onCollision),
+      );
+    }
 
     const vehicleTrimMaterial = createActivityMaterial(
       'aohara-traffic-vehicle-glass-and-tyres',
@@ -430,7 +470,73 @@ export class UrbanStreetActivity {
     if (this.#disposed || !Number.isFinite(deltaSeconds) || deltaSeconds <= 0) {
       return;
     }
+    this.#signalAspect = aspect;
     const delta = Math.min(MAX_UPDATE_DELTA_SECONDS, deltaSeconds);
+    // Physics-backed traffic advances on fixed simulation steps; visual-only look-dev activity
+    // retains the original frame-time route motion. Pedestrian phase is always render-time.
+    if (this.#physics === null) {
+      this.#advanceTraffic(delta, aspect);
+    }
+    for (const pedestrian of this.#pedestrians) {
+      const route = this.#sidewalkRoutes[pedestrian.routeIndex]!;
+      pedestrian.distance = wrapDistance(
+        pedestrian.distance + pedestrian.speedMetersPerSecond * delta,
+        route.length,
+      );
+      pedestrian.phase += delta * pedestrian.speedMetersPerSecond * 2.2;
+    }
+    this.#writeTrafficMatrices(delta);
+    this.#writePedestrianMatrices();
+  }
+
+  getContentStats(): Readonly<Record<string, number>> {
+    return {
+      urbanTrafficVehicles: this.#vehicles.length,
+      urbanTrafficPassengerCars: this.#trafficClassCounts.get('passenger-car') ?? 0,
+      urbanTrafficCityBuses: this.#trafficClassCounts.get('city-bus') ?? 0,
+      urbanTrafficRigidTrucks: this.#trafficClassCounts.get('rigid-truck') ?? 0,
+      urbanTrafficSemiTrailerRigs: this.#trafficClassCounts.get('semi-trailer-rig') ?? 0,
+      urbanTrafficFarmTractors: this.#trafficClassCounts.get('farm-tractor') ?? 0,
+      urbanTrafficBatches: this.#trafficMeshes.size,
+      urbanTrafficPhysicsBodies: this.#vehicles.filter((vehicle) => vehicle.body !== null).length,
+      urbanTrafficImpactFeedbacks: this.#trafficImpactCount,
+      urbanPedestrians: this.#pedestrians.length,
+      urbanActivityBatches: this.#meshes.length,
+    };
+  }
+
+  dispose(): void {
+    if (this.#disposed) {
+      return;
+    }
+    this.#disposed = true;
+    for (const unsubscribe of this.#physicsUnsubscribers) {
+      unsubscribe();
+    }
+    this.#physicsUnsubscribers.length = 0;
+    for (const vehicle of this.#vehicles) {
+      if (vehicle.body !== null) {
+        vehicle.unregisterOriginAware?.();
+        this.#physics?.removeBody(vehicle.body);
+        vehicle.body = null;
+      }
+    }
+    this.#vehicleByCollider.clear();
+    for (const mesh of this.#meshes) {
+      mesh.geometry.dispose();
+      mesh.dispose();
+    }
+    for (const material of this.#materials) {
+      material.dispose();
+    }
+    this.root.removeFromParent();
+  }
+
+  #advanceTraffic(deltaSeconds: number, aspect: TrafficSignalAspect): void {
+    const delta = Math.min(MAX_UPDATE_DELTA_SECONDS, deltaSeconds);
+    if (delta <= 0) {
+      return;
+    }
     for (let routeIndex = 0; routeIndex < this.#vehiclesByRoute.length; routeIndex += 1) {
       const route = this.#trafficRoutes[routeIndex]!;
       const queue = this.#trafficQueueScratch[routeIndex]!;
@@ -447,11 +553,13 @@ export class UrbanStreetActivity {
       queue.forEach((entry, queuePosition) => {
         const vehicle = this.#vehicles[entry.vehicleIndex]!;
         const centerToSlotMeters = queueOffsetMeters + vehicle.lengthMeters / 2;
+        const pausedByImpact = vehicle.collisionHoldSeconds > 0;
+        vehicle.collisionHoldSeconds = Math.max(0, vehicle.collisionHoldSeconds - delta);
         vehicle.distance = advanceTrafficWithSignal(
           vehicle.distance,
           route.length,
           route.stopDistance,
-          vehicle.speedMetersPerSecond * delta,
+          pausedByImpact ? 0 : vehicle.speedMetersPerSecond * delta,
           aspect,
           queuePosition,
           centerToSlotMeters,
@@ -459,46 +567,6 @@ export class UrbanStreetActivity {
         queueOffsetMeters += vehicle.lengthMeters + URBAN_CITY_CONFIG.trafficSignal.queueGapMeters;
       });
     }
-
-    for (const pedestrian of this.#pedestrians) {
-      const route = this.#sidewalkRoutes[pedestrian.routeIndex]!;
-      pedestrian.distance = wrapDistance(
-        pedestrian.distance + pedestrian.speedMetersPerSecond * delta,
-        route.length,
-      );
-      pedestrian.phase += delta * pedestrian.speedMetersPerSecond * 2.2;
-    }
-    this.#writeTrafficMatrices();
-    this.#writePedestrianMatrices();
-  }
-
-  getContentStats(): Readonly<Record<string, number>> {
-    return {
-      urbanTrafficVehicles: this.#vehicles.length,
-      urbanTrafficPassengerCars: this.#trafficClassCounts.get('passenger-car') ?? 0,
-      urbanTrafficCityBuses: this.#trafficClassCounts.get('city-bus') ?? 0,
-      urbanTrafficRigidTrucks: this.#trafficClassCounts.get('rigid-truck') ?? 0,
-      urbanTrafficSemiTrailerRigs: this.#trafficClassCounts.get('semi-trailer-rig') ?? 0,
-      urbanTrafficFarmTractors: this.#trafficClassCounts.get('farm-tractor') ?? 0,
-      urbanTrafficBatches: this.#trafficMeshes.size,
-      urbanPedestrians: this.#pedestrians.length,
-      urbanActivityBatches: this.#meshes.length,
-    };
-  }
-
-  dispose(): void {
-    if (this.#disposed) {
-      return;
-    }
-    this.#disposed = true;
-    for (const mesh of this.#meshes) {
-      mesh.geometry.dispose();
-      mesh.dispose();
-    }
-    for (const material of this.#materials) {
-      material.dispose();
-    }
-    this.root.removeFromParent();
   }
 
   #createVehicles(count: number): TrafficVehicle[][] {
@@ -518,11 +586,16 @@ export class UrbanStreetActivity {
           type,
           instanceIndex,
           lengthMeters: spec.lengthMeters,
+          heightMeters: spec.heightMeters,
           distance: ((localIndex + 0.5) / counts[routeIndex]!) * route.length,
           speedMetersPerSecond:
             spec.minimumSpeedMetersPerSecond +
             deterministicUnit(index, routeIndex + 11) *
               (spec.maximumSpeedMetersPerSecond - spec.minimumSpeedMetersPerSecond),
+          collisionHoldSeconds: 0,
+          impact: createVehicleImpactState(),
+          body: null,
+          unregisterOriginAware: null,
         });
         index += 1;
       }
@@ -568,12 +641,31 @@ export class UrbanStreetActivity {
     return mesh;
   }
 
-  #writeTrafficMatrices(): void {
+  #writeTrafficMatrices(deltaSeconds = 0): void {
+    const originOffset = this.#physics?.originOffset ?? { x: 0, z: 0 };
     for (const vehicle of this.#vehicles) {
-      const route = this.#trafficRoutes[vehicle.routeIndex]!;
-      sampleRoute(route, vehicle.distance, this.#pose);
-      this.#transform.position.set(this.#pose.x, ROAD_Y, this.#pose.z);
-      this.#transform.rotation.set(0, this.#pose.yaw, 0);
+      let x: number;
+      let y: number;
+      let z: number;
+      let yaw: number;
+      if (vehicle.body !== null && this.#physics !== null) {
+        const position = vehicle.body.translation();
+        const rotation = vehicle.body.rotation();
+        x = position.x + originOffset.x - this.#worldOrigin[0];
+        y = position.y - this.#worldOrigin[1] - vehicle.heightMeters / 2;
+        z = position.z + originOffset.z - this.#worldOrigin[2];
+        yaw = yawFromQuat(rotation);
+      } else {
+        const route = this.#trafficRoutes[vehicle.routeIndex]!;
+        sampleRoute(route, vehicle.distance, this.#pose);
+        x = this.#pose.x;
+        y = ROAD_Y;
+        z = this.#pose.z;
+        yaw = this.#pose.yaw;
+      }
+      const impact = advanceVehicleImpact(vehicle.impact, deltaSeconds);
+      this.#transform.position.set(x, y + impact.bounceMeters, z);
+      this.#transform.rotation.set(impact.pitchRadians, yaw, impact.rollRadians);
       this.#transform.scale.set(1, 1, 1);
       this.#transform.updateMatrix();
       this.#trafficMeshes
@@ -584,6 +676,154 @@ export class UrbanStreetActivity {
       mesh.instanceMatrix.needsUpdate = true;
     }
   }
+
+  #createTrafficBodies(): void {
+    const physics = this.#physics;
+    if (physics === null) {
+      return;
+    }
+    const rapier = physics.rapier;
+    const originOffset = physics.originOffset;
+    for (const vehicle of this.#vehicles) {
+      const route = this.#trafficRoutes[vehicle.routeIndex]!;
+      sampleRoute(route, vehicle.distance, this.#pose);
+      const spec = getTrafficVehicleSpec(vehicle.type);
+      const body = physics.createDynamicBody(
+        rapier.RigidBodyDesc.dynamic()
+          .setTranslation(
+            this.#worldOrigin[0] + this.#pose.x - originOffset.x,
+            this.#worldOrigin[1] + ROAD_Y + spec.heightMeters / 2,
+            this.#worldOrigin[2] + this.#pose.z - originOffset.z,
+          )
+          .setRotation({
+            x: 0,
+            y: Math.sin(this.#pose.yaw / 2),
+            z: 0,
+            w: Math.cos(this.#pose.yaw / 2),
+          })
+          .setGravityScale(0)
+          .setLinearDamping(0.55)
+          .setAngularDamping(1.6)
+          .setUserData({
+            kind: 'aohara-traffic',
+            index: vehicle.index,
+            instanceIndex: vehicle.instanceIndex,
+            type: vehicle.type,
+          })
+          .enabledTranslations(true, false, true)
+          .enabledRotations(false, true, false),
+      );
+      const collider = physics.attachCollider(
+        rapier.ColliderDesc.cuboid(
+          spec.widthMeters / 2,
+          spec.heightMeters / 2,
+          spec.lengthMeters / 2,
+        )
+          .setDensity(spec.massKg / (spec.widthMeters * spec.heightMeters * spec.lengthMeters))
+          .setFriction(0.48)
+          .setRestitution(0.04)
+          .setActiveEvents(rapier.ActiveEvents.COLLISION_EVENTS),
+        body,
+      );
+      vehicle.body = body;
+      vehicle.unregisterOriginAware = physics.registerOriginAwareBody(body);
+      this.#vehicleByCollider.set(collider.handle, vehicle);
+    }
+  }
+
+  #driveTrafficBodies = (deltaSeconds: number): void => {
+    const physics = this.#physics;
+    if (this.#disposed || physics === null || deltaSeconds <= 0) {
+      return;
+    }
+    this.#advanceTraffic(deltaSeconds, this.#signalAspect);
+    const originOffset = physics.originOffset;
+    const blend = clamp(deltaSeconds * 4, 0, 1);
+    for (const vehicle of this.#vehicles) {
+      const body = vehicle.body;
+      if (body === null) {
+        continue;
+      }
+      const route = this.#trafficRoutes[vehicle.routeIndex]!;
+      sampleRoute(route, vehicle.distance, this.#pose);
+      const position = body.translation();
+      const velocity = body.linvel();
+      const targetX = this.#worldOrigin[0] + this.#pose.x - originOffset.x;
+      const targetZ = this.#worldOrigin[2] + this.#pose.z - originOffset.z;
+      const speed = vehicle.collisionHoldSeconds > 0 ? 0 : vehicle.speedMetersPerSecond;
+      let targetVelocityX = -Math.sin(this.#pose.yaw) * speed + (targetX - position.x) * 0.7;
+      let targetVelocityZ = -Math.cos(this.#pose.yaw) * speed + (targetZ - position.z) * 0.7;
+      const maximumSpeed = vehicle.speedMetersPerSecond + 3;
+      const targetSpeed = Math.hypot(targetVelocityX, targetVelocityZ);
+      if (targetSpeed > maximumSpeed) {
+        const scale = maximumSpeed / targetSpeed;
+        targetVelocityX *= scale;
+        targetVelocityZ *= scale;
+      }
+      body.setLinvel(
+        {
+          x: velocity.x + (targetVelocityX - velocity.x) * blend,
+          y: 0,
+          z: velocity.z + (targetVelocityZ - velocity.z) * blend,
+        },
+        true,
+      );
+      const rotation = body.rotation();
+      const yaw = yawFromQuat(rotation);
+      const yawError = wrapAngle(this.#pose.yaw - yaw);
+      const angularVelocity = body.angvel();
+      const targetYawRate = clamp(yawError * 2.6 - angularVelocity.y * 1.6, -1.8, 1.8);
+      body.setAngvel(
+        {
+          x: 0,
+          y: angularVelocity.y + (targetYawRate - angularVelocity.y) * blend,
+          z: 0,
+        },
+        true,
+      );
+    }
+  };
+
+  #onCollision = (event: PhysicsCollisionEvent): void => {
+    if (!event.started) {
+      return;
+    }
+    const vehicleA = this.#vehicleByCollider.get(event.colliderA.handle) ?? null;
+    const vehicleB = this.#vehicleByCollider.get(event.colliderB.handle) ?? null;
+    if (
+      (vehicleA === null && vehicleB === null) ||
+      event.bodyA === null ||
+      event.bodyB === null ||
+      !event.bodyA.isDynamic() ||
+      !event.bodyB.isDynamic()
+    ) {
+      return;
+    }
+    const velocityA = event.bodyA.linvel();
+    const velocityB = event.bodyB.linvel();
+    const relativeSpeed = Math.hypot(velocityA.x - velocityB.x, velocityA.z - velocityB.z);
+    if (relativeSpeed < 1.25) {
+      return;
+    }
+    this.#trafficImpactCount += 1;
+    const holdSeconds = clamp(0.22 + relativeSpeed * 0.045, 0.25, 1.2);
+    const applyToVehicle = (vehicle: TrafficVehicle | null): void => {
+      if (vehicle === null || vehicle.body === null) {
+        return;
+      }
+      const otherBody = event.bodyA.handle === vehicle.body.handle ? event.bodyB : event.bodyA;
+      const position = vehicle.body.translation();
+      const otherPosition = otherBody?.translation() ?? position;
+      const yaw = yawFromQuat(vehicle.body.rotation());
+      const side =
+        (otherPosition.x - position.x) * Math.cos(yaw) -
+        (otherPosition.z - position.z) * Math.sin(yaw);
+      triggerVehicleImpact(vehicle.impact, relativeSpeed, side);
+      vehicle.collisionHoldSeconds = Math.max(vehicle.collisionHoldSeconds, holdSeconds);
+    };
+    applyToVehicle(vehicleA);
+    applyToVehicle(vehicleB);
+  };
 
   #writePedestrianMatrices(): void {
     for (const pedestrian of this.#pedestrians) {
