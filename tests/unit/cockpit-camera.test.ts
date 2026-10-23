@@ -182,13 +182,15 @@ describe('cockpit camera', () => {
     expect(eyeDepth).toBeLessThan(0.2);
     expect(camera.camera.fov).toBe(70);
 
-    const [windshieldTop, windshieldBottom, steeringWheelTop, roadAhead] =
-      expectLandmarksInFrame(camera, [
+    const [windshieldTop, windshieldBottom, steeringWheelTop, roadAhead] = expectLandmarksInFrame(
+      camera,
+      [
         [0, 0.86, -0.1],
         [0, 0.29, -0.55],
         [0.39, 0.738, -0.06],
         [0, 0, -10],
-      ]);
+      ],
+    );
     const steeringWheelLower = projectLandmark(camera, [0.39, 0.56, -0.06]);
 
     expect(windshieldTop!.y).toBeGreaterThan(0.3);
