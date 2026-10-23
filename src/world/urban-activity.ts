@@ -790,17 +790,19 @@ export class UrbanStreetActivity {
     }
     const vehicleA = this.#vehicleByCollider.get(event.colliderA.handle) ?? null;
     const vehicleB = this.#vehicleByCollider.get(event.colliderB.handle) ?? null;
+    const bodyA = event.bodyA;
+    const bodyB = event.bodyB;
     if (
       (vehicleA === null && vehicleB === null) ||
-      event.bodyA === null ||
-      event.bodyB === null ||
-      !event.bodyA.isDynamic() ||
-      !event.bodyB.isDynamic()
+      bodyA === null ||
+      bodyB === null ||
+      !bodyA.isDynamic() ||
+      !bodyB.isDynamic()
     ) {
       return;
     }
-    const velocityA = event.bodyA.linvel();
-    const velocityB = event.bodyB.linvel();
+    const velocityA = bodyA.linvel();
+    const velocityB = bodyB.linvel();
     const relativeSpeed = Math.hypot(velocityA.x - velocityB.x, velocityA.z - velocityB.z);
     if (relativeSpeed < 1.25) {
       return;
@@ -811,9 +813,9 @@ export class UrbanStreetActivity {
       if (vehicle === null || vehicle.body === null) {
         return;
       }
-      const otherBody = event.bodyA.handle === vehicle.body.handle ? event.bodyB : event.bodyA;
+      const otherBody = bodyA.handle === vehicle.body.handle ? bodyB : bodyA;
       const position = vehicle.body.translation();
-      const otherPosition = otherBody?.translation() ?? position;
+      const otherPosition = otherBody.translation();
       const yaw = yawFromQuat(vehicle.body.rotation());
       const side =
         (otherPosition.x - position.x) * Math.cos(yaw) -
