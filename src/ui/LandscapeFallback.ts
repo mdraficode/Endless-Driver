@@ -12,8 +12,8 @@ export function resolveLandscapeLayout(
   viewportHeight: number,
   isTouchDevice: boolean,
 ): LandscapeLayout {
-  const width = Math.max(1, Math.floor(viewportWidth));
-  const height = Math.max(1, Math.floor(viewportHeight));
+  const width = Number.isFinite(viewportWidth) ? Math.max(1, Math.floor(viewportWidth)) : 1;
+  const height = Number.isFinite(viewportHeight) ? Math.max(1, Math.floor(viewportHeight)) : 1;
   const rotate = isTouchDevice && height > width;
   return rotate ? { rotate, width: height, height: width } : { rotate, width, height };
 }
