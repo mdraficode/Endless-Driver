@@ -843,19 +843,6 @@ body {
   overscroll-behavior: contain;
 }
 
-.credits-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 90;
-  display: grid;
-  place-items: center;
-  padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
-    max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
-  background: rgb(2 6 12 / 76%);
-  backdrop-filter: blur(8px);
-  overscroll-behavior: contain;
-}
-
 .credits-overlay[hidden] {
   display: none;
 }

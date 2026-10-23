@@ -562,6 +562,7 @@ export class PauseMenu {
       'Right trigger — accelerate',
       'Left trigger — brake',
       'A / Cross — handbrake · Y / Triangle — reset',
+      'X / Square — switch camera',
     ]);
     page.append(grid);
   }
