@@ -67,7 +67,9 @@ body {
     linear-gradient(142deg, #08101a 0%, #111e2b 56%, #0a111b 100%);
   color: #f1f5f9;
   opacity: 1;
-  transition: opacity 500ms ease, visibility 500ms ease;
+  transition:
+    opacity 500ms ease,
+    visibility 500ms ease;
 }
 
 .loading-screen[hidden] {
@@ -94,7 +96,9 @@ body {
   border: 1px solid rgb(183 214 218 / 18%);
   border-radius: 1.15rem;
   background: rgb(5 12 19 / 57%);
-  box-shadow: 0 32px 90px rgb(0 0 0 / 38%), inset 0 1px rgb(255 255 255 / 5%);
+  box-shadow:
+    0 32px 90px rgb(0 0 0 / 38%),
+    inset 0 1px rgb(255 255 255 / 5%);
   backdrop-filter: blur(14px);
 }
 
@@ -721,4 +725,3 @@ body {
 .touch-utility:active {
   filter: brightness(1.7);
 }
-
