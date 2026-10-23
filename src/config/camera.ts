@@ -42,18 +42,18 @@ export interface CockpitCameraConfig {
 }
 
 /**
- * Driver-seat framing: the hero eye point stays inside the cabin, below the roof line and just
- * behind the left-hand wheel, so the player looks through the windscreen rather than over the car.
- * The authored roadster uses a separate right-hand/open-cabin anchor. Chassis pitch and roll remain
+ * Tight cockpit framing: place the eye near the windscreen inside the cabin, slightly toward the
+ * centerline so the glass borders frame the view. Only the upper part of the wheel should enter at
+ * the bottom. The authored roadster uses its own open-cabin anchor; chassis pitch and roll remain
  * the primary motion cue.
  */
 export const COCKPIT_CAMERA_CONFIG: CockpitCameraConfig = {
-  eyeAnchor: [-0.39, 0.3, 0.5],
+  eyeAnchor: [-0.05, 0.36, 0.2],
   positionLagSeconds: 0.065,
   orientationLagSeconds: 0.09,
   lookLagSeconds: 0.12,
-  baseFov: 76,
-  maxFov: 81,
+  baseFov: 70,
+  maxFov: 72,
   fovMaxSpeed: 52,
   fovLagSeconds: 0.28,
   steeringLookFactor: 0.18,
@@ -77,8 +77,8 @@ export const COCKPIT_CAMERA_CONFIG: CockpitCameraConfig = {
   vibrationAmplitudeMeters: 0.0022,
 };
 
-/** Right-hand eye point for the open-cabin roadster, forward of its roll hoop and behind the wheel. */
-export const FALLBACK_COCKPIT_EYE_ANCHOR = [0.39, 0.72, 0.45] as const;
+/** Windshield-focused eye for the open-cabin roadster; its right-hand wheel sits low in view. */
+export const FALLBACK_COCKPIT_EYE_ANCHOR = [0.08, 0.84, 0.2] as const;
 
 /**
  * One chase framing (PROJECT_PLAN Phase 2 camera, distance views added on owner

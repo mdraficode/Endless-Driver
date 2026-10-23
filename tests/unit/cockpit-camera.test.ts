@@ -40,13 +40,20 @@ function telemetry(overrides: Partial<VehicleTelemetry> = {}): VehicleTelemetry 
   };
 }
 
+function projectLandmark(
+  camera: CockpitCamera,
+  landmark: readonly [number, number, number],
+): Vector3 {
+  camera.camera.updateMatrixWorld(true);
+  return new Vector3(...landmark).project(camera.camera);
+}
+
 function expectLandmarksInFrame(
   camera: CockpitCamera,
   landmarks: readonly (readonly [number, number, number])[],
 ): Vector3[] {
-  camera.camera.updateMatrixWorld(true);
   return landmarks.map((landmark) => {
-    const projected = new Vector3(...landmark).project(camera.camera);
+    const projected = projectLandmark(camera, landmark);
     expect(projected.x).toBeGreaterThan(-1);
     expect(projected.x).toBeLessThan(1);
     expect(projected.y).toBeGreaterThan(-1);
@@ -111,57 +118,73 @@ describe('cockpit camera', () => {
     );
   });
 
-  it('keeps the hero eye inside the cabin and frames the windshield, wheel, and dashboard', () => {
-    const camera = new CockpitCamera(COCKPIT_CAMERA_CONFIG, 1.5);
+  it('fills the hero view with the windshield and crops the steering wheel to its lower arc', () => {
+    const camera = new CockpitCamera(COCKPIT_CAMERA_CONFIG, 16 / 9);
     camera.snapTo(pose(), telemetry());
 
-    const [, eyeHeight, eyeDepth] = COCKPIT_CAMERA_CONFIG.eyeAnchor;
-    // Measured GLB landmarks: keep the eye below the windscreen roofline and near the wheel,
-    // rather than moving it over the roof just to fit both outer windscreen pillars.
-    expect(eyeHeight).toBeGreaterThan(0.213);
+    const [eyeX, eyeHeight, eyeDepth] = COCKPIT_CAMERA_CONFIG.eyeAnchor;
+    // Keep the eye in the cabin but close to the glass; the windshield spans most of the view,
+    // its lower borders approach the screen edges, and only the wheel's upper arc remains visible.
+    expect(Math.abs(eyeX)).toBeLessThan(0.1);
+    expect(eyeHeight).toBeGreaterThan(0.33);
     expect(eyeHeight).toBeLessThan(0.423);
     expect(eyeDepth).toBeGreaterThan(-0.127);
-    expect(eyeDepth).toBeLessThan(0.7);
+    expect(eyeDepth).toBeLessThan(0.25);
+    expect(camera.camera.fov).toBe(70);
 
-    const [windshieldTop, windshieldBottom, steeringWheelTop, steeringWheelBottom, dashboard] =
-      expectLandmarksInFrame(camera, [
-        [0, 0.423, 0.081],
-        [0, 0.118, -0.452],
-        [-0.411, 0.213, -0.127],
-        [-0.411, -0.153, -0.127],
-        [0, 0.15, -0.45],
-      ]);
+    const [
+      windshieldTop,
+      windshieldBottom,
+      windshieldBottomLeft,
+      windshieldBottomRight,
+      steeringWheelTop,
+      dashboard,
+    ] = expectLandmarksInFrame(camera, [
+      [0, 0.423, 0.081],
+      [0, 0.118, -0.452],
+      [-0.744, 0.118, -0.452],
+      [0.744, 0.118, -0.452],
+      [-0.411, 0.213, -0.127],
+      [0, 0.15, -0.45],
+    ]);
+    const steeringWheelLower = projectLandmark(camera, [-0.411, 0.03, -0.127]);
 
-    expect(windshieldTop!.y).toBeGreaterThan(windshieldBottom!.y);
-    expect(windshieldTop!.y).toBeGreaterThan(dashboard!.y);
-    expect(steeringWheelTop!.y).toBeGreaterThan(steeringWheelBottom!.y);
-    expect(steeringWheelBottom!.y).toBeLessThan(dashboard!.y);
+    expect(windshieldTop!.y).toBeGreaterThan(0.7);
+    expect(windshieldBottom!.y).toBeLessThan(-0.45);
+    expect(Math.abs(windshieldBottomLeft!.x)).toBeGreaterThan(0.8);
+    expect(windshieldBottomRight!.x).toBeGreaterThan(0.9);
+    expect(steeringWheelTop!.y).toBeLessThan(-0.6);
+    expect(steeringWheelTop!.y).toBeGreaterThan(-0.75);
+    expect(steeringWheelLower.y).toBeLessThan(-1);
+    expect(dashboard!.y).toBeLessThan(-0.4);
   });
 
-  it('keeps the roadster eye in its open cabin and frames the windshield, wheel, and dashboard', () => {
-    const camera = new CockpitCamera(COCKPIT_CAMERA_CONFIG, 1.5);
+  it('keeps the fallback roadster windshield dominant and its right-hand wheel at the bottom', () => {
+    const camera = new CockpitCamera(COCKPIT_CAMERA_CONFIG, 16 / 9);
     camera.setEyeAnchor(FALLBACK_COCKPIT_EYE_ANCHOR);
     camera.snapTo(pose(), telemetry());
 
-    const [, eyeHeight, eyeDepth] = FALLBACK_COCKPIT_EYE_ANCHOR;
-    expect(eyeHeight).toBeGreaterThan(0.56);
-    expect(eyeHeight).toBeLessThan(0.75);
+    const [eyeX, eyeHeight, eyeDepth] = FALLBACK_COCKPIT_EYE_ANCHOR;
+    expect(Math.abs(eyeX)).toBeLessThan(0.1);
+    expect(eyeHeight).toBeGreaterThan(0.738);
+    expect(eyeHeight).toBeLessThan(0.86);
     expect(eyeDepth).toBeGreaterThan(-0.06);
-    expect(eyeDepth).toBeLessThan(0.65);
+    expect(eyeDepth).toBeLessThan(0.3);
+    expect(camera.camera.fov).toBe(70);
 
-    const [windshieldTop, windshieldBottom, steeringWheelTop, steeringWheelBottom, dashboard] =
-      expectLandmarksInFrame(camera, [
-        [0, 0.86, -0.1],
-        [0, 0.29, -0.55],
-        [0.39, 0.738, -0.06],
-        [0.39, 0.382, -0.06],
-        [0, 0.34, -0.46],
-      ]);
+    const [windshieldTop, steeringWheelTop] = expectLandmarksInFrame(camera, [
+      [0, 0.86, -0.1],
+      [0.39, 0.738, -0.06],
+    ]);
+    const windshieldBottom = projectLandmark(camera, [0, 0.29, -0.55]);
+    const steeringWheelLower = projectLandmark(camera, [0.39, 0.56, -0.06]);
 
-    expect(windshieldTop!.y).toBeGreaterThan(windshieldBottom!.y);
-    expect(windshieldTop!.y).toBeGreaterThan(steeringWheelTop!.y);
-    expect(steeringWheelTop!.y).toBeGreaterThan(steeringWheelBottom!.y);
-    expect(steeringWheelBottom!.y).toBeLessThan(dashboard!.y);
+    expect(windshieldTop!.y).toBeGreaterThan(0);
+    expect(windshieldBottom.y).toBeLessThan(-1);
+    expect(steeringWheelTop!.x).toBeGreaterThan(0.8);
+    expect(steeringWheelTop!.y).toBeLessThan(-0.5);
+    expect(steeringWheelTop!.y).toBeGreaterThan(-0.7);
+    expect(steeringWheelLower.y).toBeLessThan(-1);
   });
 
   it('smoothly widens the lens with speed and eases into an interior look-around', () => {
@@ -174,7 +197,7 @@ describe('cockpit camera', () => {
       camera.update(1 / 60, pose(), telemetry({ speedMps: 52 }));
     }
 
-    expect(camera.camera.fov).toBeGreaterThan(COCKPIT_CAMERA_CONFIG.baseFov + 3);
+    expect(camera.camera.fov).toBeGreaterThan(COCKPIT_CAMERA_CONFIG.baseFov + 1);
     expect(camera.camera.fov).toBeLessThanOrEqual(COCKPIT_CAMERA_CONFIG.maxFov);
     expect(camera.camera.quaternion.angleTo(forwardOrientation)).toBeGreaterThan(0.5);
   });
