@@ -13,17 +13,6 @@ if (network === undefined) {
 }
 
 const tougeEdges = network.edges.filter((edge) => edge.roadClass === 'touge');
-console.info(
-  'touge-profile',
-  tougeEdges.map((edge) => [
-    edge.id,
-    Math.round(edge.lengthMeters),
-    Math.round(edge.points[0]!.y),
-    Math.round(edge.points.at(-1)!.y),
-    Math.round(Math.max(...edge.points.map((point) => point.y))),
-    Math.round(Math.min(...edge.points.map((point) => point.y))),
-  ]),
-);
 
 describe('optional Hinode Touge route', () => {
   it('adds a connected, narrow switchback loop without changing the default start', () => {
@@ -37,6 +26,7 @@ describe('optional Hinode Touge route', () => {
     expect(tougeEdges).toHaveLength(9);
     expect(tougeEdges.every((edge) => edge.halfWidthMeters < ruralHalfWidth)).toBe(true);
     expect(tougeEdges.every((edge) => edge.shoulderMeters === 1.2)).toBe(true);
+    expect(tougeEdges.every((edge) => edge.maxGrade === 0.18)).toBe(true);
     expect(network.neighboursOf(HINODE_TOUGE_START.id)).toContain('touge-north-1');
     expect(resolveSpawnPoint(undefined, 0).id).toBe(DEFAULT_SPAWN_ID);
   });
@@ -63,8 +53,8 @@ describe('optional Hinode Touge route', () => {
     });
     const sharpTurns = headings.filter((heading, index) => {
       const next = headings[(index + 1) % headings.length]!;
-      const delta = Math.abs((((next - heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI));
-      return delta > (Math.PI * 0.42);
+      const delta = Math.abs(((next - heading + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+      return delta > Math.PI * 0.42;
     }).length;
 
     expect(length).toBeGreaterThan(1_600);

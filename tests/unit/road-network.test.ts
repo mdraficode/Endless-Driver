@@ -66,6 +66,12 @@ describe('road network graph', () => {
     expect([...again.nodes.values()]).toEqual([...network.nodes.values()]);
   });
 
+  it('keeps the network grade cap except for the authored mountain route', () => {
+    for (const edge of network.edges) {
+      expect(edge.maxGrade).toBe(edge.roadClass === 'touge' ? 0.18 : ROAD_NETWORK_CONFIG.maxGrade);
+    }
+  });
+
   it('builds the connected 5×5 Aohara grid with arterial spines and a rural gateway', () => {
     const urbanNodes = [...network.nodes.values()].filter((node) => node.id.startsWith('aohara-'));
     const urbanEdges = network.edges.filter(

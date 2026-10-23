@@ -7,7 +7,7 @@ import type { RoadClass, RoadNetworkConfig } from '../config/roads';
  * function always produce the same network, which is what makes "the road network is
  * connected and its junctions agree" unit-testable. Elevations are solved globally —
  * moving-average smoothing, then junction pinning (every edge incident to a node ends at
- * exactly the node's solved elevation), then grade clamping to `maxGrade` — because a
+ * exactly the node's solved elevation), then grade clamping to each edge's `maxGrade` — because a
  * road that follows raw terrain point-for-point is a rollercoaster no car should drive.
  *
  * The carved terrain height comes from blending base terrain toward these profiles
