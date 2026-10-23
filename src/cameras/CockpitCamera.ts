@@ -18,7 +18,7 @@ export class CockpitCamera {
   readonly camera: PerspectiveCamera;
   readonly #config: CockpitCameraConfig;
   readonly #position = new Vector3();
-  readonly #targetPosition = new Vector3();
+  readonly #localPosition = new Vector3();
   readonly #anchor = new Vector3();
   readonly #posePosition = new Vector3();
   readonly #eyeAnchor: [number, number, number];
@@ -61,7 +61,11 @@ export class CockpitCamera {
   snapTo(pose: VehiclePose, telemetry: VehicleTelemetry): void {
     this.#elapsedSeconds = 0;
     this.#computeTarget(pose, telemetry, 0);
-    this.#position.copy(this.#targetPosition);
+    this.#localPosition.copy(this.#anchor);
+    this.#position
+      .copy(this.#localPosition)
+      .applyQuaternion(this.#bodyOrientation)
+      .add(this.#posePosition);
     this.#orientation.copy(this.#targetOrientation);
     this.camera.position.copy(this.#position);
     this.camera.quaternion.copy(this.#orientation);
@@ -83,10 +87,13 @@ export class CockpitCamera {
       return;
     }
 
-    this.#position.lerp(
-      this.#targetPosition,
-      smoothingFactor(delta, this.#config.positionLagSeconds),
-    );
+    // Smooth only the seat-local head/suspension offset. Follow chassis translation immediately;
+    // damping absolute world coordinates made the camera trail the car by speed × lag time.
+    this.#localPosition.lerp(this.#anchor, smoothingFactor(delta, this.#config.positionLagSeconds));
+    this.#position
+      .copy(this.#localPosition)
+      .applyQuaternion(this.#bodyOrientation)
+      .add(this.#posePosition);
     this.#orientation.slerp(
       this.#targetOrientation,
       smoothingFactor(delta, this.#config.orientationLagSeconds),
@@ -209,10 +216,6 @@ export class CockpitCamera {
       this.#eyeAnchor[2] + longitudinalSway + Math.cos(phase * 0.71) * vibration * 0.35,
     );
     this.#posePosition.set(pose.position.x, pose.position.y, pose.position.z);
-    this.#targetPosition
-      .copy(this.#anchor)
-      .applyQuaternion(this.#bodyOrientation)
-      .add(this.#posePosition);
   }
 
   #targetFov(telemetry: VehicleTelemetry): number {

@@ -2083,3 +2083,13 @@ This is a narrow continuation of the appearance-only review authorized with the 
 **Verification:** code/test commit `add945f` was pushed before checks, per owner instruction. The targeted cockpit suite passed (1 file / 5 tests). Full `npm run check` passed on `add945f`: Prettier, ESLint, GLSL guard, both TypeScript checks, 73 test files / 552 tests, `assets:verify` (20 assets / 47,814,431 bytes), and production build. Existing non-fatal Three.js non-indexed-geometry and large-chunk warnings remain. No manual browser visual review or owner-device retest has been performed; automated projection tests do not prove the live view looks right.
 
 **Next step:** hard-refresh after the Pages deployment updates, choose Cockpit from the menu or cycle to it with `C`, and confirm the driver's-eye view now shows the forward windshield and steering wheel. If it still looks roof-mounted, send a screenshot and say which car model is selected.
+
+## 86. Owner reports cockpit camera trails backward as the car accelerates (2026-10-24)
+
+**Owner report:** cockpit framing starts correctly but drifts toward the rear seat and eventually outside as the car gains speed; the eye should remain fixed in the driver's seat relative to the car.
+
+**Root cause:** `CockpitCamera` smoothed its absolute world-space camera position toward the moving vehicle anchor. A time-constant follower naturally lags by approximately speed × position-lag time (e.g. several metres at highway speed), making the driver's eye slide rearward relative to the cabin.
+
+**Fix prepared:** smooth only the small seat-local head/suspension offset. Each frame, transform that local offset by the current chassis orientation and add the current vehicle translation immediately. This retains gentle local motion cues without allowing vehicle travel to accumulate camera lag. A regression test drives the pose 20 metres over one second and asserts the camera remains at its local eye anchor.
+
+**Validation state:** implementation and regression-test changes must be committed and pushed before any test/build/browser check, per owner instruction. Android/device visual retest remains pending.

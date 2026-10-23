@@ -87,6 +87,34 @@ describe('cockpit camera', () => {
     ).toBeCloseTo(0, 6);
   });
 
+  it('follows vehicle translation without accumulating speed-dependent world-space lag', () => {
+    const config = {
+      ...COCKPIT_CAMERA_CONFIG,
+      vibrationAmplitudeMeters: 0,
+      lateralHeadSwayMetersPerMps2: 0,
+      longitudinalHeadSwayMetersPerMps2: 0,
+    };
+    const camera = new CockpitCamera(config, 16 / 9);
+    camera.snapTo(pose(), telemetry());
+
+    const speedMps = 20;
+    const elapsedSeconds = 1;
+    const frames = 60;
+    for (let frame = 1; frame <= frames; frame += 1) {
+      const distance = (speedMps * elapsedSeconds * frame) / frames;
+      camera.update(
+        elapsedSeconds / frames,
+        pose([0, 0, -distance]),
+        telemetry({ speedMps }),
+      );
+    }
+
+    expect(camera.camera.position.z).toBeCloseTo(
+      -speedMps * elapsedSeconds + config.eyeAnchor[2],
+      6,
+    );
+  });
+
   it('keeps the hero eye inside the cabin and frames the windshield, wheel, and dashboard', () => {
     const camera = new CockpitCamera(COCKPIT_CAMERA_CONFIG, 1.5);
     camera.snapTo(pose(), telemetry());
