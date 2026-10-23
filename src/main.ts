@@ -120,8 +120,7 @@ function resolveRenderConfig(): { config: RenderConfig; tier: ReturnType<typeof 
   const tier = resolveTier(probeEnvironment());
   const requestedBackend = readBackendRequest(window.location.search);
   const isAndroid = /Android/i.test(navigator.userAgent);
-  const webGpuAvailable =
-    typeof (navigator as Navigator & { gpu?: unknown }).gpu !== 'undefined';
+  const webGpuAvailable = typeof (navigator as Navigator & { gpu?: unknown }).gpu !== 'undefined';
   const backendPreference = resolveBackendPreference(requestedBackend, {
     isAndroid,
     webGpuAvailable,
