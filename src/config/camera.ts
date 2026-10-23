@@ -13,6 +13,8 @@ export type CameraMode = 'chase' | 'cockpit' | 'orbit';
 export interface CockpitCameraConfig {
   /** Eye position in metres relative to the vehicle body origin (forward is -Z). */
   readonly eyeAnchor: readonly [number, number, number];
+  /** Neutral forward view pitch in radians; negative angles look down toward the street. */
+  readonly forwardPitchRadians: number;
   readonly positionLagSeconds: number;
   readonly orientationLagSeconds: number;
   readonly lookLagSeconds: number;
@@ -42,13 +44,13 @@ export interface CockpitCameraConfig {
 }
 
 /**
- * Tight cockpit framing: place the eye near the windscreen inside the cabin, slightly toward the
- * centerline so the glass borders frame the view. Only the upper part of the wheel should enter at
- * the bottom. The authored roadster uses its own open-cabin anchor; chassis pitch and roll remain
- * the primary motion cue.
+ * Open driver-seat framing: keep the eye just below the hero windshield header and aim slightly
+ * down the street so the roofline stays above the view. The authored roadster has its own open-
+ * cabin anchor; chassis pitch and roll remain the primary motion cue.
  */
 export const COCKPIT_CAMERA_CONFIG: CockpitCameraConfig = {
-  eyeAnchor: [-0.05, 0.36, 0.2],
+  eyeAnchor: [-0.05, 0.4, 0.2],
+  forwardPitchRadians: -0.15,
   positionLagSeconds: 0.065,
   orientationLagSeconds: 0.09,
   lookLagSeconds: 0.12,
@@ -77,8 +79,8 @@ export const COCKPIT_CAMERA_CONFIG: CockpitCameraConfig = {
   vibrationAmplitudeMeters: 0.0022,
 };
 
-/** Windshield-focused eye for the open-cabin roadster; its right-hand wheel sits low in view. */
-export const FALLBACK_COCKPIT_EYE_ANCHOR = [0.08, 0.84, 0.2] as const;
+/** Forward eye for the open-cabin roadster; its right-hand steering wheel stays low at the edge. */
+export const FALLBACK_COCKPIT_EYE_ANCHOR = [0.2, 0.84, 0.1] as const;
 
 /**
  * One chase framing (PROJECT_PLAN Phase 2 camera, distance views added on owner

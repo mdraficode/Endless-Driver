@@ -175,7 +175,8 @@ export class CockpitCamera {
       config.maxSteeringLookRadians + config.maxLookYawRadians,
     );
     const localPitch = clamp(
-      this.#lookPitch +
+      config.forwardPitchRadians +
+        this.#lookPitch +
         suspensionPitch -
         telemetry.longitudinalAcceleration * config.accelerationPitchFactor,
       -config.maxLookPitchRadians - config.maxAccelerationPitchRadians,
