@@ -380,9 +380,7 @@ async function verifyModel(label, asset) {
       `${label}: hero body bounds are missing or invalid`,
     );
     require_(
-      Number.isFinite(bodyBottom) &&
-        bodyBottom >= tireBottom - 0.18 &&
-        bodyBottom <= tireTop + 0.1,
+      Number.isFinite(bodyBottom) && bodyBottom >= tireBottom - 0.18 && bodyBottom <= tireTop + 0.1,
       `${label}: hero body lower bound is vertically detached from the configured wheels`,
     );
     for (const level of declared) {
