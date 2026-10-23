@@ -37,6 +37,8 @@ export interface RoadEdgeConfig {
   readonly halfWidthMeters?: number;
   /** Per-edge shoulder width; defaults to the network-wide rural shoulder. */
   readonly shoulderMeters?: number;
+  /** Optional per-edge grade cap; omit to inherit the network-wide maximum. */
+  readonly maxGrade?: number;
 }
 
 export interface RoadNetworkConfig {
@@ -93,6 +95,7 @@ const touge = (
   to,
   via,
   roadClass: 'touge',
+  maxGrade: 0.18,
   halfWidthMeters: 3.4,
   shoulderMeters: 1.2,
 });
@@ -152,14 +155,41 @@ export const ROAD_NETWORK_CONFIG: RoadNetworkConfig = {
     // Optional Hinode Touge: a narrow, connected switchback loop climbing around Hinode-dake.
     // Its own road class keeps the Aohara grid and the original rural roads unchanged.
     touge('volcano-view', HINODE_TOUGE_START.id, [[-920, -1440]]),
-    touge(HINODE_TOUGE_START.id, 'touge-north-1', [[-1110, -1460]]),
+    touge(HINODE_TOUGE_START.id, 'touge-north-1', [
+      [-920, -1480],
+      [-820, -1640],
+      [-990, -1780],
+      [-1170, -1730],
+      [-1280, -1620],
+    ]),
     touge('touge-north-1', 'touge-east-1', [[-1260, -1610]]),
-    touge('touge-east-1', 'touge-north-2', [[-1200, -1740]]),
+    touge('touge-east-1', 'touge-north-2', [
+      [-1200, -1740],
+      [-1020, -1790],
+      [-1010, -1950],
+      [-1230, -1980],
+      [-1370, -1870],
+    ]),
     touge('touge-north-2', 'touge-east-2', [[-1340, -1850]]),
-    touge('touge-east-2', 'touge-south-1', [[-1270, -1960]]),
+    touge('touge-east-2', 'touge-south-1', [
+      [-1270, -1960],
+      [-1080, -1940],
+      [-1010, -2070],
+      [-1190, -2180],
+      [-1360, -2140],
+    ]),
     touge('touge-south-1', 'touge-east-3', [[-1290, -2070]]),
-    touge('touge-east-3', 'touge-south-2', [[-1110, -2080]]),
-    touge('touge-south-2', HINODE_TOUGE_START.id, [[-920, -1780]]),
+    touge('touge-east-3', 'touge-south-2', [
+      [-1110, -2080],
+      [-900, -2140],
+      [-830, -1980],
+    ]),
+    touge('touge-south-2', HINODE_TOUGE_START.id, [
+      [-900, -2000],
+      [-680, -1850],
+      [-640, -1600],
+      [-920, -1780],
+    ]),
     {
       from: 'east-plain',
       to: aoharaNodeId('middle', 'west-outer'),

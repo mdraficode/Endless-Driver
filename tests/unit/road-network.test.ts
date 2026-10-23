@@ -155,7 +155,6 @@ describe('road network graph', () => {
   });
 
   it('caps the grade everywhere at the authored maximum', () => {
-    const maxGrade = ROAD_NETWORK_CONFIG.maxGrade;
     for (const edge of network.edges) {
       for (let index = 1; index < edge.points.length; index += 1) {
         const previous = edge.points[index - 1] as (typeof edge.points)[number];
@@ -165,7 +164,7 @@ describe('road network graph', () => {
         expect(
           grade,
           `${edge.id} segment ${index}: ${previous.y} -> ${point.y} over ${run} m`,
-        ).toBeLessThanOrEqual(maxGrade + 1e-9);
+        ).toBeLessThanOrEqual(edge.maxGrade + 1e-9);
       }
     }
   });

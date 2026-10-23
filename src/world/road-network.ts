@@ -28,6 +28,8 @@ export interface RoadEdge {
   readonly from: string;
   readonly to: string;
   readonly roadClass: RoadClass;
+  /** Maximum longitudinal grade (rise/run) authored for this edge. */
+  readonly maxGrade: number;
   readonly halfWidthMeters: number;
   readonly shoulderMeters: number;
   readonly points: readonly RoadPoint[];
@@ -150,6 +152,7 @@ export function buildRoadNetwork(
     from: string;
     to: string;
     roadClass: RoadClass;
+    maxGrade: number;
     halfWidthMeters: number;
     shoulderMeters: number;
     points: MutablePoint[];
@@ -157,8 +160,12 @@ export function buildRoadNetwork(
 
   for (const edge of config.edges) {
     const roadClass = edge.roadClass ?? 'rural';
+    const maxGrade = edge.maxGrade ?? config.maxGrade;
     const halfWidthMeters = edge.halfWidthMeters ?? config.halfWidthMeters;
     const shoulderMeters = edge.shoulderMeters ?? config.shoulderMeters;
+    if (!Number.isFinite(maxGrade) || maxGrade <= 0 || maxGrade > 1) {
+      throw new Error(`invalid road grade for edge ${edge.from} -> ${edge.to}`);
+    }
     if (
       !Number.isFinite(halfWidthMeters) ||
       halfWidthMeters <= 0 ||
@@ -203,6 +210,7 @@ export function buildRoadNetwork(
       from: edge.from,
       to: edge.to,
       roadClass,
+      maxGrade,
       halfWidthMeters,
       shoulderMeters,
       points,
@@ -232,7 +240,7 @@ export function buildRoadNetwork(
     const last = edge.points[edge.points.length - 1];
     if (first) first.y = nodeElevation.get(edge.from) ?? first.y;
     if (last) last.y = nodeElevation.get(edge.to) ?? last.y;
-    clampGrade(edge.points, config.maxGrade);
+    clampGrade(edge.points, edge.maxGrade);
   }
 
   const edges: RoadEdge[] = mutableEdges.map((edge) => {
@@ -249,6 +257,7 @@ export function buildRoadNetwork(
       from: edge.from,
       to: edge.to,
       roadClass: edge.roadClass,
+      maxGrade: edge.maxGrade,
       halfWidthMeters: edge.halfWidthMeters,
       shoulderMeters: edge.shoulderMeters,
       points,
