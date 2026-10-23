@@ -84,8 +84,7 @@ export class TouchControls {
     try {
       await requestFullscreenBestEffort(document, event);
       const orientation = screen.orientation as
-        | (ScreenOrientation & { lock?: (orientation: string) => Promise<void> })
-        | undefined;
+        (ScreenOrientation & { lock?: (orientation: string) => Promise<void> }) | undefined;
       await orientation?.lock?.('landscape');
     } catch {
       // Unsupported/OS-locked devices continue with the page-level landscape fallback.
