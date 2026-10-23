@@ -44,13 +44,14 @@ export interface CockpitCameraConfig {
 }
 
 /**
- * Open driver-seat framing: keep the eye just below the hero windshield header and aim slightly
- * down the street so the roofline stays above the view. The authored roadster has its own open-
- * cabin anchor; chassis pitch and roll remain the primary motion cue.
+ * Open windshield framing: move the eye up to the windshield header and forward out of the
+ * coupe's opaque roof sightline, then use a nearly level gaze to keep the gameplay track centered.
+ * The authored roadster has its own open-cabin anchor; chassis pitch and roll remain the primary
+ * motion cue.
  */
 export const COCKPIT_CAMERA_CONFIG: CockpitCameraConfig = {
-  eyeAnchor: [-0.05, 0.4, 0.2],
-  forwardPitchRadians: -0.15,
+  eyeAnchor: [-0.05, 0.46, 0.05],
+  forwardPitchRadians: -0.03,
   positionLagSeconds: 0.065,
   orientationLagSeconds: 0.09,
   lookLagSeconds: 0.12,
