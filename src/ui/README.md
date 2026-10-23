@@ -1,6 +1,6 @@
 # User interface
 
-**Status (2026-10-23):** Restart/apply rebuilds in-page, the minimap is hidden while paused, and fullscreen attempts native landscape lock where supported. Touch/pen retries use `pointerup` (or `touchend` without Pointer Events), since `pointerdown` is not a reliable Android Chrome activation event. The core touch retry passed full `npm run check` at `ec03e55` (73 test files / 552 tests); a follow-up moved the portrait landscape-lock retry to `pointerup` and awaits validation. Manual Android-device review remains pending. Auto-start and best-effort handling are unchanged.
+**Status (2026-10-23):** Restart/apply rebuilds in-page, the minimap is hidden while paused, and fullscreen attempts native landscape lock where supported. Touch/pen retries use `pointerup` (or `touchend` without Pointer Events), since `pointerdown` is not a reliable Android Chrome activation event. Full `npm run check` passes at `7d1fb8e` (73 test files / 552 tests); manual Android-device review remains pending. Auto-start and best-effort handling are unchanged.
 
 ## Responsibility
 
