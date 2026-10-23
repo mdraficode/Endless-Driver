@@ -5,6 +5,7 @@ import { FullscreenOnStart } from '../../src/ui/FullscreenOnStart';
 function createFullscreenDocument(
   requestFullscreen: () => Promise<void>,
   orientationLock?: (orientation: string) => Promise<void>,
+  supportsPointerEvents = true,
 ) {
   const eventTarget = new EventTarget();
   let active = false;
@@ -15,19 +16,23 @@ function createFullscreenDocument(
   Object.defineProperty(documentRef, 'fullscreenElement', {
     get: () => (active ? ({} as Element) : null),
   });
-  const defaultView =
-    orientationLock === undefined
-      ? null
-      : ({
-          PointerEvent: class PointerEvent {},
-          screen: { orientation: { lock: orientationLock } },
-        } as unknown as Window);
-  Object.defineProperty(documentRef, 'defaultView', { value: defaultView });
+  const view: Record<string, unknown> = {};
+  if (supportsPointerEvents) {
+    view.PointerEvent = class PointerEvent {};
+  }
+  if (orientationLock !== undefined) {
+    view.screen = { orientation: { lock: orientationLock } };
+  }
+  Object.defineProperty(documentRef, 'defaultView', { value: view as unknown as Window });
 
   return {
     document: documentRef,
-    dispatch(type: string): void {
-      eventTarget.dispatchEvent(new Event(type));
+    dispatch(type: string, pointerType?: string): void {
+      const event = new Event(type);
+      if (pointerType !== undefined) {
+        Object.defineProperty(event, 'pointerType', { value: pointerType });
+      }
+      eventTarget.dispatchEvent(event);
     },
     enterFullscreen(): void {
       active = true;
@@ -43,7 +48,7 @@ function flushEvents(): Promise<void> {
 }
 
 describe('fullscreen on game start', () => {
-  it('silently retries a denied startup request on the first user gesture', async () => {
+  it('waits for touch pointerup after a denied startup request', async () => {
     let enterFullscreen = (): void => undefined;
     const requestFullscreen = vi.fn(async () => enterFullscreen());
     const fixture = createFullscreenDocument(requestFullscreen);
@@ -54,7 +59,13 @@ describe('fullscreen on game start', () => {
     expect(await fullscreen.request()).toBe(false);
     expect(requestFullscreen).toHaveBeenCalledTimes(1);
 
-    fixture.dispatch('pointerdown');
+    // Touch pointerdown is not a reliable activation event on Android Chrome.
+    fixture.dispatch('pointerdown', 'touch');
+    await flushEvents();
+    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+
+    // Retry at pointerup, when the touch activation is available.
+    fixture.dispatch('pointerup', 'touch');
     await flushEvents();
     expect(requestFullscreen).toHaveBeenCalledTimes(2);
     expect(fixture.isFullscreen()).toBe(true);
@@ -63,6 +74,45 @@ describe('fullscreen on game start', () => {
     fixture.dispatch('keydown');
     await flushEvents();
     expect(requestFullscreen).toHaveBeenCalledTimes(2);
+    fullscreen.dispose();
+  });
+
+  it('continues to retry on mouse pointerdown', async () => {
+    let enterFullscreen = (): void => undefined;
+    const requestFullscreen = vi.fn(async () => enterFullscreen());
+    const fixture = createFullscreenDocument(requestFullscreen);
+    enterFullscreen = fixture.enterFullscreen;
+    requestFullscreen.mockRejectedValueOnce(new Error('a user gesture is required'));
+
+    const fullscreen = new FullscreenOnStart(fixture.document);
+    expect(await fullscreen.request()).toBe(false);
+
+    fixture.dispatch('pointerdown', 'mouse');
+    await flushEvents();
+
+    expect(requestFullscreen).toHaveBeenCalledTimes(2);
+    expect(fixture.isFullscreen()).toBe(true);
+    fullscreen.dispose();
+  });
+
+  it('uses touchend as the fallback when Pointer Events are unavailable', async () => {
+    let enterFullscreen = (): void => undefined;
+    const requestFullscreen = vi.fn(async () => enterFullscreen());
+    const fixture = createFullscreenDocument(requestFullscreen, undefined, false);
+    enterFullscreen = fixture.enterFullscreen;
+    requestFullscreen.mockRejectedValueOnce(new Error('a user gesture is required'));
+
+    const fullscreen = new FullscreenOnStart(fixture.document);
+    expect(await fullscreen.request()).toBe(false);
+
+    fixture.dispatch('touchstart');
+    await flushEvents();
+    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+
+    fixture.dispatch('touchend');
+    await flushEvents();
+    expect(requestFullscreen).toHaveBeenCalledTimes(2);
+    expect(fixture.isFullscreen()).toBe(true);
     fullscreen.dispose();
   });
 

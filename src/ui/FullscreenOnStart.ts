@@ -76,13 +76,15 @@ export function requestFullscreenBestEffort(
 }
 
 /**
- * Attempts fullscreen when a game session starts, then silently retries on the first trusted
- * pointer/key gesture if the browser rejected startup. Successful entry also requests landscape
- * orientation where the browser allows native screen-orientation locking.
+ * Attempts fullscreen when a game session starts, then silently retries on an activation-capable
+ * input event if the browser rejected startup. Touch and pen retries wait for pointerup: some
+ * browsers, including Android Chrome, do not grant fullscreen activation on pointerdown. Successful
+ * entry also requests landscape orientation where the browser allows native screen-orientation
+ * locking.
  */
 export class FullscreenOnStart {
   readonly #document: Document;
-  readonly #needsTouchFallback: boolean;
+  readonly #hasPointerEvents: boolean;
   #listenersAttached = false;
   #disposed = false;
 
@@ -90,10 +92,29 @@ export class FullscreenOnStart {
     void this.request(event);
   };
 
+  readonly #handlePointerDown = (event: Event): void => {
+    if ((event as PointerEvent).pointerType === 'mouse') {
+      this.#handleGesture(event);
+    }
+  };
+
+  readonly #handlePointerUp = (event: Event): void => {
+    if ((event as PointerEvent).pointerType !== 'mouse') {
+      this.#handleGesture(event);
+    }
+  };
+
+  readonly #handleAccessibleClick = (event: Event): void => {
+    // Keep keyboard/screen-reader-generated click activation without duplicating pointer retries.
+    if ((event as MouseEvent).detail === 0) {
+      this.#handleGesture(event);
+    }
+  };
+
   constructor(documentRef: Document = document) {
     this.#document = documentRef;
     const view = documentRef.defaultView;
-    this.#needsTouchFallback = view === null || !('PointerEvent' in view);
+    this.#hasPointerEvents = view !== null && 'PointerEvent' in view;
     this.#attachListeners();
   }
 
@@ -127,18 +148,27 @@ export class FullscreenOnStart {
       return;
     }
     this.#listenersAttached = true;
-    this.#document.addEventListener('pointerdown', this.#handleGesture, {
-      capture: true,
-      passive: true,
-    });
-    this.#document.addEventListener('click', this.#handleGesture, true);
-    this.#document.addEventListener('keydown', this.#handleGesture, true);
-    if (this.#needsTouchFallback) {
-      this.#document.addEventListener('touchstart', this.#handleGesture, {
+    if (this.#hasPointerEvents) {
+      this.#document.addEventListener('pointerdown', this.#handlePointerDown, {
+        capture: true,
+        passive: true,
+      });
+      this.#document.addEventListener('pointerup', this.#handlePointerUp, {
+        capture: true,
+        passive: true,
+      });
+    } else {
+      this.#document.addEventListener('mousedown', this.#handleGesture, {
+        capture: true,
+        passive: true,
+      });
+      this.#document.addEventListener('touchend', this.#handleGesture, {
         capture: true,
         passive: true,
       });
     }
+    this.#document.addEventListener('click', this.#handleAccessibleClick, true);
+    this.#document.addEventListener('keydown', this.#handleGesture, true);
   }
 
   #removeListeners(): void {
@@ -146,11 +176,14 @@ export class FullscreenOnStart {
       return;
     }
     this.#listenersAttached = false;
-    this.#document.removeEventListener('pointerdown', this.#handleGesture, true);
-    this.#document.removeEventListener('click', this.#handleGesture, true);
-    this.#document.removeEventListener('keydown', this.#handleGesture, true);
-    if (this.#needsTouchFallback) {
-      this.#document.removeEventListener('touchstart', this.#handleGesture, true);
+    if (this.#hasPointerEvents) {
+      this.#document.removeEventListener('pointerdown', this.#handlePointerDown, true);
+      this.#document.removeEventListener('pointerup', this.#handlePointerUp, true);
+    } else {
+      this.#document.removeEventListener('mousedown', this.#handleGesture, true);
+      this.#document.removeEventListener('touchend', this.#handleGesture, true);
     }
+    this.#document.removeEventListener('click', this.#handleAccessibleClick, true);
+    this.#document.removeEventListener('keydown', this.#handleGesture, true);
   }
 }

@@ -1,6 +1,6 @@
 # User interface
 
-**Status (2026-10-23):** Restart/apply now rebuilds the drive in-page without navigation, so fullscreen can persist; the minimap is hidden while paused and parented under `#app`; fullscreen entry attempts a native landscape lock where supported. Full `npm run check` passes at `84b3b09`; manual target-device review remains pending. Auto-start is unchanged.
+**Status (2026-10-23):** Restart/apply rebuilds the drive in-page without navigation, the minimap is hidden while paused, and fullscreen entry attempts native landscape lock where supported. Touch/pen fullscreen retries now use `pointerup` (or `touchend` without Pointer Events) rather than `pointerdown`, which is not a reliable activation event on Android Chrome. Auto-start and best-effort handling remain unchanged; manual target-device review is pending.
 
 ## Responsibility
 
@@ -12,7 +12,7 @@ DOM UI for diagnostics, pause/home navigation, saved gameplay/display preference
 - `CreditsPanel.ts` — manifest-driven attribution dialog opened from the final menu entry, with focus return to the invoking item.
 - `StartLocationSelector.ts` — URL helper preserves unrelated query options while switching spawn; spawn choice is now presented from the menu rather than a separate HUD picker.
 - `LoadingScreen.ts` — startup stages and first-frame readiness; no Play gate.
-- `FullscreenOnStart.ts` and `LandscapeFallback.ts` — best-effort fullscreen requests, native landscape lock after entry where supported, and a page-level landscape fallback; none claims to override browser gesture or OS rotation policy.
+- `FullscreenOnStart.ts` and `LandscapeFallback.ts` — best-effort fullscreen requests, with touch/pen retries at `pointerup` (mouse at `pointerdown`, plus keyboard/accessibility and legacy `touchend` paths), native landscape lock after entry where supported, and a page-level landscape fallback; none claims to override browser gesture or OS rotation policy.
 - `Minimap.ts` — destination map HUD parented to the app rotation/stacking context and hidden while the pause/home menu is open.
 - `DiagnosticsOverlay.ts` — bounded FPS/frame-time, viewport, render, scene, and vehicle metrics; updated at the application's HUD interval, never per frame.
 - `TouchControls.ts` — multi-touch steering, pedals and utility buttons; the pause button remains at the upper-right without overlapping the utility row.

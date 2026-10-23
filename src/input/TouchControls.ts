@@ -28,8 +28,8 @@ export interface TouchControlsOptions {
  *
  * Visibility: rendered only when the device reports a coarse pointer (or `force`).
  * Portrait layout is handled by the in-page landscape fallback. Fullscreen is attempted
- * at session start and silently retried on first user input; native orientation lock is
- * best-effort from a portrait touch or the ⛶ button.
+ * at session start and silently retried on an activation-capable input event; native
+ * orientation lock is best-effort after entry or from the ⛶ button.
  */
 export class TouchControls {
   readonly #root: HTMLElement;
@@ -39,8 +39,6 @@ export class TouchControls {
   readonly #options: TouchControlsOptions;
 
   #joystickPointer: { id: number; centreX: number; centreY: number } | null = null;
-
-  #orientationAttempted = false;
 
   #disposed = false;
 
@@ -140,7 +138,6 @@ export class TouchControls {
     };
     joystick.addEventListener('pointerdown', (event) => {
       event.preventDefault();
-      this.#maybeLockLandscape(event);
       const rect = joystick.getBoundingClientRect();
       this.#joystickPointer = {
         id: event.pointerId,
@@ -178,7 +175,6 @@ export class TouchControls {
       const element = make(className, label, label);
       element.addEventListener('pointerdown', (event) => {
         event.preventDefault();
-        this.#maybeLockLandscape(event);
         element.setPointerCapture?.(event.pointerId);
         element.classList.add('is-active');
         this.#tracker.setPressed(control, event.pointerId, true);
@@ -266,17 +262,5 @@ export class TouchControls {
     this.#windowListeners.push(() => {
       document.removeEventListener('visibilitychange', releaseWhenHidden);
     });
-  }
-
-  #maybeLockLandscape(event: Event): void {
-    if (this.#orientationAttempted) {
-      return;
-    }
-    this.#orientationAttempted = true;
-    // Keep a direct touch-gesture retry for browsers that only honor orientation lock
-    // when the user explicitly taps a driving control while still in portrait.
-    if (window.innerHeight > window.innerWidth) {
-      void TouchControls.requestLandscape(event);
-    }
   }
 }

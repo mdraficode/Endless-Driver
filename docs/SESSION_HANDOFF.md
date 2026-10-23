@@ -2059,3 +2059,13 @@ This is a narrow continuation of the appearance-only review authorized with the 
 **Implementation:** move the hero coupé eye anchor to `[-0.39, 0.52, 0.9]` and the open-cabin roadster fallback to `[0.39, 0.76, 0.72]`, away from the windshield and behind/above the wheel. Projection-based tests keep measured shipped-GLB windshield/wheel landmarks plus the authored roadster windshield, wheel and dashboard in frame at landscape aspect ratio. Changes are limited to cockpit framing; no unrelated camera, vehicle, visual asset, or Phase 8 work was included.
 
 **Validation:** implementation `1dfc609` and final seat-clearance adjustment `f4aa8c0` were pushed before checks, as instructed. Targeted camera/car-visual tests passed (2 files / 8 tests). Full `npm run check` passed on `f4aa8c0`: Prettier, ESLint, GLSL guard, both TypeScript checks, 73 test files / 550 tests, `assets:verify` (20 assets / 47,814,431 bytes), and production build. No manual browser/device visual review or owner retest has yet been performed.
+
+## 84. Owner reports fullscreen remains windowed after touch on Android Chrome (2026-10-23)
+
+**Owner report/environment:** the game still does not enter fullscreen after interaction, on Android Chrome, opened as a normal HTTPS page rather than an embedded preview.
+
+**Likely cause (source-level hypothesis; not yet reproduced on-device):** the global fullscreen retry and portrait touch controls both attempted fullscreen from `pointerdown`. On touchscreen pointers, that event is not a reliable Fullscreen API activation event in Android Chrome; a failed pointerdown attempt could overlap/deduplicate the later valid gesture.
+
+**Fix prepared:** `FullscreenOnStart` now retries on mouse `pointerdown`, touch/pen `pointerup`, keyboard, and accessibility-generated clicks; browsers without Pointer Events use `mousedown` and `touchend`. The separate portrait touch-control request on `pointerdown` is removed so it cannot preempt the activation-capable retry. Startup auto-request, the explicit fullscreen button, landscape-lock best effort, and page-level landscape fallback remain unchanged. Fresh-link fullscreen remains best-effort under browser policy.
+
+**Validation state:** regression tests cover touch pointerdown followed by pointerup, mouse pointerdown, and the no-Pointer-Events touchend fallback. The implementation and tests must be committed and pushed before any test/build/browser check, per owner instruction; automated validation and Android-device retest are pending.
