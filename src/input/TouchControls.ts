@@ -81,14 +81,8 @@ export class TouchControls {
    * unsupported or OS-locked devices keep using the in-page landscape fallback.
    */
   static async requestLandscape(event?: Event): Promise<void> {
-    try {
-      await requestFullscreenBestEffort(document, event);
-      const orientation = screen.orientation as
-        (ScreenOrientation & { lock?: (orientation: string) => Promise<void> }) | undefined;
-      await orientation?.lock?.('landscape');
-    } catch {
-      // Unsupported/OS-locked devices continue with the page-level landscape fallback.
-    }
+    // The fullscreen helper attempts the native landscape lock as soon as entry succeeds.
+    await requestFullscreenBestEffort(document, event);
   }
 
   dispose(): void {
@@ -279,8 +273,8 @@ export class TouchControls {
       return;
     }
     this.#orientationAttempted = true;
-    // Native orientation lock is only useful while the phone is in portrait; fullscreen
-    // is handled separately by FullscreenOnStart on the first interaction in any orientation.
+    // Keep a direct touch-gesture retry for browsers that only honor orientation lock
+    // when the user explicitly taps a driving control while still in portrait.
     if (window.innerHeight > window.innerWidth) {
       void TouchControls.requestLandscape(event);
     }

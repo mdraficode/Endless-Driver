@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { FullscreenOnStart } from '../../src/ui/FullscreenOnStart';
 
-function createFullscreenDocument(requestFullscreen: () => Promise<void>) {
+function createFullscreenDocument(
+  requestFullscreen: () => Promise<void>,
+  orientationLock?: (orientation: string) => Promise<void>,
+) {
   const eventTarget = new EventTarget();
   let active = false;
   const documentRef = eventTarget as unknown as Document;
@@ -12,7 +15,14 @@ function createFullscreenDocument(requestFullscreen: () => Promise<void>) {
   Object.defineProperty(documentRef, 'fullscreenElement', {
     get: () => (active ? ({} as Element) : null),
   });
-  Object.defineProperty(documentRef, 'defaultView', { value: null });
+  const defaultView =
+    orientationLock === undefined
+      ? null
+      : ({
+          PointerEvent: class PointerEvent {},
+          screen: { orientation: { lock: orientationLock } },
+        } as unknown as Window);
+  Object.defineProperty(documentRef, 'defaultView', { value: defaultView });
 
   return {
     document: documentRef,
@@ -53,6 +63,40 @@ describe('fullscreen on game start', () => {
     fixture.dispatch('keydown');
     await flushEvents();
     expect(requestFullscreen).toHaveBeenCalledTimes(2);
+    fullscreen.dispose();
+  });
+
+  it('attempts native landscape orientation lock after fullscreen entry when supported', async () => {
+    let enterFullscreen = (): void => undefined;
+    const requestFullscreen = vi.fn(async () => enterFullscreen());
+    const orientationLock = vi.fn(async () => undefined);
+    const fixture = createFullscreenDocument(requestFullscreen, orientationLock);
+    enterFullscreen = fixture.enterFullscreen;
+
+    const fullscreen = new FullscreenOnStart(fixture.document);
+    expect(await fullscreen.request()).toBe(true);
+    await flushEvents();
+
+    expect(fixture.isFullscreen()).toBe(true);
+    expect(orientationLock).toHaveBeenCalledWith('landscape');
+    fullscreen.dispose();
+  });
+
+  it('keeps fullscreen successful when native orientation lock is denied', async () => {
+    let enterFullscreen = (): void => undefined;
+    const requestFullscreen = vi.fn(async () => enterFullscreen());
+    const orientationLock = vi.fn(async () => {
+      throw new Error('orientation lock is unavailable');
+    });
+    const fixture = createFullscreenDocument(requestFullscreen, orientationLock);
+    enterFullscreen = fixture.enterFullscreen;
+
+    const fullscreen = new FullscreenOnStart(fixture.document);
+    expect(await fullscreen.request()).toBe(true);
+    await flushEvents();
+
+    expect(fixture.isFullscreen()).toBe(true);
+    expect(orientationLock).toHaveBeenCalledWith('landscape');
     fullscreen.dispose();
   });
 });

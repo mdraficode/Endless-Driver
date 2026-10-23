@@ -8,7 +8,23 @@ interface LegacyFullscreenElement extends HTMLElement {
 
 const pendingGestureRequests = new WeakMap<Document, Promise<boolean>>();
 
-/** Best-effort fullscreen request. Browsers generally require a trusted user gesture. */
+/** Attempt native landscape lock after fullscreen entry; unsupported/denied locks are harmless. */
+function requestLandscapeLockBestEffort(documentRef: Document): void {
+  const screen = documentRef.defaultView?.screen as
+    | (Screen & {
+        readonly orientation?: { lock?: (orientation: string) => Promise<void> };
+      })
+    | undefined;
+  const orientation = screen?.orientation;
+  if (typeof orientation?.lock !== 'function') return;
+  try {
+    void orientation.lock('landscape').catch(() => undefined);
+  } catch {
+    // Browser gesture policy, OS settings, and unsupported devices keep the page fallback.
+  }
+}
+
+/** Best-effort fullscreen request plus a native landscape-lock attempt where supported. */
 export function requestFullscreenBestEffort(
   documentRef: Document = document,
   gestureEvent?: Event,
@@ -17,6 +33,7 @@ export function requestFullscreenBestEffort(
   const activeElement =
     documentRef.fullscreenElement ?? legacyDocument.webkitFullscreenElement ?? null;
   if (activeElement !== null) {
+    requestLandscapeLockBestEffort(documentRef);
     return Promise.resolve(true);
   }
 
@@ -42,7 +59,10 @@ export function requestFullscreenBestEffort(
   }
 
   const attempt = Promise.resolve(request)
-    .then(() => true)
+    .then(() => {
+      requestLandscapeLockBestEffort(documentRef);
+      return true;
+    })
     .catch(() => false);
   if (gestureEvent !== undefined) {
     pendingGestureRequests.set(documentRef, attempt);
@@ -57,7 +77,8 @@ export function requestFullscreenBestEffort(
 
 /**
  * Attempts fullscreen when a game session starts, then silently retries on the first trusted
- * pointer/key gesture if the browser rejected the no-gesture startup request.
+ * pointer/key gesture if the browser rejected startup. Successful entry also requests landscape
+ * orientation where the browser allows native screen-orientation locking.
  */
 export class FullscreenOnStart {
   readonly #document: Document;

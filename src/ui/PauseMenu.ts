@@ -153,6 +153,10 @@ export class PauseMenu {
     if (this.#root.hidden) this.open();
     else this.#resume();
   };
+  readonly #resumeClick = (): void => this.#resume();
+  readonly #rootClick = (event: MouseEvent): void => {
+    if (event.target === this.#root) this.#resume();
+  };
   #activePage: PauseMenuPage = 'overview';
   #storageAvailable = true;
 
@@ -199,7 +203,7 @@ export class PauseMenu {
     this.#resumeButton.className = 'pause-menu-resume-button';
     this.#resumeButton.type = 'button';
     this.#resumeButton.textContent = 'Resume drive';
-    this.#resumeButton.addEventListener('click', () => this.#resume());
+    this.#resumeButton.addEventListener('click', this.#resumeClick);
     header.append(brand, pausedLabel, this.#resumeButton);
 
     const layout = document.createElement('div');
@@ -254,9 +258,7 @@ export class PauseMenu {
     this.#triggerButton.setAttribute('aria-haspopup', 'dialog');
     this.#triggerButton.setAttribute('aria-expanded', 'false');
     this.#triggerButton.addEventListener('click', this.#triggerClick);
-    this.#root.addEventListener('click', (event) => {
-      if (event.target === this.#root) this.#resume();
-    });
+    this.#root.addEventListener('click', this.#rootClick);
     document.addEventListener('keydown', this.#keyDown, true);
     this.#renderPage();
     this.#updateFooter();
@@ -279,6 +281,16 @@ export class PauseMenu {
   dispose(): void {
     document.removeEventListener('keydown', this.#keyDown, true);
     this.#triggerButton.removeEventListener('click', this.#triggerClick);
+    this.#root.removeEventListener('click', this.#rootClick);
+    this.#root.hidden = true;
+    this.#root.replaceChildren();
+    this.#root.classList.remove('pause-menu-overlay');
+    this.#root.removeAttribute('role');
+    this.#root.removeAttribute('aria-modal');
+    this.#root.removeAttribute('aria-label');
+    this.#triggerButton.hidden = true;
+    this.#triggerButton.setAttribute('aria-expanded', 'false');
+    this.#triggerButton.setAttribute('aria-label', 'Open pause menu');
   }
 
   #buildNav(): void {
@@ -466,7 +478,8 @@ export class PauseMenu {
     const fullscreenTitle = document.createElement('strong');
     fullscreenTitle.textContent = 'Fullscreen';
     const fullscreenDescription = document.createElement('span');
-    fullscreenDescription.textContent = 'Request fullscreen where the browser allows it.';
+    fullscreenDescription.textContent =
+      'Request fullscreen and landscape orientation where the browser allows it.';
     fullscreenCopy.append(fullscreenTitle, fullscreenDescription);
     const fullscreenStatus = document.createElement('span');
     fullscreenStatus.className = 'pause-menu-inline-status';
@@ -480,7 +493,7 @@ export class PauseMenu {
       try {
         const entered = await this.#options.onFullscreen(event);
         fullscreenStatus.textContent = entered
-          ? 'Fullscreen active.'
+          ? 'Fullscreen active; landscape orientation is best-effort.'
           : 'Fullscreen needs browser permission or a supported gesture.';
       } catch {
         fullscreenStatus.textContent = 'Fullscreen is unavailable in this browser context.';

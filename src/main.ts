@@ -187,7 +187,7 @@ declare global {
   }
 }
 
-const canvas = document.querySelector<HTMLCanvasElement>('#viewport-canvas');
+let canvas = document.querySelector<HTMLCanvasElement>('#viewport-canvas');
 const appRoot = document.querySelector<HTMLElement>('#app');
 const loadingRoot = document.querySelector<HTMLElement>('#loading-screen');
 const loadingScreen = loadingRoot === null ? null : new LoadingScreen(loadingRoot);
@@ -201,6 +201,11 @@ const creditsRoot = document.querySelector<HTMLElement>('#credits-root');
 const creditsPanel = creditsRoot === null ? null : new CreditsPanel(creditsRoot);
 if (creditsPanel !== null) void creditsPanel.load();
 const statusElement = document.querySelector<HTMLElement>('#scene-status');
+
+let drivingApplication: Application | null = null;
+let drivingMinimap: Minimap | null = null;
+let drivingPauseMenu: PauseMenu | null = null;
+let driveRestartTask: Promise<void> | null = null;
 
 function setStatus(message: string | null, tone: 'info' | 'error' = 'info'): void {
   if (!statusElement) {
@@ -228,10 +233,61 @@ function persistPreference<K extends keyof GamePreferences>(
   return saveGamePreferences(next);
 }
 
-function restartCurrentDrive(clearGraphicsOverride: boolean): void {
-  const url = new URL(window.location.href);
+function updateDriveUrl(spawnId: string | undefined, clearGraphicsOverride: boolean): void {
+  const url = new URL(
+    spawnId === undefined
+      ? window.location.href
+      : urlForSpawn(window.location.href, spawnId, DEFAULT_SPAWN_ID),
+  );
   if (clearGraphicsOverride) url.searchParams.delete('tier');
-  window.location.assign(url.toString());
+  window.history.replaceState(window.history.state, '', url.toString());
+}
+
+function restartCurrentDrive(clearGraphicsOverride: boolean): void {
+  void restartDriveInPlace(clearGraphicsOverride);
+}
+
+function applySpawnInPlace(spawnId: string, clearGraphicsOverride: boolean): void {
+  void restartDriveInPlace(clearGraphicsOverride, spawnId);
+}
+
+async function restartDriveInPlace(
+  clearGraphicsOverride: boolean,
+  spawnId?: string,
+): Promise<void> {
+  if (driveRestartTask !== null) return driveRestartTask;
+
+  const task = (async () => {
+    try {
+      updateDriveUrl(spawnId, clearGraphicsOverride);
+      drivingPauseMenu?.dispose();
+      drivingPauseMenu = null;
+      drivingMinimap?.dispose();
+      drivingMinimap = null;
+      const previousApplication = drivingApplication;
+      drivingApplication = null;
+      previousApplication?.stop();
+      previousApplication?.dispose();
+      if (pauseToggleButton !== null) pauseToggleButton.hidden = true;
+
+      // A fresh canvas lets the renderer honor newly selected graphics settings. Fullscreen is
+      // requested on the persistent document root, so replacing only the canvas cannot exit it.
+      if (canvas !== null) {
+        const nextCanvas = canvas.cloneNode(false) as HTMLCanvasElement;
+        canvas.replaceWith(nextCanvas);
+        canvas = nextCanvas;
+      }
+      await startDrivingScene(true);
+    } catch (error) {
+      reportStartupFailure(error);
+    }
+  })();
+  driveRestartTask = task;
+  try {
+    await task;
+  } finally {
+    if (driveRestartTask === task) driveRestartTask = null;
+  }
 }
 
 function isDebugEnabled(): boolean {
@@ -241,7 +297,7 @@ function isDebugEnabled(): boolean {
   return import.meta.env.DEV || new URLSearchParams(window.location.search).has('debug');
 }
 
-async function startDrivingScene(): Promise<void> {
+async function startDrivingScene(restarting = false): Promise<void> {
   void fullscreenOnStart.request();
   if (!canvas) {
     reportStartupFailure(new Error('missing #viewport-canvas element'));
@@ -249,11 +305,14 @@ async function startDrivingScene(): Promise<void> {
   }
 
   landscapeFallback?.update();
-  loadingScreen?.show();
-  loadingScreen?.update(0.05, 'Loading the physics engine…');
-  setStatus('Loading physics engine…', 'info');
+  loadingScreen?.show(restarting ? 'Restarting your drive…' : undefined);
+  loadingScreen?.update(
+    0.05,
+    restarting ? 'Preparing the restart…' : 'Loading the physics engine…',
+  );
+  setStatus(restarting ? 'Restarting the drive…' : 'Loading physics engine…', 'info');
 
-  let application: Application;
+  let application: Application | null = null;
   let minimap: Minimap | null = null;
   try {
     // Two async preconditions before the first frame: Rapier ships as WebAssembly and has to
@@ -287,20 +346,48 @@ async function startDrivingScene(): Promise<void> {
       steeringSensitivity: preferences.steeringSensitivity,
     };
 
-    application = new Application(options);
+    const activeApplication = new Application(options);
+    application = activeApplication;
+    drivingApplication = activeApplication;
     // Mobile driving surface: shows itself on touch devices; `?touch=1` forces it
     // (captures, desktop testing), `?touch=0` hides it everywhere.
     const touchRoot = document.querySelector<HTMLElement>('#touch-controls');
     if (touchRoot !== null) {
       const touchParam = new URLSearchParams(window.location.search).get('touch');
       if (touchParam !== '0') {
-        application.attachTouchControls(touchRoot, { force: touchParam === '1' });
+        activeApplication.attachTouchControls(touchRoot, { force: touchParam === '1' });
       }
     }
-    await application.start();
+    await activeApplication.start();
+
+    // Keep the minimap inside the app's stacking/rotation context and hide it while paused.
+    // `?map=0` still disables it for clean captures.
+    const mapParam = new URLSearchParams(window.location.search).get('map');
+    if (mapParam !== '0') {
+      try {
+        minimap = new Minimap({
+          sampler: activeApplication.terrainSampler,
+          ...(appRoot === null ? {} : { parent: appRoot }),
+          getPose: () => {
+            const pose = activeApplication.car.getInterpolatedPose(
+              activeApplication.physics.interpolationAlpha,
+            );
+            return {
+              x: pose.position.x,
+              z: pose.position.z,
+              yaw: yawFromQuat(pose.rotation),
+            };
+          },
+        });
+        drivingMinimap = minimap;
+      } catch (error) {
+        console.warn('minimap unavailable:', (error as Error).message);
+      }
+    }
+
     if (pauseToggleButton !== null && pauseMenuRoot !== null) {
-      const diagnostics = application.getDiagnostics();
-      new PauseMenu({
+      const diagnostics = activeApplication.getDiagnostics();
+      drivingPauseMenu = new PauseMenu({
         root: pauseMenuRoot,
         triggerButton: pauseToggleButton,
         preferences: effectivePreferences,
@@ -310,62 +397,53 @@ async function startDrivingScene(): Promise<void> {
         activeTier: tier.id,
         activeRenderer: diagnostics.rendererBackend,
         activeTrafficVehicleCount: trafficVehicleCountFor(tier.id, preferences.trafficIntensity),
-        onPause: () => application.stop(),
+        onPause: () => {
+          activeApplication.stop();
+          if (minimap !== null) minimap.canvas.hidden = true;
+        },
         onResume: () => {
-          void application.start().catch(reportStartupFailure);
+          if (minimap !== null) minimap.canvas.hidden = false;
+          void activeApplication.start().catch(reportStartupFailure);
         },
         onRestart: restartCurrentDrive,
-        onApplySpawn: (selectedSpawnId, clearGraphicsOverride) => {
-          const url = new URL(urlForSpawn(window.location.href, selectedSpawnId, DEFAULT_SPAWN_ID));
-          if (clearGraphicsOverride) url.searchParams.delete('tier');
-          window.location.assign(url.toString());
-        },
+        onApplySpawn: applySpawnInPlace,
         onPreferenceChange: persistPreference,
         onOpenCredits: (source) => creditsPanel?.open(source),
         isCreditsOpen: () => creditsPanel?.isOpen ?? false,
         onFullscreen: (event) => fullscreenOnStart.request(event),
       });
     }
-    // Minimap HUD (owner request, 2026-10-18): heading-up scope with the road
-    // and trail networks and an edge arrow to the next point of interest.
-    // `?map=0` hides it for clean captures; a failure never blocks the boot.
-    const mapParam = new URLSearchParams(window.location.search).get('map');
-    if (mapParam !== '0') {
-      try {
-        minimap = new Minimap({
-          sampler: application.terrainSampler,
-          getPose: () => {
-            const pose = application.car.getInterpolatedPose(
-              application.physics.interpolationAlpha,
-            );
-            return {
-              x: pose.position.x,
-              z: pose.position.z,
-              yaw: yawFromQuat(pose.rotation),
-            };
-          },
-        });
-      } catch (error) {
-        console.warn('minimap unavailable:', (error as Error).message);
-      }
-    }
   } catch (error) {
+    drivingPauseMenu?.dispose();
+    drivingPauseMenu = null;
+    minimap?.dispose();
+    drivingMinimap = null;
+    if (application !== null) {
+      application.stop();
+      application.dispose();
+      if (drivingApplication === application) drivingApplication = null;
+    }
+    if (pauseToggleButton !== null) pauseToggleButton.hidden = true;
     reportStartupFailure(error);
     return;
   }
 
+  const activeApplication = application;
+  if (activeApplication === null) return;
   if (isDebugEnabled()) {
     window.__ENDLESS_DRIVER__ = {
-      getDiagnostics: () => application.getDiagnostics(),
+      getDiagnostics: () => activeApplication.getDiagnostics(),
       cycleMinimapTarget: () => minimap?.cycleTarget().label ?? null,
       pause: () => {
-        application.stop();
+        activeApplication.stop();
+        if (minimap !== null) minimap.canvas.hidden = true;
       },
       resume: () => {
-        void application.start();
+        if (minimap !== null) minimap.canvas.hidden = false;
+        void activeApplication.start().catch(reportStartupFailure);
       },
       teleportCar: (x, z, yaw) => {
-        application.teleportCar(x, z, yaw);
+        activeApplication.teleportCar(x, z, yaw);
       },
     };
   }
