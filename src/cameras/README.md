@@ -1,30 +1,29 @@
 # Camera modes
 
-**Status:** Phase 2 implemented (damped chase camera + debug orbit camera).
+**Status:** Chase and driver-seat cockpit cameras are gameplay views; the Three.js orbit camera remains a developer inspection view.
 
 ## Responsibility
 
-Inspection, chase, cockpit, and orbital modes consume interpolated poses and physics queries without
-advancing simulation.
+Camera systems consume interpolated vehicle poses and telemetry; they never advance physics. `Application` chooses the active render camera, synchronizes cascade shadows/focus, and keeps the debug orbit target aligned during floating-origin rebases.
 
 ## Implemented
 
-| File             | Responsibility                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ChaseCamera.ts` | Gameplay chase camera: an offset arm in car space, exponentially damped position and look-at targets (the visible lag behind hard turns and acceleration), speed-scaled field of view with a smoothstep ramp, a small lean into corners, and a ground floor so the camera never dips below the road. It reads interpolated poses and telemetry and writes nothing. Free-canvas swipe orbit spans 360° and recenters on a fresh throttle/brake input. |
+| File               | Responsibility                                                                                                                                                                                                                                             |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ChaseCamera.ts`   | Damped third-person framing with Close / Normal / Far distance views, speed-scaled FOV, corner roll, ground clearance, 360° free-canvas orbit and drive-start recenter.                                                                                    |
+| `CockpitCamera.ts` | First-person camera at a model-specific driver eye point; carries chassis pitch/roll, damps position/orientation/FOV, adds restrained steering gaze, acceleration/suspension cues and speed vibration, and supports bounded free-space look-around swipes. |
+| `camera-orbit.ts`  | Pure chase-orbit math, gesture response, elevation bounds and neutral-recenter transition.                                                                                                                                                                 |
+| `SceneManager.ts`  | Separate Three.js `OrbitControls` camera for scene inspection and capture; it is not a player driving view.                                                                                                                                                |
 
-The chase camera also accepts free-space touch swipes and mouse drags on the canvas. A full canvas-width
-horizontal drag makes one 360° revolution; the camera and look target rotate together so the car retains
-its framing. A fresh throttle or brake/reverse input eases the chase orbit back to its authored center.
+The cockpit anchor follows the active car visual: the hero coupé uses its measured left-hand steering-wheel position, while the authored fail-soft roadster has a separate right-hand open-cabin point. The active camera follows the same local physics pose as the visible car, so it remains stable across the floating-origin shift. Its motion is intentionally subordinate to the chassis; there are no mirror or wiper systems in this request.
 
-The separate debug orbit camera lives in `core/SceneManager.ts` (Three.js `OrbitControls`); `Application`
-owns which one is active. `C` toggles between them.
+`C` cycles Close → Normal → Far → Orbit → Cockpit → Close. Free-canvas swipes continue to orbit chase views and look around from inside the cockpit. All on-screen controls capture their own pointers, preserving simultaneous steering/pedals.
 
 ## Design notes
 
-- Damping is expressed as time constants, so camera feel does not change with display refresh rate.
-- The chase camera never reads physics objects directly; it consumes `VehiclePose` and
-  `VehicleTelemetry`, which keeps it testable in Node with no WebGL.
-- Cockpit and cinematic modes remain future work (Phase 6 feel pass).
+- Damping uses exponential time constants, so feel is refresh-rate independent.
+- The cockpit camera is independent of the renderer and can be tested in Node without WebGL.
+- The debug orbit is explicitly not part of the gameplay camera set; toggling into it never advances simulation.
+- Camera tests prove transforms, damping and bounded look response, not visual comfort, cabin visibility on a device, or user acceptance.
 
 See [the project plan](../../PROJECT_PLAN.md) and [architecture](../../docs/ARCHITECTURE.md).

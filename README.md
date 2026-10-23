@@ -73,16 +73,16 @@ Vite binds to `0.0.0.0` and accepts the Arena `.e2b.app` preview domain. Browser
 
 **Driving** (keyboard on desktop; multi-touch controls shipped early for touch devices)
 
-| Input                  | Action                                                                                                                         |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `W` / `↑`, `S` / `↓`   | Progressive throttle and brake; holding the brake once stopped engages reverse                                                 |
-| `A` / `←`, `D` / `→`   | Rate-limited steering (no snapping); grip falls away as the car is pushed harder                                               |
-| `Space`                | Handbrake — cuts rear lateral grip for handbrake turns and slides                                                              |
-| `R`                    | Reset the car to the spawn pose                                                                                                |
-| `C`                    | Cycle camera views: Close → Normal → Far chase distances → debug orbit → Close                                                 |
-| Free-canvas swipe/drag | Orbit the chase camera through the surroundings; one canvas-width drag is 360°, and throttle/brake smoothly recenters the view |
+| Input                  | Action                                                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `W` / `↑`, `S` / `↓`   | Progressive throttle and brake; holding the brake once stopped engages reverse                                |
+| `A` / `←`, `D` / `→`   | Rate-limited steering (no snapping); grip falls away as the car is pushed harder                              |
+| `Space`                | Handbrake — cuts rear lateral grip for handbrake turns and slides                                             |
+| `R`                    | Reset the car to the spawn pose                                                                               |
+| `C`                    | Cycle Close → Normal → Far chase → debug orbit → cockpit → Close                                              |
+| Free-canvas swipe/drag | Orbit chase views through the surroundings or look around from the cockpit; chase recenters as driving begins |
 
-Touch-capable devices show a virtual steering joystick, gas/brake pedals, handbrake, camera/reset, and fullscreen/landscape controls. Independent touch points support simultaneous steering and acceleration; final real-device checks and polish remain part of the gated Phase 8 scope.
+Touch-capable devices show a virtual steering joystick, gas/brake pedals, handbrake, camera/reset, and fullscreen/landscape controls. Independent touch points support simultaneous steering and acceleration; camera swipes look around from the cockpit or orbit chase views. Real-device acceptance, settings, and broad final polish remain outside the specifically authorized cockpit-camera increment.
 
 **Debug camera** (when the orbit camera is active)
 
@@ -104,7 +104,7 @@ src/
   world/          seeded terrain/roads, streamed vegetation, town, Aohara and tiered traffic (Phase 4/5/9)
   vehicles/       raycast car, tire model, drivetrain, telemetry, original roadster CarVisual (Phase 2/6)
   input/          keyboard + multi-touch action inputs; touch shipped early (Phase 2/8)
-  cameras/        damped chase camera; orbit debug camera (cockpit in Phase 6) (Phase 2/6)
+  cameras/        damped chase and cockpit gameplay views; orbit debug camera
   environment/    solar model, time-of-day clock, daylight curves; seasons/weather in Phase 7
   shaders/        TSL node materials: atmosphere sky, post chain, vignette
   assets/         pinned fetch pipeline, loaders, manifest, licence register

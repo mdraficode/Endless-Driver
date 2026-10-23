@@ -75,7 +75,7 @@ export interface DiagnosticsSnapshot {
   readonly totalFrames: number;
   /** Active render camera. */
   readonly cameraMode: CameraMode;
-  /** Player-facing framing name (Close / Normal / Far / Orbit). */
+  /** Active framing name (Close / Normal / Far / Orbit / Cockpit). */
   readonly cameraView: string;
   /** Swipe-to-orbit offset around the car, degrees (yaw / pitch). */
   readonly cameraOrbit: { readonly yawDegrees: number; readonly pitchDegrees: number };
@@ -257,7 +257,7 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
   {
     label: 'Camera',
     format: (snapshot) =>
-      `${snapshot.cameraView}${orbitSuffix(snapshot)} · ${snapshot.cameraFov.toFixed(1)}° fov · ${snapshot.cameraPosition.x.toFixed(0)}, ${snapshot.cameraPosition.y.toFixed(0)}, ${snapshot.cameraPosition.z.toFixed(0)}`,
+      `${snapshot.cameraView}${snapshot.cameraMode === 'chase' ? orbitSuffix(snapshot) : ''} · ${snapshot.cameraFov.toFixed(1)}° fov · ${snapshot.cameraPosition.x.toFixed(0)}, ${snapshot.cameraPosition.y.toFixed(0)}, ${snapshot.cameraPosition.z.toFixed(0)}`,
   },
   { label: 'Frames', format: (snapshot) => snapshot.totalFrames.toLocaleString('en-US') },
 ];

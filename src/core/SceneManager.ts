@@ -104,7 +104,7 @@ const DEG_TO_RAD = Math.PI / 180;
  */
 export class SceneManager {
   readonly scene: Scene;
-  /** Debug orbit camera. Gameplay renders through the chase camera owned by the application. */
+  /** Debug orbit camera. Gameplay chase and cockpit views are owned by the application. */
   readonly camera: PerspectiveCamera;
   readonly controls: OrbitControls;
   readonly #config: RenderConfig;

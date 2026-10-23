@@ -1,5 +1,6 @@
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial, Vector3 } from 'three';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { COCKPIT_CAMERA_CONFIG } from '../../src/config/camera';
 import { VEHICLE_CONFIG } from '../../src/config/vehicle';
 import { PlayerCarVisual, PLAYER_HERO_CAR_ASSET_ID } from '../../src/vehicles/PlayerCarVisual';
 import { WHEEL_INDEX, type VehiclePose } from '../../src/vehicles/types';
@@ -95,6 +96,7 @@ describe('PlayerCarVisual', () => {
 
     await expect(visual.load({})).resolves.toBe(false);
     expect(visual.isHeroModelLoaded).toBe(false);
+    expect(visual.cockpitEyeAnchor).toEqual([0.39, 0.86, 0.1]);
     expect(visual.root.children).toHaveLength(1);
     expect(visual.root.children[0]?.name).toBe('kaminari-gt-roadster');
     expect(visual.root.children[0]?.position.toArray()).toEqual([7, 2, -4]);
@@ -116,6 +118,7 @@ describe('PlayerCarVisual', () => {
       assetId: PLAYER_HERO_CAR_ASSET_ID,
     });
     expect(visual.isHeroModelLoaded).toBe(true);
+    expect(visual.cockpitEyeAnchor).toEqual(COCKPIT_CAMERA_CONFIG.eyeAnchor);
     expect(visual.root.children).toContain(model.object);
     expect(visual.root.children.some((child) => child.name === 'kaminari-gt-roadster')).toBe(false);
 

@@ -5,6 +5,7 @@ import type { TierId } from '../config/tiers';
 import { RoadWorld } from './RoadWorld';
 import { UrbanNightWorld } from './urban-night';
 import { TerrainWorld } from './TerrainWorld';
+import { HinodeTougeWorld } from './hinode-touge';
 import { TownWorld } from './town';
 import { VegetationWorld } from './vegetation';
 import type { SceneContent, SceneContentContext } from './WorldContent';
@@ -34,6 +35,13 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       : null;
   if (roads !== null) {
     root.add(roads.object);
+  }
+  const hinodeTouge =
+    terrainSampler.roadNetwork === undefined
+      ? null
+      : new HinodeTougeWorld(terrainSampler.roadNetwork, terrainSampler);
+  if (hinodeTouge !== null) {
+    root.add(hinodeTouge.root);
   }
   // District vegetation (Increment 5): instanced scatter fed by the same sampler.
   // The detail scale pulls the scanned LOD rings in on modest devices: the deep
@@ -108,6 +116,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
     collideTown: (car, deltaSeconds) => [
       ...town.collide(car, deltaSeconds),
       ...(aohara?.collide(car) ?? []),
+      ...(hinodeTouge?.collide(car) ?? []),
     ],
     applyVegetationHits: (events) => {
       vegetation.applyHits(events);
@@ -129,6 +138,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       const vegetationStats = vegetation.getContentStats();
       const townStats = town.getContentStats();
       const urbanStats = aohara?.getContentStats() ?? {};
+      const tougeStats = hinodeTouge?.getContentStats() ?? {};
       const groundCoverInstances = vegetationStats.groundCoverInstances ?? 0;
       const groundCoverBudget = vegetationStats.groundCoverInstanceBudget ?? 0;
       const streetFurnitureInstances = urbanStats.urbanStreetFurnitureInstances ?? 0;
@@ -139,6 +149,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
         ...vegetationStats,
         ...townStats,
         ...urbanStats,
+        ...tougeStats,
         worldEnrichmentInstances: groundCoverInstances + streetFurnitureInstances,
         worldEnrichmentInstanceBudget: groundCoverBudget + streetFurnitureBudget,
         /** Number of static instance pools; this is not a measured draw-call count. */

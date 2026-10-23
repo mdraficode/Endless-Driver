@@ -25,6 +25,7 @@ import { PlayerCarVisual } from '../vehicles/PlayerCarVisual';
 import { resolveHighSpeedMotionBlurIntensity } from '../vehicles/vehicle-effects';
 import type { VehiclePose, VehicleTelemetry } from '../vehicles/types';
 import { ChaseCamera } from '../cameras/ChaseCamera';
+import { CockpitCamera } from '../cameras/CockpitCamera';
 import {
   CHASE_ORBIT_CONFIG,
   isDriveInputActive,
@@ -115,6 +116,7 @@ export class Application {
 
   #touchActive = false;
   readonly #chaseCamera: ChaseCamera;
+  readonly #cockpitCamera: CockpitCamera;
   readonly #monitor: PerformanceMonitor;
   readonly #overlay: DiagnosticsOverlay | null;
 
@@ -215,11 +217,20 @@ export class Application {
     this.#chaseCamera.setGroundHeightProvider((x, z) =>
       terrainSampler.heightAt(x + this.#origin.offset.x, z + this.#origin.offset.z),
     );
-    // Free-space swipe orbits the chase camera: the canvas is the gesture surface,
-    // every on-screen control captures its own pointers, so thumbs on the joystick
-    // and pedals never fight a finger looking around (owner request 2026-10-17).
+    this.#cockpitCamera = new CockpitCamera(undefined, this.#engine.viewport.aspect);
+    this.#cockpitCamera.setEyeAnchor(this.#carVisual.cockpitEyeAnchor);
+    this.#cockpitCamera.snapTo(this.#car.getInterpolatedPose(0), this.#car.telemetry);
+    // Free-space swipe orbits the chase camera, or looks around from the cockpit. The canvas is
+    // the gesture surface and every on-screen control captures its own pointers, so thumbs on the
+    // joystick and pedals never fight a finger looking around (owner request 2026-10-17).
     this.#orbitGesture = new OrbitGesture(options.canvas, {
-      onSwipe: (dx, dy, viewportWidth) => this.#chaseCamera.orbitBySwipe(dx, dy, viewportWidth),
+      onSwipe: (dx, dy, viewportWidth) => {
+        if (this.#cameraMode === 'cockpit') {
+          this.#cockpitCamera.lookBySwipe(dx, dy, viewportWidth);
+        } else {
+          this.#chaseCamera.orbitBySwipe(dx, dy, viewportWidth);
+        }
+      },
     });
     this.#input = new InputManager();
     this.#input.attach();
@@ -289,6 +300,7 @@ export class Application {
       this.#engine.onResize((viewport) => {
         this.#scene.resize(viewport);
         this.#chaseCamera.resize(viewport.aspect);
+        this.#cockpitCamera.resize(viewport.aspect);
         // Cascade splits are derived from the camera frustum, so the aspect change invalidates them.
         this.#shadowCamera = null;
       }),
@@ -409,7 +421,7 @@ export class Application {
     this.#engine.stop();
   }
 
-  /** Switches between the gameplay chase camera and the debug orbit camera. */
+  /** Switches between chase/cockpit gameplay cameras and the debug orbit camera. */
   setCameraMode(mode: CameraMode): void {
     if (mode === this.#cameraMode) {
       return;
@@ -421,6 +433,9 @@ export class Application {
     const pose = this.#car.getInterpolatedPose(this.#physics.interpolationAlpha);
     if (mode === 'orbit') {
       this.#syncDebugCamera(pose, true);
+    } else if (mode === 'cockpit') {
+      this.#cockpitCamera.resetLook();
+      this.#cockpitCamera.snapTo(pose, this.#car.telemetry);
     } else {
       this.#chaseCamera.snapTo(pose);
     }
@@ -440,6 +455,7 @@ export class Application {
     this.#physics.resetAccumulator();
     const pose = this.#car.getInterpolatedPose(0);
     this.#chaseCamera.snapTo(pose);
+    this.#cockpitCamera.snapTo(pose, this.#car.telemetry);
     this.#syncDebugCamera(pose, true);
   }
 
@@ -487,12 +503,14 @@ export class Application {
   }
 
   /**
-   * One press of the camera control (C / 📷), cycling the framings the player can
-   * actually use: Close → Normal → Far chase distances, then the debug orbit, then
-   * back to Close. The chase camera glides between distances; the choice persists.
+   * One press of the camera control (C / 📷), cycling Close → Normal → Far chase, debug orbit,
+   * cockpit, then Close again. The chase distances glide between framings; the cockpit is a true
+   * driver-seat view and free-space swipes look around from inside the cabin.
    */
   toggleCameraMode(): void {
     if (this.#cameraMode === 'orbit') {
+      this.setCameraMode('cockpit');
+    } else if (this.#cameraMode === 'cockpit') {
       this.#chaseCamera.setView(CHASE_CAMERA_VIEWS[0]!.id);
       this.setCameraMode('chase');
     } else if (
@@ -578,7 +596,12 @@ export class Application {
         yawDegrees: (this.#chaseCamera.orbit.yaw * 180) / Math.PI,
         pitchDegrees: (this.#chaseCamera.orbit.pitch * 180) / Math.PI,
       },
-      cameraView: this.#cameraMode === 'orbit' ? 'Orbit' : this.#chaseCamera.view.label,
+      cameraView:
+        this.#cameraMode === 'orbit'
+          ? 'Orbit'
+          : this.#cameraMode === 'cockpit'
+            ? 'Cockpit'
+            : this.#chaseCamera.view.label,
       cameraFov: activeCamera.fov,
       speedKph: telemetry.speedKph,
       forwardSpeed: telemetry.forwardSpeed,
@@ -677,6 +700,8 @@ export class Application {
       this.#physics.resetAccumulator();
       const pose = this.#car.getInterpolatedPose(0);
       this.#chaseCamera.snapTo(pose);
+      this.#cockpitCamera.resetLook();
+      this.#cockpitCamera.snapTo(pose, this.#car.telemetry);
       this.#syncDebugCamera(pose, true);
     }
 
@@ -751,6 +776,7 @@ export class Application {
       this.#scene.setWorldOffset(this.#origin.offset.x, this.#origin.offset.z);
       const settled = this.#car.getInterpolatedPose(0);
       this.#chaseCamera.snapTo(settled);
+      this.#cockpitCamera.snapTo(settled, this.#car.telemetry);
       this.#syncDebugCamera(settled, true);
     }
 
@@ -780,9 +806,12 @@ export class Application {
       delta,
     );
     this.#physics.syncTerrain(worldFocus);
+    this.#cockpitCamera.setEyeAnchor(this.#carVisual.cockpitEyeAnchor);
 
     if (this.#cameraMode === 'chase') {
       this.#chaseCamera.update(delta, pose, this.#car.telemetry);
+    } else if (this.#cameraMode === 'cockpit') {
+      this.#cockpitCamera.update(delta, pose, this.#car.telemetry);
     } else {
       this.#syncDebugCamera(pose);
     }
@@ -909,7 +938,10 @@ export class Application {
   }
 
   #activeCamera(): PerspectiveCamera {
-    return this.#cameraMode === 'orbit' ? this.#scene.camera : this.#chaseCamera.camera;
+    if (this.#cameraMode === 'orbit') {
+      return this.#scene.camera;
+    }
+    return this.#cameraMode === 'cockpit' ? this.#cockpitCamera.camera : this.#chaseCamera.camera;
   }
 
   /**

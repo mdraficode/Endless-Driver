@@ -588,7 +588,7 @@ export class Engine {
 
   /**
    * Builds the post-processing chain on first use and re-points its scene pass when the active
-   * camera changes (gameplay chase camera <-> debug orbit camera).
+   * camera changes (chase/cockpit gameplay views <-> debug orbit camera).
    *
    * The graph itself is built once: node graphs are expensive to construct, while re-targeting a
    * pass at another camera is a field assignment.

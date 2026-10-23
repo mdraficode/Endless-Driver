@@ -1,7 +1,7 @@
 /**
  * Off-road trail network — drivable dirt routes through country the paved road
- * never enters (owner request, 2026-10-18: "drivable routes off-road starting
- * from within the deep jungle with high tree canopy").
+ * never enters. Kuroha's canopy trails preserve the original jungle request; the
+ * Hinode ridge cuts add optional, ungraded scrambles between touge switchbacks.
  *
  * A trail is NOT a road: nothing is flattened, nothing is paved. The corridor
  * only (a) clears understory so a car can physically pass, (b) keeps tall
@@ -72,6 +72,36 @@ export const TRAIL_NETWORK_CONFIG: TrailNetworkConfig = {
         [-380, -215],
         [-430, -290],
         [-495, -300],
+      ],
+    },
+    {
+      // A rough ridge bypass between the north switchbacks. The terrain is left
+      // natural, so the packed-dirt strip follows the actual volcanic slope.
+      id: 'hinode-ridge-cut',
+      label: 'Hinode Ridge Cut',
+      points: [
+        [-1230, -1540],
+        [-1285, -1555],
+        [-1335, -1605],
+        [-1380, -1670],
+        [-1370, -1725],
+        [-1370, -1760],
+      ],
+    },
+    {
+      // A loose-scree line on the west flank, joining two distant touge points
+      // without the paved hairpin sequence; no road grading or flattening.
+      id: 'hinode-scree-run',
+      label: 'Hinode Scree Run',
+      points: [
+        [-1100, -1670],
+        [-1135, -1710],
+        [-1175, -1760],
+        [-1225, -1810],
+        [-1280, -1865],
+        [-1340, -1925],
+        [-1390, -1970],
+        [-1410, -2010],
       ],
     },
   ],

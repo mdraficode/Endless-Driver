@@ -1,5 +1,5 @@
 /**
- * Phase 2 camera configuration: the gameplay chase camera and the debug orbit camera.
+ * Gameplay chase/cockpit cameras and the separate debug orbit camera.
  *
  * Damping values are expressed as exponential time constants so behaviour is independent of
  * display refresh rate; a value of 0.15 seconds means roughly 63% of the gap is closed per
@@ -7,7 +7,74 @@
  */
 
 /** Which camera the application renders through. */
-export type CameraMode = 'chase' | 'orbit';
+export type CameraMode = 'chase' | 'cockpit' | 'orbit';
+
+/** Driver-seat camera profile: local eye placement, motion cues, and restrained speed lens. */
+export interface CockpitCameraConfig {
+  /** Eye position in metres relative to the vehicle body origin (forward is -Z). */
+  readonly eyeAnchor: readonly [number, number, number];
+  readonly positionLagSeconds: number;
+  readonly orientationLagSeconds: number;
+  readonly lookLagSeconds: number;
+  readonly baseFov: number;
+  readonly maxFov: number;
+  readonly fovMaxSpeed: number;
+  readonly fovLagSeconds: number;
+  readonly steeringLookFactor: number;
+  readonly maxSteeringLookRadians: number;
+  readonly maxLookYawRadians: number;
+  readonly maxLookPitchRadians: number;
+  readonly lookYawRadiansPerViewportWidth: number;
+  readonly lookPitchRadiansPerPixel: number;
+  readonly lateralRollFactor: number;
+  readonly maxLateralRollRadians: number;
+  readonly accelerationPitchFactor: number;
+  readonly maxAccelerationPitchRadians: number;
+  readonly suspensionPitchFactor: number;
+  readonly maxSuspensionPitchRadians: number;
+  readonly lateralHeadSwayMetersPerMps2: number;
+  readonly longitudinalHeadSwayMetersPerMps2: number;
+  readonly maxHeadSwayMeters: number;
+  readonly vibrationReferenceSpeed: number;
+  readonly vibrationFrequencyHz: number;
+  readonly vibrationSpeedFrequencyHz: number;
+  readonly vibrationAmplitudeMeters: number;
+}
+
+/**
+ * The hero-coupé eye point sits just behind its measured left-hand steering wheel. The fallback
+ * roadster supplies its own right-hand/open-cabin anchor; all movements stay restrained, with
+ * chassis pitch and roll as the primary motion cue.
+ */
+export const COCKPIT_CAMERA_CONFIG: CockpitCameraConfig = {
+  eyeAnchor: [-0.39, 0.4, 0.1],
+  positionLagSeconds: 0.065,
+  orientationLagSeconds: 0.09,
+  lookLagSeconds: 0.12,
+  baseFov: 76,
+  maxFov: 81,
+  fovMaxSpeed: 52,
+  fovLagSeconds: 0.28,
+  steeringLookFactor: 0.18,
+  maxSteeringLookRadians: 0.1,
+  maxLookYawRadians: 1.22,
+  maxLookPitchRadians: 0.56,
+  lookYawRadiansPerViewportWidth: Math.PI,
+  lookPitchRadiansPerPixel: 0.0034,
+  lateralRollFactor: 0.00085,
+  maxLateralRollRadians: 0.035,
+  accelerationPitchFactor: 0.00055,
+  maxAccelerationPitchRadians: 0.016,
+  suspensionPitchFactor: 0.09,
+  maxSuspensionPitchRadians: 0.018,
+  lateralHeadSwayMetersPerMps2: 0.0003,
+  longitudinalHeadSwayMetersPerMps2: 0.00016,
+  maxHeadSwayMeters: 0.018,
+  vibrationReferenceSpeed: 42,
+  vibrationFrequencyHz: 7.5,
+  vibrationSpeedFrequencyHz: 5,
+  vibrationAmplitudeMeters: 0.0022,
+};
 
 /**
  * One chase framing (PROJECT_PLAN Phase 2 camera, distance views added on owner
