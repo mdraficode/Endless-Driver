@@ -1,6 +1,6 @@
 # User interface
 
-**Status (2026-10-23):** Restart/apply rebuilds the drive in-page without navigation, the minimap is hidden while paused, and fullscreen entry attempts native landscape lock where supported. Touch/pen fullscreen retries now use `pointerup` (or `touchend` without Pointer Events) rather than `pointerdown`, which is not a reliable activation event on Android Chrome. Auto-start and best-effort handling remain unchanged; manual target-device review is pending.
+**Status (2026-10-23):** Restart/apply rebuilds in-page, the minimap is hidden while paused, and fullscreen attempts native landscape lock where supported. Touch/pen retries use `pointerup` (or `touchend` without Pointer Events), since `pointerdown` is not a reliable Android Chrome activation event. Full `npm run check` passes at `ec03e55` (73 test files / 552 tests); manual Android-device review remains pending. Auto-start and best-effort handling are unchanged.
 
 ## Responsibility
 
