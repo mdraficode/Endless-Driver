@@ -42,12 +42,13 @@ export interface CockpitCameraConfig {
 }
 
 /**
- * The hero-coupé eye point sits just behind its measured left-hand steering wheel. The fallback
- * roadster supplies its own right-hand/open-cabin anchor; all movements stay restrained, with
- * chassis pitch and roll as the primary motion cue.
+ * Driver-seat framing: the hero eye point is above and well behind the left-hand steering wheel,
+ * giving the full windscreen, wheel rim, and dashboard room in the forward view. The authored
+ * roadster uses a separate right-hand/open-cabin anchor. Chassis pitch and roll remain the primary
+ * motion cue.
  */
 export const COCKPIT_CAMERA_CONFIG: CockpitCameraConfig = {
-  eyeAnchor: [-0.39, 0.4, 0.1],
+  eyeAnchor: [-0.39, 0.48, 0.9],
   positionLagSeconds: 0.065,
   orientationLagSeconds: 0.09,
   lookLagSeconds: 0.12,
@@ -75,6 +76,9 @@ export const COCKPIT_CAMERA_CONFIG: CockpitCameraConfig = {
   vibrationSpeedFrequencyHz: 5,
   vibrationAmplitudeMeters: 0.0022,
 };
+
+/** Right-hand driver eye for the project-authored open-cabin roadster, behind its wheel and dash. */
+export const FALLBACK_COCKPIT_EYE_ANCHOR = [0.39, 0.76, 0.72] as const;
 
 /**
  * One chase framing (PROJECT_PLAN Phase 2 camera, distance views added on owner

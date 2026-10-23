@@ -1,6 +1,6 @@
 import { Group, Object3D, Vector3 } from 'three';
 import { loadModelAsset, type LoadedModel } from '../assets/ModelAsset';
-import { COCKPIT_CAMERA_CONFIG } from '../config/camera';
+import { COCKPIT_CAMERA_CONFIG, FALLBACK_COCKPIT_EYE_ANCHOR } from '../config/camera';
 import type { PlayerCarModel } from '../config/game-preferences';
 import { VEHICLE_CONFIG } from '../config/vehicle';
 import { CarVisual } from './CarVisual';
@@ -12,9 +12,6 @@ import {
 import { WHEEL_INDEX, type VehiclePose } from './types';
 
 export const PLAYER_HERO_CAR_ASSET_ID = 'hero-car-mmc-generic-sport-coupe';
-
-/** Authored fallback roadster is right-hand-drive and has an open cabin. */
-const FALLBACK_COCKPIT_EYE_ANCHOR = [0.39, 0.86, 0.1] as const;
 
 const WHEEL_BINDINGS = [
   { key: 'front-left', index: WHEEL_INDEX.frontLeft, side: -1, axle: 'front' },

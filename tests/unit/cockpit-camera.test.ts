@@ -1,7 +1,7 @@
 import { Quaternion, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 
-import { COCKPIT_CAMERA_CONFIG } from '../../src/config/camera';
+import { COCKPIT_CAMERA_CONFIG, FALLBACK_COCKPIT_EYE_ANCHOR } from '../../src/config/camera';
 import { CockpitCamera } from '../../src/cameras/CockpitCamera';
 import type { VehiclePose, VehicleTelemetry } from '../../src/vehicles/types';
 
@@ -40,6 +40,21 @@ function telemetry(overrides: Partial<VehicleTelemetry> = {}): VehicleTelemetry 
   };
 }
 
+function expectLandmarksInFrame(
+  camera: CockpitCamera,
+  landmarks: readonly (readonly [number, number, number])[],
+): Vector3[] {
+  camera.camera.updateMatrixWorld(true);
+  return landmarks.map((landmark) => {
+    const projected = new Vector3(...landmark).project(camera.camera);
+    expect(projected.x).toBeGreaterThan(-1);
+    expect(projected.x).toBeLessThan(1);
+    expect(projected.y).toBeGreaterThan(-1);
+    expect(projected.y).toBeLessThan(1);
+    return projected;
+  });
+}
+
 describe('cockpit camera', () => {
   it('places the eye at a body-relative seat anchor and carries chassis orientation', () => {
     const camera = new CockpitCamera(COCKPIT_CAMERA_CONFIG, 16 / 9);
@@ -70,6 +85,56 @@ describe('cockpit camera', () => {
         ),
       ),
     ).toBeCloseTo(0, 6);
+  });
+
+  it('frames the full hero windscreen, steering wheel, and dashboard from the driver seat', () => {
+    const camera = new CockpitCamera(COCKPIT_CAMERA_CONFIG, 1.5);
+    camera.snapTo(pose(), telemetry());
+
+    // Measured windscreen and steering-wheel bounds from the shipped generic-coupé GLB.
+    const [
+      windshieldTopLeft,
+      windshieldTopRight,
+      windshieldBottomLeft,
+      windshieldBottomRight,
+      ,
+      ,
+      steeringWheelTop,
+      steeringWheelBottom,
+      dashboard,
+    ] = expectLandmarksInFrame(camera, [
+      [-0.466, 0.423, 0.081],
+      [0.466, 0.423, 0.081],
+      [-0.744, 0.118, -0.452],
+      [0.744, 0.118, -0.452],
+      [-0.662, 0.03, -0.127],
+      [-0.159, 0.03, -0.127],
+      [-0.411, 0.213, -0.127],
+      [-0.411, -0.153, -0.127],
+      [0, 0.15, -0.45],
+    ]);
+
+    expect(windshieldTopLeft!.y).toBeGreaterThan(windshieldBottomLeft!.y);
+    expect(windshieldTopRight!.y).toBeGreaterThan(windshieldBottomRight!.y);
+    expect(steeringWheelTop!.y + steeringWheelBottom!.y).toBeLessThan(2 * dashboard!.y);
+  });
+
+  it('frames the roadster windscreen, steering wheel, and dashboard from its open cabin', () => {
+    const camera = new CockpitCamera(COCKPIT_CAMERA_CONFIG, 1.5);
+    camera.setEyeAnchor(FALLBACK_COCKPIT_EYE_ANCHOR);
+    camera.snapTo(pose(), telemetry());
+
+    expectLandmarksInFrame(camera, [
+      [-0.52, 0.86, -0.1],
+      [0.52, 0.86, -0.1],
+      [-0.61, 0.29, -0.55],
+      [0.61, 0.29, -0.55],
+      [0.212, 0.56, -0.06],
+      [0.568, 0.56, -0.06],
+      [0.39, 0.382, -0.06],
+      [0.39, 0.738, -0.06],
+      [0, 0.34, -0.46],
+    ]);
   });
 
   it('smoothly widens the lens with speed and eases into an interior look-around', () => {

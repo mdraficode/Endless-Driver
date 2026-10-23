@@ -2051,3 +2051,11 @@ This is a narrow continuation of the appearance-only review authorized with the 
 **Fix in progress:** replace full-page navigation with an in-place drive rebuild. Persisted preferences and spawn query changes are read from the updated URL while `history.replaceState` avoids page navigation; dispose the previous application, replace only its canvas, and start the new application while fullscreen remains on the document root. Hide the minimap when paused and parent it under `#app` so mobile rotation/stacking is consistent. After successful fullscreen entry, attempt `screen.orientation.lock('landscape')`; retain the existing page-level landscape fallback and make no OS-rotation guarantee.
 
 **Validation:** fix commit `84b3b09` was pushed before checks, as instructed. Full `npm run check` passed there: Prettier, ESLint, GLSL guard, both TypeScript checks, 73 test files / 548 tests, `assets:verify` (20 assets / 47,814,431 bytes), and production build. The new orientation tests cover a supported lock and a denied lock without losing fullscreen success. No manual browser/device or owner retest has yet been performed; native orientation remains browser/OS-dependent.
+
+## 83. Owner reports cockpit view framing issue (2026-10-23)
+
+**Owner report:** the cockpit camera does not show the full windscreen together with the steering wheel and dashboard, and should read like a realistic driver's-seat view.
+
+**Current local fix:** move the hero coupé's eye anchor away from the windshield and behind the steering wheel, and reposition the open-cabin roadster fallback to its driver eye point. Add projection-based tests for the shipped GLB's windscreen/wheel bounds and authored roadster windshield, wheel and dashboard landmarks at landscape aspect ratio. Keep changes limited to cockpit framing; no unrelated camera, vehicle, visual asset, or Phase 8 work is authorized by this report.
+
+**Validation:** implementation and tests are pending. Follow the standing rule: format, commit and push, then run checks. No visual browser/device review has been performed.
