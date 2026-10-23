@@ -225,7 +225,10 @@ describe('Aohara city night-lighting rules', () => {
     const off = new UrbanStreetActivity('B', { trafficIntensity: 'off' });
     const light = new UrbanStreetActivity('B', { trafficIntensity: 'light' });
     const busy = new UrbanStreetActivity('B', { trafficIntensity: 'busy' });
-    expect(off.getContentStats()).toMatchObject({ urbanTrafficVehicles: 0, urbanTrafficBatches: 0 });
+    expect(off.getContentStats()).toMatchObject({
+      urbanTrafficVehicles: 0,
+      urbanTrafficBatches: 0,
+    });
     expect(off.getContentStats().urbanPedestrians).toBe(URBAN_ACTIVITY_TIER_BUDGET.B.pedestrians);
     expect(light.getContentStats().urbanTrafficVehicles).toBe(6);
     expect(light.getContentStats().urbanPedestrians).toBe(URBAN_ACTIVITY_TIER_BUDGET.B.pedestrians);

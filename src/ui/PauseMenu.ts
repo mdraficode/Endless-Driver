@@ -126,7 +126,13 @@ export class PauseMenu {
       else this.#resume();
       return;
     }
-    if (event.code === 'KeyP' && !event.repeat && !event.altKey && !event.ctrlKey && !event.metaKey) {
+    if (
+      event.code === 'KeyP' &&
+      !event.repeat &&
+      !event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey
+    ) {
       const target = event.target;
       if (
         target instanceof HTMLInputElement ||
@@ -359,7 +365,9 @@ export class PauseMenu {
       'Take a moment to choose where to go next or tune your drive. The world starts automatically again after you resume.';
     const statusGrid = document.createElement('div');
     statusGrid.className = 'pause-menu-stat-grid';
-    const spawn = this.#options.spawnPoints.find((point) => point.id === this.#options.currentSpawnId);
+    const spawn = this.#options.spawnPoints.find(
+      (point) => point.id === this.#options.currentSpawnId,
+    );
     this.#appendStat(statusGrid, 'CURRENT LOCATION', spawn?.label ?? this.#options.currentSpawnId);
     this.#appendStat(statusGrid, 'ACTIVE GRAPHICS', `Tier ${this.#options.activeTier}`);
     this.#appendStat(statusGrid, 'RENDERER', this.#options.activeRenderer.toUpperCase());
@@ -515,7 +523,9 @@ export class PauseMenu {
       card.addEventListener('click', () => {
         this.#setPreference('carModel', choice.value);
         this.#renderPage();
-        this.#content.querySelector<HTMLButtonElement>(`[data-car-model="${choice.value}"]`)?.focus();
+        this.#content
+          .querySelector<HTMLButtonElement>(`[data-car-model="${choice.value}"]`)
+          ?.focus();
       });
       cards.append(card);
     }

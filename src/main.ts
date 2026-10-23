@@ -128,9 +128,10 @@ export function readStudioRequest(search: string): StudioRequest {
  * post effects — which come last so that `?dof=1` can re-enable on a constrained device what the tier
  * switched off, and `?lut=none` can remove a look without a code change.
  */
-function resolveRenderConfig(
-  preferences: GamePreferences = readGamePreferences(),
-): { config: RenderConfig; tier: ReturnType<typeof resolveTier> } {
+function resolveRenderConfig(preferences: GamePreferences = readGamePreferences()): {
+  config: RenderConfig;
+  tier: ReturnType<typeof resolveTier>;
+} {
   const requestedTier =
     readTierRequest(window.location.search) ??
     (preferences.graphicsTier === 'auto' ? null : preferences.graphicsTier);
@@ -263,8 +264,7 @@ async function startDrivingScene(): Promise<void> {
     const preferences = readGamePreferences();
     const effectivePreferences: GamePreferences = {
       ...preferences,
-      graphicsTier:
-        readTierRequest(window.location.search) ?? preferences.graphicsTier,
+      graphicsTier: readTierRequest(window.location.search) ?? preferences.graphicsTier,
     };
     const { config, tier } = resolveRenderConfig(preferences);
 
@@ -316,9 +316,7 @@ async function startDrivingScene(): Promise<void> {
         },
         onRestart: restartCurrentDrive,
         onApplySpawn: (selectedSpawnId, clearGraphicsOverride) => {
-          const url = new URL(
-            urlForSpawn(window.location.href, selectedSpawnId, DEFAULT_SPAWN_ID),
-          );
+          const url = new URL(urlForSpawn(window.location.href, selectedSpawnId, DEFAULT_SPAWN_ID));
           if (clearGraphicsOverride) url.searchParams.delete('tier');
           window.location.assign(url.toString());
         },

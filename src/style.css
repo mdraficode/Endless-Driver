@@ -322,8 +322,7 @@ body {
   padding: max(0.65rem, env(safe-area-inset-top)) max(0.65rem, env(safe-area-inset-right))
     max(0.65rem, env(safe-area-inset-bottom)) max(0.65rem, env(safe-area-inset-left));
   background:
-    radial-gradient(ellipse at 82% 8%, rgb(23 111 109 / 20%), transparent 38%),
-    rgb(3 8 14 / 83%);
+    radial-gradient(ellipse at 82% 8%, rgb(23 111 109 / 20%), transparent 38%), rgb(3 8 14 / 83%);
   color: #e7eef5;
   backdrop-filter: blur(12px);
   overscroll-behavior: contain;
@@ -341,9 +340,7 @@ body {
   overflow: hidden;
   border: 1px solid rgb(137 181 187 / 28%);
   border-radius: 1.1rem;
-  background:
-    linear-gradient(145deg, rgb(15 26 38 / 98%), rgb(7 13 21 / 98%) 72%),
-    #0c1722;
+  background: linear-gradient(145deg, rgb(15 26 38 / 98%), rgb(7 13 21 / 98%) 72%), #0c1722;
   box-shadow: 0 28px 100px rgb(0 0 0 / 58%);
 }
 
@@ -730,7 +727,8 @@ body {
   font-size: 0.84rem;
 }
 
-.pause-menu-car-card > span:not(.pause-menu-car-swatch):not(.pause-menu-car-tag):not(.pause-menu-car-selected) {
+.pause-menu-car-card
+  > span:not(.pause-menu-car-swatch):not(.pause-menu-car-tag):not(.pause-menu-car-selected) {
   color: #9aabba;
   font-size: 0.69rem;
   line-height: 1.45;
