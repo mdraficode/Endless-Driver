@@ -2092,4 +2092,6 @@ This is a narrow continuation of the appearance-only review authorized with the 
 
 **Fix prepared:** smooth only the small seat-local head/suspension offset. Each frame, transform that local offset by the current chassis orientation and add the current vehicle translation immediately. This retains gentle local motion cues without allowing vehicle travel to accumulate camera lag. A regression test drives the pose 20 metres over one second and asserts the camera remains at its local eye anchor.
 
-**Validation state:** implementation and regression-test changes must be committed and pushed before any test/build/browser check, per owner instruction. Android/device visual retest remains pending.
+**Verification:** implementation commit `090c7cb` was pushed before the targeted cockpit suite (1 file / 6 tests), which passed. Formatting-only correction `90b6348` was pushed before the final full check. `npm run check` passed on `90b6348`: Prettier, ESLint, GLSL guard, both TypeScript checks, 73 test files / 553 tests, `assets:verify` (20 assets / 47,814,431 bytes), and production build. Existing non-fatal Three.js non-indexed-geometry and large-chunk warnings remain. No manual browser or owner-device retest has been performed.
+
+**Next step:** after the Pages deployment updates, hard-refresh and drive with Cockpit selected. The camera now follows the car's world translation immediately and only damps its tiny seat-local motion. If it still shifts relative to the cabin, send a short screen recording and identify the selected car model.
