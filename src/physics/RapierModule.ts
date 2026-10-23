@@ -12,6 +12,7 @@ export type RapierModule = typeof RAPIER_MODULE;
 export type RapierWorld = RAPIER_MODULE.World;
 export type RapierRigidBody = RAPIER_MODULE.RigidBody;
 export type RapierCollider = RAPIER_MODULE.Collider;
+export type RapierEventQueue = RAPIER_MODULE.EventQueue;
 export type RapierRigidBodyDesc = RAPIER_MODULE.RigidBodyDesc;
 export type RapierColliderDesc = RAPIER_MODULE.ColliderDesc;
 export type RapierRay = RAPIER_MODULE.Ray;

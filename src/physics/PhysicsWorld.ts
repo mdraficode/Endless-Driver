@@ -10,7 +10,13 @@ import {
   resolveWindowCenter,
   type ChunkCoord,
 } from '../world/terrain-chunks';
-import type { RapierCollider, RapierModule, RapierRigidBody, RapierWorld } from './RapierModule';
+import type {
+  RapierCollider,
+  RapierEventQueue,
+  RapierModule,
+  RapierRigidBody,
+  RapierWorld,
+} from './RapierModule';
 
 export interface PhysicsWorldOptions {
   readonly rapier: RapierModule;
@@ -21,6 +27,19 @@ export interface PhysicsWorldOptions {
 
 export interface PhysicsStepHandler {
   (fixedDelta: number): void;
+}
+
+export interface PhysicsCollisionEvent {
+  readonly colliderA: RapierCollider;
+  readonly colliderB: RapierCollider;
+  readonly bodyA: RapierRigidBody | null;
+  readonly bodyB: RapierRigidBody | null;
+  /** `true` when contact begins, `false` when it ends. */
+  readonly started: boolean;
+}
+
+export interface PhysicsCollisionHandler {
+  (event: PhysicsCollisionEvent): void;
 }
 
 export interface PhysicsStatistics {
@@ -51,10 +70,13 @@ export interface PhysicsStatistics {
 export class PhysicsWorld {
   readonly #rapier: RapierModule;
   readonly #world: RapierWorld;
+  readonly #eventQueue: RapierEventQueue;
   readonly #config: PhysicsConfig;
   readonly #worldConfig: WorldConfig;
   readonly #preStepHandlers = new Set<PhysicsStepHandler>();
   readonly #postStepHandlers = new Set<PhysicsStepHandler>();
+  readonly #collisionHandlers = new Set<PhysicsCollisionHandler>();
+  readonly #originAwareBodies = new Set<RapierRigidBody>();
   #groundBody: RapierRigidBody | null = null;
   #terrainSampler: TerrainSampler | null = null;
   readonly #terrainBodies = new Map<string, RapierRigidBody>();
@@ -83,6 +105,7 @@ export class PhysicsWorld {
 
     const gravity = options.gravity ?? { x: 0, y: -9.81, z: 0 };
     this.#world = new this.#rapier.World(gravity);
+    this.#eventQueue = new this.#rapier.EventQueue(true);
     this.#world.timestep = this.#config.fixedTimestep;
 
     this.#createStaticGeometry();
@@ -135,6 +158,22 @@ export class PhysicsWorld {
     this.#postStepHandlers.add(handler);
     return () => {
       this.#postStepHandlers.delete(handler);
+    };
+  }
+
+  /** Receives Rapier contact begin/end events for colliders that opt into active events. */
+  addCollisionHandler(handler: PhysicsCollisionHandler): () => void {
+    this.#collisionHandlers.add(handler);
+    return () => {
+      this.#collisionHandlers.delete(handler);
+    };
+  }
+
+  /** Registers a moving body that must follow the floating-origin slide without changing world position. */
+  registerOriginAwareBody(body: RapierRigidBody): () => void {
+    this.#originAwareBodies.add(body);
+    return () => {
+      this.#originAwareBodies.delete(body);
     };
   }
 
@@ -194,6 +233,7 @@ export class PhysicsWorld {
   }
 
   removeBody(body: RapierRigidBody): void {
+    this.#originAwareBodies.delete(body);
     if (this.#world.bodies.contains(body.handle)) {
       this.#world.removeRigidBody(body);
     }
@@ -206,6 +246,9 @@ export class PhysicsWorld {
     this.#disposed = true;
     this.#preStepHandlers.clear();
     this.#postStepHandlers.clear();
+    this.#collisionHandlers.clear();
+    this.#originAwareBodies.clear();
+    this.#eventQueue.free();
     this.#world.free();
   }
 
@@ -214,7 +257,28 @@ export class PhysicsWorld {
     for (const handler of [...this.#preStepHandlers]) {
       handler(delta);
     }
-    this.#world.step();
+    this.#world.step(this.#eventQueue);
+    this.#eventQueue.drainCollisionEvents((handleA, handleB, started) => {
+      let colliderA: RapierCollider;
+      let colliderB: RapierCollider;
+      try {
+        colliderA = this.#world.getCollider(handleA);
+        colliderB = this.#world.getCollider(handleB);
+      } catch {
+        // A collider may have been removed between the broad-phase event and dispatch.
+        return;
+      }
+      const event: PhysicsCollisionEvent = {
+        colliderA,
+        colliderB,
+        bodyA: colliderA.parent(),
+        bodyB: colliderB.parent(),
+        started,
+      };
+      for (const handler of [...this.#collisionHandlers]) {
+        handler(event);
+      }
+    });
     this.#elapsed += delta;
     for (const handler of [...this.#postStepHandlers]) {
       handler(delta);
@@ -287,6 +351,12 @@ export class PhysicsWorld {
    * world-space, so the window is already correct on both sides of the slide.
    */
   setOriginOffset(offsetX: number, offsetZ: number): void {
+    const shiftX = offsetX - this.#originX;
+    const shiftZ = offsetZ - this.#originZ;
+    for (const body of this.#originAwareBodies) {
+      const position = body.translation();
+      body.setTranslation({ x: position.x - shiftX, y: position.y, z: position.z - shiftZ }, true);
+    }
     this.#originX = offsetX;
     this.#originZ = offsetZ;
     const size = this.#terrainChunkSize;
