@@ -129,7 +129,10 @@ describe('town placement', () => {
     for (const pole of poles) {
       const road = sampler.roadAt!(pole.x, pole.z);
       expect(road).not.toBeNull();
-      expect(road!.distance).toBeGreaterThan(5.4);
+      expect(
+        road!.distance,
+        `pole at (${pole.x}, ${pole.z}) is ${road!.distance} m from ${road!.edgeId}`,
+      ).toBeGreaterThan(5.4);
       expect(road!.distance).toBeLessThan(12);
       expect(road!.roadClass).not.toBe('urban-local');
       expect(road!.roadClass).not.toBe('urban-arterial');
