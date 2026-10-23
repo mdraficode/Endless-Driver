@@ -2095,3 +2095,13 @@ This is a narrow continuation of the appearance-only review authorized with the 
 **Verification:** implementation commit `090c7cb` was pushed before the targeted cockpit suite (1 file / 6 tests), which passed. Formatting-only correction `90b6348` was pushed before the final full check. `npm run check` passed on `90b6348`: Prettier, ESLint, GLSL guard, both TypeScript checks, 73 test files / 553 tests, `assets:verify` (20 assets / 47,814,431 bytes), and production build. Existing non-fatal Three.js non-indexed-geometry and large-chunk warnings remain. No manual browser or owner-device retest has been performed.
 
 **Next step:** after the Pages deployment updates, hard-refresh and drive with Cockpit selected. The camera now follows the car's world translation immediately and only damps its tiny seat-local motion. If it still shifts relative to the cabin, send a short screen recording and identify the selected car model.
+
+## 87. Owner requests windshield-first, near-edge cockpit framing (2026-10-24)
+
+**Owner request:** move the view closer to the windshield so it dominates almost the whole screen, keep the side borders near the screen edges, and leave only a small part of the steering wheel at the bottom.
+
+**Implementation:** hero eye anchor changed from `[-0.39, 0.3, 0.5]` to `[-0.05, 0.36, 0.2]`; the roadster fallback changed from `[0.39, 0.72, 0.45]` to `[0.08, 0.84, 0.2]`. Cockpit FOV changed from `76/81` to `70/72`. Landscape projection regressions now check near-edge hero windshield borders, a wheel arc cropped at the bottom, and corresponding close forward framing for the fallback. The prior fix remains intact: vehicle translation is followed immediately, with damping only on small seat-local motion. No unrelated Phase 8 work was included.
+
+**Verification:** code/test commit `2a0ab64` was pushed before any build or test, per owner instruction. `npm run check` passed on `2a0ab64`: Prettier, ESLint, GLSL guard, both TypeScript checks, 73 test files / 553 tests, asset verification (20 assets / 47,814,431 bytes), and production build. GitHub Validate #264 and Pages Deploy #253 both succeeded on that SHA; the live Pages URL returned HTTP 200. Existing non-fatal Three.js non-indexed-geometry and large-chunk warnings remain. Automated projection tests and an HTTP response do not prove live visual acceptance; no browser/device visual retest has been performed.
+
+**Next step:** hard-refresh https://mdraficode.github.io/Endless-Driver/, select Cockpit from the menu or cycle to it with `C`, and review both the loaded hero and roadster fallback. If the windshield borders or visible wheel arc differ from the request, share a screenshot and name the selected model.
