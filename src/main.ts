@@ -23,6 +23,7 @@ import { Minimap } from './ui/Minimap';
 import { CreditsPanel } from './ui/CreditsPanel';
 import { LandscapeFallback } from './ui/LandscapeFallback';
 import { LoadingScreen } from './ui/LoadingScreen';
+import { FullscreenOnStart } from './ui/FullscreenOnStart';
 import { StartLocationSelector } from './ui/StartLocationSelector';
 import { yawFromQuat } from './shared/vector';
 
@@ -177,6 +178,7 @@ const canvas = document.querySelector<HTMLCanvasElement>('#viewport-canvas');
 const appRoot = document.querySelector<HTMLElement>('#app');
 const loadingRoot = document.querySelector<HTMLElement>('#loading-screen');
 const loadingScreen = loadingRoot === null ? null : new LoadingScreen(loadingRoot);
+const fullscreenOnStart = new FullscreenOnStart();
 const landscapeFallback = appRoot === null ? null : new LandscapeFallback(appRoot);
 const overlayRoot = document.querySelector<HTMLElement>('#diagnostics-overlay');
 const studioPanelRoot = document.querySelector<HTMLElement>('#studio-panel');
@@ -222,6 +224,7 @@ function isDebugEnabled(): boolean {
 }
 
 async function startDrivingScene(): Promise<void> {
+  void fullscreenOnStart.request();
   if (!canvas) {
     reportStartupFailure(new Error('missing #viewport-canvas element'));
     return;

@@ -1,4 +1,5 @@
 import { TOUCH_CONTROL_CONFIG } from '../config/input';
+import { requestFullscreenBestEffort } from '../ui/FullscreenOnStart';
 import { joystickSteer, TouchStateTracker, type TouchDriveState } from './touch-state';
 
 export type TouchCommand = 'reset' | 'toggleCamera' | 'toggleDiagnostics' | 'toggleCredits';
@@ -26,9 +27,9 @@ export interface TouchControlsOptions {
  * `InputManager` seam the keyboard uses — the car cannot tell thumbs from keys.
  *
  * Visibility: rendered only when the device reports a coarse pointer (or `force`).
- * Portrait layout is handled by the in-page landscape fallback. Fullscreen and native
- * orientation lock are attempted on the first touch and from the ⛶ button; rejection
- * is expected on some browsers and never blocks the CSS fallback.
+ * Portrait layout is handled by the in-page landscape fallback. Fullscreen is attempted
+ * at session start and silently retried on first user input; native orientation lock is
+ * best-effort from a portrait touch or the ⛶ button.
  */
 export class TouchControls {
   readonly #root: HTMLElement;
@@ -79,20 +80,15 @@ export class TouchControls {
    * Best-effort fullscreen/orientation lock. Must be called from a user gesture;
    * unsupported or OS-locked devices keep using the in-page landscape fallback.
    */
-  static async requestLandscape(): Promise<void> {
+  static async requestLandscape(event?: Event): Promise<void> {
     try {
-      const element = document.documentElement as HTMLElement & {
-        requestFullscreen?: () => Promise<void>;
-      };
-      if (document.fullscreenElement === null && element.requestFullscreen !== undefined) {
-        await element.requestFullscreen();
-      }
-      const orientation = screen.orientation as ScreenOrientation & {
-        lock?: (orientation: string) => Promise<void>;
-      };
-      await orientation.lock?.('landscape');
+      await requestFullscreenBestEffort(document, event);
+      const orientation = screen.orientation as
+        | (ScreenOrientation & { lock?: (orientation: string) => Promise<void> })
+        | undefined;
+      await orientation?.lock?.('landscape');
     } catch {
-      // iOS Safari and friends: the rotate prompt carries the message instead.
+      // Unsupported/OS-locked devices continue with the page-level landscape fallback.
     }
   }
 
@@ -151,7 +147,7 @@ export class TouchControls {
     };
     joystick.addEventListener('pointerdown', (event) => {
       event.preventDefault();
-      this.#maybeLockLandscape();
+      this.#maybeLockLandscape(event);
       const rect = joystick.getBoundingClientRect();
       this.#joystickPointer = {
         id: event.pointerId,
@@ -189,7 +185,7 @@ export class TouchControls {
       const element = make(className, label, label);
       element.addEventListener('pointerdown', (event) => {
         event.preventDefault();
-        this.#maybeLockLandscape();
+        this.#maybeLockLandscape(event);
         element.setPointerCapture?.(event.pointerId);
         element.classList.add('is-active');
         this.#tracker.setPressed(control, event.pointerId, true);
@@ -238,9 +234,9 @@ export class TouchControls {
       this.#options.onCommand('reset');
     });
     const fullscreenButton = make('touch-utility', '⛶', 'Fullscreen landscape');
-    fullscreenButton.addEventListener('click', () => {
+    fullscreenButton.addEventListener('click', (event) => {
       fullscreenButton.blur();
-      void TouchControls.requestLandscape();
+      void TouchControls.requestLandscape(event);
     });
     utilities.append(creditsButton, diagnosticsButton, cameraButton, resetButton, fullscreenButton);
 
@@ -284,15 +280,15 @@ export class TouchControls {
     });
   }
 
-  #maybeLockLandscape(): void {
+  #maybeLockLandscape(event: Event): void {
     if (this.#orientationAttempted) {
       return;
     }
     this.#orientationAttempted = true;
-    // Only worth asking when the player is actually holding the phone sideways-wrong;
-    // in landscape already, fullscreen alone would be a surprise. Best effort either way.
+    // Native orientation lock is only useful while the phone is in portrait; fullscreen
+    // is handled separately by FullscreenOnStart on the first interaction in any orientation.
     if (window.innerHeight > window.innerWidth) {
-      void TouchControls.requestLandscape();
+      void TouchControls.requestLandscape(event);
     }
   }
 }
