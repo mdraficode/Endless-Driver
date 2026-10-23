@@ -19,15 +19,34 @@
       ></canvas>
       <div id="diagnostics-overlay" class="pointer-events-none absolute inset-0"></div>
       <div id="touch-controls" class="pointer-events-none absolute inset-0" hidden></div>
-      <div id="rotate-overlay" class="rotate-overlay" hidden>
-        <div class="rotate-overlay-card">
-          <div class="rotate-overlay-icon" aria-hidden="true">📱↻</div>
-          <p class="rotate-overlay-title">Rotate your device</p>
-          <p class="rotate-overlay-text">
-            Endless Driver is played in landscape — turn your phone sideways to drive.
-          </p>
+      <section id="loading-screen" class="loading-screen" aria-hidden="true" hidden>
+        <div class="loading-screen-grid" aria-hidden="true"></div>
+        <div class="loading-screen-content">
+          <div class="loading-brand-mark" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
+          <p class="loading-eyebrow">OPEN-ROAD DRIVING</p>
+          <h1 class="loading-title">ENDLESS <span>DRIVER</span></h1>
+          <p class="loading-description">Aohara Central Avenue is getting ready.</p>
+          <div class="loading-progress-copy">
+            <span id="loading-stage-label">Starting the Aohara drive…</span>
+            <span id="loading-percent" class="loading-percent">0%</span>
+          </div>
+          <div
+            id="loading-progress"
+            class="loading-progress-track"
+            role="progressbar"
+            aria-label="Game loading progress"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="0"
+          >
+            <span id="loading-progress-fill" class="loading-progress-fill"></span>
+          </div>
+          <p class="loading-footnote">The drive begins automatically when the first scene is ready.</p>
+          <button id="loading-retry" class="loading-retry" type="button" hidden>Reload game</button>
         </div>
-      </div>
+      </section>
       <div id="studio-panel" class="studio-panel" hidden></div>
       <button
         id="credits-toggle"

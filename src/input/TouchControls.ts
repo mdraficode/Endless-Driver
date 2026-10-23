@@ -25,11 +25,10 @@ export interface TouchControlsOptions {
  * funnels through `TouchStateTracker`, and the surface publishes into the same
  * `InputManager` seam the keyboard uses — the car cannot tell thumbs from keys.
  *
- * Visibility: rendered only when the device reports a coarse pointer (or `force`),
- * and a `touch-enabled` class on <body> lets CSS show the rotate-to-landscape prompt
- * in portrait. Fullscreen + orientation lock is attempted on the first touch and from
- * the ⛶ button; where the platform refuses (iOS Safari), the portrait prompt is the
- * fallback, never an error.
+ * Visibility: rendered only when the device reports a coarse pointer (or `force`).
+ * Portrait layout is handled by the in-page landscape fallback. Fullscreen and native
+ * orientation lock are attempted on the first touch and from the ⛶ button; rejection
+ * is expected on some browsers and never blocks the CSS fallback.
  */
 export class TouchControls {
   readonly #root: HTMLElement;
@@ -71,8 +70,8 @@ export class TouchControls {
   }
 
   /**
-   * Asks the platform for fullscreen landscape. Must be called from a user gesture;
-   * every failure is swallowed — unsupported platforms keep the CSS portrait prompt.
+   * Best-effort fullscreen/orientation lock. Must be called from a user gesture;
+   * unsupported or OS-locked devices keep using the in-page landscape fallback.
    */
   static async requestLandscape(): Promise<void> {
     try {

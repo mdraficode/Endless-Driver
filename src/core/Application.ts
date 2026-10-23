@@ -18,6 +18,7 @@ import { createWorldTerrainSampler } from '../world/world-terrain';
 import type { RapierModule } from '../physics/RapierModule';
 import { yawFromQuat, type Vec3 } from '../shared/vector';
 import { DiagnosticsOverlay, type DiagnosticsSnapshot } from '../ui/DiagnosticsOverlay';
+import type { LoadingProgress } from '../ui/LoadingScreen';
 import { Car } from '../vehicles/Car';
 import { CarEffects } from '../vehicles/CarEffects';
 import { PlayerCarVisual } from '../vehicles/PlayerCarVisual';
@@ -55,6 +56,8 @@ export interface ApplicationOptions {
   readonly overlayRoot?: HTMLElement | null;
   /** DOM node used for status/error messages. */
   readonly statusElement?: HTMLElement | null;
+  /** Reports completed startup stages and first-frame readiness to the splash UI. */
+  readonly onLoadingProgress?: (progress: LoadingProgress) => void;
   /**
    * Resolved quality tier. Resolved at the entrypoint (it needs device probes) and reported here so
    * every diagnostics snapshot and performance statement can name the tier it was taken under.
@@ -122,6 +125,7 @@ export class Application {
     }
   };
   readonly #statusElement: HTMLElement | null;
+  readonly #onLoadingProgress: ((progress: LoadingProgress) => void) | null;
   readonly #tier: TierResolution;
   readonly #clock: EnvironmentClock;
   readonly #daylightController: DaylightController;
@@ -228,6 +232,7 @@ export class Application {
         })
       : null;
     this.#statusElement = options.statusElement ?? null;
+    this.#onLoadingProgress = options.onLoadingProgress ?? null;
     this.#tier = options.tier ?? { id: 'B', reason: 'unresolved' };
     this.#carEffects = new CarEffects(this.#tier.id);
     this.#scene.addObject(this.#carEffects.root);
@@ -328,12 +333,16 @@ export class Application {
    */
   async start(): Promise<void> {
     if (!this.#engine.isInitialized) {
+      this.#reportLoadingProgress(0.2, 'Preparing the renderer…');
       await this.#engine.init();
       this.#carEffects.configureBackend(this.#engine.backend, this.#engine.renderer);
       // Load the detailed, compressed hero asynchronously; the authored visual remains visible while it arrives.
       void this.#carVisual.load(this.#engine.renderer);
+      this.#reportLoadingProgress(0.34, 'Loading sky and reflections…');
       await this.#loadEnvironment();
+      this.#reportLoadingProgress(0.48, 'Warming the road materials…');
       await this.#scene.loadContentSurfaces();
+      this.#reportLoadingProgress(0.62, 'Applying the visual look…');
       await this.#loadLook();
       this.#shadowCamera = null;
       this.#syncShadowCamera(this.#activeCamera());
@@ -347,10 +356,12 @@ export class Application {
         z: initialPose.position.z + this.#origin.offset.z,
       };
       this.#setStatus('Preparing the terrain and tree line…');
+      this.#reportLoadingProgress(0.7, 'Preparing the starting roads, terrain and trees…');
       await this.#scene.prepareInitialContent(worldFocus, {
         x: -Math.sin(yaw) * forwardSpeed,
         z: -Math.cos(yaw) * forwardSpeed,
       });
+      this.#reportLoadingProgress(0.94, 'Starting the simulation…');
     }
 
     this.#physics.resetAccumulator();
@@ -361,8 +372,8 @@ export class Application {
     if (!this.#firstFrameRendered) {
       this.#setStatus(
         this.#touchActive
-          ? 'Loading complete — steer with the left joystick, GAS/BRAKE on the right. Landscape works best.'
-          : 'Loading complete — drive with W A S D, Space handbrake, R reset, C camera.',
+          ? 'Touch controls ready — steer with the left joystick, GAS/BRAKE on the right.'
+          : 'Drive with W A S D, Space handbrake, R reset, C camera.',
       );
     }
   }
@@ -424,8 +435,8 @@ export class Application {
   /**
    * Attaches the on-screen touch driving surface (mobile) to a DOM root. The surface
    * decides for itself whether the device wants it (coarse pointer, or forced for
-   * captures); when active it also reveals the rotate-to-landscape prompt. Desktop
-   * sessions are untouched.
+   * captures); portrait rotation is handled by the in-page fallback. Desktop sessions
+   * are untouched.
    */
   attachTouchControls(root: HTMLElement, options: { force?: boolean } = {}): void {
     this.#touchControls?.dispose();
@@ -447,9 +458,6 @@ export class Application {
       },
     });
     this.#touchActive = !root.hidden;
-    if (this.#touchActive) {
-      document.querySelector('#rotate-overlay')?.removeAttribute('hidden');
-    }
   }
 
   /**
@@ -757,6 +765,7 @@ export class Application {
 
     if (!this.#firstFrameRendered) {
       this.#firstFrameRendered = true;
+      this.#reportLoadingProgress(1, 'Ready — the drive starts automatically');
       this.#setStatus(null);
     }
 
@@ -898,6 +907,10 @@ export class Application {
     this.#scene.camera.position.x += deltaX;
     this.#scene.camera.position.y += deltaY;
     this.#scene.camera.position.z += deltaZ;
+  }
+
+  #reportLoadingProgress(progress: number, label: string): void {
+    this.#onLoadingProgress?.({ progress, label });
   }
 
   #setStatus(message: string | null, tone: StatusTone = 'info'): void {

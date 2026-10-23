@@ -20,6 +20,8 @@ import { UrbanNightApplication, type UrbanNightDiagnostics } from './lab/UrbanNi
 import type { DiagnosticsSnapshot } from './ui/DiagnosticsOverlay';
 import { Minimap } from './ui/Minimap';
 import { CreditsPanel } from './ui/CreditsPanel';
+import { LandscapeFallback } from './ui/LandscapeFallback';
+import { LoadingScreen } from './ui/LoadingScreen';
 import { yawFromQuat } from './shared/vector';
 
 export interface EndlessDriverDebugHandle {
@@ -170,6 +172,10 @@ declare global {
 }
 
 const canvas = document.querySelector<HTMLCanvasElement>('#viewport-canvas');
+const appRoot = document.querySelector<HTMLElement>('#app');
+const loadingRoot = document.querySelector<HTMLElement>('#loading-screen');
+const loadingScreen = loadingRoot === null ? null : new LoadingScreen(loadingRoot);
+const landscapeFallback = appRoot === null ? null : new LandscapeFallback(appRoot);
 const overlayRoot = document.querySelector<HTMLElement>('#diagnostics-overlay');
 const studioPanelRoot = document.querySelector<HTMLElement>('#studio-panel');
 const creditsButton = document.querySelector<HTMLButtonElement>('#credits-toggle');
@@ -190,6 +196,9 @@ function setStatus(message: string | null, tone: 'info' | 'error' = 'info'): voi
 function reportStartupFailure(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
   setStatus(`Unable to start the 3D scene: ${message}`, 'error');
+  if (loadingRoot !== null && !loadingRoot.hidden) {
+    loadingScreen?.fail(message);
+  }
   console.error('Endless Driver failed to start.', error);
 }
 
@@ -206,6 +215,9 @@ async function startDrivingScene(): Promise<void> {
     return;
   }
 
+  landscapeFallback?.update();
+  loadingScreen?.show();
+  loadingScreen?.update(0.05, 'Loading the physics engine…');
   setStatus('Loading physics engine…', 'info');
 
   let application: Application;
@@ -215,6 +227,7 @@ async function startDrivingScene(): Promise<void> {
     // initialise before the vehicle can be wired, and `WebGPURenderer` builds its device and
     // backend asynchronously. `start()` awaits the renderer and the environment HDRI.
     const rapier = await loadRapier();
+    loadingScreen?.update(0.14, 'Physics ready — selecting the graphics profile…');
     const { config, tier } = resolveRenderConfig();
 
     const startHour = readTimeRequest(window.location.search);
@@ -224,6 +237,7 @@ async function startDrivingScene(): Promise<void> {
       rapier,
       overlayRoot,
       statusElement,
+      onLoadingProgress: ({ progress, label }) => loadingScreen?.update(progress, label),
       config,
       worldConfig: WORLD_CONFIG,
       tier,
