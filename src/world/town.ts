@@ -184,9 +184,13 @@ export function generateRoadPoles(sampler: TerrainSampler, network: RoadNetwork)
   const poles: PolePlacement[] = [];
   const spacing = TOWN_CONFIG.poleSpacingMeters;
   network.edges.forEach((edge, edgeIndex) => {
-    // Urban streets use the Aohara luminaire kit, not rural utility poles. The access connector
-    // keeps poles but moves them beyond its wider shoulder.
-    if (edge.roadClass === 'urban-local' || edge.roadClass === 'urban-arterial') {
+    // Urban streets use the Aohara luminaire kit, not rural utility poles. The narrow mountain
+    // route gets dedicated hazards/guardrails instead of poles; the access connector keeps poles.
+    if (
+      edge.roadClass === 'touge' ||
+      edge.roadClass === 'urban-local' ||
+      edge.roadClass === 'urban-arterial'
+    ) {
       return;
     }
     const roadSideOffset = Math.max(
