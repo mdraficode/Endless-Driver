@@ -29,7 +29,8 @@ export interface TouchControlsOptions {
  * Visibility: rendered only when the device reports a coarse pointer (or `force`).
  * Portrait layout is handled by the in-page landscape fallback. Fullscreen is attempted
  * at session start and silently retried on an activation-capable input event; native
- * orientation lock is best-effort after entry or from the ⛶ button.
+ * orientation lock is best-effort on the first portrait pointerup while fullscreen or from
+ * the ⛶ button.
  */
 export class TouchControls {
   readonly #root: HTMLElement;
@@ -39,6 +40,8 @@ export class TouchControls {
   readonly #options: TouchControlsOptions;
 
   #joystickPointer: { id: number; centreX: number; centreY: number } | null = null;
+
+  #orientationAttempted = false;
 
   #disposed = false;
 
@@ -157,6 +160,9 @@ export class TouchControls {
       if (this.#joystickPointer?.id !== event.pointerId) {
         return;
       }
+      if (event.type === 'pointerup') {
+        this.#maybeLockLandscape(event);
+      }
       this.#joystickPointer = null;
       this.#tracker.releaseJoystick(event.pointerId);
       knob.style.transform = 'translate(0px, 0px)';
@@ -181,6 +187,9 @@ export class TouchControls {
         this.#emit();
       });
       const release = (event: PointerEvent): void => {
+        if (event.type === 'pointerup') {
+          this.#maybeLockLandscape(event);
+        }
         element.classList.remove('is-active');
         this.#tracker.setPressed(control, event.pointerId, false);
         this.#emit();
@@ -262,5 +271,21 @@ export class TouchControls {
     this.#windowListeners.push(() => {
       document.removeEventListener('visibilitychange', releaseWhenHidden);
     });
+  }
+
+  #maybeLockLandscape(event: Event): void {
+    const legacyDocument = document as Document & {
+      readonly webkitFullscreenElement?: Element | null;
+    };
+    const webkitFullscreenElement = legacyDocument.webkitFullscreenElement;
+    const isFullscreen =
+      document.fullscreenElement !== null ||
+      (webkitFullscreenElement !== undefined && webkitFullscreenElement !== null);
+    if (this.#orientationAttempted || window.innerHeight <= window.innerWidth || !isFullscreen) {
+      return;
+    }
+    this.#orientationAttempted = true;
+    // pointerup retains touch activation on Android Chrome, unlike pointerdown.
+    void TouchControls.requestLandscape(event);
   }
 }
