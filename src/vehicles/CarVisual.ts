@@ -17,6 +17,8 @@ import {
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
+  BRAKE_LAMP_ACTIVE_INTENSITY,
+  BRAKE_LAMP_IDLE_INTENSITY,
   createAutomotivePaintMaterial,
   createBrakeLightMaterial,
   createExhaustInteriorMaterial,
@@ -268,7 +270,8 @@ export class CarVisual {
     if (this.#steeringWheel !== null && frontWheelCount > 0) {
       this.#steeringWheel.rotation.z = -(frontSteerTotal / frontWheelCount) * 2.1;
     }
-    this.#brakeLightMaterial.emissiveIntensity = pose.brake > 0.03 ? 2.1 : 0.24;
+    this.#brakeLightMaterial.emissiveIntensity =
+      pose.brake > 0.03 ? BRAKE_LAMP_ACTIVE_INTENSITY : BRAKE_LAMP_IDLE_INTENSITY;
   }
 
   dispose(): void {

@@ -1,8 +1,13 @@
-import { BoxGeometry, Group, Mesh, MeshBasicMaterial, Vector3 } from 'three';
+import { BoxGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Vector3 } from 'three';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { COCKPIT_CAMERA_CONFIG, FALLBACK_COCKPIT_EYE_ANCHOR } from '../../src/config/camera';
 import { VEHICLE_CONFIG } from '../../src/config/vehicle';
 import { PlayerCarVisual, PLAYER_HERO_CAR_ASSET_ID } from '../../src/vehicles/PlayerCarVisual';
+import {
+  BRAKE_LAMP_ACTIVE_INTENSITY,
+  BRAKE_LAMP_EMISSIVE_COLOR,
+  BRAKE_LAMP_IDLE_INTENSITY,
+} from '../../src/vehicles/vehicle-materials';
 import { WHEEL_INDEX, type VehiclePose } from '../../src/vehicles/types';
 import type { LoadedModel } from '../../src/assets/ModelAsset';
 
@@ -28,7 +33,7 @@ const POSE: VehiclePose = {
   brake: 0,
 };
 
-function createLoadedHero(): LoadedModel {
+function createLoadedHero(includeBrakeLamps = true): LoadedModel {
   const object = new Group();
   const levels = [0, 1, 2].map((level) => ({
     level,
@@ -41,6 +46,24 @@ function createLoadedHero(): LoadedModel {
     const lod = new Group();
     lod.name = level.node;
     object.add(lod);
+    if (includeBrakeLamps) {
+      const redLamp = new MeshStandardMaterial({ color: 0x9a1820 });
+      redLamp.name = 'Glass - Red';
+      const roughRedLamp = new MeshStandardMaterial({ color: 0x9a1820 });
+      roughRedLamp.name = 'Glass - Red - Rough';
+      const clearGlass = new MeshStandardMaterial({ color: 0x333333 });
+      clearGlass.name = 'Glass - Clear';
+      const tailLamps = new Group();
+      tailLamps.name = `tail-lamps-lod${level.level}`;
+      const redLampMesh = new Mesh(new BoxGeometry(0.2, 0.05, 0.01), redLamp);
+      redLampMesh.name = `red-lamp-lod${level.level}`;
+      const roughRedLampMesh = new Mesh(new BoxGeometry(0.2, 0.05, 0.01), roughRedLamp);
+      roughRedLampMesh.name = `rough-red-lamp-lod${level.level}`;
+      const clearGlassMesh = new Mesh(new BoxGeometry(0.2, 0.05, 0.01), clearGlass);
+      clearGlassMesh.name = `clear-glass-lod${level.level}`;
+      tailLamps.add(redLampMesh, roughRedLampMesh, clearGlassMesh);
+      lod.add(tailLamps);
+    }
     for (const wheel of WHEELS) {
       const pivot = new Group();
       pivot.name = `wheel-${wheel.key}-lod${level.level}`;
@@ -83,6 +106,25 @@ function createLoadedHero(): LoadedModel {
   };
 }
 
+function getHeroBrakeLampMaterials(model: LoadedModel): MeshStandardMaterial[] {
+  const materials: MeshStandardMaterial[] = [];
+  for (const level of [0, 1, 2]) {
+    const group = model.object.getObjectByName(`tail-lamps-lod${level}`);
+    if (group === undefined) throw new Error(`missing test tail lamps for LOD ${level}`);
+    group.traverse((object) => {
+      if (!(object instanceof Mesh)) return;
+      const candidates = Array.isArray(object.material) ? object.material : [object.material];
+      materials.push(
+        ...candidates.filter(
+          (material): material is MeshStandardMaterial =>
+            material instanceof MeshStandardMaterial && material.name.startsWith('Glass - Red'),
+        ),
+      );
+    });
+  }
+  return materials;
+}
+
 beforeEach(() => {
   loadModelAssetMock.mockReset();
 });
@@ -100,6 +142,22 @@ describe('PlayerCarVisual', () => {
     expect(visual.root.children).toHaveLength(1);
     expect(visual.root.children[0]?.name).toBe('kaminari-gt-roadster');
     expect(visual.root.children[0]?.position.toArray()).toEqual([7, 2, -4]);
+    expect(warning).toHaveBeenCalledOnce();
+
+    visual.dispose();
+    warning.mockRestore();
+  });
+
+  it('keeps the authored fallback when the hero asset lacks named rear-lamp materials', async () => {
+    const model = createLoadedHero(false);
+    loadModelAssetMock.mockResolvedValue(model);
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const visual = new PlayerCarVisual();
+
+    await expect(visual.load({})).resolves.toBe(false);
+    expect(visual.isHeroModelLoaded).toBe(false);
+    expect(visual.root.children.map((child) => child.name)).toEqual(['kaminari-gt-roadster']);
+    expect(model.dispose).toHaveBeenCalledOnce();
     expect(warning).toHaveBeenCalledOnce();
 
     visual.dispose();
@@ -159,5 +217,39 @@ describe('PlayerCarVisual', () => {
     expect(model.updateForDistance).toHaveBeenCalledOnce();
     visual.dispose();
     expect(model.dispose).toHaveBeenCalledOnce();
+  });
+
+  it('drives the hero red-glass rear lamps from brake input across every LOD', async () => {
+    const model = createLoadedHero();
+    loadModelAssetMock.mockResolvedValue(model);
+    const visual = new PlayerCarVisual();
+    visual.sync({ ...POSE, brake: 0.7 });
+
+    await expect(visual.load({})).resolves.toBe(true);
+    const lamps = getHeroBrakeLampMaterials(model);
+    expect(lamps).toHaveLength(6);
+    for (const material of lamps) {
+      expect(material.emissive.getHex()).toBe(BRAKE_LAMP_EMISSIVE_COLOR);
+      expect(material.emissiveIntensity).toBe(BRAKE_LAMP_ACTIVE_INTENSITY);
+    }
+
+    for (const level of [0, 1, 2]) {
+      const clearGlassMesh = model.object.getObjectByName(`clear-glass-lod${level}`);
+      if (!(clearGlassMesh instanceof Mesh)) {
+        throw new Error(`missing test clear-glass mesh for LOD ${level}`);
+      }
+      expect(clearGlassMesh.material).toBeInstanceOf(MeshStandardMaterial);
+      if (!(clearGlassMesh.material instanceof MeshStandardMaterial)) {
+        throw new Error('clear glass should retain its standard material');
+      }
+      expect(clearGlassMesh.material.emissive.getHex()).toBe(0x000000);
+      expect(clearGlassMesh.material.emissiveIntensity).toBe(1);
+    }
+
+    visual.sync({ ...POSE, brake: 0 });
+    expect(
+      lamps.every((material) => material.emissiveIntensity === BRAKE_LAMP_IDLE_INTENSITY),
+    ).toBe(true);
+    visual.dispose();
   });
 });

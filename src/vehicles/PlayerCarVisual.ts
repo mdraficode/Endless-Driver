@@ -1,4 +1,4 @@
-import { Group, Object3D, Vector3 } from 'three';
+import { Group, Mesh, MeshStandardMaterial, Object3D, Vector3 } from 'three';
 import { loadModelAsset, type LoadedModel } from '../assets/ModelAsset';
 import { COCKPIT_CAMERA_CONFIG, FALLBACK_COCKPIT_EYE_ANCHOR } from '../config/camera';
 import type { PlayerCarModel } from '../config/game-preferences';
@@ -10,8 +10,15 @@ import {
   triggerVehicleImpact,
 } from './VehicleImpact';
 import { WHEEL_INDEX, type VehiclePose } from './types';
+import {
+  BRAKE_LAMP_ACTIVE_INTENSITY,
+  BRAKE_LAMP_EMISSIVE_COLOR,
+  BRAKE_LAMP_IDLE_INTENSITY,
+} from './vehicle-materials';
 
 export const PLAYER_HERO_CAR_ASSET_ID = 'hero-car-mmc-generic-sport-coupe';
+
+const REAR_LAMP_MATERIAL_NAMES = new Set(['Glass - Red', 'Glass - Red - Rough']);
 
 const WHEEL_BINDINGS = [
   { key: 'front-left', index: WHEEL_INDEX.frontLeft, side: -1, axle: 'front' },
@@ -43,6 +50,7 @@ export class PlayerCarVisual {
   readonly #impact = createVehicleImpactState();
   #loaded: LoadedModel | null = null;
   #lodNodes: readonly ModelLodNodes[] = [];
+  #brakeLampMaterials: readonly MeshStandardMaterial[] = [];
   #lastPose: VehiclePose | null = null;
   #loadAttempted = false;
   #fallbackDisposed = false;
@@ -89,9 +97,11 @@ export class PlayerCarVisual {
         return false;
       }
       const lodNodes = resolveLodNodes(model);
+      const brakeLampMaterials = resolveBrakeLampMaterials(model);
       this.root.add(model.object);
       this.#loaded = model;
       this.#lodNodes = lodNodes;
+      this.#brakeLampMaterials = brakeLampMaterials;
       if (this.#lastPose !== null) this.sync(this.#lastPose);
       this.root.remove(this.#fallback.root);
       this.#fallback.dispose();
@@ -106,6 +116,7 @@ export class PlayerCarVisual {
         if (this.#loaded === model) {
           this.#loaded = null;
           this.#lodNodes = [];
+          this.#brakeLampMaterials = [];
         }
         model.dispose();
       }
@@ -117,7 +128,7 @@ export class PlayerCarVisual {
     }
   }
 
-  /** Applies the authoritative physics pose and updates every LOD's four wheel/steering pivots. */
+  /** Applies the physics pose to every LOD's wheel/steering pivots and rear brake-lamp intensity. */
   sync(pose: VehiclePose): void {
     this.#lastPose = pose;
     const model = this.#loaded;
@@ -128,6 +139,14 @@ export class PlayerCarVisual {
 
     this.root.position.set(pose.position.x, pose.position.y, pose.position.z);
     this.root.quaternion.set(pose.rotation.x, pose.rotation.y, pose.rotation.z, pose.rotation.w);
+
+    const brakeLampIntensity =
+      pose.brake > 0.03 ? BRAKE_LAMP_ACTIVE_INTENSITY : BRAKE_LAMP_IDLE_INTENSITY;
+    for (const material of this.#brakeLampMaterials) {
+      if (material.emissiveIntensity !== brakeLampIntensity) {
+        material.emissiveIntensity = brakeLampIntensity;
+      }
+    }
 
     const frontStates = pose.wheels.filter((wheel) => wheel.isFront);
     const steeringRotation =
@@ -193,8 +212,31 @@ export class PlayerCarVisual {
       this.#fallbackDisposed = true;
     }
     this.#lodNodes = [];
+    this.#brakeLampMaterials = [];
     this.root.clear();
   }
+}
+
+/** Bind the source model's named red-glass lenses; a mismatch keeps the authored fallback visible. */
+function resolveBrakeLampMaterials(model: LoadedModel): readonly MeshStandardMaterial[] {
+  const materials = new Set<MeshStandardMaterial>();
+  model.object.traverse((object) => {
+    if (!(object instanceof Mesh)) return;
+    const candidates = Array.isArray(object.material) ? object.material : [object.material];
+    for (const candidate of candidates) {
+      if (!REAR_LAMP_MATERIAL_NAMES.has(candidate.name)) continue;
+      if (!(candidate instanceof MeshStandardMaterial)) {
+        throw new Error(`hero rear-lamp material "${candidate.name}" must be a standard material`);
+      }
+      candidate.emissive.set(BRAKE_LAMP_EMISSIVE_COLOR);
+      candidate.emissiveIntensity = BRAKE_LAMP_IDLE_INTENSITY;
+      materials.add(candidate);
+    }
+  });
+  if (materials.size === 0) {
+    throw new Error('hero model is missing the named red rear-lamp materials');
+  }
+  return [...materials];
 }
 
 function resolveLodNodes(model: LoadedModel): readonly ModelLodNodes[] {

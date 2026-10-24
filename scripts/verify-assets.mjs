@@ -296,6 +296,13 @@ async function verifyModel(label, asset) {
   }
   if (asset.id === HERO_CAR.id) {
     verifyHeroTextureDimensions(label, buffer, json, jsonLength);
+    const materialNames = new Set((json.materials ?? []).map((material) => material.name));
+    for (const rearLampMaterial of ['Glass - Red', 'Glass - Red - Rough']) {
+      require_(
+        materialNames.has(rearLampMaterial),
+        `${label}: hero GLB is missing rear-lamp material "${rearLampMaterial}"`,
+      );
+    }
   }
 
   // Every level the manifest advertises must exist as a hierarchy node in the file the runtime loads.

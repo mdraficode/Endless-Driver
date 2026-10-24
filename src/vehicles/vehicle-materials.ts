@@ -10,6 +10,10 @@ const MARKER_COLOR = 0xe0e6ee;
 const LIGHT_COLOR = 0xfff3d0;
 const LIGHT_EMISSIVE = 0x2a2413;
 
+export const BRAKE_LAMP_IDLE_INTENSITY = 0.24;
+export const BRAKE_LAMP_ACTIVE_INTENSITY = 2.1;
+export const BRAKE_LAMP_EMISSIVE_COLOR = 0x5e090e;
+
 /** Project-authored metallic paint response: TSL macro-flake modulation and physical clearcoat. */
 export function createAutomotivePaintMaterial(colorHex = PAINT_COLOR): MeshPhysicalNodeMaterial {
   const material = new MeshPhysicalNodeMaterial();
@@ -109,13 +113,13 @@ export function createHeadlightMaterial(): MeshStandardNodeMaterial {
   return material;
 }
 
-/** Local red tail lamps; `CarVisual` raises intensity only while the player brakes. */
+/** Shared red tail-lamp response for the authored fallback and imported hero. */
 export function createBrakeLightMaterial(): MeshStandardNodeMaterial {
   const material = new MeshStandardNodeMaterial();
   material.name = 'kaminari-gt-brake-lamps-no-map';
   material.color.set(0x9a1820);
-  material.emissive.set(0x5e090e);
-  material.emissiveIntensity = 0.24;
+  material.emissive.set(BRAKE_LAMP_EMISSIVE_COLOR);
+  material.emissiveIntensity = BRAKE_LAMP_IDLE_INTENSITY;
   material.metalness = 0;
   material.roughness = 0.36;
   return material;
