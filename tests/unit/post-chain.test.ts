@@ -165,24 +165,26 @@ describe('post stack per tier', () => {
     const tierB = applyTier(RENDER_CONFIG, 'B');
     const tierA = applyTier(RENDER_CONFIG, 'A');
 
-    // Tier C: no MSAA (FXAA instead), no ambient occlusion, no grain.
+    // Tier C: FXAA at near-native starting scale, no ambient occlusion, no grain.
     expect(tierC.postProcessing.antiAliasing).toBe('fxaa');
     expect(tierC.renderer.antialias).toBe(false);
     expect(tierC.renderer.samples).toBe(0);
     expect(tierC.postProcessing.ambientOcclusion.enabled).toBe(false);
     expect(tierC.postProcessing.filmGrain.enabled).toBe(false);
+    expect(tierC.postProcessing.chromaticAberration.enabled).toBe(false);
     expect(resolvePostEffects(tierC)).toContain('fxaa');
+    expect(resolvePostEffects(tierC)).not.toContain('chromaticAberration');
     expect(resolvePostEffects(tierC)).not.toContain('smaa');
 
-    // Tier B: FXAA without motion vectors, plus ambient occlusion at half resolution.
-    expect(tierB.postProcessing.antiAliasing).toBe('fxaa');
+    // Tier B: SMAA without motion vectors, plus ambient occlusion at half resolution.
+    expect(tierB.postProcessing.antiAliasing).toBe('smaa');
     expect(tierB.renderer.antialias).toBe(false);
     expect(tierB.renderer.samples).toBe(0);
-    expect(resolvePostEffects(tierB)).toContain('fxaa');
+    expect(resolvePostEffects(tierB)).toContain('smaa');
     expect(resolvePostEffects(tierB)).not.toContain('taa');
     expect(resolvePostEffects(tierB)).not.toContain('motionBlur');
     expect(tierB.postProcessing.motionBlur.enabled).toBe(false);
-    expect(resolvePostEffects(tierB)).not.toContain('smaa');
+    expect(resolvePostEffects(tierB)).not.toContain('fxaa');
     expect(tierB.postProcessing.ambientOcclusion.enabled).toBe(true);
     expect(tierB.postProcessing.ambientOcclusion.resolutionScale).toBe(0.5);
     expect(resolvePostEffects(tierB)).toContain('ao');
@@ -226,7 +228,7 @@ describe('post stack per tier', () => {
       expect(config.postProcessing.motionBlur.enabled).toBe(false);
       // Nothing reads velocity, so the scene pass asks for no velocity attachment.
       expect(requiresSceneVelocity(resolvePostEffects(config))).toBe(false);
-      expect(resolvePostEffects(config)).toContain('fxaa');
+      expect(resolvePostEffects(config)).toContain(tier === 'C' ? 'fxaa' : 'smaa');
     }
   });
 

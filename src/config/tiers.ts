@@ -101,11 +101,13 @@ export interface TierDefinition {
 }
 
 /**
- * Tier C — performance-first default for unmeasured hardware.
+ * Tier C — performance-first profile for unmeasured, mobile, and constrained hardware.
  *
- * MSAA, temporal history, motion vectors, clouds, and POM are off; one shadow cascade and reduced
- * terrain tessellation prioritize smooth gameplay. The HDRI supplies image-based lighting while the
- * gameplay backdrop stays procedural. `?envbg=1` is available for an HDRI-backdrop A/B.
+ * MSAA, temporal history, motion vectors, chromatic aberration, clouds, and POM are off; one shadow
+ * cascade and reduced terrain tessellation prioritize smooth gameplay. It starts near native scene scale
+ * and adapts gradually within its configured range as frame times require. The HDRI supplies
+ * image-based lighting while the gameplay backdrop stays procedural. `?envbg=1` is available for an
+ * HDRI-backdrop A/B.
  *
  * Backend selection is project-wide rather than a tier override: all tiers prefer WebGPU when
  * available and use automatic WebGL2 fallback; `?backend=webgl` forces the fallback for comparison.
@@ -114,7 +116,7 @@ const TIER_C: TierDefinition = {
   id: 'C',
   name: 'Performance / mobile',
   summary:
-    'Performance-first fallback for phones, low-end laptops, and unmeasured devices: reduced terrain detail, a single shadow cascade, FXAA and adaptive scene-pass scaling.',
+    'Performance-first fallback for unmeasured and constrained devices: reduced terrain detail, a single shadow cascade, FXAA and adaptive scaling from a near-native scene resolution.',
   render: {
     maxPixelRatio: 1,
     // No backendPreference here on purpose: the backend is a project-wide
@@ -153,12 +155,12 @@ const TIER_C: TierDefinition = {
       temporalAntiAliasing: {
         enabled: false,
         dynamicResolution: true,
-        renderScale: 0.72,
-        minScale: 0.5,
+        renderScale: 0.9,
+        minScale: 0.6,
         maxScale: 1,
-        step: 0.1,
-        adjustmentIntervalSeconds: 0.3,
-        smoothing: 0.15,
+        step: 0.05,
+        adjustmentIntervalSeconds: 0.5,
+        smoothing: 0.1,
       },
       bloom: { strength: 0.18, radius: 0.4 },
       // No depth of field. It costs four passes and five half-resolution targets — on the constrained
@@ -166,17 +168,14 @@ const TIER_C: TierDefinition = {
       // on the devices the tier exists for. The look LUT stays: it is one texture fetch.
       depthOfField: { enabled: false },
       ambientOcclusion: { enabled: false },
-      chromaticAberration: { strength: 0.3 },
-      sharpen: { sharpness: 0.75 },
+      chromaticAberration: { enabled: false },
+      sharpen: { sharpness: 1 },
       filmGrain: { enabled: false },
       vignette: { intensity: 0.45 },
     },
   },
   pending: [
-    // FXAA and the absence of ambient occlusion are now implemented for this tier; what is still owed is
-    // the more expensive alternative anti-aliasing and the world systems Phase 4-5 bring. TAA is
-    // deliberately *not* on that list as a candidate for this tier — it is implemented, and it stays off
-    // here because of what it costs, not because it is missing.
+    // FXAA is the low-cost current path; SMAA remains a higher-quality option for measured headroom.
     'SMAA (as the higher-quality alternative to FXAA)',
     'reflection probes',
     '2 terrain layers',
@@ -192,12 +191,12 @@ const TIER_B: TierDefinition = {
   id: 'B',
   name: 'Desktop balanced',
   summary:
-    'Higher quality above the performance-first default: two lower-resolution shadow cascades, half-resolution AO, and adaptive spatial upscaling.',
+    'Higher quality above the performance-first default: two lower-resolution shadow cascades, half-resolution AO, SMAA and adaptive scaling from native resolution.',
   render: {
     maxPixelRatio: 1.25,
     renderer: {
-      // MSAA is off because the scene uses a post-process edge resolve; the cheaper FXAA path does not
-      // require temporal history or per-object previous-frame matrices.
+      // MSAA is off because the scene uses a post-process SMAA resolve, which requires neither temporal
+      // history nor per-object previous-frame matrices.
       antialias: false,
       samples: 0,
     },
@@ -217,18 +216,18 @@ const TIER_B: TierDefinition = {
     },
     postProcessing: {
       // Keep the shared per-pixel velocity attachment off until the high tier's cost has been measured.
-      // FXAA leaves motion vectors and temporal history out of the whole scene pass.
-      antiAliasing: 'fxaa',
+      // SMAA leaves motion vectors and temporal history out of the whole scene pass.
+      antiAliasing: 'smaa',
       motionBlur: { enabled: false },
       temporalAntiAliasing: {
         enabled: false,
         dynamicResolution: true,
-        renderScale: 0.75,
-        minScale: 0.55,
+        renderScale: 1,
+        minScale: 0.8,
         maxScale: 1,
-        step: 0.1,
-        adjustmentIntervalSeconds: 0.3,
-        smoothing: 0.15,
+        step: 0.05,
+        adjustmentIntervalSeconds: 0.5,
+        smoothing: 0.1,
       },
       bloom: { strength: 0.16, radius: 0.4 },
       // Retained only as a dormant look-dev value; depth of field stays off during gameplay.

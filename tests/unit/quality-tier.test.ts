@@ -123,17 +123,20 @@ describe('applying a tier', () => {
     expect(c.renderer.antialias).toBe(false);
     expect(b.renderer.antialias).toBe(false);
     expect(c.postProcessing.antiAliasing).toBe('fxaa');
-    expect(b.postProcessing.antiAliasing).toBe('fxaa');
+    expect(b.postProcessing.antiAliasing).toBe('smaa');
     expect(c.postProcessing.temporalAntiAliasing.enabled).toBe(false);
     expect(b.postProcessing.temporalAntiAliasing.enabled).toBe(false);
     expect(c.postProcessing.motionBlur.enabled).toBe(false);
     expect(b.postProcessing.motionBlur.enabled).toBe(false);
     expect(c.postProcessing.temporalAntiAliasing.dynamicResolution).toBe(true);
-    expect(c.postProcessing.temporalAntiAliasing.renderScale).toBe(0.72);
-    expect(c.postProcessing.temporalAntiAliasing.minScale).toBe(0.5);
-    expect(b.postProcessing.temporalAntiAliasing.renderScale).toBe(0.75);
-    expect(b.postProcessing.temporalAntiAliasing.minScale).toBe(0.55);
+    expect(c.postProcessing.temporalAntiAliasing.renderScale).toBe(0.9);
+    expect(c.postProcessing.temporalAntiAliasing.minScale).toBe(0.6);
+    expect(b.postProcessing.temporalAntiAliasing.renderScale).toBe(1);
+    expect(b.postProcessing.temporalAntiAliasing.minScale).toBe(0.8);
+    expect(c.postProcessing.chromaticAberration.enabled).toBe(false);
+    expect(c.postProcessing.sharpen.sharpness).toBe(1);
     expect(c.postProcessing.temporalAntiAliasing.maxScale).toBe(1);
+    expect(b.postProcessing.temporalAntiAliasing.maxScale).toBe(1);
   });
 
   it('reduces visual terrain tessellation without changing the shared heightfield', () => {
