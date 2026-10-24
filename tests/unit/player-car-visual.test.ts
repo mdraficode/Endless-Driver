@@ -1,4 +1,5 @@
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Vector3 } from 'three';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { COCKPIT_CAMERA_CONFIG, FALLBACK_COCKPIT_EYE_ANCHOR } from '../../src/config/camera';
 import { VEHICLE_CONFIG } from '../../src/config/vehicle';
@@ -130,7 +131,7 @@ function getHeroBrakeLampMaterials(model: LoadedModel): MeshStandardMaterial[] {
   return materials;
 }
 
-function getFallbackHeadlampMaterial(visual: PlayerCarVisual): MeshStandardMaterial {
+function getFallbackHeadlampMaterial(visual: PlayerCarVisual): MeshStandardNodeMaterial {
   const fallback = visual.root.getObjectByName('kaminari-gt-roadster');
   if (fallback === undefined) throw new Error('missing authored car fallback');
 
@@ -139,8 +140,9 @@ function getFallbackHeadlampMaterial(visual: PlayerCarVisual): MeshStandardMater
     if (!(object instanceof Mesh)) return;
     const candidates = Array.isArray(object.material) ? object.material : [object.material];
     headlampMaterial = candidates.find(
-      (material): material is MeshStandardMaterial =>
-        material instanceof MeshStandardMaterial && material.name === 'headlamp-emissive-no-map',
+      (material): material is MeshStandardNodeMaterial =>
+        material instanceof MeshStandardNodeMaterial &&
+        material.name === 'headlamp-emissive-no-map',
     );
   });
   if (headlampMaterial === undefined) throw new Error('missing fallback headlamp material');
