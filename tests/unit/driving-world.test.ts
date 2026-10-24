@@ -30,7 +30,7 @@ describe('Aohara driving-world integration', () => {
       distantMountainVertices: 4 * 73 * 15,
       highRiseBuildings: 32,
       streetLightPoles: 240,
-      districtBanners: 48,
+      districtBanners: 60,
       billboards: 18,
       stadiums: 1,
       casinos: 2,
