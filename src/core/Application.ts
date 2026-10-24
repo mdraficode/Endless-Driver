@@ -44,6 +44,12 @@ import { TouchControls } from '../input/TouchControls';
 import type { PerspectiveCamera } from 'three';
 import { DaylightController } from '../environment/DaylightController';
 import {
+  applySurfaceState,
+  resolveSurfaceState,
+  type SurfaceState,
+  type WeatherPreset,
+} from '../environment/SurfaceState';
+import {
   EnvironmentClock,
   type DaylightState,
   type EnvironmentClockOptions,
@@ -81,6 +87,8 @@ export interface ApplicationOptions {
   readonly carModel?: PlayerCarModel;
   /** Player-selected Aohara traffic activity budget. */
   readonly trafficIntensity?: TrafficIntensity;
+  /** Deterministic physics comparison preset (`?weather=clear|rain`); visual weather is separate. */
+  readonly weather?: WeatherPreset;
   /** Optional camera selected on startup. */
   readonly cameraMode?: CameraMode;
   /** Applied to normalized steering input after smoothing. */
@@ -145,6 +153,7 @@ export class Application {
   readonly #onLoadingProgress: ((progress: LoadingProgress) => void) | null;
   readonly #tier: TierResolution;
   readonly #steeringSensitivity: SteeringSensitivity;
+  readonly #surfaceState: SurfaceState;
   readonly #clock: EnvironmentClock;
   readonly #daylightController: DaylightController;
   #daylight: DaylightState | null = null;
@@ -177,6 +186,7 @@ export class Application {
     this.#worldConfig = options.worldConfig ?? WORLD_CONFIG;
     this.#cameraMode = options.cameraMode ?? 'chase';
     this.#steeringSensitivity = options.steeringSensitivity ?? 'standard';
+    this.#surfaceState = resolveSurfaceState(options.weather ?? 'clear');
 
     // One terrain sampler feeds the visual chunks (via SceneManager's content) and the
     // physics heightfields: ground you see and ground you drive on are the same function.
@@ -227,9 +237,12 @@ export class Application {
       physics: this.#physics,
       spawnPosition: this.#spawn.position,
       spawnYaw: this.#spawn.yaw,
-      // The car asks the physics world what it stands on; the answer comes from the same
-      // terrain weights the renderer blends, so grip follows looks by construction.
-      surfaceProvider: (x, z) => this.#physics.surfaceAt(x, z),
+      // The generator supplies the surface identity; Phase 7 conditions modify its physical
+      // response only, never infer friction from rendered pixels.
+      surfaceProvider: (x, z) => {
+        const surface = this.#physics.surfaceAt(x, z);
+        return surface === null ? null : applySurfaceState(surface, this.#surfaceState);
+      },
       groundNormalProvider: (x, z) =>
         terrainSampler.normalAt(x + this.#origin.offset.x, z + this.#origin.offset.z),
     });

@@ -33,6 +33,7 @@ import { FullscreenOnStart } from './ui/FullscreenOnStart';
 import { urlForSpawn } from './ui/StartLocationSelector';
 import { PauseMenu } from './ui/PauseMenu';
 import { yawFromQuat } from './shared/vector';
+import { readWeatherPreset } from './environment/SurfaceState';
 
 export interface EndlessDriverDebugHandle {
   getDiagnostics():
@@ -342,6 +343,7 @@ async function startDrivingScene(restarting = false): Promise<void> {
       ...(spawnId === undefined ? {} : { spawnId }),
       carModel: preferences.carModel,
       trafficIntensity: preferences.trafficIntensity,
+      weather: readWeatherPreset(window.location.search),
       cameraMode: preferences.cameraMode,
       steeringSensitivity: preferences.steeringSensitivity,
     };
