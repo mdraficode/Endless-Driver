@@ -33,8 +33,9 @@ import {
   projectTrafficRoutePosition,
   UrbanStreetActivity,
 } from '../../src/world/urban-activity';
-import { generateAoharaStreetFurniturePlacements } from '../../src/world/urban-furniture';
+import { generateAoharaAlleyFacadePlacements } from '../../src/world/urban-alley-frontages';
 import { generateAoharaAlleyPropPlacements } from '../../src/world/urban-backstreets';
+import { generateAoharaStreetFurniturePlacements } from '../../src/world/urban-furniture';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
 import type { RoadNetwork } from '../../src/world/road-network';
 import {
@@ -850,6 +851,80 @@ describe('Aohara city night-lighting rules', () => {
 
     expect(expectUrbanRoadClearance(city, network)).toBeGreaterThan(1000);
     expect(expectUrbanAlleyClearance(city, network)).toBeGreaterThan(1000);
+    city.dispose();
+  });
+
+  it('builds uninterrupted low-rise frontage rows along the winding alleys while preserving street mouths', () => {
+    const network = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG).roadNetwork;
+    if (network === undefined) {
+      throw new Error('the shared world sampler should expose the road graph');
+    }
+    const placements = generateAoharaAlleyFacadePlacements(network, 'B');
+    expect(placements).toEqual(generateAoharaAlleyFacadePlacements(network, 'B'));
+    expect(placements.length).toBeGreaterThan(500);
+    expect(generateAoharaAlleyFacadePlacements(network, 'C').length).toBeLessThan(
+      placements.length,
+    );
+    expect(generateAoharaAlleyFacadePlacements(network, 'A').length).toBeGreaterThan(
+      placements.length,
+    );
+    expect(new Set(placements.map((placement) => placement.id)).size).toBe(placements.length);
+
+    const alleyEdges = network.edges.filter((edge) => edge.roadClass === 'urban-alley');
+    expect(alleyEdges.length).toBeGreaterThan(40);
+    for (const edge of alleyEdges) {
+      const edgeRows = placements.filter((placement) => placement.roadEdgeId === edge.id);
+      const startsAtStreetMouth = edge.from.startsWith('aohara-access-');
+      const endsAtStreetMouth = edge.to.startsWith('aohara-access-');
+      const startInset = startsAtStreetMouth ? 16.5 : 1.25;
+      const endInset = endsAtStreetMouth ? 16.5 : edge.to.endsWith('-hub') ? 6.5 : 1.25;
+      expect(edgeRows.length).toBeGreaterThan(0);
+
+      for (const side of [-1, 1] as const) {
+        const row = edgeRows
+          .filter((placement) => placement.side === side)
+          .sort((first, second) => first.startAlongMeters - second.startAlongMeters);
+        expect(row.length).toBeGreaterThan(0);
+        expect(row[0]!.startAlongMeters).toBeCloseTo(startInset, 6);
+        expect(row[row.length - 1]!.endAlongMeters).toBeCloseTo(edge.lengthMeters - endInset, 6);
+        for (const [index, building] of row.entries()) {
+          expect(building.widthMeters).toBeGreaterThan(0);
+          expect(building.widthMeters).toBeLessThanOrEqual(12.000001);
+          if (index > 0) {
+            expect(building.startAlongMeters).toBeCloseTo(row[index - 1]!.endAlongMeters, 6);
+          }
+        }
+      }
+
+      // The street-mouth inset is intentionally open; the rest of both passage rows touch end-to-end.
+      if (startsAtStreetMouth) {
+        expect(
+          Math.min(...edgeRows.map((building) => building.startAlongMeters)),
+        ).toBeGreaterThanOrEqual(16.5);
+      }
+      if (endsAtStreetMouth) {
+        expect(
+          edge.lengthMeters - Math.max(...edgeRows.map((building) => building.endAlongMeters)),
+        ).toBeGreaterThanOrEqual(16.5 - 1e-6);
+      }
+    }
+
+    const city = new UrbanNightWorld('B', {
+      position: [AOHARA_DISTRICT_CONFIG.centerX, 0, AOHARA_DISTRICT_CONFIG.centerZ],
+      roadNetwork: network,
+      networkIntegrated: true,
+    });
+    const facadeFootprints = city.getBackstreetFacadeFootprints();
+    expect(facadeFootprints).toHaveLength(placements.length);
+    expect(city.getContentStats()).toMatchObject({
+      urbanAlleyFacadeBuildings: placements.length,
+      urbanAlleyFacadeWindows: expect.any(Number),
+      urbanAlleyFacadeDoors: expect.any(Number),
+      urbanAlleyFacadeWallRuns: alleyEdges.length * 2,
+      urbanAlleyFacadeBatches: 5,
+    });
+    expect(city.getContentStats().urbanAlleyFacadeWindows).toBeGreaterThan(1000);
+    expect(city.getContentStats().urbanAlleyFacadeDoors).toBeGreaterThan(50);
     city.dispose();
   });
 

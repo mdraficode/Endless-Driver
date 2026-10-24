@@ -49,6 +49,7 @@ import { collideCarWithStaticBoxes, type StaticBuildingBox } from './static-buil
 import { createArchitecturalMaterial } from './architectural-materials';
 import { bindScannedPbrMaps } from './scanned-pbr';
 import { UrbanStreetFurniture } from './urban-furniture';
+import { UrbanAlleyFrontages } from './urban-alley-frontages';
 import { UrbanBackstreetProps } from './urban-backstreets';
 import type { RoadNetwork } from './road-network';
 import { UrbanStreetActivity } from './urban-activity';
@@ -1280,6 +1281,7 @@ export class UrbanNightWorld implements SceneContent {
   readonly #cityTypologyStats: CityTypologyStats;
   readonly #activity: UrbanStreetActivity | null;
   readonly #streetFurniture: UrbanStreetFurniture;
+  readonly #backstreetFrontages: UrbanAlleyFrontages | null;
   readonly #backstreetProps: UrbanBackstreetProps | null;
   readonly #surfaceTextures: SurfaceTextureLibrary;
   readonly #ownsSurfaceTextures: boolean;
@@ -1393,9 +1395,20 @@ export class UrbanNightWorld implements SceneContent {
       : [];
     const additionalBuildings = [...existingBuildings, ...frontageBuildings, ...infillBuildings];
     const typologyCounts = this.#buildCityTypologies(additionalBuildings);
+    this.#backstreetFrontages =
+      this.#networkIntegrated && options.roadNetwork !== undefined
+        ? new UrbanAlleyFrontages(tier, options.roadNetwork, [originX, originY, originZ])
+        : null;
+    if (this.#backstreetFrontages !== null) {
+      this.root.add(this.#backstreetFrontages.root);
+    }
+    const alleyObstacles = [
+      ...this.#buildingColliders,
+      ...(this.#backstreetFrontages?.collisionBoxes ?? []),
+    ];
     this.#backstreetProps =
       this.#networkIntegrated && options.roadNetwork !== undefined
-        ? new UrbanBackstreetProps(tier, options.roadNetwork, this.#buildingColliders, [
+        ? new UrbanBackstreetProps(tier, options.roadNetwork, alleyObstacles, [
             originX,
             originY,
             originZ,
@@ -1675,6 +1688,13 @@ export class UrbanNightWorld implements SceneContent {
         urbanAlleyPallets: 0,
         urbanAlleyPropBatches: 0,
       }),
+      ...(this.#backstreetFrontages?.getContentStats() ?? {
+        urbanAlleyFacadeBuildings: 0,
+        urbanAlleyFacadeWindows: 0,
+        urbanAlleyFacadeDoors: 0,
+        urbanAlleyFacadeWallRuns: 0,
+        urbanAlleyFacadeBatches: 0,
+      }),
       ...this.#streetFurniture.getContentStats(),
       qualityTierCode: this.#tier === 'C' ? 0 : this.#tier === 'B' ? 1 : 2,
     };
@@ -1685,6 +1705,7 @@ export class UrbanNightWorld implements SceneContent {
     if (this.#disposed) return [];
     return [
       ...collideCarWithStaticBoxes(car, this.#buildingColliders),
+      ...collideCarWithStaticBoxes(car, this.#backstreetFrontages?.collisionBoxes ?? []),
       ...collideCarWithStaticBoxes(car, this.#backstreetProps?.collisionBoxes ?? []),
     ];
   }
@@ -1694,12 +1715,18 @@ export class UrbanNightWorld implements SceneContent {
     return this.#buildingColliders.map((box) => ({ ...box }));
   }
 
+  /** Collision footprints for the continuous building walls bordering Aohara's alleys. */
+  getBackstreetFacadeFootprints(): readonly StaticBuildingBox[] {
+    return (this.#backstreetFrontages?.collisionBoxes ?? []).map((box) => ({ ...box }));
+  }
+
   dispose(): void {
     // The scene manager owns and sweeps this content's attached geometries/materials. The bounded
     // activity owns its dynamic buffers, so release those here before its root is detached.
     this.#disposed = true;
     this.#activity?.dispose();
     this.#streetFurniture.dispose();
+    this.#backstreetFrontages?.dispose();
     this.#backstreetProps?.dispose();
     if (this.#ownsSurfaceTextures) {
       this.#surfaceTextures.dispose();

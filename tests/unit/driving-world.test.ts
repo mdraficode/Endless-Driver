@@ -47,6 +47,11 @@ describe('Aohara driving-world integration', () => {
       urbanTrafficVehicles: 12,
       urbanAlleyProps: URBAN_ACTIVITY_TIER_BUDGET.C.alleyProps,
       urbanAlleyPropsBudget: URBAN_ACTIVITY_TIER_BUDGET.C.alleyProps,
+      urbanAlleyFacadeBuildings: expect.any(Number),
+      urbanAlleyFacadeWindows: expect.any(Number),
+      urbanAlleyFacadeDoors: expect.any(Number),
+      urbanAlleyFacadeWallRuns: expect.any(Number),
+      urbanAlleyFacadeBatches: 5,
       urbanSidewalkEdges: 102,
       urbanCrosswalkIntersections: 25,
       urbanWetLook: 0.85,
@@ -57,6 +62,10 @@ describe('Aohara driving-world integration', () => {
       throw new Error('the driving world should expose integrated enrichment diagnostics');
     }
     expect(stats.frontageBuildings).toBeGreaterThanOrEqual(240);
+    expect(stats.urbanAlleyFacadeBuildings).toBeGreaterThan(0);
+    expect(stats.urbanAlleyFacadeWindows).toBeGreaterThan(0);
+    expect(stats.urbanAlleyFacadeDoors).toBeGreaterThan(0);
+    expect(stats.urbanAlleyFacadeWallRuns).toBeGreaterThan(0);
     expect(stats.shops).toBeGreaterThan(4);
     expect(stats.billboards).toBe(stats.shops! + 14);
     expect(stats.urbanAlleyPropBatches).toBeGreaterThan(0);
