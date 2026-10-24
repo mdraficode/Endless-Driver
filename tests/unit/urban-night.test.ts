@@ -24,6 +24,7 @@ import { UrbanNightWorld } from '../../src/world/urban-night';
 import {
   advanceTrafficWithSignal,
   constrainTrafficFollowingTravel,
+  constrainTrafficRouteSpacing,
   UrbanStreetActivity,
 } from '../../src/world/urban-activity';
 import { generateAoharaStreetFurniturePlacements } from '../../src/world/urban-furniture';
@@ -182,6 +183,35 @@ describe('Aohara city night-lighting rules', () => {
 
     expect(constrainTrafficFollowingTravel(100, 10, 9, 4.5, 35, 2, 4.5, 8)).toBe(9);
     expect(constrainTrafficFollowingTravel(100, 92, 9, 4.5, 2, 0, 12, 8)).toBe(0);
+  });
+
+  it('propagates a traffic slowdown through a mixed-size route without breaking the loop gap', () => {
+    const vehicles = [
+      { index: 0, lengthMeters: 4, distance: 0, proposedTravelMeters: 10 },
+      { index: 1, lengthMeters: 12, distance: 20, proposedTravelMeters: 10 },
+      { index: 2, lengthMeters: 4, distance: 40, proposedTravelMeters: 0 },
+    ];
+    const routeLength = 100;
+    const bumperGap = 8;
+
+    constrainTrafficRouteSpacing(vehicles, routeLength, bumperGap);
+
+    expect(vehicles.map((vehicle) => vehicle.proposedTravelMeters)).toEqual([8, 4, 0]);
+    for (let index = 0; index < vehicles.length; index += 1) {
+      const follower = vehicles[index]!;
+      const leader = vehicles[(index + 1) % vehicles.length]!;
+      const resultingGap =
+        ((leader.distance +
+          leader.proposedTravelMeters -
+          follower.distance -
+          follower.proposedTravelMeters +
+          routeLength) %
+          routeLength +
+          routeLength) %
+        routeLength;
+      const minimumGap = (follower.lengthMeters + leader.lengthMeters) / 2 + bumperGap;
+      expect(resultingGap).toBeGreaterThanOrEqual(minimumGap);
+    }
   });
 
   it('fills every traffic class inside the existing C/B/A vehicle and draw-call budgets', () => {

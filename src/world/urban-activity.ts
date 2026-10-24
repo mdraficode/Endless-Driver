@@ -107,7 +107,17 @@ function wrapDistance(distance: number, routeLength: number): number {
   return ((distance % routeLength) + routeLength) % routeLength;
 }
 
-function compareTrafficDistance(first: TrafficVehicle, second: TrafficVehicle): number {
+export interface TrafficRouteFollower {
+  readonly index: number;
+  readonly lengthMeters: number;
+  distance: number;
+  proposedTravelMeters: number;
+}
+
+function compareTrafficDistance(
+  first: TrafficRouteFollower,
+  second: TrafficRouteFollower,
+): number {
   return first.distance - second.distance || first.index - second.index;
 }
 
@@ -372,6 +382,49 @@ export function constrainTrafficFollowingTravel(
   return Math.min(requestedTravel, availableTravel);
 }
 
+/** Applies one bounded, allocation-free spacing pass to a cyclic traffic route. */
+export function constrainTrafficRouteSpacing(
+  vehicles: TrafficRouteFollower[],
+  routeLengthMeters: number,
+  bumperGapMeters: number,
+): void {
+  if (vehicles.length < 2 || !Number.isFinite(routeLengthMeters) || routeLengthMeters <= 0) {
+    return;
+  }
+
+  vehicles.sort(compareTrafficDistance);
+  let largestGapIndex = 0;
+  let largestGap = -1;
+  for (let index = 0; index < vehicles.length; index += 1) {
+    const current = vehicles[index]!;
+    const next = vehicles[(index + 1) % vehicles.length]!;
+    const gap = wrapDistance(next.distance - current.distance, routeLengthMeters);
+    if (gap > largestGap) {
+      largestGap = gap;
+      largestGapIndex = index;
+    }
+  }
+
+  // Cut the loop at its largest gap, then walk backward so each follower sees its already-resolved
+  // leader. At most one constraint evaluation is needed per vehicle.
+  for (let step = 1; step < vehicles.length; step += 1) {
+    const followerIndex = (largestGapIndex - step + vehicles.length) % vehicles.length;
+    const leaderIndex = (followerIndex + 1) % vehicles.length;
+    const follower = vehicles[followerIndex]!;
+    const leader = vehicles[leaderIndex]!;
+    follower.proposedTravelMeters = constrainTrafficFollowingTravel(
+      routeLengthMeters,
+      follower.distance,
+      follower.proposedTravelMeters,
+      follower.lengthMeters,
+      leader.distance,
+      leader.proposedTravelMeters,
+      leader.lengthMeters,
+      bumperGapMeters,
+    );
+  }
+}
+
 export interface UrbanStreetActivityOptions {
   readonly physics?: PhysicsWorld;
   /** Runtime traffic budget; pedestrians remain at the selected tier's fixed budget. */
@@ -615,40 +668,11 @@ export class UrbanStreetActivity {
         queueOffsetMeters += vehicle.lengthMeters + URBAN_CITY_CONFIG.trafficSignal.queueGapMeters;
       });
 
-      if (routeVehicles.length > 1) {
-        routeVehicles.sort(compareTrafficDistance);
-        let largestGapIndex = 0;
-        let largestGap = -1;
-        for (let index = 0; index < routeVehicles.length; index += 1) {
-          const current = routeVehicles[index]!;
-          const next = routeVehicles[(index + 1) % routeVehicles.length]!;
-          const gap = wrapDistance(next.distance - current.distance, route.length);
-          if (gap > largestGap) {
-            largestGap = gap;
-            largestGapIndex = index;
-          }
-        }
-
-        // Start at the largest loop gap, then constrain each follower behind its already-resolved
-        // leader in one linear pass. No per-vehicle route-state array or temporary object is needed.
-        for (let step = 1; step < routeVehicles.length; step += 1) {
-          const followerIndex =
-            (largestGapIndex - step + routeVehicles.length) % routeVehicles.length;
-          const leaderIndex = (followerIndex + 1) % routeVehicles.length;
-          const follower = routeVehicles[followerIndex]!;
-          const leader = routeVehicles[leaderIndex]!;
-          follower.proposedTravelMeters = constrainTrafficFollowingTravel(
-            route.length,
-            follower.distance,
-            follower.proposedTravelMeters,
-            follower.lengthMeters,
-            leader.distance,
-            leader.proposedTravelMeters,
-            leader.lengthMeters,
-            URBAN_CITY_CONFIG.trafficSignal.queueGapMeters,
-          );
-        }
-      }
+      constrainTrafficRouteSpacing(
+        routeVehicles,
+        route.length,
+        URBAN_CITY_CONFIG.trafficSignal.queueGapMeters,
+      );
 
       for (const vehicle of routeVehicles) {
         vehicle.distance = wrapDistance(
