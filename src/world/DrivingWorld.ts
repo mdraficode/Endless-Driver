@@ -112,13 +112,35 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       town.updateStreaming(focus, deltaSeconds ?? 0);
       aohara?.updateStreaming(focus);
     },
-    prepareInitial: async (focus, velocity = { x: 0, z: 0 }) => {
+    prepareInitial: async (focus, velocity = { x: 0, z: 0 }, onProgress) => {
       aohara?.updateStreaming(focus);
-      await Promise.all([
-        scannedAssetsReady,
-        terrain.prepareInitial(focus, velocity),
-        vegetation.prepareInitial(focus, velocity),
-      ]);
+      let terrainProgress = 0;
+      let vegetationProgress = 0;
+      let scannedAssetsProgress = 0;
+      let reportedProgress = -1;
+      const reportProgress = (): void => {
+        const fraction =
+          terrainProgress * 0.45 + vegetationProgress * 0.45 + scannedAssetsProgress * 0.1;
+        if (fraction > reportedProgress) {
+          reportedProgress = fraction;
+          onProgress?.(fraction);
+        }
+      };
+      const terrainPreparation = terrain.prepareInitial(focus, velocity, (fraction) => {
+        terrainProgress = Math.max(0, Math.min(1, fraction));
+        reportProgress();
+      });
+      const vegetationPreparation = vegetation.prepareInitial(focus, velocity, (fraction) => {
+        vegetationProgress = Math.max(0, Math.min(1, fraction));
+        reportProgress();
+      });
+      const scannedAssetsPreparation = scannedAssetsReady.then(() => {
+        scannedAssetsProgress = 1;
+        reportProgress();
+      });
+      reportProgress();
+      await Promise.all([terrainPreparation, vegetationPreparation, scannedAssetsPreparation]);
+      onProgress?.(1);
     },
     collideTown: (car, deltaSeconds) => [
       ...town.collide(car, deltaSeconds),

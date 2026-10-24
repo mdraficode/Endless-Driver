@@ -14,8 +14,17 @@ describe('terrain startup preparation', () => {
       maxBuildsPerFrame: 2,
     };
     const world = new TerrainWorld(createTerrainSampler(config));
+    const progress: number[] = [];
 
-    await world.prepareInitial({ x: 0, y: 0, z: 0 });
+    await world.prepareInitial({ x: 0, y: 0, z: 0 }, undefined, (fraction) => {
+      progress.push(fraction);
+    });
+
+    expect(progress[0]).toBeGreaterThanOrEqual(0);
+    expect(progress[progress.length - 1]).toBe(1);
+    expect(
+      progress.some((fraction, index) => index > 0 && fraction > (progress[index - 1] ?? 0)),
+    ).toBe(true);
 
     const stats = world.getContentStats();
     expect(stats.terrainChunksLoaded).toBe(9);

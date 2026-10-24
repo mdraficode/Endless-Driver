@@ -45,11 +45,13 @@ export interface SceneContent {
   /**
    * Optional startup preparation. Streamed content may await its initial visible window here;
    * `Application` resolves it before starting the frame loop, so the player never sees the first
-   * terrain/foliage window materialise in front of the camera.
+   * terrain/foliage window materialise in front of the camera. `onProgress` reports the completed
+   * fraction of that preparation so long-running windows can keep the startup bar moving.
    */
   prepareInitial?(
     focus: { x: number; y: number; z: number },
     velocity?: { x: number; z: number },
+    onProgress?: (fraction: number) => void,
   ): Promise<void>;
   /** Vegetation destruction events from the collision field (driving world). */
   applyVegetationHits?(events: readonly TreeHitEvent[]): void;

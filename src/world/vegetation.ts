@@ -770,22 +770,30 @@ export class VegetationWorld {
   async prepareInitial(
     focus: { x: number; z: number },
     velocity: { x: number; z: number } = { x: 0, z: 0 },
+    onProgress?: (fraction: number) => void,
   ): Promise<void> {
     if (this.#disposed) {
       return;
     }
     this.#lastFocus = { x: focus.x, z: focus.z };
     const planned = this.#planWindow(focus, velocity);
+    const reportProgress = (): void => {
+      const fraction =
+        planned.length === 0 ? 1 : Math.min(1, this.#chunkPlacements.size / planned.length);
+      onProgress?.(fraction);
+    };
     let changed = this.#retainPlannedChunks(planned);
     const batchSize = 8;
     const deadline = Date.now() + 30_000;
     let timedOut = false;
+    reportProgress();
     for (let start = 0; start < planned.length; start += batchSize) {
       if (this.#disposed) {
         return;
       }
       changed =
         this.#generateMissingChunks(planned.slice(start, start + batchSize), batchSize) || changed;
+      reportProgress();
       if (start + batchSize < planned.length) {
         if (Date.now() >= deadline) {
           timedOut = true;
@@ -800,6 +808,7 @@ export class VegetationWorld {
     if (changed) {
       this.#rebuildInstances(focus);
     }
+    reportProgress();
     if (this.#chunkPlacements.size !== planned.length) {
       const reason = timedOut ? 'preparation timed out' : 'window incomplete';
       console.warn(

@@ -580,8 +580,9 @@ export class SceneManager {
   async prepareInitialContent(
     focus: Vec3,
     velocity: { x: number; z: number } = { x: 0, z: 0 },
+    onProgress?: (fraction: number) => void,
   ): Promise<void> {
-    await this.#content.prepareInitial?.(focus, velocity);
+    await this.#content.prepareInitial?.(focus, velocity, onProgress);
   }
 
   /** Town collision via the content, when it has a town. */

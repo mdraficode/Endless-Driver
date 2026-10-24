@@ -451,10 +451,22 @@ export class Application {
       };
       this.#setStatus('Preparing the terrain and tree line…');
       this.#reportLoadingProgress(0.7, 'Preparing the starting roads, terrain and trees…');
-      await this.#scene.prepareInitialContent(worldFocus, {
-        x: -Math.sin(yaw) * forwardSpeed,
-        z: -Math.cos(yaw) * forwardSpeed,
-      });
+      await this.#scene.prepareInitialContent(
+        worldFocus,
+        {
+          x: -Math.sin(yaw) * forwardSpeed,
+          z: -Math.cos(yaw) * forwardSpeed,
+        },
+        (fraction) => {
+          const boundedFraction = Number.isFinite(fraction)
+            ? Math.min(1, Math.max(0, fraction))
+            : 0;
+          this.#reportLoadingProgress(
+            0.7 + boundedFraction * 0.24,
+            'Preparing the starting roads, terrain and trees…',
+          );
+        },
+      );
       this.#reportLoadingProgress(0.94, 'Starting the simulation…');
     }
 

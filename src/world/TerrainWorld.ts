@@ -508,29 +508,39 @@ export class TerrainWorld implements SceneContent {
   async prepareInitial(
     focus: { x: number; y: number; z: number },
     velocity: { x: number; z: number } = { x: 0, z: 0 },
+    onProgress?: (fraction: number) => void,
   ): Promise<void> {
     if (this.#disposed) {
       return;
     }
+    const reportProgress = (): void => {
+      const fraction =
+        this.#desiredCount === 0 ? 1 : Math.min(1, this.#chunks.size / this.#desiredCount);
+      onProgress?.(fraction);
+    };
     const deadline = Date.now() + 45_000;
     this.updateStreaming(focus, velocity);
+    reportProgress();
     while (!this.#disposed) {
       if (
         this.#chunks.size === this.#desiredCount &&
         this.#pendingBuilds === 0 &&
         this.#generator.backlog === 0
       ) {
+        onProgress?.(1);
         return;
       }
       if (Date.now() >= deadline) {
         console.warn(
           `terrain: initial preparation timed out (${this.#chunks.size}/${this.#desiredCount} chunks loaded, ${this.#pendingBuilds} pending)`,
         );
+        reportProgress();
         return;
       }
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
       if (!this.#disposed) {
         this.updateStreaming(focus, velocity);
+        reportProgress();
       }
     }
   }

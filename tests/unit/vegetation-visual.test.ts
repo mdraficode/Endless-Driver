@@ -20,8 +20,17 @@ describe('vegetation destruction visuals', () => {
   it('prepares every chunk in the starting foliage window before drawing', async () => {
     const sampler = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
     const world = new VegetationWorld(sampler, { ...VEGETATION_CONFIG, radiusChunks: 1 });
+    const progress: number[] = [];
 
-    await world.prepareInitial({ x: -430, z: -1010 }, { x: 0, z: -50 });
+    await world.prepareInitial({ x: -430, z: -1010 }, { x: 0, z: -50 }, (fraction) => {
+      progress.push(fraction);
+    });
+
+    expect(progress[0]).toBe(0);
+    expect(progress[progress.length - 1]).toBe(1);
+    expect(
+      progress.some((fraction, index) => index > 0 && fraction > (progress[index - 1] ?? 0)),
+    ).toBe(true);
 
     const stats = world.getContentStats();
     const leafyMesh = world.root.getObjectByName('vegetation-broadleaf-0');
