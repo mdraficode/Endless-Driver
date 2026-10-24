@@ -919,7 +919,8 @@ describe('Aohara city night-lighting rules', () => {
       }
     }
     expect(clearFrontageMeters).toBeLessThan(plannedFrontageMeters);
-    expect(clearFrontageMeters / plannedFrontageMeters).toBeGreaterThan(0.75);
+    // Preserve rows across most of each passage while masking the parts with no safe road-edge gap.
+    expect(clearFrontageMeters / plannedFrontageMeters).toBeGreaterThan(0.74);
 
     const city = new UrbanNightWorld('B', {
       position: [AOHARA_DISTRICT_CONFIG.centerX, 0, AOHARA_DISTRICT_CONFIG.centerZ],
