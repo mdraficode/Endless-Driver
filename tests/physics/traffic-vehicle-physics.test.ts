@@ -46,6 +46,7 @@ describe('physics-backed Aohara traffic', () => {
     expect(content.getContentStats?.()).toMatchObject({
       urbanTrafficPhysicsBodies: URBAN_ACTIVITY_TIER_BUDGET.C.trafficVehicles,
       urbanTrafficImpactFeedbacks: 0,
+      urbanTrafficRouteRejoins: 0,
     });
     expect(activityRoot).not.toBeUndefined();
     if (activityRoot === undefined) {
@@ -109,6 +110,12 @@ describe('physics-backed Aohara traffic', () => {
     matrix.decompose(position, rotation, scale);
     const euler = new Euler().setFromQuaternion(rotation);
     expect(Math.abs(euler.x) + Math.abs(euler.z)).toBeGreaterThan(0);
+
+    for (let step = 0; step < 120; step += 1) {
+      physics.update(1 / 60);
+      content.update?.(1 / 60);
+    }
+    expect(content.getContentStats?.().urbanTrafficRouteRejoins).toBeGreaterThan(0);
 
     content.dispose();
     expect(physics.statistics.bodies).toBe(1); // the player remains; traffic bodies were removed.

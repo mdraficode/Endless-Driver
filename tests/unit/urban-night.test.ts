@@ -25,6 +25,7 @@ import {
   advanceTrafficWithSignal,
   constrainTrafficFollowingTravel,
   constrainTrafficRouteSpacing,
+  projectTrafficRoutePosition,
   UrbanStreetActivity,
 } from '../../src/world/urban-activity';
 import { generateAoharaStreetFurniturePlacements } from '../../src/world/urban-furniture';
@@ -212,6 +213,26 @@ describe('Aohara city night-lighting rules', () => {
       const minimumGap = (follower.lengthMeters + leader.lengthMeters) / 2 + bumperGap;
       expect(resultingGap).toBeGreaterThanOrEqual(minimumGap);
     }
+  });
+
+  it('projects a displaced traffic position onto the nearest route segment', () => {
+    const segments = [
+      { startX: 0, startZ: 0, dx: 10, dz: 0, startDistance: 0, length: 10 },
+      { startX: 10, startZ: 0, dx: 0, dz: 10, startDistance: 10, length: 10 },
+      { startX: 10, startZ: 10, dx: -10, dz: 0, startDistance: 20, length: 10 },
+      { startX: 0, startZ: 10, dx: 0, dz: -10, startDistance: 30, length: 10 },
+    ];
+
+    expect(projectTrafficRoutePosition(segments, 8, 2)).toEqual({
+      distanceMeters: 8,
+      distanceSquared: 4,
+    });
+    expect(projectTrafficRoutePosition(segments, 11, 8)).toEqual({
+      distanceMeters: 18,
+      distanceSquared: 1,
+    });
+    expect(projectTrafficRoutePosition(segments, Number.NaN, 0)).toBeNull();
+    expect(projectTrafficRoutePosition([], 0, 0)).toBeNull();
   });
 
   it('fills every traffic class inside the existing C/B/A vehicle and draw-call budgets', () => {

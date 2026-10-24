@@ -37,19 +37,23 @@ const ROAD_Y = -0.46;
 const SIDEWALK_LIFT = 0.035;
 const LANE_OFFSET_METERS = 3.4;
 const MAX_UPDATE_DELTA_SECONDS = 0.1;
+const MAX_TRAFFIC_ROUTE_REJOIN_DISTANCE_METERS = 8;
 
 const PEDESTRIAN_COLORS = [0x455d76, 0x805749, 0x536348, 0x414248, 0x897753, 0x715d76] as const;
 const SKIN_COLORS = [0xc58e6c, 0xe0b890, 0x9d7259] as const;
 
 type Point2 = readonly [number, number];
 
-interface RouteSegment {
+export interface TrafficRouteProjectionSegment {
   readonly startX: number;
   readonly startZ: number;
   readonly dx: number;
   readonly dz: number;
   readonly startDistance: number;
   readonly length: number;
+}
+
+interface RouteSegment extends TrafficRouteProjectionSegment {
   readonly yaw: number;
 }
 
@@ -85,6 +89,7 @@ interface TrafficVehicle {
   distance: number;
   proposedTravelMeters: number;
   collisionHoldSeconds: number;
+  recoveryPending: boolean;
   readonly impact: VehicleImpactState;
   body: RapierRigidBody | null;
   unregisterOriginAware: (() => void) | null;
@@ -105,6 +110,59 @@ interface TrafficQueueEntry {
 
 function wrapDistance(distance: number, routeLength: number): number {
   return ((distance % routeLength) + routeLength) % routeLength;
+}
+
+export interface TrafficRouteProjection {
+  readonly distanceMeters: number;
+  readonly distanceSquared: number;
+}
+
+/** Projects a world position onto its closest segment in route-distance coordinates. */
+export function projectTrafficRoutePosition(
+  segments: readonly TrafficRouteProjectionSegment[],
+  x: number,
+  z: number,
+): TrafficRouteProjection | null {
+  if (!Number.isFinite(x) || !Number.isFinite(z) || segments.length === 0) {
+    return null;
+  }
+
+  let closestDistanceMeters = 0;
+  let closestDistanceSquared = Number.POSITIVE_INFINITY;
+  for (const segment of segments) {
+    if (
+      !Number.isFinite(segment.startX) ||
+      !Number.isFinite(segment.startZ) ||
+      !Number.isFinite(segment.dx) ||
+      !Number.isFinite(segment.dz) ||
+      !Number.isFinite(segment.startDistance) ||
+      !Number.isFinite(segment.length) ||
+      segment.length <= 0
+    ) {
+      continue;
+    }
+    const segmentLengthSquared = segment.dx * segment.dx + segment.dz * segment.dz;
+    if (!Number.isFinite(segmentLengthSquared) || segmentLengthSquared <= 1e-8) {
+      continue;
+    }
+    const fraction = clamp(
+      ((x - segment.startX) * segment.dx + (z - segment.startZ) * segment.dz) /
+        segmentLengthSquared,
+      0,
+      1,
+    );
+    const projectedX = segment.startX + segment.dx * fraction;
+    const projectedZ = segment.startZ + segment.dz * fraction;
+    const distanceSquared = (x - projectedX) ** 2 + (z - projectedZ) ** 2;
+    if (distanceSquared < closestDistanceSquared) {
+      closestDistanceSquared = distanceSquared;
+      closestDistanceMeters = segment.startDistance + fraction * segment.length;
+    }
+  }
+
+  return Number.isFinite(closestDistanceSquared)
+    ? { distanceMeters: closestDistanceMeters, distanceSquared: closestDistanceSquared }
+    : null;
 }
 
 export interface TrafficRouteFollower {
@@ -433,7 +491,7 @@ export interface UrbanStreetActivityOptions {
 /**
  * Bounded Aohara activity: instanced route visuals backed by lightweight dynamic Rapier vehicles when
  * the driving composition supplies physics. The shared solver owns vehicle-to-vehicle and player-to-traffic
- * response; a gentle route motor returns traffic to its lane after an impact.
+ * response; nearby impacted bodies rebase route progress after a bounded hold, then steer back without a teleport.
  */
 export class UrbanStreetActivity {
   readonly root = new Group();
@@ -451,6 +509,7 @@ export class UrbanStreetActivity {
   readonly #physicsUnsubscribers: (() => void)[] = [];
   readonly #vehicleByCollider = new Map<number, TrafficVehicle>();
   #trafficImpactCount = 0;
+  #trafficRouteRejoinCount = 0;
   #signalAspect: TrafficSignalAspect = 'red';
   readonly #pedestrians: Pedestrian[];
   readonly #pedestrianBodyMesh: InstancedMesh;
@@ -596,6 +655,7 @@ export class UrbanStreetActivity {
       urbanTrafficBatches: this.#trafficMeshes.size,
       urbanTrafficPhysicsBodies: this.#vehicles.filter((vehicle) => vehicle.body !== null).length,
       urbanTrafficImpactFeedbacks: this.#trafficImpactCount,
+      urbanTrafficRouteRejoins: this.#trafficRouteRejoinCount,
       urbanPedestrians: this.#pedestrians.length,
       urbanActivityBatches: this.#meshes.length,
     };
@@ -637,6 +697,11 @@ export class UrbanStreetActivity {
       const route = this.#trafficRoutes[routeIndex]!;
       const routeVehicles = this.#vehiclesByRoute[routeIndex]!;
       const queue = this.#trafficQueueScratch[routeIndex]!;
+      for (const vehicle of routeVehicles) {
+        if (vehicle.recoveryPending && vehicle.collisionHoldSeconds <= 0) {
+          this.#rejoinTrafficVehicle(vehicle, route);
+        }
+      }
       for (const entry of queue) {
         const vehicle = this.#vehicles[entry.vehicleIndex]!;
         entry.distanceToSignal = wrapDistance(route.stopDistance - vehicle.distance, route.length);
@@ -680,6 +745,31 @@ export class UrbanStreetActivity {
     }
   }
 
+  #rejoinTrafficVehicle(vehicle: TrafficVehicle, route: UrbanRoute): void {
+    vehicle.recoveryPending = false;
+    const body = vehicle.body;
+    const physics = this.#physics;
+    if (body === null || physics === null) {
+      return;
+    }
+
+    const position = body.translation();
+    const originOffset = physics.originOffset;
+    const localX = position.x + originOffset.x - this.#worldOrigin[0];
+    const localZ = position.z + originOffset.z - this.#worldOrigin[2];
+    const projection = projectTrafficRoutePosition(route.segments, localX, localZ);
+    if (
+      projection === null ||
+      projection.distanceSquared > MAX_TRAFFIC_ROUTE_REJOIN_DISTANCE_METERS ** 2
+    ) {
+      return;
+    }
+
+    // Rebase only the route intent: Rapier retains the displaced body and collision authority.
+    vehicle.distance = wrapDistance(projection.distanceMeters, route.length);
+    this.#trafficRouteRejoinCount += 1;
+  }
+
   #createVehicles(count: number): TrafficVehicle[][] {
     const counts = spreadCount(count, this.#trafficRoutes.length);
     const groups: TrafficVehicle[][] = [];
@@ -705,6 +795,7 @@ export class UrbanStreetActivity {
               (spec.maximumSpeedMetersPerSecond - spec.minimumSpeedMetersPerSecond),
           proposedTravelMeters: 0,
           collisionHoldSeconds: 0,
+          recoveryPending: false,
           impact: createVehicleImpactState(),
           body: null,
           unregisterOriginAware: null,
@@ -934,6 +1025,7 @@ export class UrbanStreetActivity {
         (otherPosition.z - position.z) * Math.sin(yaw);
       triggerVehicleImpact(vehicle.impact, relativeSpeed, side);
       vehicle.collisionHoldSeconds = Math.max(vehicle.collisionHoldSeconds, holdSeconds);
+      vehicle.recoveryPending = true;
     };
     applyToVehicle(vehicleA);
     applyToVehicle(vehicleB);
