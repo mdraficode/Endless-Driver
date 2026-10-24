@@ -62,8 +62,7 @@ export function applySurfaceState(surface: SurfaceResponse, state: SurfaceState)
 
   return {
     id: surface.id,
-    gripModifier:
-      surface.gripModifier * (1 - wetness * (1 - response.gripRetention)),
+    gripModifier: surface.gripModifier * (1 - wetness * (1 - response.gripRetention)),
     rollingResistance: surface.rollingResistance + wetness * response.rollingResistanceIncrease,
   };
 }

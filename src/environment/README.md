@@ -13,7 +13,7 @@ tire friction.
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `solar.ts`            | Solar position from hour, latitude, and day of year: declination, hour angle, and rotation into world axes. A pure function, accurate to well under a degree — far more than lighting needs — and therefore fully testable in Node                                                                |
 | `EnvironmentClock.ts` | Owns time: wraps hours, advances them at the configured rate, and resolves a `DaylightState` — sun direction/colour/intensity, ambient fill, environment intensity, exposure, horizon tint, atmospheric scattering, sun-disc visibility. The curve math is a pure function of the sun's elevation |
-| `SurfaceState.ts` | Resolves the fixed clear/rain preset and applies a bounded, surface-specific wet grip/rolling-resistance response; the initial rain switch is physics-only and dry response is unchanged |
+| `SurfaceState.ts`     | Resolves the fixed clear/rain preset and applies a bounded, surface-specific wet grip/rolling-resistance response; the initial rain switch is physics-only and dry response is unchanged                                                                                                          |
 
 The clock knows nothing about rendering, and the renderer never reads the clock: the application resolves a
 `DaylightState` once per frame and hands it to the scene and the engine, so there is exactly one place where time

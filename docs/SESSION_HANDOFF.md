@@ -2241,7 +2241,6 @@ Distant mountain geometry retains the existing four-range vertex budget but repl
 
 **Limitations / next action:** no browser visual capture, manual drive, named-device render or owner acceptance was performed. The full-app headless Chromium environment previously crashed while loading environment/KTX2 resources; do not call automated material-property coverage visual acceptance. When runtime resources permit, inspect both hero and fallback from front/rear under no-brake and braking states. Continue the other already documented Phase 6 lamp/material follow-ups and the Phase 9 Aohara review; keep Phase 7 and unrelated Phase 8 work gated. The separate 60%-scale softness/FPS baseline remains as §98; obtain device details and conduct its fixed-scale comparison before changing render budgets.
 
-
 ## 100. Phase 7 authorization and first wet-surface physics slice (2026-10-24)
 
 **Owner authorization:** the owner said “Start Phase 7 progress.” Phase 7 is now open. This explicit start does not imply Phase 6 visual/manual acceptance; unrelated Phase 8 polish remains gated. Preserve the no-paid/restricted-asset rule, dry/default behavior, current C/B/A budgets and the existing single Rapier/tire-force authority.
