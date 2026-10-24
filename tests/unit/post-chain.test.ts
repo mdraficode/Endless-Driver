@@ -418,7 +418,7 @@ describe('temporal anti-aliasing and motion blur', () => {
     const off = applyRenderSwitches(base, '?taa=0&mblur=0');
     expect(resolvePostEffects(off)).not.toContain('taa');
     expect(resolvePostEffects(off)).not.toContain('motionBlur');
-    expect(resolvePostEffects(off)).toContain('fxaa');
+    expect(resolvePostEffects(off)).toContain('smaa');
     expect(requiresSceneVelocity(resolvePostEffects(off))).toBe(false);
 
     const on = applyRenderSwitches(base, '?aa=taa&taa=1&mblur=1');
