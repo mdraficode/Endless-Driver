@@ -17,9 +17,9 @@ import { collideCarWithStaticBoxes, type StaticBuildingBox } from './static-buil
 import type { TownCarProbe, TownHit } from './town';
 
 // The frontage line stays beyond the narrow clutter strip while remaining one car-width off the alley.
-const FACADE_WALL_GAP_METERS = 2.75;
+const FACADE_WALL_GAP_METERS = 3;
 const FACADE_WALL_THICKNESS_METERS = 0.18;
-const FACADE_COLLISION_SEGMENT_METERS = 2;
+const FACADE_COLLISION_SEGMENT_METERS = 0.5;
 const FACADE_MIN_ROAD_CLEARANCE_METERS = 2.5;
 const FACADE_MAX_ADDITIONAL_SETBACK_METERS = 16;
 const FACADE_BUILDING_DEPTH_METERS = 6.8;

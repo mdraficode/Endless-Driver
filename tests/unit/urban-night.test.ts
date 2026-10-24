@@ -932,7 +932,7 @@ describe('Aohara city night-lighting rules', () => {
     });
     const facadeFootprints = city.getBackstreetFacadeFootprints();
     expect(facadeFootprints.length).toBeGreaterThan(placements.length);
-    expect(facadeFootprints.length).toBeLessThanOrEqual(placements.length * 6);
+    expect(facadeFootprints.length).toBeLessThanOrEqual(placements.length * 24);
     for (const footprint of facadeFootprints) {
       const nearestRoad = network.sample(footprint.x, footprint.z);
       if (nearestRoad === null) continue;
@@ -965,8 +965,9 @@ describe('Aohara city night-lighting rules', () => {
     });
     const buildings = city.getStaticBuildingFootprints();
     const facadeFootprints = city.getBackstreetFacadeFootprints();
-    const placements = generateAoharaAlleyPropPlacements(network, 'B', buildings);
-    expect(placements).toEqual(generateAoharaAlleyPropPlacements(network, 'B', buildings));
+    const propObstacles = [...buildings, ...facadeFootprints];
+    const placements = generateAoharaAlleyPropPlacements(network, 'B', propObstacles);
+    expect(placements).toEqual(generateAoharaAlleyPropPlacements(network, 'B', propObstacles));
     expect(placements).toHaveLength(URBAN_ACTIVITY_TIER_BUDGET.B.alleyProps);
     expect(new Set(placements.map((placement) => placement.id)).size).toBe(placements.length);
 
