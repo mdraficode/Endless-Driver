@@ -101,20 +101,20 @@ export interface TierDefinition {
 }
 
 /**
- * Tier C — mobile and low-end hardware.
+ * Tier C — performance-first default for unmeasured hardware.
  *
- * MSAA is off, one shadow cascade at reduced resolution, and the gameplay backdrop stays procedural
- * while the HDRI supplies image-based lighting. `?envbg=1` is available for an HDRI-backdrop A/B.
- * Everything here trades fill rate for a lower-cost mobile path.
+ * MSAA, temporal history, motion vectors, clouds, and POM are off; one shadow cascade and reduced
+ * terrain tessellation prioritize smooth gameplay. The HDRI supplies image-based lighting while the
+ * gameplay backdrop stays procedural. `?envbg=1` is available for an HDRI-backdrop A/B.
  *
  * Backend selection is project-wide rather than a tier override: all tiers prefer WebGPU when
  * available and use automatic WebGL2 fallback; `?backend=webgl` forces the fallback for comparison.
  */
 const TIER_C: TierDefinition = {
   id: 'C',
-  name: 'Mobile / low',
+  name: 'Performance / mobile',
   summary:
-    'Phones and low-end laptops: automatic WebGPU/WebGL2 selection, short shadow range, FXAA with bounded scene-pass scaling, HDRI light with a clear procedural sky backdrop.',
+    'Performance-first fallback for phones, low-end laptops, and unmeasured devices: reduced terrain detail, a single shadow cascade, FXAA and adaptive scene-pass scaling.',
   render: {
     maxPixelRatio: 1,
     // No backendPreference here on purpose: the backend is a project-wide
@@ -153,11 +153,12 @@ const TIER_C: TierDefinition = {
       temporalAntiAliasing: {
         enabled: false,
         dynamicResolution: true,
-        minScale: 0.72,
+        renderScale: 0.72,
+        minScale: 0.5,
         maxScale: 1,
-        step: 0.05,
-        adjustmentIntervalSeconds: 0.5,
-        smoothing: 0.1,
+        step: 0.1,
+        adjustmentIntervalSeconds: 0.3,
+        smoothing: 0.15,
       },
       bloom: { strength: 0.18, radius: 0.4 },
       // No depth of field. It costs four passes and five half-resolution targets — on the constrained
@@ -184,51 +185,56 @@ const TIER_C: TierDefinition = {
 };
 
 /**
- * Tier B — desktop balanced. The baseline `RENDER_CONFIG` is authored against this tier, so the
- * overrides below are the values that differ from "whatever the config file says".
+ * Tier B — desktop balanced. It adds fidelity above the performance-first default while keeping
+ * temporal history, motion vectors, clouds, and high-cost shadow/contact work disabled.
  */
 const TIER_B: TierDefinition = {
   id: 'B',
   name: 'Desktop balanced',
-  summary: 'Typical desktop: WebGPU with the WebGL2 fallback, 3 cascades, procedural sky.',
+  summary:
+    'Higher quality above the performance-first default: two lower-resolution shadow cascades, half-resolution AO, and adaptive spatial upscaling.',
   render: {
-    maxPixelRatio: 1.5,
+    maxPixelRatio: 1.25,
     renderer: {
-      // MSAA off: this tier resolves edges temporally, and the two strategies cannot both be on. See the
-      // note on `TemporalAntiAliasingConfig` — the trade is MSAA's perfect geometric edges for temporal
-      // stability of *everything* (specular, shadow edges, occlusion noise), which is the better half.
+      // MSAA is off because the scene uses a post-process edge resolve; the cheaper FXAA path does not
+      // require temporal history or per-object previous-frame matrices.
       antialias: false,
       samples: 0,
     },
     shadows: {
-      mapSize: 2048,
+      mapSize: 1024,
       csm: {
-        cascades: 3,
-        maxFar: 300,
+        cascades: 2,
+        maxFar: 220,
         fade: true,
       },
     },
     atmosphere: {
-      clouds: { enabled: true },
+      clouds: { enabled: false },
     },
     environment: {
       useAsBackground: false,
     },
     postProcessing: {
-      antiAliasing: 'taa',
-      // The shutter is live only above the high-speed gate in Application; ordinary road speed remains
-      // crisp, while the balanced desktop tier pays for the velocity attachment when speed warrants it.
-      motionBlur: { enabled: true, intensity: 0.28 },
-      temporalAntiAliasing: { enabled: true, dynamicResolution: true },
+      // Keep the shared per-pixel velocity attachment off until the high tier's cost has been measured.
+      // FXAA leaves motion vectors and temporal history out of the whole scene pass.
+      antiAliasing: 'fxaa',
+      motionBlur: { enabled: false },
+      temporalAntiAliasing: {
+        enabled: false,
+        dynamicResolution: true,
+        renderScale: 0.75,
+        minScale: 0.55,
+        maxScale: 1,
+        step: 0.1,
+        adjustmentIntervalSeconds: 0.3,
+        smoothing: 0.15,
+      },
       bloom: { strength: 0.16, radius: 0.4 },
-      // A slightly tighter aperture than the baseline: this tier renders at 1.5x, and the blur is a
-      // share of the frame, so the same number would read as a larger circle of confusion in pixels.
+      // Retained only as a dormant look-dev value; depth of field stays off during gameplay.
       depthOfField: { bokehScale: 13 },
       ambientOcclusion: { enabled: true, resolutionScale: 0.5 },
-      // Eight taps of a depth buffer this tier already renders. The grounding this buys —
-      // tyres, kerbs, posts meeting the ground against the sun — is the cheapest credibility
-      // in the stack, and it is why the route baseline is captured with it on.
-      contactShadows: { enabled: true, steps: 8 },
+      contactShadows: { enabled: false },
       filmGrain: { enabled: false },
     },
   },
@@ -278,10 +284,8 @@ const TIER_A: TierDefinition = {
       ssgi: { enabled: true },
       // Stronger high-speed shutter than B, still zero below the same gameplay speed threshold.
       motionBlur: { enabled: true, intensity: 0.36 },
-      // A higher floor than the balanced tier: this tier is for hardware that was measured to hold its
-      // frame budget, so the controller has less reason to trade resolution away. It still adapts — the
-      // cost of not adapting is a stutter, and the schedule in `docs/REALISM_PLAN.md` §5 is what decides
-      // whether that floor is defensible on real hardware.
+      // A higher floor than the performance-first profiles. This remains an explicit, unmeasured opt-in;
+      // real-device frame-budget evidence must decide whether the floor is defensible.
       temporalAntiAliasing: { enabled: true, dynamicResolution: true, minScale: 0.75 },
       bloom: { strength: 0.26, radius: 0.5 },
       ambientOcclusion: { enabled: true, resolutionScale: 1, samples: 24 },
@@ -302,8 +306,8 @@ export const TIER_DEFINITIONS: Readonly<Record<TierId, TierDefinition>> = {
   A: TIER_A,
 };
 
-/** Tier used when nothing else applies. Matches the baseline the config file is authored against. */
-export const DEFAULT_TIER: TierId = 'B';
+/** Performance-first tier used until the owner selects a higher budget on their device. */
+export const DEFAULT_TIER: TierId = 'C';
 
 const TIER_IDS = new Set<string>(TIER_ORDER);
 

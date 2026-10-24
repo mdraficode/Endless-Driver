@@ -220,7 +220,7 @@ export function resolveBackendPreference(
   return environment.isAndroid && environment.webGpuAvailable ? 'webgl' : null;
 }
 
-/** Human-readable tier label for logs and the HUD, e.g. `B · desktop default`. */
+/** Human-readable tier label for logs and the HUD, e.g. `C · desktop default`. */
 export function describeTier(resolution: TierResolution): string {
   const definition = TIER_DEFINITIONS[resolution.id];
   const reason = resolution.reason.replace('-', ' ');

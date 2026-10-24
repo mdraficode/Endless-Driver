@@ -24,22 +24,39 @@ function smoothstep(edge0: number, edge1: number, value: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** A broken, multi-peak skyline rather than a single primitive cone. */
+function hashUnit(index: number, seed: number): number {
+  let value = Math.imul(index | 0, 0x45d9f3b) ^ Math.imul(seed | 0, 0x27d4eb2d);
+  value = Math.imul(value ^ (value >>> 16), 0x45d9f3b);
+  value = Math.imul(value ^ (value >>> 16), 0x45d9f3b);
+  value ^= value >>> 16;
+  return (value >>> 0) / 0xffffffff;
+}
+
+/** Smooth, seeded value noise: irregular ridge sections without repeating sine-wave peaks. */
+function valueNoise(along: number, seed: number): number {
+  const left = Math.floor(along);
+  const blend = smoothstep(0, 1, along - left);
+  const a = hashUnit(left, seed);
+  const b = hashUnit(left + 1, seed);
+  return a + (b - a) * blend;
+}
+
+/** A broken, multi-scale skyline with tapered ends and distinct saddles between peaks. */
 function skylineEnvelope(along: number, seed: number): number {
-  const phase = seed * 0.071;
-  const broad = Math.sin(along * Math.PI * 2.1 + phase) * 0.19;
-  const middle = Math.sin(along * Math.PI * 5.3 + phase * 1.7) * 0.13;
-  const crags = Math.abs(Math.sin(along * Math.PI * 12.7 + phase * 2.3)) * 0.12;
-  const fine = Math.sin(along * Math.PI * 27.1 + phase * 3.1) * 0.045;
-  return Math.min(1, Math.max(0.27, 0.58 + broad + middle + crags + fine));
+  const broad = valueNoise(along * 4.2, seed);
+  const middle = valueNoise(along * 11.5, seed + 29);
+  const fine = valueNoise(along * 24, seed + 71);
+  const ridge = 0.52 + (broad - 0.5) * 0.9 + (middle - 0.5) * 0.34 + (fine - 0.5) * 0.14;
+  const endFade = smoothstep(0, 0.08, along) * (1 - smoothstep(0.91, 1, along));
+  return Math.max(0, Math.min(1, ridge)) * endFade;
 }
 
 function mountainColor(relativeHeight: number, variation: number): MountainVertexColor {
-  const exposedRock = smoothstep(0.22, 0.82, relativeHeight);
-  const lower = { r: 0.17, g: 0.215, b: 0.18 };
-  const upper = { r: 0.255, g: 0.275, b: 0.285 };
-  const high = smoothstep(0.72, 1, relativeHeight) * 0.14;
-  const shade = variation * 0.035;
+  const exposedRock = smoothstep(0.2, 0.74, relativeHeight);
+  const lower = { r: 0.135, g: 0.19, b: 0.16 };
+  const upper = { r: 0.22, g: 0.245, b: 0.265 };
+  const high = smoothstep(0.62, 1, relativeHeight) * 0.045;
+  const shade = variation * 0.025;
   return {
     r: lower.r + (upper.r - lower.r) * exposedRock + high + shade,
     g: lower.g + (upper.g - lower.g) * exposedRock + high + shade,
@@ -59,7 +76,6 @@ export function buildDistantMountainGeometry(
   const colors = new Float32Array(vertexCount * 3);
   const cosYaw = Math.cos(range.yawRadians);
   const sinYaw = Math.sin(range.yawRadians);
-  const phase = range.seed * 0.071;
 
   for (let alongIndex = 0; alongIndex <= alongSegments; alongIndex += 1) {
     const alongUnit = alongIndex / alongSegments;
@@ -70,19 +86,25 @@ export function buildDistantMountainGeometry(
       const crossDistance = crossUnit * range.halfWidthMeters;
       const x = range.centerX + cosYaw * alongMeters - sinYaw * crossDistance;
       const z = range.centerZ + sinYaw * alongMeters + cosYaw * crossDistance;
-      const crossProfile = Math.max(0, 1 - Math.abs(crossUnit));
-      const slopeProfile = Math.pow(crossProfile, 1.18);
-      const ridgelineRoughness =
-        0.96 +
-        0.04 *
-          Math.sin(alongUnit * Math.PI * 38 + phase) *
-          Math.max(0, 1 - Math.abs(crossUnit) * 2.4);
-      const relativeHeight = skyline * slopeProfile * ridgelineRoughness;
+      // The crest wanders gently across the mass; asymmetric exponents give each flank a different
+      // shoulder, instead of a symmetric tent profile repeated at every cross-section.
+      const crestOffset = (valueNoise(alongUnit * 3.6, range.seed + 101) - 0.5) * 0.2;
+      const fromCrest = crossUnit - crestOffset;
+      const flankSpan = fromCrest < 0 ? 1 + crestOffset : 1 - crestOffset;
+      const normalizedFlank = clamp01(Math.abs(fromCrest) / Math.max(0.1, flankSpan));
+      const flankExponent = fromCrest < 0 ? 1.28 : 0.9;
+      const crossProfile = Math.pow(Math.cos(normalizedFlank * Math.PI * 0.5), flankExponent);
+      const flankVariation =
+        0.94 +
+        0.12 * valueNoise(alongUnit * 13 + crossUnit * 0.9, range.seed + 139);
+      const relativeHeight = skyline * crossProfile * flankVariation;
       const baseHeight = sampler.heightAt(x, z) - footClearanceMeters;
       const y = baseHeight + relativeHeight * range.heightMeters;
       const vertexIndex = alongIndex * verticesPerRow + crossIndex;
       const offset = vertexIndex * 3;
-      const tint = mountainColor(relativeHeight, Math.sin(alongUnit * 51 + crossUnit * 7 + phase));
+      const colorVariation =
+        valueNoise(alongUnit * 19 + crossUnit * 0.9, range.seed + 173) - 0.5;
+      const tint = mountainColor(relativeHeight, colorVariation);
       positions[offset] = x;
       positions[offset + 1] = y;
       positions[offset + 2] = z;

@@ -2486,6 +2486,6 @@ export class UrbanNightWorld implements SceneContent {
 /** Scene-content factory used by the dedicated `?scene=city` look-dev composition root. */
 export function createUrbanNightWorld(context: SceneContentContext): UrbanNightWorld {
   const tier: TierId =
-    context.qualityTier === 'A' || context.qualityTier === 'C' ? context.qualityTier : 'B';
+    context.qualityTier === 'A' || context.qualityTier === 'B' ? context.qualityTier : 'C';
   return new UrbanNightWorld(tier);
 }

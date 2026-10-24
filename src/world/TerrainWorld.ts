@@ -36,6 +36,7 @@ import {
   predictPrefetchFocus,
   resolveWindowCenter,
   type ChunkCoord,
+  type PlannedChunk,
 } from './terrain-chunks';
 
 interface LoadedChunk {
@@ -44,6 +45,11 @@ interface LoadedChunk {
   triangles: number;
   /** True while the mesh wears the near (POM) material. */
   pom: boolean;
+}
+
+export interface TerrainWorldOptions {
+  /** Enable the costly near-ring displacement march; reserved for an explicitly selected high tier. */
+  readonly enableParallaxOcclusion?: boolean;
 }
 
 /*
@@ -124,20 +130,25 @@ export class TerrainWorld implements SceneContent {
   readonly #generator: ChunkGenerator;
   readonly #material: MeshStandardNodeMaterial;
   readonly #nearMaterial: MeshStandardNodeMaterial;
+  readonly #enableParallaxOcclusion: boolean;
   readonly #chunks = new Map<string, LoadedChunk>();
   #pomActive = false;
   #surfaceSets: readonly MaterialTextureSet[] = [];
   #center: ChunkCoord | null = null;
+  #plan: PlannedChunk[] = [];
+  #desiredChunks = new Map<string, PlannedChunk>();
   #desiredCount = 0;
   #pendingBuilds = 0;
   #buildsLastFrame = 0;
+  #planBuilds = 0;
   #totalBuilds = 0;
   #triangles = 0;
   #disposed = false;
 
-  constructor(sampler: TerrainSampler) {
+  constructor(sampler: TerrainSampler, options: TerrainWorldOptions = {}) {
     this.#sampler = sampler;
     this.#config = sampler.config;
+    this.#enableParallaxOcclusion = options.enableParallaxOcclusion ?? true;
     // Generation runs in a worker pool when the platform allows it and falls back to
     // this same sampler on the main thread otherwise; either way chunks are
     // bit-identical (one height function, two hosts).
@@ -222,7 +233,8 @@ export class TerrainWorld implements SceneContent {
     this.#surfaceSets = loaded;
     // POM is only honest with all three active displacement maps; without them the near
     // material is the same splat, just on its own instance.
-    this.#pomActive = loaded.every((set) => set.height !== null);
+    this.#pomActive =
+      this.#enableParallaxOcclusion && loaded.every((set) => set.height !== null);
     this.#applySurfaceNodes(loaded, this.#material, false);
     this.#applySurfaceNodes(loaded, this.#nearMaterial, this.#pomActive);
   }
@@ -376,29 +388,51 @@ export class TerrainWorld implements SceneContent {
     if (this.#disposed) {
       return;
     }
-    // The bounded lead is shared with vegetation: both windows move toward the route
-    // ahead, while the terrain plan keeps the actual focus as its ordering reference.
+    // Replan only when the hysteretic window actually moves. While the car remains inside
+    // that window, the desired chunk set and LODs are unchanged; sorting 121 coordinates and
+    // rebuilding maps/queues every rendered frame only creates CPU and GC pressure.
     const predicted = predictPrefetchFocus(this.#config, focus, velocity);
-    this.#center = resolveWindowCenter(this.#center, this.#config, predicted.x, predicted.z);
-    const plan = planChunksAround(this.#config, this.#center.cx, this.#center.cz, focus.x, focus.z);
-    this.#desiredCount = plan.length;
-    const desired = new Map(plan.map((chunk) => [chunkKey(chunk.cx, chunk.cz), chunk]));
+    const nextCenter = resolveWindowCenter(this.#center, this.#config, predicted.x, predicted.z);
+    const centerChanged =
+      this.#center === null ||
+      nextCenter.cx !== this.#center.cx ||
+      nextCenter.cz !== this.#center.cz;
+    if (centerChanged) {
+      this.#center = nextCenter;
+      this.#plan = planChunksAround(
+        this.#config,
+        nextCenter.cx,
+        nextCenter.cz,
+        focus.x,
+        focus.z,
+      );
+      this.#planBuilds += 1;
+      this.#desiredChunks = new Map(
+        this.#plan.map((chunk) => [chunkKey(chunk.cx, chunk.cz), chunk]),
+      );
+      this.#desiredCount = this.#plan.length;
 
-    // Evict what the plan no longer wants. Disposal is cheap and unbounded; construction
-    // is the budgeted resource.
-    for (const [key, loaded] of this.#chunks) {
-      if (!desired.has(key)) {
-        this.root.remove(loaded.mesh);
-        loaded.mesh.geometry.dispose();
-        this.#triangles -= loaded.triangles;
-        this.#chunks.delete(key);
+      // Evict only on a window change. Disposal is cheap; repeated per-frame set checks are not.
+      for (const [key, loaded] of this.#chunks) {
+        if (!this.#desiredChunks.has(key)) {
+          this.root.remove(loaded.mesh);
+          loaded.mesh.geometry.dispose();
+          this.#triangles -= loaded.triangles;
+          this.#chunks.delete(key);
+        }
       }
     }
 
-    const queue = plan.filter((chunk) => {
-      const loaded = this.#chunks.get(chunkKey(chunk.cx, chunk.cz));
-      return loaded === undefined || loaded.segments !== chunk.segments;
-    });
+    const plan = this.#plan;
+    const desired = this.#desiredChunks;
+    // Once every planned chunk is present, there is no queue to rebuild. While builds remain,
+    // recheck loaded LODs so completed worker jobs are not requested again.
+    const queue = centerChanged || this.#pendingBuilds > 0
+      ? plan.filter((chunk) => {
+          const loaded = this.#chunks.get(chunkKey(chunk.cx, chunk.cz));
+          return loaded === undefined || loaded.segments !== chunk.segments;
+        })
+      : [];
     this.#pendingBuilds = queue.length;
     this.#buildsLastFrame = 0;
 
@@ -418,7 +452,7 @@ export class TerrainWorld implements SceneContent {
       // The closest LOD ring wears the POM material; every other ring the plain
       // splat. Geometry swaps re-evaluate this, so a chunk crossing rings in
       // either direction changes material with its resolution.
-      const pom = segments === this.#config.lodSegments[0];
+      const pom = this.#enableParallaxOcclusion && segments === this.#config.lodSegments[0];
       if (existing !== undefined) {
         this.#triangles -= existing.triangles;
         existing.mesh.geometry.dispose();
@@ -441,14 +475,16 @@ export class TerrainWorld implements SceneContent {
     };
 
     if (this.#generator.mode === 'worker') {
-      this.#generator.syncQueue(
-        queue.map((chunk) => ({
-          key: chunkKey(chunk.cx, chunk.cz),
-          cx: chunk.cx,
-          cz: chunk.cz,
-          segments: chunk.segments,
-        })),
-      );
+      if (centerChanged) {
+        this.#generator.syncQueue(
+          queue.map((chunk) => ({
+            key: chunkKey(chunk.cx, chunk.cz),
+            cx: chunk.cx,
+            cz: chunk.cz,
+            segments: chunk.segments,
+          })),
+        );
+      }
       for (const result of this.#generator.takeCompleted(this.#config.maxBuildsPerFrame)) {
         const want = desired.get(chunkKey(result.chunkX, result.chunkZ));
         if (want !== undefined && want.segments === result.segments) {
@@ -512,8 +548,10 @@ export class TerrainWorld implements SceneContent {
       terrainBuildsPending: this.#pendingBuilds,
       terrainBuildsLastFrame: this.#buildsLastFrame,
       terrainBuildsTotal: this.#totalBuilds,
+      terrainPlanBuilds: this.#planBuilds,
       terrainTriangles: this.#triangles,
       terrainSurfacesLoaded: this.#surfaceSets.length > 0 ? 1 : 0,
+      terrainPomConfigured: this.#enableParallaxOcclusion ? 1 : 0,
       terrainPomActive: this.#pomActive ? 1 : 0,
       terrainPomSteps: this.#config.pom.steps,
       terrainPomChunks: [...this.#chunks.values()].filter((chunk) => chunk.pom).length,

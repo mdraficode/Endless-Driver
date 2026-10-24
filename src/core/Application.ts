@@ -13,7 +13,8 @@ import {
 import { RENDER_CONFIG, type RenderConfig } from '../config/render';
 import { ROAD_NETWORK_CONFIG } from '../config/roads';
 import { ORIGIN_CONFIG } from '../config/origin';
-import { TERRAIN_CONFIG } from '../config/terrain';
+import { terrainConfigForTier } from '../config/terrain';
+import { DEFAULT_TIER } from '../config/tiers';
 import { WORLD_CONFIG, type WorldConfig } from '../config/world';
 import { resolveSpawnPoint, type SpawnPoint } from '../config/spawns';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
@@ -49,7 +50,7 @@ import {
 } from '../environment/EnvironmentClock';
 import { Engine, type FrameState } from './Engine';
 import { loadLutAsset } from '../assets/LutAsset';
-import type { TierResolution } from './QualityTier';
+import { applyTier, type TierResolution } from './QualityTier';
 import { PerformanceMonitor } from './PerformanceMonitor';
 import { SceneManager } from './SceneManager';
 
@@ -171,14 +172,18 @@ export class Application {
   readonly #spawn: SpawnPoint & { readonly position: readonly [number, number, number] };
 
   constructor(options: ApplicationOptions) {
-    this.#config = options.config ?? RENDER_CONFIG;
+    this.#tier = options.tier ?? { id: DEFAULT_TIER, reason: 'unresolved' };
+    this.#config = options.config ?? applyTier(RENDER_CONFIG, this.#tier.id);
     this.#worldConfig = options.worldConfig ?? WORLD_CONFIG;
     this.#cameraMode = options.cameraMode ?? 'chase';
     this.#steeringSensitivity = options.steeringSensitivity ?? 'standard';
 
     // One terrain sampler feeds the visual chunks (via SceneManager's content) and the
     // physics heightfields: ground you see and ground you drive on are the same function.
-    const terrainSampler = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
+    const terrainSampler = createWorldTerrainSampler(
+      terrainConfigForTier(this.#tier.id),
+      ROAD_NETWORK_CONFIG,
+    );
     this.#terrainSampler = terrainSampler;
     this.#treeField = new TreeCollisionField(terrainSampler);
     // Aohara is the default game start. Explicit `?spawn=<id>` requests still select rural
@@ -210,7 +215,7 @@ export class Application {
       aspect: this.#engine.viewport.aspect,
       terrainSampler,
       renderer: this.#engine.renderer,
-      ...(options.tier !== undefined ? { qualityTier: options.tier.id } : {}),
+      qualityTier: this.#tier.id,
       ...(options.trafficIntensity !== undefined
         ? { trafficIntensity: options.trafficIntensity }
         : {}),
@@ -267,7 +272,6 @@ export class Application {
       : null;
     this.#statusElement = options.statusElement ?? null;
     this.#onLoadingProgress = options.onLoadingProgress ?? null;
-    this.#tier = options.tier ?? { id: 'B', reason: 'unresolved' };
     this.#carEffects = new CarEffects(this.#tier.id);
     this.#scene.addObject(this.#carEffects.root);
     this.#clock = new EnvironmentClock(options.clock);

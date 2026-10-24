@@ -340,9 +340,9 @@ export interface TemporalAntiAliasingConfig {
   /**
    * Whether the scene-pass render scale is allowed to move with frame time.
    *
-   * TAAU reconstructs reduced frames on tiers B/A. Tier C may instead scale its FXAA/SMAA scene pass and
-   * linearly upscale the result, trading detail for fill-rate without temporal reconstruction. Adaptive
-   * changes use small steps and an elapsed-time-smoothed frame-time signal to limit visible scale breathing.
+   * Tier A uses TAAU to reconstruct reduced frames. Tiers C/B instead scale their FXAA scene pass and linearly
+   * upscale the result, trading detail for fill-rate without temporal reconstruction. Adaptive changes use
+   * tier-specific bounds and an elapsed-time-smoothed frame-time signal to limit visible scale breathing.
    */
   readonly dynamicResolution: boolean;
   /** Render scale used when dynamic resolution is off; 1 renders at native resolution. */
@@ -691,8 +691,8 @@ export const RENDER_CONFIG: RenderConfig = {
       shadowExtentMeters: 110,
       shadowMapSize: 1024,
     },
-    // On from tier B up (the tiers set the tap counts); off in the baseline config so the
-    // effect is always a tier's deliberate purchase, never an accident of the defaults.
+    // Tier A only; off elsewhere so the depth march is an explicit high-budget purchase, never an accident
+    // of the baseline configuration.
     contactShadows: {
       enabled: false,
       steps: 12,

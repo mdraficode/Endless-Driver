@@ -1,3 +1,5 @@
+import type { TierId } from './tiers';
+
 /**
  * Phase 4 terrain configuration: the seeded heightfield the driving world streams.
  *
@@ -116,3 +118,26 @@ export const TERRAIN_CONFIG: TerrainConfig = {
   alpineRocklineMeters: 190,
   pom: { steps: 12, depthMeters: 0.09, fadeStartMeters: 16, fadeEndMeters: 42 },
 };
+
+/**
+ * Visual chunk budgets by quality tier. Collision sampling and the seeded heightfield stay identical;
+ * only the rendered tessellation and per-frame construction budget change. POM is separately opt-in
+ * in TerrainWorld because it multiplies fragment work on the closest terrain ring.
+ */
+export function terrainConfigForTier(tier: TierId): TerrainConfig {
+  if (tier === 'A') {
+    return TERRAIN_CONFIG;
+  }
+  if (tier === 'B') {
+    return {
+      ...TERRAIN_CONFIG,
+      lodSegments: [64, 24, 12],
+      maxBuildsPerFrame: 1,
+    };
+  }
+  return {
+    ...TERRAIN_CONFIG,
+    lodSegments: [48, 20, 8],
+    maxBuildsPerFrame: 1,
+  };
+}

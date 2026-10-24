@@ -59,6 +59,33 @@ describe('distant mountain horizon', () => {
     }
   });
 
+  it('breaks the skyline into several irregular peaks instead of a repeated wave', () => {
+    const range = DISTANT_MOUNTAIN_RANGES[0];
+    if (range === undefined) {
+      throw new Error('the mountain configuration should contain at least one range');
+    }
+    const geometry = buildDistantMountainGeometry(sampler, range);
+    const positions = geometry.getAttribute('position');
+    const verticesPerRow = DISTANT_MOUNTAIN_MESH_CONFIG.crossSegments + 1;
+    const centreCross = Math.floor(DISTANT_MOUNTAIN_MESH_CONFIG.crossSegments / 2);
+    const relief: number[] = [];
+
+    for (let along = 0; along <= DISTANT_MOUNTAIN_MESH_CONFIG.alongSegments; along += 1) {
+      const index = along * verticesPerRow + centreCross;
+      const x = positions.getX(index);
+      const z = positions.getZ(index);
+      const baseline = sampler.heightAt(x, z) - DISTANT_MOUNTAIN_MESH_CONFIG.footClearanceMeters;
+      relief.push((positions.getY(index) - baseline) / range.heightMeters);
+    }
+
+    const peakCount = relief
+      .slice(2, -2)
+      .filter((height, index, values) => height > (values[index - 1] ?? Infinity) && height >= (values[index + 1] ?? Infinity))
+      .length;
+    expect(peakCount).toBeGreaterThanOrEqual(3);
+    geometry.dispose();
+  });
+
   it('mounts a small, shared-material mountain layer in the driving content', () => {
     const mountains = new DistantMountainWorld(sampler);
     expect(mountains.root.name).toBe('DistantMountainWorld');

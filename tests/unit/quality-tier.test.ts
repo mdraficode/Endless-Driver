@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { RENDER_CONFIG } from '../../src/config/render';
+import { terrainConfigForTier } from '../../src/config/terrain';
 import { TIER_DEFINITIONS, TIER_ORDER, isTierId, type TierId } from '../../src/config/tiers';
 import {
   applyBackendOverride,
@@ -38,8 +39,11 @@ describe('quality tier selection', () => {
     // A phone in "desktop site" mode: no coarse pointer and a desktop user agent, but the viewport
     // gives it away.
     expect(resolveTier({ ...DESKTOP, viewportWidth: 390 })).toEqual({ id: 'C', reason: 'mobile' });
-    // A narrow desktop window is just a narrow window — it must not be demoted to the phone tier.
-    expect(resolveTier({ ...DESKTOP, viewportWidth: 600 }).id).toBe('B');
+    // A narrow desktop window is not classified as a phone, but the unmeasured default remains performance-first.
+    expect(resolveTier({ ...DESKTOP, viewportWidth: 600 })).toEqual({
+      id: 'C',
+      reason: 'desktop-default',
+    });
   });
 
   it('selects tier C on core- or memory-constrained desktops', () => {
@@ -51,20 +55,20 @@ describe('quality tier selection', () => {
       id: 'C',
       reason: 'constrained',
     });
-    // Unknown memory (the common case outside Chromium) must not by itself demote the device.
-    expect(resolveTier({ ...DESKTOP, deviceMemory: null }).id).toBe('B');
+    // Unknown memory is not treated as constrained, but still receives the conservative default.
+    expect(resolveTier({ ...DESKTOP, deviceMemory: null }).id).toBe('C');
   });
 
-  it('defaults a capable desktop to tier B and never auto-selects tier A', () => {
-    expect(resolveTier(DESKTOP)).toEqual({ id: 'B', reason: 'desktop-default' });
-    // A generous machine still lands on B: tier A is opt-in until it is measured on named hardware.
+  it('defaults every unmeasured desktop to tier C and never auto-selects a higher budget', () => {
+    expect(resolveTier(DESKTOP)).toEqual({ id: 'C', reason: 'desktop-default' });
+    // A generous machine still starts on C until the owner selects a higher budget explicitly.
     const workstation: TierEnvironment = {
       ...DESKTOP,
       hardwareConcurrency: 32,
       deviceMemory: 64,
       viewportWidth: 3840,
     };
-    expect(resolveTier(workstation).id).toBe('B');
+    expect(resolveTier(workstation).id).toBe('C');
   });
 
   it('treats an unrecognised or absent request as no request', () => {
@@ -98,14 +102,15 @@ describe('applying a tier', () => {
 
     // Resolution
     expect(c.maxPixelRatio).toBe(1);
-    expect(b.maxPixelRatio).toBe(1.5);
+    expect(b.maxPixelRatio).toBe(1.25);
     expect(a.maxPixelRatio).toBe(2);
 
-    // Shadows: cascade count, resolution, and range all scale with the tier.
+    // Shadows: cascade count, resolution, and range scale with the tier.
     expect(c.shadows.csm.cascades).toBe(1);
-    expect(b.shadows.csm.cascades).toBe(3);
+    expect(b.shadows.csm.cascades).toBe(2);
     expect(a.shadows.csm.cascades).toBe(4);
-    expect(c.shadows.mapSize).toBeLessThan(b.shadows.mapSize);
+    expect(c.shadows.mapSize).toBe(1024);
+    expect(b.shadows.mapSize).toBe(1024);
     expect(a.shadows.mapSize).toBeGreaterThan(b.shadows.mapSize);
     expect(c.shadows.csm.maxFar).toBeLessThan(a.shadows.csm.maxFar);
 
@@ -114,26 +119,47 @@ describe('applying a tier', () => {
     expect(c.renderer.backendPreference).toBe('auto');
     expect(b.renderer.backendPreference).toBe('auto');
     expect(a.renderer.backendPreference).toBe('auto');
-    // Anti-aliasing: no MSAA on any tier. Tier C resolves with FXAA and the desktop tiers resolve
-    // temporally — and temporal accumulation requires MSAA off, so `antialias` is false at both ends while
-    // the *strategy* differs. The mode is the thing that scales, not the sample count.
+    // No MSAA, temporal history, or velocity attachment on the performance-first and balanced tiers.
     expect(c.renderer.antialias).toBe(false);
     expect(b.renderer.antialias).toBe(false);
     expect(c.postProcessing.antiAliasing).toBe('fxaa');
+    expect(b.postProcessing.antiAliasing).toBe('fxaa');
     expect(c.postProcessing.temporalAntiAliasing.enabled).toBe(false);
+    expect(b.postProcessing.temporalAntiAliasing.enabled).toBe(false);
+    expect(c.postProcessing.motionBlur.enabled).toBe(false);
+    expect(b.postProcessing.motionBlur.enabled).toBe(false);
     expect(c.postProcessing.temporalAntiAliasing.dynamicResolution).toBe(true);
-    expect(c.postProcessing.temporalAntiAliasing.minScale).toBe(0.72);
+    expect(c.postProcessing.temporalAntiAliasing.renderScale).toBe(0.72);
+    expect(c.postProcessing.temporalAntiAliasing.minScale).toBe(0.5);
+    expect(b.postProcessing.temporalAntiAliasing.renderScale).toBe(0.75);
+    expect(b.postProcessing.temporalAntiAliasing.minScale).toBe(0.55);
     expect(c.postProcessing.temporalAntiAliasing.maxScale).toBe(1);
-    expect(b.postProcessing.antiAliasing).toBe('taa');
   });
 
-  it('swaps the backdrop on tier C and keeps the procedural sky on the desktop tiers', () => {
+  it('reduces visual terrain tessellation without changing the shared heightfield', () => {
+    const c = terrainConfigForTier('C');
+    const b = terrainConfigForTier('B');
+    const a = terrainConfigForTier('A');
+    expect(c.seed).toBe(a.seed);
+    expect(c.chunkSizeMeters).toBe(a.chunkSizeMeters);
+    expect(c.physicsSegmentsPerChunk).toBe(a.physicsSegmentsPerChunk);
+    expect(c.lodSegments).toEqual([48, 20, 8]);
+    expect(b.lodSegments).toEqual([64, 24, 12]);
+    expect(a.lodSegments).toEqual([64, 32, 16]);
+    expect(c.maxBuildsPerFrame).toBe(1);
+    expect(b.maxBuildsPerFrame).toBe(1);
+    expect(a.maxBuildsPerFrame).toBe(2);
+  });
+
+  it('keeps the HDRI out of the gameplay background and reserves clouds for tier A', () => {
     const c = applyTier(RENDER_CONFIG, 'C');
     const b = applyTier(RENDER_CONFIG, 'B');
+    const a = applyTier(RENDER_CONFIG, 'A');
     expect(c.environment.useAsBackground).toBe(false);
     expect(c.atmosphere.clouds.enabled).toBe(false);
     expect(b.environment.useAsBackground).toBe(false);
-    expect(b.atmosphere.clouds.enabled).toBe(true);
+    expect(b.atmosphere.clouds.enabled).toBe(false);
+    expect(a.atmosphere.clouds.enabled).toBe(true);
   });
 
   it('leaves untouched sections at their baseline values', () => {

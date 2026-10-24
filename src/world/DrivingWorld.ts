@@ -23,10 +23,14 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       'createDrivingWorld requires a terrain sampler: Application creates one and shares it with physics.',
     );
   }
+  const qualityTier: TierId =
+    context.qualityTier === 'A' || context.qualityTier === 'B' ? context.qualityTier : 'C';
   const root = new Group();
   root.name = 'driving-world';
   const surfaceTextures = new SurfaceTextureLibrary();
-  const terrain = new TerrainWorld(terrainSampler);
+  const terrain = new TerrainWorld(terrainSampler, {
+    enableParallaxOcclusion: qualityTier === 'A',
+  });
   root.add(terrain.root);
   const distantMountains = new DistantMountainWorld(terrainSampler);
   root.add(distantMountains.root);
@@ -49,10 +53,8 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
   // District vegetation (Increment 5): instanced scatter fed by the same sampler.
   // The detail scale pulls the scanned LOD rings in on modest devices: the deep
   // jungle canopy is the heaviest thing this world streams.
-  const detailScale = context.qualityTier === 'C' ? 0.6 : context.qualityTier === 'B' ? 0.85 : 1;
-  const vegetationTier: TierId =
-    context.qualityTier === 'C' ? 'C' : context.qualityTier === 'B' ? 'B' : 'A';
-  const vegetation = new VegetationWorld(terrainSampler, undefined, detailScale, vegetationTier);
+  const detailScale = qualityTier === 'C' ? 0.6 : qualityTier === 'B' ? 0.85 : 1;
+  const vegetation = new VegetationWorld(terrainSampler, undefined, detailScale, qualityTier);
   root.add(vegetation.root);
   // Scanned CC0 trees replace the authored species behind the same scatter (Phase 5). Start
   // loading immediately, then include it in first-world readiness so the forest is not swapped
@@ -73,12 +75,10 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
   // prepare-ahead streamers. Roadless test samplers keep the rural-only fixture behavior.
   const urbanNetwork = terrainSampler.roadNetwork ?? null;
   const urbanNode = urbanNetwork?.nodeById(AOHARA_JUNCTION_NODE_ID) ?? null;
-  const tier: TierId =
-    context.qualityTier === 'A' || context.qualityTier === 'C' ? context.qualityTier : 'B';
   const aohara =
     urbanNode === null
       ? null
-      : new UrbanNightWorld(tier, {
+      : new UrbanNightWorld(qualityTier, {
           position: [
             AOHARA_DISTRICT_CONFIG.centerX,
             urbanNode.y + 0.57,

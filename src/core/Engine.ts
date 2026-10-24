@@ -255,8 +255,8 @@ export class Engine {
    * Render scale the scene pass is currently drawn at, as a fraction of the drawing buffer; `null` when
    * the active post chain cannot use a scaled scene pass.
    *
-   * TAAU reconstructs reduced scenes; the low-tier spatial-AA path linearly upscales before FXAA/SMAA and
-   * may look softer. Reporting the scale makes both adaptive and explicitly fixed scaling observable.
+   * TAAU reconstructs reduced scenes; the performance-tier spatial-AA path linearly upscales before FXAA/SMAA
+   * and may look softer. Reporting the scale makes both adaptive and explicitly fixed scaling observable.
    */
   get resolutionScale(): number | null {
     const chain = this.#chain;
@@ -650,9 +650,9 @@ export class Engine {
 
   /**
    * Moves the render scale towards what the delivered frame time can afford, then applies it to the scene
-   * pass. TAAU reconstructs reduced frames on B/A; tier C can scale its FXAA/SMAA scene pass as a bounded
-   * mobile fallback, with a higher floor because spatial AA cannot restore the lost detail. That path is
-   * explicitly reported as FXAA/SMAA rather than described as temporal upscaling.
+   * pass. TAAU reconstructs reduced frames on the high tier; the performance-first tiers scale their FXAA
+   * scene pass inside explicit bounds. Spatial upscaling can soften detail, so the active scale is reported
+   * in diagnostics rather than described as temporal reconstruction.
    *
    * `delta` is the frame time this engine already measured, in seconds. It is not the GPU's own time — see
    * the note at the top of `DynamicResolution.ts` for what that difference costs — but it is the time the
@@ -687,10 +687,9 @@ export class Engine {
       return;
     }
     if (initial) {
-      // Optimistic start: the highest scale the configuration allows, with the controller adapting down if
-      // the first second cannot hold it. Starting low would mean every session opens soft on the machines
-      // that did not need to trade anything away.
-      this.#resolution.reset(temporal.dynamicResolution ? temporal.maxScale : temporal.renderScale);
+      // Start from the tier's declared budget. A lower tier should not open at full scale and spend its
+      // first several seconds dropping resolution after the owner has already felt the missed frames.
+      this.#resolution.reset(temporal.renderScale);
     }
     this.#renderScale = this.#resolution.scale;
     chain.scenePass.setResolutionScale(this.#renderScale);

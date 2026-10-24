@@ -174,15 +174,15 @@ describe('post stack per tier', () => {
     expect(resolvePostEffects(tierC)).toContain('fxaa');
     expect(resolvePostEffects(tierC)).not.toContain('smaa');
 
-    // Tier B: temporal resolve, ambient occlusion at half resolution.
-    expect(tierB.postProcessing.antiAliasing).toBe('taa');
+    // Tier B: FXAA without motion vectors, plus ambient occlusion at half resolution.
+    expect(tierB.postProcessing.antiAliasing).toBe('fxaa');
     expect(tierB.renderer.antialias).toBe(false);
     expect(tierB.renderer.samples).toBe(0);
-    expect(resolvePostEffects(tierB)).toContain('taa');
-    expect(resolvePostEffects(tierB)).toContain('motionBlur');
-    expect(tierB.postProcessing.motionBlur.enabled).toBe(true);
+    expect(resolvePostEffects(tierB)).toContain('fxaa');
+    expect(resolvePostEffects(tierB)).not.toContain('taa');
+    expect(resolvePostEffects(tierB)).not.toContain('motionBlur');
+    expect(tierB.postProcessing.motionBlur.enabled).toBe(false);
     expect(resolvePostEffects(tierB)).not.toContain('smaa');
-    expect(resolvePostEffects(tierB)).not.toContain('fxaa');
     expect(tierB.postProcessing.ambientOcclusion.enabled).toBe(true);
     expect(tierB.postProcessing.ambientOcclusion.resolutionScale).toBe(0.5);
     expect(resolvePostEffects(tierB)).toContain('ao');
@@ -219,14 +219,15 @@ describe('post stack per tier', () => {
     }
   });
 
-  it('gives the constrained tier neither of the effects that need motion vectors', () => {
-    const tierC = applyTier(RENDER_CONFIG, 'C');
-    expect(tierC.postProcessing.temporalAntiAliasing.enabled).toBe(false);
-    expect(tierC.postProcessing.motionBlur.enabled).toBe(false);
-    // Nothing reads velocity, so the scene pass asks for no velocity attachment: the pair costs this tier
-    // exactly zero rather than "little".
-    expect(requiresSceneVelocity(resolvePostEffects(tierC))).toBe(false);
-    expect(resolvePostEffects(tierC)).toContain('fxaa');
+  it('keeps motion vectors and temporal history off on the performance-first tiers', () => {
+    for (const tier of ['C', 'B'] as const) {
+      const config = applyTier(RENDER_CONFIG, tier);
+      expect(config.postProcessing.temporalAntiAliasing.enabled).toBe(false);
+      expect(config.postProcessing.motionBlur.enabled).toBe(false);
+      // Nothing reads velocity, so the scene pass asks for no velocity attachment.
+      expect(requiresSceneVelocity(resolvePostEffects(config))).toBe(false);
+      expect(resolvePostEffects(config)).toContain('fxaa');
+    }
   });
 
   it('keeps the AO settings the node actually consumes in a sane range', () => {
@@ -410,15 +411,15 @@ describe('temporal anti-aliasing and motion blur', () => {
     }
   });
 
-  it('turns both effects off from the URL, and leaves spatial AA in their place', () => {
+  it('switches between the performance baseline and the temporal comparison path', () => {
     const base = applyTier(RENDER_CONFIG, 'B');
     const off = applyRenderSwitches(base, '?taa=0&mblur=0');
     expect(resolvePostEffects(off)).not.toContain('taa');
     expect(resolvePostEffects(off)).not.toContain('motionBlur');
-    expect(resolvePostEffects(off)).toContain('smaa');
+    expect(resolvePostEffects(off)).toContain('fxaa');
     expect(requiresSceneVelocity(resolvePostEffects(off))).toBe(false);
 
-    const on = applyRenderSwitches(base, '?taa=1&mblur=1');
+    const on = applyRenderSwitches(base, '?aa=taa&taa=1&mblur=1');
     expect(resolvePostEffects(on)).toContain('taa');
     expect(resolvePostEffects(on)).toContain('motionBlur');
   });
@@ -535,9 +536,9 @@ describe('contact shadows and SSGI', () => {
     expect(tierB).not.toContain('ssgi');
   });
 
-  it('buys contact shadows from tier B up, never on the constrained tier', () => {
+  it('reserves contact shadows for the explicitly selected high tier', () => {
     expect(resolvePostEffects(applyTier(RENDER_CONFIG, 'C'))).not.toContain('contactShadows');
-    expect(resolvePostEffects(applyTier(RENDER_CONFIG, 'B'))).toContain('contactShadows');
+    expect(resolvePostEffects(applyTier(RENDER_CONFIG, 'B'))).not.toContain('contactShadows');
     expect(resolvePostEffects(applyTier(RENDER_CONFIG, 'A'))).toContain('contactShadows');
   });
 

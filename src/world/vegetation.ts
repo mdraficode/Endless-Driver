@@ -61,8 +61,14 @@ import { VEGETATION_SPECIES } from './districts';
 import { loadScannedSpecies, type ScannedSpecies } from './scanned-vegetation';
 import type { TreeHitEvent, TreeVisualState } from './tree-collision';
 import type { TerrainSampler } from './terrain-height';
-import { chunkKey, type PlannedChunk } from './terrain-chunks';
-import { planVegetationWindow } from './vegetation-streaming';
+import {
+  chunkKey,
+  planChunksAround,
+  predictPrefetchFocus,
+  resolveWindowCenter,
+  type ChunkCoord,
+  type PlannedChunk,
+} from './terrain-chunks';
 
 /**
  * District vegetation: deterministic, instanced scatter (Phase 4 Increment 5).
@@ -349,7 +355,9 @@ export class VegetationWorld {
     stone: 0,
   };
   readonly #groundCoverMaterial: MeshStandardNodeMaterial;
-  #center: { cx: number; cz: number } | null = null;
+  #center: ChunkCoord | null = null;
+  #plannedWindow: PlannedChunk[] | null = null;
+  #retainedWindow: readonly PlannedChunk[] | null = null;
   #totalInstances = 0;
   #generatedChunks = 0;
   #disposed = false;
@@ -679,18 +687,38 @@ export class VegetationWorld {
   }
 
   #planWindow(focus: { x: number; z: number }, velocity: { x: number; z: number }): PlannedChunk[] {
-    const plan = planVegetationWindow(
-      this.#sampler.config,
-      this.#config.radiusChunks,
+    const predicted = predictPrefetchFocus(this.#sampler.config, focus, velocity);
+    const nextCenter = resolveWindowCenter(
       this.#center,
-      focus,
-      velocity,
+      this.#sampler.config,
+      predicted.x,
+      predicted.z,
     );
-    this.#center = plan.center;
-    return plan.chunks;
+    const currentCenter = this.#center;
+    if (
+      this.#plannedWindow !== null &&
+      currentCenter !== null &&
+      currentCenter.cx === nextCenter.cx &&
+      currentCenter.cz === nextCenter.cz
+    ) {
+      return this.#plannedWindow;
+    }
+    this.#center = nextCenter;
+    this.#plannedWindow = planChunksAround(
+      this.#sampler.config,
+      nextCenter.cx,
+      nextCenter.cz,
+      focus.x,
+      focus.z,
+    ).filter((chunk) => chunk.ring <= this.#config.radiusChunks);
+    return this.#plannedWindow;
   }
 
   #retainPlannedChunks(planned: readonly PlannedChunk[]): boolean {
+    if (planned === this.#retainedWindow) {
+      return false;
+    }
+    this.#retainedWindow = planned;
     const wanted = new Set(planned.map((chunk) => chunkKey(chunk.cx, chunk.cz)));
     let changed = false;
     for (const key of [...this.#chunkPlacements.keys()]) {

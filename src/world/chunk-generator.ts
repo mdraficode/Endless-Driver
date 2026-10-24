@@ -7,8 +7,8 @@ import type { TerrainGenerationResult } from './terrain-generation';
 /**
  * Main-thread side of the generation worker pool.
  *
- * `TerrainWorld` hands this class the planner-ordered build queue every frame;
- * the pool (two workers, one on small devices) generates raw geometry off-thread and
+ * `TerrainWorld` hands this class the planner-ordered build queue when its hysteretic
+ * window changes; the pool (two workers, one on small devices) generates raw geometry off-thread and
  * returns it zero-copy. Three safety properties matter more than throughput:
  *
  * 1. **Determinism** — workers rebuild the identical sampler from configs, so a
@@ -106,8 +106,8 @@ export class ChunkGenerator {
   }
 
   /**
-   * Reconciles the pool with the planner's current ordered queue. Called once per
-   * frame; cheap when nothing changed.
+   * Reconciles the pool with the planner's current ordered queue. TerrainWorld
+   * calls this only when the desired streaming window changes, not every frame.
    */
   syncQueue(jobs: readonly GenerationJob[]): void {
     if (this.#mode !== 'worker' || this.#disposed) {

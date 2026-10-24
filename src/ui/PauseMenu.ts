@@ -59,7 +59,7 @@ const PREFERENCE_KEYS: readonly (keyof GamePreferences)[] = [
 
 const GRAPHICS_CHOICES: readonly { value: GraphicsTierPreference; label: string }[] = [
   { value: 'auto', label: 'Auto — recommended for this device' },
-  { value: 'C', label: 'Low — tier C' },
+  { value: 'C', label: 'Performance — tier C' },
   { value: 'B', label: 'Balanced — tier B' },
   { value: 'A', label: 'High — tier A' },
 ];
