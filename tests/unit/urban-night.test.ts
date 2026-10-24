@@ -201,12 +201,12 @@ describe('Aohara city night-lighting rules', () => {
       const follower = vehicles[index]!;
       const leader = vehicles[(index + 1) % vehicles.length]!;
       const resultingGap =
-        ((leader.distance +
+        (((leader.distance +
           leader.proposedTravelMeters -
           follower.distance -
           follower.proposedTravelMeters +
           routeLength) %
-          routeLength +
+          routeLength) +
           routeLength) %
         routeLength;
       const minimumGap = (follower.lengthMeters + leader.lengthMeters) / 2 + bumperGap;

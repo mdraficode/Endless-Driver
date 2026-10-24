@@ -114,10 +114,7 @@ export interface TrafficRouteFollower {
   proposedTravelMeters: number;
 }
 
-function compareTrafficDistance(
-  first: TrafficRouteFollower,
-  second: TrafficRouteFollower,
-): number {
+function compareTrafficDistance(first: TrafficRouteFollower, second: TrafficRouteFollower): number {
   return first.distance - second.distance || first.index - second.index;
 }
 
