@@ -1586,7 +1586,7 @@ body {
   bottom: max(1.1rem, env(safe-area-inset-bottom));
   display: flex;
   align-items: flex-end;
-  gap: 0.65rem;
+  gap: 0;
   pointer-events: none;
   transform: scale(var(--touch-control-scale));
   transform-origin: left bottom;
@@ -1594,33 +1594,53 @@ body {
 }
 
 .touch-steering-arrow {
+  position: relative;
+  isolation: isolate;
   display: grid;
-  width: 4.4rem;
-  height: 5.1rem;
+  width: 6.2rem;
+  height: 6.8rem;
+  padding: 0;
   place-items: center;
-  border: 2px solid rgb(226 232 240 / 42%);
+  border: 0;
   border-radius: 1.05rem;
-  background: linear-gradient(145deg, rgb(31 50 67 / 82%), rgb(9 18 30 / 84%));
+  background: transparent;
   color: #ecfeff;
   font:
     700 2rem/1 system-ui,
     sans-serif;
   text-shadow: 0 1px 6px rgb(0 0 0 / 60%);
-  box-shadow:
-    0 4px 14px rgb(0 0 0 / 28%),
-    inset 0 1px rgb(255 255 255 / 12%);
   pointer-events: auto;
   touch-action: none;
   -webkit-tap-highlight-color: transparent;
 }
 
-.touch-steering-arrow.is-active {
+/* The button's full transparent box is tappable; the inset face keeps the visible arrows tidy. */
+.touch-steering-arrow::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0.4rem;
+  border: 2px solid rgb(226 232 240 / 42%);
+  border-radius: 1.05rem;
+  background: linear-gradient(145deg, rgb(31 50 67 / 82%), rgb(9 18 30 / 84%));
+  box-shadow:
+    0 4px 14px rgb(0 0 0 / 28%),
+    inset 0 1px rgb(255 255 255 / 12%);
+  content: '';
+  pointer-events: none;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.touch-steering-arrow.is-active::before {
+  transform: translateY(-2px);
   border-color: rgb(103 232 249 / 88%);
   background: linear-gradient(145deg, rgb(8 145 178 / 84%), rgb(14 55 80 / 92%));
   box-shadow:
     0 0 1.1rem rgb(34 211 238 / 32%),
     inset 0 0 0.75rem rgb(103 232 249 / 22%);
-  transform: translateY(-2px);
 }
 
 .touch-steering-arrow:focus-visible,
