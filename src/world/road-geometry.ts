@@ -149,6 +149,9 @@ export function buildDashGeometry(network: RoadNetwork, yOffset: number): Buffer
   const halfWidth = 0.09;
   const junctionClearance = ROAD_MARKING_JUNCTION_CLEARANCE_METERS;
   for (const edge of network.edges) {
+    if (edge.roadClass === 'urban-alley') {
+      continue;
+    }
     const { points } = edge;
     // Rural/connector/local streets use one centre dash. The wider Aohara avenue has
     // two same-direction lane dividers; its double amber centreline is batched separately.

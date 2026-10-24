@@ -36,6 +36,10 @@ import {
   type TrafficSignalAspect,
 } from '../config/urban-city';
 import {
+  AOHARA_BACKSTREET_BLOCKS,
+  AOHARA_BACKSTREET_CONFIG,
+} from '../config/aohara-backstreets';
+import {
   AOHARA_DISTRICT_CONFIG,
   AOHARA_GRID_COLUMNS,
   AOHARA_GRID_ROWS,
@@ -48,6 +52,7 @@ import { collideCarWithStaticBoxes, type StaticBuildingBox } from './static-buil
 import { createArchitecturalMaterial } from './architectural-materials';
 import { bindScannedPbrMaps } from './scanned-pbr';
 import { UrbanStreetFurniture } from './urban-furniture';
+import { UrbanBackstreetProps } from './urban-backstreets';
 import type { RoadNetwork } from './road-network';
 import { UrbanStreetActivity } from './urban-activity';
 import type { PhysicsWorld } from '../physics/PhysicsWorld';
@@ -105,7 +110,14 @@ interface RankedFacadeBand {
   readonly rank: number;
 }
 
-type CityBuildingKind = 'house' | 'townhouse' | 'mansion' | 'shop' | 'casino' | 'infill';
+type CityBuildingKind =
+  | 'house'
+  | 'townhouse'
+  | 'mansion'
+  | 'shop'
+  | 'casino'
+  | 'infill'
+  | 'frontage';
 type CityRoofStyle = 'flat' | 'hipped';
 
 interface CityBuildingSpec {
@@ -119,6 +131,8 @@ interface CityBuildingSpec {
   readonly roofColor: number;
   readonly roofStyle?: CityRoofStyle;
   readonly yaw?: number;
+  /** Marks a shell added by the dense Aohara perimeter-frontage pass, including small shops. */
+  readonly frontage?: boolean;
 }
 
 function hasPitchedRoof(building: CityBuildingSpec): boolean {
@@ -126,6 +140,123 @@ function hasPitchedRoof(building: CityBuildingSpec): boolean {
     building.roofStyle === 'hipped' ||
     (building.roofStyle === undefined && (building.kind === 'house' || building.kind === 'mansion'))
   );
+}
+
+function cityBuildingFootprint(
+  building: CityBuildingSpec,
+  originX: number,
+  originZ: number,
+): StaticBuildingBox {
+  return {
+    x: originX + building.x,
+    z: originZ + building.z,
+    yaw: building.yaw ?? 0,
+    halfWidth: building.width / 2,
+    halfDepth: building.depth / 2,
+  };
+}
+
+function footprintSeparation(a: StaticBuildingBox, b: StaticBuildingBox, margin: number): number {
+  const aAxes = [
+    [Math.cos(a.yaw), -Math.sin(a.yaw)],
+    [Math.sin(a.yaw), Math.cos(a.yaw)],
+  ] as const;
+  const bAxes = [
+    [Math.cos(b.yaw), -Math.sin(b.yaw)],
+    [Math.sin(b.yaw), Math.cos(b.yaw)],
+  ] as const;
+  const dx = b.x - a.x;
+  const dz = b.z - a.z;
+  return Math.max(
+    ...[...aAxes, ...bAxes].map(([axisX, axisZ]) => {
+      const centerDistance = Math.abs(dx * axisX + dz * axisZ);
+      const radius = (box: StaticBuildingBox, axes: typeof aAxes): number =>
+        (box.halfWidth + margin) *
+          Math.abs(axes[0]![0] * axisX + axes[0]![1] * axisZ) +
+        (box.halfDepth + margin) *
+          Math.abs(axes[1]![0] * axisX + axes[1]![1] * axisZ);
+      return centerDistance - radius(a, aAxes) - radius(b, bAxes);
+    }),
+  );
+}
+
+function pointToFootprintDistance(x: number, z: number, footprint: StaticBuildingBox): number {
+  const dx = x - footprint.x;
+  const dz = z - footprint.z;
+  const cos = Math.cos(footprint.yaw);
+  const sin = Math.sin(footprint.yaw);
+  const localX = dx * cos - dz * sin;
+  const localZ = dx * sin + dz * cos;
+  return Math.hypot(
+    Math.max(0, Math.abs(localX) - footprint.halfWidth),
+    Math.max(0, Math.abs(localZ) - footprint.halfDepth),
+  );
+}
+
+function buildAoharaAlleyClearanceSamples(
+  network: RoadNetwork | undefined,
+): readonly { readonly x: number; readonly z: number; readonly halfWidth: number }[] {
+  if (network === undefined) return [];
+  const samples: { readonly x: number; readonly z: number; readonly halfWidth: number }[] = [];
+  for (const edge of network.edges) {
+    if (edge.roadClass !== 'urban-alley') continue;
+    for (let index = 0; index + 1 < edge.points.length; index += 1) {
+      const start = edge.points[index]!;
+      const end = edge.points[index + 1]!;
+      const length = Math.hypot(end.x - start.x, end.z - start.z);
+      const steps = Math.max(1, Math.ceil(length / 2.5));
+      for (let step = 0; step < steps; step += 1) {
+        const t = step / steps;
+        samples.push({
+          x: start.x + (end.x - start.x) * t,
+          z: start.z + (end.z - start.z) * t,
+          halfWidth: edge.halfWidthMeters,
+        });
+      }
+    }
+  }
+  return samples;
+}
+
+function selectClearCityBuildings(
+  candidates: readonly CityBuildingSpec[],
+  blockedFootprints: readonly StaticBuildingBox[],
+  roadNetwork: RoadNetwork | undefined,
+  originX: number,
+  originZ: number,
+  limit = Number.POSITIVE_INFINITY,
+): readonly CityBuildingSpec[] {
+  const selected: CityBuildingSpec[] = [];
+  const obstacles = [...blockedFootprints];
+  const alleySamples = buildAoharaAlleyClearanceSamples(roadNetwork);
+  for (const building of candidates) {
+    const footprint = cityBuildingFootprint(building, originX, originZ);
+    if (
+      obstacles.some(
+        (obstacle) =>
+          footprintSeparation(
+            footprint,
+            obstacle,
+            AOHARA_BACKSTREET_CONFIG.buildingClearanceMeters,
+          ) <= 0.05,
+      )
+    ) {
+      continue;
+    }
+    if (
+      alleySamples.some(
+        (sample) =>
+          pointToFootprintDistance(sample.x, sample.z, footprint) <
+          sample.halfWidth + AOHARA_BACKSTREET_CONFIG.alleyWallClearanceMeters,
+      )
+    ) {
+      continue;
+    }
+    selected.push(building);
+    obstacles.push(footprint);
+    if (selected.length >= limit) break;
+  }
+  return selected;
 }
 
 interface BillboardSpec extends TransformSpec {
@@ -153,6 +284,7 @@ interface CityTypologyStats {
   readonly infillBuildings: number;
   readonly infillHippedRoofs: number;
   readonly infillFlatRoofs: number;
+  readonly frontageBuildings: number;
   readonly casinos: number;
   readonly mansions: number;
   readonly houses: number;
@@ -353,45 +485,102 @@ function buildCityBuildingSpecs(networkIntegrated: boolean): readonly CityBuildi
   ];
 }
 
-/** Place deterministic low-rise homes in the open half-blocks, clear of roads and existing shells. */
-function buildAoharaInfillBuildingSpecs(count: number): readonly CityBuildingSpec[] {
-  const blockCenters = [-1.5, -0.5, 0.5, 1.5].map(
-    (offset) => offset * AOHARA_DISTRICT_CONFIG.gridSpacingMeters,
-  );
-  // Reuse the city kit's house/townhouse palette so infill does not add unique material batches.
+/** Offer four deterministic interior-corner plots per block for road- and shell-clear infill. */
+function buildAoharaInfillBuildingCandidates(): readonly CityBuildingSpec[] {
   const wallPalette = [0x82786b, 0x7b746e, 0x99917e, 0x8a928d, 0x6f7d78, 0x9a7b6a] as const;
   const roofPalette = [0x3b4149, 0x3b4149, 0x263039, 0x263039, 0x45413a, 0x514747] as const;
+  const cornerSigns = [-1, 1] as const;
   const candidates: { readonly rank: number; readonly building: CityBuildingSpec }[] = [];
 
-  blockCenters.forEach((centerZ, rowIndex) => {
-    blockCenters.forEach((centerX, columnIndex) => {
-      const seed = rowIndex * blockCenters.length + columnIndex;
-      const outwardSide = centerZ < 0 ? -1 : 1;
-      const paletteIndex = Math.floor(stableUnit(rowIndex, columnIndex, 811) * wallPalette.length);
-      candidates.push({
-        rank: stableUnit(rowIndex, columnIndex, 827),
-        building: {
-          kind: 'infill',
-          x: centerX,
-          z: centerZ + outwardSide * 42,
-          width: 12.8 + stableUnit(seed, columnIndex, 839) * 4,
-          depth: 10 + stableUnit(seed, rowIndex, 853) * 3.4,
-          height: 6.3 + stableUnit(seed, rowIndex + columnIndex, 877) * 4.2,
-          color: wallPalette[paletteIndex] ?? wallPalette[0],
-          roofColor: roofPalette[paletteIndex] ?? roofPalette[0],
-          yaw: stableUnit(rowIndex, columnIndex, 883) < 0.5 ? 0 : Math.PI / 2,
-        },
+  AOHARA_BACKSTREET_BLOCKS.forEach((block, blockIndex) => {
+    cornerSigns.forEach((zSign, zIndex) => {
+      cornerSigns.forEach((xSign, xIndex) => {
+        const cornerIndex = zIndex * 2 + xIndex;
+        const paletteIndex = Math.floor(
+          stableUnit(block.rowIndex, block.columnIndex, 811 + cornerIndex) * wallPalette.length,
+        );
+        candidates.push({
+          rank: stableUnit(blockIndex, cornerIndex, 827),
+          building: {
+            kind: 'infill',
+            x: block.centerLocalX + xSign * AOHARA_BACKSTREET_CONFIG.innerBuildingCornerOffsetMeters,
+            z: block.centerLocalZ + zSign * AOHARA_BACKSTREET_CONFIG.innerBuildingCornerOffsetMeters,
+            width: 12.8 + stableUnit(blockIndex, cornerIndex, 839) * 4,
+            depth: 10 + stableUnit(blockIndex, cornerIndex, 853) * 3.4,
+            height: 6.3 + stableUnit(blockIndex, cornerIndex, 877) * 4.2,
+            color: wallPalette[paletteIndex] ?? wallPalette[0],
+            roofColor: roofPalette[paletteIndex] ?? roofPalette[0],
+            yaw: stableUnit(blockIndex, cornerIndex, 883) < 0.5 ? 0 : Math.PI / 2,
+          },
+        });
       });
     });
   });
-  candidates.sort((first, second) => first.rank - second.rank);
   return candidates
-    .slice(0, Math.max(0, Math.min(count, candidates.length)))
-    .map(({ building }, index) => ({
-      ...building,
-      // Each tier deliberately keeps both low-rise roof silhouettes, not only a wider colour set.
-      roofStyle: index % 3 === 0 ? 'hipped' : 'flat',
-    }));
+    .sort((first, second) => first.rank - second.rank)
+    .map(({ building }) => building);
+}
+
+function applyInfillRoofMix(buildings: readonly CityBuildingSpec[]): readonly CityBuildingSpec[] {
+  return buildings.map((building, index) => ({
+    ...building,
+    // Each tier deliberately keeps both low-rise roof silhouettes, not only a wider colour set.
+    roofStyle: index % 3 === 0 ? 'hipped' : 'flat',
+  }));
+}
+
+function buildAoharaFrontageBuildingSpecs(): readonly CityBuildingSpec[] {
+  const wallPalette = [0x71685d, 0x566167, 0x6c7469, 0x735d55, 0x596479, 0x83765f] as const;
+  const roofPalette = [0x3b4149, 0x39464d, 0x4a423a, 0x53463f, 0x454a52, 0x594a42] as const;
+  const sides = ['north', 'east', 'south', 'west'] as const;
+  const grid = AOHARA_DISTRICT_CONFIG.gridSpacingMeters;
+  const frontages: CityBuildingSpec[] = [];
+
+  AOHARA_BACKSTREET_BLOCKS.forEach((block, blockIndex) => {
+    const shopSide = Math.floor(stableUnit(block.rowIndex, block.columnIndex, 1901) * sides.length);
+    const shopPosition = Math.floor(stableUnit(block.rowIndex, block.columnIndex, 1913) * 4);
+    sides.forEach((side, sideIndex) => {
+      AOHARA_BACKSTREET_CONFIG.frontagePositionsMeters.forEach((tangentOffset, positionIndex) => {
+        const paletteIndex = Math.floor(
+          stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1931) * wallPalette.length,
+        );
+        const radialInset = grid / 2 - AOHARA_BACKSTREET_CONFIG.frontageBuildingInsetMeters;
+        const building: CityBuildingSpec = {
+          kind: sideIndex === shopSide && positionIndex === shopPosition ? 'shop' : 'frontage',
+          frontage: true,
+          x:
+            side === 'west'
+              ? block.centerLocalX - radialInset
+              : side === 'east'
+                ? block.centerLocalX + radialInset
+                : block.centerLocalX + tangentOffset,
+          z:
+            side === 'north'
+              ? block.centerLocalZ - radialInset
+              : side === 'south'
+                ? block.centerLocalZ + radialInset
+                : block.centerLocalZ + tangentOffset,
+          width: AOHARA_BACKSTREET_CONFIG.frontageBuildingDepthMeters,
+          depth: AOHARA_BACKSTREET_CONFIG.frontageBuildingWidthMeters,
+          height: 8.2 + stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1949) * 5.1,
+          color: wallPalette[paletteIndex] ?? wallPalette[0],
+          roofColor: roofPalette[paletteIndex] ?? roofPalette[0],
+          roofStyle:
+            stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1951) < 0.18 ? 'hipped' : 'flat',
+          yaw:
+            side === 'north'
+              ? Math.PI / 2
+              : side === 'south'
+                ? -Math.PI / 2
+                : side === 'west'
+                  ? Math.PI
+                  : 0,
+        };
+        frontages.push(building);
+      });
+    });
+  });
+  return frontages;
 }
 
 function createBasicMaterial(color: number, name: string): MeshBasicNodeMaterial {
@@ -1100,6 +1289,7 @@ export class UrbanNightWorld implements SceneContent {
   readonly #cityTypologyStats: CityTypologyStats;
   readonly #activity: UrbanStreetActivity | null;
   readonly #streetFurniture: UrbanStreetFurniture;
+  readonly #backstreetProps: UrbanBackstreetProps | null;
   readonly #surfaceTextures: SurfaceTextureLibrary;
   readonly #ownsSurfaceTextures: boolean;
   readonly #networkIntegrated: boolean;
@@ -1181,11 +1371,44 @@ export class UrbanNightWorld implements SceneContent {
     this.#buildStreetAndCrossing();
     this.#buildTowers(this.#towers);
     const existingBuildings = buildCityBuildingSpecs(this.#networkIntegrated);
-    const infillBuildings = this.#networkIntegrated
-      ? buildAoharaInfillBuildingSpecs(activityBudget.infillBuildings)
+    const existingFootprints = [
+      ...this.#buildingColliders,
+      ...existingBuildings.map((building) => cityBuildingFootprint(building, originX, originZ)),
+    ];
+    const frontageBuildings = this.#networkIntegrated
+      ? selectClearCityBuildings(
+          buildAoharaFrontageBuildingSpecs(),
+          existingFootprints,
+          options.roadNetwork,
+          originX,
+          originZ,
+        )
       : [];
-    const additionalBuildings = [...existingBuildings, ...infillBuildings];
+    const infillBlockedFootprints = [
+      ...existingFootprints,
+      ...frontageBuildings.map((building) => cityBuildingFootprint(building, originX, originZ)),
+    ];
+    const infillBuildings = this.#networkIntegrated
+      ? applyInfillRoofMix(
+          selectClearCityBuildings(
+            buildAoharaInfillBuildingCandidates(),
+            infillBlockedFootprints,
+            options.roadNetwork,
+            originX,
+            originZ,
+            activityBudget.infillBuildings,
+          ),
+        )
+      : [];
+    const additionalBuildings = [...existingBuildings, ...frontageBuildings, ...infillBuildings];
     const typologyCounts = this.#buildCityTypologies(additionalBuildings);
+    this.#backstreetProps =
+      this.#networkIntegrated && options.roadNetwork !== undefined
+        ? new UrbanBackstreetProps(tier, options.roadNetwork, this.#buildingColliders, [originX, originY, originZ])
+        : null;
+    if (this.#backstreetProps !== null) {
+      this.root.add(this.#backstreetProps.root);
+    }
     const accentStats = this.#buildNightArchitectureAccents(this.#towers, additionalBuildings);
     this.#highRiseNightAccentInstances = accentStats.highRiseInstances;
     this.#storefrontNightAccentInstances = accentStats.storefrontInstances;
@@ -1410,6 +1633,7 @@ export class UrbanNightWorld implements SceneContent {
       infillBuildings: this.#cityTypologyStats.infillBuildings,
       infillHippedRoofs: this.#cityTypologyStats.infillHippedRoofs,
       infillFlatRoofs: this.#cityTypologyStats.infillFlatRoofs,
+      frontageBuildings: this.#cityTypologyStats.frontageBuildings,
       streetLightPoles: this.#streetLightPoleCount,
       streetLightBollards: this.#streetLightBollardInstances,
       nightMoodLightCandidates: this.#nightMoodLightCandidates,
@@ -1445,6 +1669,17 @@ export class UrbanNightWorld implements SceneContent {
         urbanPedestrians: 0,
         urbanActivityBatches: 0,
       }),
+      ...(this.#backstreetProps?.getContentStats() ?? {
+        urbanAlleyProps: 0,
+        urbanAlleyPropsBudget: 0,
+        urbanAlleyWasteBins: 0,
+        urbanAlleyDumpsters: 0,
+        urbanAlleyCardboardStacks: 0,
+        urbanAlleyHandCarts: 0,
+        urbanAlleyCrateStacks: 0,
+        urbanAlleyPallets: 0,
+        urbanAlleyPropBatches: 0,
+      }),
       ...this.#streetFurniture.getContentStats(),
       qualityTierCode: this.#tier === 'C' ? 0 : this.#tier === 'B' ? 1 : 2,
     };
@@ -1452,7 +1687,11 @@ export class UrbanNightWorld implements SceneContent {
 
   /** Static city-building footprints stop the player car through the existing collision response. */
   collide(car: TownCarProbe): TownHit[] {
-    return this.#disposed ? [] : collideCarWithStaticBoxes(car, this.#buildingColliders);
+    if (this.#disposed) return [];
+    return [
+      ...collideCarWithStaticBoxes(car, this.#buildingColliders),
+      ...collideCarWithStaticBoxes(car, this.#backstreetProps?.collisionBoxes ?? []),
+    ];
   }
 
   /** Read-only diagnostic copy used to audit city building clearances against the road graph. */
@@ -1466,6 +1705,7 @@ export class UrbanNightWorld implements SceneContent {
     this.#disposed = true;
     this.#activity?.dispose();
     this.#streetFurniture.dispose();
+    this.#backstreetProps?.dispose();
     if (this.#ownsSurfaceTextures) {
       this.#surfaceTextures.dispose();
     }
@@ -2400,6 +2640,7 @@ export class UrbanNightWorld implements SceneContent {
       infillBuildings: buildings.filter((building) => building.kind === 'infill').length,
       infillHippedRoofs,
       infillFlatRoofs,
+      frontageBuildings: buildings.filter((building) => building.frontage === true).length,
       casinos: buildings.filter((building) => building.kind === 'casino').length,
       mansions: buildings.filter((building) => building.kind === 'mansion').length,
       houses: buildings.filter((building) => building.kind === 'house').length,

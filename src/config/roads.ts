@@ -4,13 +4,24 @@
  * the minimap all consume the same solved graph.
  */
 import {
+  AOHARA_BACKSTREET_BLOCKS,
+  AOHARA_BACKSTREET_CONFIG,
+  type AoharaBackstreetAccess,
+} from './aohara-backstreets';
+import {
   AOHARA_DISTRICT_CONFIG,
   AOHARA_GRID_COLUMNS,
   AOHARA_GRID_ROWS,
   AOHARA_JUNCTION_NODE_ID,
 } from './urban-district';
 
-export type RoadClass = 'rural' | 'touge' | 'city-access' | 'urban-local' | 'urban-arterial';
+export type RoadClass =
+  | 'rural'
+  | 'touge'
+  | 'city-access'
+  | 'urban-local'
+  | 'urban-arterial'
+  | 'urban-alley';
 
 /** Optional volcano-side switchback start; the default remains Aohara Central Avenue. */
 export const HINODE_TOUGE_START = {
@@ -100,22 +111,139 @@ const touge = (
   shoulderMeters: 1.2,
 });
 
+const AOHARA_BACKSTREET_ACCESSES: readonly AoharaBackstreetAccess[] =
+  AOHARA_BACKSTREET_BLOCKS.flatMap((block) => Object.values(block.accesses));
+
+const AOHARA_BACKSTREET_ACCESS_NODES: readonly RoadNodeConfig[] = [
+  ...new Map(
+    AOHARA_BACKSTREET_ACCESSES.map((access) => [
+      access.nodeId,
+      { id: access.nodeId, x: access.worldX, z: access.worldZ },
+    ] as const),
+  ).values(),
+];
+
+const AOHARA_BACKSTREET_INTERNAL_NODES: readonly RoadNodeConfig[] =
+  AOHARA_BACKSTREET_BLOCKS.flatMap((block) => [
+    { id: block.hubNodeId, x: block.hubWorldX, z: block.hubWorldZ },
+    {
+      id: block.courtyardNodeId,
+      x: block.courtyardWorldX,
+      z: block.courtyardWorldZ,
+    },
+  ]);
+
+function accessesForGridEdge(
+  edgeAxis: AoharaBackstreetAccess['edgeAxis'],
+  gridRowIndex: number,
+  gridColumnIndex: number,
+): readonly AoharaBackstreetAccess[] {
+  const unique = new Map<string, AoharaBackstreetAccess>();
+  for (const access of AOHARA_BACKSTREET_ACCESSES) {
+    if (
+      access.edgeAxis === edgeAxis &&
+      access.gridRowIndex === gridRowIndex &&
+      access.gridColumnIndex === gridColumnIndex
+    ) {
+      unique.set(access.nodeId, access);
+    }
+  }
+  return [...unique.values()].sort((first, second) => first.fractionThirds - second.fractionThirds);
+}
+
+function splitGridEdge(
+  from: string,
+  to: string,
+  accessNodes: readonly AoharaBackstreetAccess[],
+  createEdge: (from: string, to: string) => RoadEdgeConfig,
+): readonly RoadEdgeConfig[] {
+  const nodes: { readonly id: string; readonly fraction: number }[] = [
+    { id: from, fraction: 0 },
+    ...accessNodes.map((access) => ({ id: access.nodeId, fraction: access.fractionThirds })),
+    { id: to, fraction: 3 },
+  ];
+  return nodes.slice(0, -1).map((node, index) => createEdge(node.id, nodes[index + 1]!.id));
+}
+
 const AOHARA_GRID_EDGES: readonly RoadEdgeConfig[] = [
-  ...AOHARA_GRID_ROWS.flatMap((row) =>
-    AOHARA_GRID_COLUMNS.slice(0, -1).map((column, index) => {
-      const nextColumn = AOHARA_GRID_COLUMNS[index + 1]!;
+  ...AOHARA_GRID_ROWS.flatMap((row, rowIndex) =>
+    AOHARA_GRID_COLUMNS.slice(0, -1).flatMap((column, columnIndex) => {
+      const nextColumn = AOHARA_GRID_COLUMNS[columnIndex + 1]!;
       const createEdge = row.id === 'middle' ? arterial : localStreet;
-      return createEdge(aoharaNodeId(row.id, column.id), aoharaNodeId(row.id, nextColumn.id));
+      return splitGridEdge(
+        aoharaNodeId(row.id, column.id),
+        aoharaNodeId(row.id, nextColumn.id),
+        accessesForGridEdge('horizontal', rowIndex, columnIndex),
+        createEdge,
+      );
     }),
   ),
-  ...AOHARA_GRID_COLUMNS.flatMap((column) =>
-    AOHARA_GRID_ROWS.slice(0, -1).map((row, index) => {
-      const nextRow = AOHARA_GRID_ROWS[index + 1]!;
+  ...AOHARA_GRID_COLUMNS.flatMap((column, columnIndex) =>
+    AOHARA_GRID_ROWS.slice(0, -1).flatMap((row, rowIndex) => {
+      const nextRow = AOHARA_GRID_ROWS[rowIndex + 1]!;
       const createEdge = column.id === 'center' ? arterial : localStreet;
-      return createEdge(aoharaNodeId(row.id, column.id), aoharaNodeId(nextRow.id, column.id));
+      return splitGridEdge(
+        aoharaNodeId(row.id, column.id),
+        aoharaNodeId(nextRow.id, column.id),
+        accessesForGridEdge('vertical', rowIndex, columnIndex),
+        createEdge,
+      );
     }),
   ),
 ];
+
+function createBackstreetSpoke(
+  block: (typeof AOHARA_BACKSTREET_BLOCKS)[number],
+  access: AoharaBackstreetAccess,
+): RoadEdgeConfig {
+  const sideIndex = (['north', 'east', 'south', 'west'] as const).indexOf(access.side);
+  const crossingOffset = 30 + ((block.rowIndex * 5 + block.columnIndex * 3 + sideIndex) % 2) * 4;
+  const blockCenterX = AOHARA_DISTRICT_CONFIG.centerX + block.centerLocalX;
+  const blockCenterZ = AOHARA_DISTRICT_CONFIG.centerZ + block.centerLocalZ;
+  const firstBend = [
+    access.worldX + access.inwardX * 23,
+    access.worldZ + access.inwardZ * 23,
+  ] as const;
+  let secondBendX: number;
+  let secondBendZ: number;
+  if (access.side === 'north' || access.side === 'south') {
+    secondBendX = access.worldX;
+    secondBendZ = blockCenterZ + (access.side === 'north' ? -crossingOffset : crossingOffset);
+  } else {
+    const radialSide = access.side === 'east' ? 1 : -1;
+    const tangentSide = Math.sign(access.localZ - block.centerLocalZ) || 1;
+    secondBendX = blockCenterX + radialSide * crossingOffset;
+    secondBendZ = blockCenterZ + tangentSide * crossingOffset;
+  }
+  const secondBend = [secondBendX, secondBendZ] as const;
+  // The second turn crosses the block at a safe setback, then returns to the small inner hub.
+  // This dogleg lets the passages weave around the authored high-rise footprints instead of
+  // cutting straight through their collision envelopes.
+  const thirdBend = [blockCenterX, secondBendZ] as const;
+  return {
+    from: access.nodeId,
+    to: block.hubNodeId,
+    via: [firstBend, secondBend, thirdBend],
+    roadClass: 'urban-alley',
+    maxGrade: AOHARA_BACKSTREET_CONFIG.alleyMaximumGrade,
+    halfWidthMeters: AOHARA_BACKSTREET_CONFIG.passageHalfWidthMeters,
+    shoulderMeters: AOHARA_BACKSTREET_CONFIG.passageShoulderMeters,
+  };
+}
+
+const AOHARA_BACKSTREET_EDGES: readonly RoadEdgeConfig[] = AOHARA_BACKSTREET_BLOCKS.flatMap(
+  (block) => [
+    ...Object.values(block.accesses).map((access) => createBackstreetSpoke(block, access)),
+    {
+      from: block.hubNodeId,
+      to: block.courtyardNodeId,
+      roadClass: 'urban-alley' as const,
+      maxGrade: AOHARA_BACKSTREET_CONFIG.alleyMaximumGrade,
+      halfWidthMeters: AOHARA_BACKSTREET_CONFIG.courtyardHalfWidthMeters,
+      shoulderMeters: AOHARA_BACKSTREET_CONFIG.passageShoulderMeters,
+    },
+  ],
+);
 
 export const ROAD_NETWORK_CONFIG: RoadNetworkConfig = {
   halfWidthMeters: 5.5,
@@ -140,6 +268,8 @@ export const ROAD_NETWORK_CONFIG: RoadNetworkConfig = {
     { id: 'south-fields', x: 60, z: 620 },
     { id: 'west-fields', x: -620, z: 330 },
     ...AOHARA_GRID_NODES,
+    ...AOHARA_BACKSTREET_ACCESS_NODES,
+    ...AOHARA_BACKSTREET_INTERNAL_NODES,
   ],
   edges: [
     { from: 'spawn-junction', to: 'north-bend', via: [[-30, -360]] },
@@ -196,5 +326,6 @@ export const ROAD_NETWORK_CONFIG: RoadNetworkConfig = {
       shoulderMeters: AOHARA_DISTRICT_CONFIG.shoulderMeters,
     },
     ...AOHARA_GRID_EDGES,
+    ...AOHARA_BACKSTREET_EDGES,
   ],
 };

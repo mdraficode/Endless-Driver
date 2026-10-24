@@ -21,8 +21,8 @@ import {
   URBAN_STREET_FURNITURE_TIER_BUDGET,
   type UrbanStreetFurnitureTierBudget,
 } from '../config/urban-city';
-import { AOHARA_DISTRICT_CONFIG } from '../config/urban-district';
 import { DEFAULT_SPAWN_ID, SPAWN_POINTS } from '../config/spawns';
+import { ROAD_MARKING_JUNCTION_CLEARANCE_METERS } from './road-geometry';
 import type { TierId } from '../config/tiers';
 import type { RoadEdge, RoadNetwork } from './road-network';
 import type { StaticBuildingBox } from './static-building-collision';
@@ -60,6 +60,9 @@ const FURNITURE_KINDS: readonly UrbanStreetFurnitureKind[] = [
 ];
 const MAX_FURNITURE_HALF_WIDTH_METERS = Math.max(
   ...Object.values(FURNITURE_DIMENSIONS).map((dimensions) => dimensions.halfWidthMeters),
+);
+const MAX_FURNITURE_HALF_DEPTH_METERS = Math.max(
+  ...Object.values(FURNITURE_DIMENSIONS).map((dimensions) => dimensions.halfDepthMeters),
 );
 const SIDEWALK_LIFT_METERS = 0.16;
 
@@ -128,6 +131,69 @@ function roadPositionAt(edge: RoadEdge, distanceMeters: number): RoadPosition {
     tangentX: tangentX / tangentLength,
     tangentZ: tangentZ / tangentLength,
   };
+}
+
+interface NodeFurnitureClearance {
+  readonly minimumDistanceMeters: number;
+  readonly markingApproachMeters: number;
+}
+
+function buildNodeFurnitureClearances(network: RoadNetwork): ReadonlyMap<string, NodeFurnitureClearance> {
+  const clearances = new Map<string, NodeFurnitureClearance>();
+  const markingGap = URBAN_STREET_FURNITURE_CONFIG.minimumRoadMarkingClearanceMeters;
+  for (const node of network.nodes) {
+    let horizontalHalfWidth: number | null = null;
+    let verticalHalfWidth: number | null = null;
+    for (const edge of network.edges) {
+      if (
+        (edge.roadClass !== 'urban-local' && edge.roadClass !== 'urban-arterial') ||
+        (edge.from !== node.id && edge.to !== node.id)
+      ) {
+        continue;
+      }
+      const from = network.nodeById(edge.from);
+      const to = network.nodeById(edge.to);
+      if (from === null || to === null) continue;
+      if (Math.abs(to.x - from.x) >= Math.abs(to.z - from.z)) {
+        horizontalHalfWidth = Math.max(horizontalHalfWidth ?? 0, edge.halfWidthMeters);
+      } else {
+        verticalHalfWidth = Math.max(verticalHalfWidth ?? 0, edge.halfWidthMeters);
+      }
+    }
+
+    const isCrosswalk = horizontalHalfWidth !== null && verticalHalfWidth !== null;
+    const crosswalkApproachMeters = isCrosswalk
+      ? Math.max(horizontalHalfWidth ?? 0, verticalHalfWidth ?? 0) + 3.8
+      : 0;
+    const stopBarApproachMeters =
+      node.id === 'aohara-center' ? URBAN_CITY_CONFIG.trafficSignal.stopLineOffsetMeters : 0;
+    const markingApproachMeters = Math.max(crosswalkApproachMeters, stopBarApproachMeters);
+    if (isCrosswalk) {
+      clearances.set(node.id, {
+        minimumDistanceMeters: Math.max(
+          URBAN_STREET_FURNITURE_CONFIG.intersectionClearanceMeters,
+          markingApproachMeters + MAX_FURNITURE_HALF_DEPTH_METERS + markingGap,
+        ),
+        markingApproachMeters,
+      });
+      continue;
+    }
+
+    const isAlleyMouth = node.id.startsWith('aohara-access-');
+    const alleyMouthMarkingApproach = isAlleyMouth
+      ? ROAD_MARKING_JUNCTION_CLEARANCE_METERS
+      : markingApproachMeters;
+    clearances.set(node.id, {
+      minimumDistanceMeters: Math.max(
+        isAlleyMouth
+          ? URBAN_STREET_FURNITURE_CONFIG.alleyMouthClearanceMeters
+          : URBAN_STREET_FURNITURE_CONFIG.intersectionClearanceMeters,
+        alleyMouthMarkingApproach + MAX_FURNITURE_HALF_DEPTH_METERS + markingGap,
+      ),
+      markingApproachMeters: alleyMouthMarkingApproach,
+    });
+  }
+  return clearances;
 }
 
 function stablePriority(key: string, salt: number): number {
@@ -205,46 +271,42 @@ function roadAndWalkwayClearanceIsValid(network: RoadNetwork, slot: CandidateSlo
 
 function buildCandidateSlots(network: RoadNetwork): CandidateSlot[] {
   const slots: CandidateSlot[] = [];
-  const { slotSpacingMeters, slotPhaseMeters, intersectionClearanceMeters } =
-    URBAN_STREET_FURNITURE_CONFIG;
+  const { slotSpacingMeters, slotPhaseMeters } = URBAN_STREET_FURNITURE_CONFIG;
   const sidewalk = URBAN_CITY_CONFIG.sidewalk;
   const lateralOffsetFromInnerEdge =
     sidewalk.widthMeters -
     URBAN_STREET_FURNITURE_CONFIG.outerCurbMarginMeters -
     MAX_FURNITURE_HALF_WIDTH_METERS -
     URBAN_STREET_FURNITURE_CONFIG.additionalCurbInsetMeters;
-  const maximumCrosswalkApproachMeters =
-    Math.max(
-      AOHARA_DISTRICT_CONFIG.arterialHalfWidthMeters,
-      AOHARA_DISTRICT_CONFIG.localStreetHalfWidthMeters,
-    ) + 3.8;
-  const maximumRoadMarkingApproachMeters = Math.max(
-    maximumCrosswalkApproachMeters,
-    URBAN_CITY_CONFIG.trafficSignal.stopLineOffsetMeters,
-  );
   const markingClearance = URBAN_STREET_FURNITURE_CONFIG.minimumRoadMarkingClearanceMeters;
+  const nodeClearances = buildNodeFurnitureClearances(network);
   const spawn = SPAWN_POINTS.find((point) => point.id === DEFAULT_SPAWN_ID);
 
   for (const edge of network.edges) {
     if (edge.roadClass !== 'urban-local' && edge.roadClass !== 'urban-arterial') {
       continue;
     }
+    const startClearance = nodeClearances.get(edge.from);
+    const endClearance = nodeClearances.get(edge.to);
+    if (startClearance === undefined || endClearance === undefined) continue;
     for (
       let alongMeters = slotPhaseMeters;
       alongMeters <= edge.lengthMeters - slotPhaseMeters;
       alongMeters += slotSpacingMeters
     ) {
-      const endpointClearanceMeters = Math.min(alongMeters, edge.lengthMeters - alongMeters);
-      if (endpointClearanceMeters < intersectionClearanceMeters) {
+      const fromNodeDistance = alongMeters;
+      const toNodeDistance = edge.lengthMeters - alongMeters;
+      if (
+        fromNodeDistance < startClearance.minimumDistanceMeters ||
+        toNodeDistance < endClearance.minimumDistanceMeters
+      ) {
         continue;
       }
       if (
-        endpointClearanceMeters -
-          maximumRoadMarkingApproachMeters -
-          Math.max(
-            ...Object.values(FURNITURE_DIMENSIONS).map((dimensions) => dimensions.halfDepthMeters),
-          ) <
-        markingClearance
+        fromNodeDistance - startClearance.markingApproachMeters - MAX_FURNITURE_HALF_DEPTH_METERS <
+          markingClearance ||
+        toNodeDistance - endClearance.markingApproachMeters - MAX_FURNITURE_HALF_DEPTH_METERS <
+          markingClearance
       ) {
         continue;
       }

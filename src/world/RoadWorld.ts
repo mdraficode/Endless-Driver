@@ -303,16 +303,23 @@ export class RoadWorld {
         }
       }
       const asphaltGeometry = buildRibbonGeometry(edge, halfWidthMeters * 2, ASPHALT_LIFT);
-      if (edge.roadClass === 'urban-local' || edge.roadClass === 'urban-arterial') {
+      if (
+        edge.roadClass === 'urban-local' ||
+        edge.roadClass === 'urban-arterial' ||
+        edge.roadClass === 'urban-alley'
+      ) {
         urbanAsphaltGeometries.push(asphaltGeometry);
       } else {
         asphaltGeometries.push(asphaltGeometry);
       }
-      const markingEdge = trimRoadEdge(
-        edge,
-        ROAD_MARKING_JUNCTION_CLEARANCE_METERS,
-        ROAD_MARKING_JUNCTION_CLEARANCE_METERS,
-      );
+      const markingEdge =
+        edge.roadClass === 'urban-alley'
+          ? null
+          : trimRoadEdge(
+              edge,
+              ROAD_MARKING_JUNCTION_CLEARANCE_METERS,
+              ROAD_MARKING_JUNCTION_CLEARANCE_METERS,
+            );
       if (markingEdge !== null) {
         for (const side of [-1, 1] as const) {
           markingGeometries.push(
@@ -339,7 +346,10 @@ export class RoadWorld {
         if (edge.from === node.id || edge.to === node.id) {
           halfWidthMeters = Math.max(halfWidthMeters, edge.halfWidthMeters);
           shoulderMeters = Math.max(shoulderMeters, edge.shoulderMeters);
-          urbanJunction ||= edge.roadClass === 'urban-local' || edge.roadClass === 'urban-arterial';
+          urbanJunction ||=
+            edge.roadClass === 'urban-local' ||
+            edge.roadClass === 'urban-arterial' ||
+            edge.roadClass === 'urban-alley';
         }
       }
       const gravel = new CircleGeometry(halfWidthMeters + shoulderMeters, 24);

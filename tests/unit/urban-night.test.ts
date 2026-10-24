@@ -23,6 +23,7 @@ import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
 import { AOHARA_DISTRICT_CONFIG } from '../../src/config/urban-district';
 import { DEFAULT_SPAWN_ID, SPAWN_POINTS } from '../../src/config/spawns';
+import { ROAD_MARKING_JUNCTION_CLEARANCE_METERS } from '../../src/world/road-geometry';
 import { EnvironmentClock } from '../../src/environment/EnvironmentClock';
 import { UrbanNightWorld } from '../../src/world/urban-night';
 import {
@@ -33,6 +34,7 @@ import {
   UrbanStreetActivity,
 } from '../../src/world/urban-activity';
 import { generateAoharaStreetFurniturePlacements } from '../../src/world/urban-furniture';
+import { generateAoharaAlleyPropPlacements } from '../../src/world/urban-backstreets';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
 import type { RoadNetwork } from '../../src/world/road-network';
 import type { StaticBuildingBox } from '../../src/world/static-building-collision';
@@ -59,6 +61,86 @@ function footprintSeparation(a: StaticBuildingBox, b: StaticBuildingBox, margin:
     return centerDistance - aRadius - bRadius;
   });
   return Math.max(...separations);
+}
+
+function expectedFurnitureNodeClearance(
+  network: RoadNetwork,
+  nodeId: string,
+  halfDepthMeters: number,
+): { readonly minimumDistanceMeters: number; readonly markingApproachMeters: number } {
+  let horizontalHalfWidth: number | null = null;
+  let verticalHalfWidth: number | null = null;
+  for (const edge of network.edges) {
+    if (
+      (edge.roadClass !== 'urban-local' && edge.roadClass !== 'urban-arterial') ||
+      (edge.from !== nodeId && edge.to !== nodeId)
+    ) {
+      continue;
+    }
+    const from = network.nodeById(edge.from);
+    const to = network.nodeById(edge.to);
+    if (from === null || to === null) continue;
+    if (Math.abs(to.x - from.x) >= Math.abs(to.z - from.z)) {
+      horizontalHalfWidth = Math.max(horizontalHalfWidth ?? 0, edge.halfWidthMeters);
+    } else {
+      verticalHalfWidth = Math.max(verticalHalfWidth ?? 0, edge.halfWidthMeters);
+    }
+  }
+  const isCrosswalk = horizontalHalfWidth !== null && verticalHalfWidth !== null;
+  const crosswalkApproachMeters = isCrosswalk
+    ? Math.max(horizontalHalfWidth ?? 0, verticalHalfWidth ?? 0) + 3.8
+    : 0;
+  const isAlleyMouth = nodeId.startsWith('aohara-access-');
+  const markingApproachMeters = isAlleyMouth
+    ? ROAD_MARKING_JUNCTION_CLEARANCE_METERS
+    : Math.max(
+        crosswalkApproachMeters,
+        nodeId === 'aohara-center' ? URBAN_CITY_CONFIG.trafficSignal.stopLineOffsetMeters : 0,
+      );
+  const configuredClearance = isAlleyMouth
+    ? URBAN_STREET_FURNITURE_CONFIG.alleyMouthClearanceMeters
+    : URBAN_STREET_FURNITURE_CONFIG.intersectionClearanceMeters;
+  return {
+    minimumDistanceMeters: Math.max(
+      configuredClearance,
+      markingApproachMeters +
+        halfDepthMeters +
+        URBAN_STREET_FURNITURE_CONFIG.minimumRoadMarkingClearanceMeters,
+    ),
+    markingApproachMeters,
+  };
+}
+
+function expectUrbanAlleyClearance(city: UrbanNightWorld, network: RoadNetwork): number {
+  let probeCount = 0;
+  const alleyEdges = network.edges.filter((edge) => edge.roadClass === 'urban-alley');
+  for (const edge of alleyEdges) {
+    for (let index = 0; index < edge.points.length; index += 1) {
+      const point = edge.points[index]!;
+      const previous = edge.points[Math.max(0, index - 1)]!;
+      const next = edge.points[Math.min(edge.points.length - 1, index + 1)]!;
+      const tangentLength = Math.hypot(next.x - previous.x, next.z - previous.z) || 1;
+      const tangentX = (next.x - previous.x) / tangentLength;
+      const tangentZ = (next.z - previous.z) / tangentLength;
+      const sideX = tangentZ;
+      const sideZ = -tangentX;
+      const yaw = Math.atan2(-tangentX, -tangentZ);
+      for (const lateralOffset of [0, -1.2, 1.2]) {
+        expect(
+          city.collide({
+            x: point.x + sideX * lateralOffset,
+            z: point.z + sideZ * lateralOffset,
+            yaw,
+            velocityX: 0,
+            velocityZ: 0,
+          }),
+          `${edge.id} is obstructed at ${point.alongMeters.toFixed(1)} m`,
+        ).toHaveLength(0);
+        probeCount += 1;
+      }
+    }
+  }
+  return probeCount;
 }
 
 function expectUrbanRoadClearance(city: UrbanNightWorld, network: RoadNetwork): number {
@@ -241,9 +323,9 @@ describe('Aohara city night-lighting rules', () => {
 
   it('fills every traffic class inside the existing C/B/A vehicle and draw-call budgets', () => {
     const expectedByTier = {
-      C: { passengerCars: 2, cityBuses: 2, rigidTrucks: 2, semiTrailerRigs: 1, farmTractors: 1 },
-      B: { passengerCars: 4, cityBuses: 3, rigidTrucks: 3, semiTrailerRigs: 3, farmTractors: 3 },
-      A: { passengerCars: 5, cityBuses: 5, rigidTrucks: 5, semiTrailerRigs: 5, farmTractors: 4 },
+      C: { passengerCars: 3, cityBuses: 3, rigidTrucks: 2, semiTrailerRigs: 2, farmTractors: 2 },
+      B: { passengerCars: 5, cityBuses: 5, rigidTrucks: 5, semiTrailerRigs: 5, farmTractors: 4 },
+      A: { passengerCars: 8, cityBuses: 7, rigidTrucks: 7, semiTrailerRigs: 7, farmTractors: 7 },
     } as const;
 
     for (const tier of ['C', 'B', 'A'] as const) {
@@ -281,15 +363,15 @@ describe('Aohara city night-lighting rules', () => {
   });
 
   it('applies the selected traffic intensity without changing pedestrian budgets', () => {
-    expect(trafficVehicleCountFor('C', 'light')).toBe(4);
-    expect(trafficVehicleCountFor('C', 'standard')).toBe(8);
-    expect(trafficVehicleCountFor('C', 'busy')).toBe(12);
+    expect(trafficVehicleCountFor('C', 'light')).toBe(6);
+    expect(trafficVehicleCountFor('C', 'standard')).toBe(12);
+    expect(trafficVehicleCountFor('C', 'busy')).toBe(18);
     expect(trafficVehicleCountFor('B', 'off')).toBe(0);
-    expect(trafficVehicleCountFor('B', 'light')).toBe(8);
-    expect(trafficVehicleCountFor('B', 'busy')).toBe(24);
-    expect(trafficVehicleCountFor('A', 'light')).toBe(12);
-    expect(trafficVehicleCountFor('A', 'standard')).toBe(24);
-    expect(trafficVehicleCountFor('A', 'busy')).toBe(36);
+    expect(trafficVehicleCountFor('B', 'light')).toBe(12);
+    expect(trafficVehicleCountFor('B', 'busy')).toBe(36);
+    expect(trafficVehicleCountFor('A', 'light')).toBe(18);
+    expect(trafficVehicleCountFor('A', 'standard')).toBe(36);
+    expect(trafficVehicleCountFor('A', 'busy')).toBe(54);
 
     const off = new UrbanStreetActivity('B', { trafficIntensity: 'off' });
     const light = new UrbanStreetActivity('B', { trafficIntensity: 'light' });
@@ -299,9 +381,9 @@ describe('Aohara city night-lighting rules', () => {
       urbanTrafficBatches: 0,
     });
     expect(off.getContentStats().urbanPedestrians).toBe(URBAN_ACTIVITY_TIER_BUDGET.B.pedestrians);
-    expect(light.getContentStats().urbanTrafficVehicles).toBe(8);
+    expect(light.getContentStats().urbanTrafficVehicles).toBe(12);
     expect(light.getContentStats().urbanPedestrians).toBe(URBAN_ACTIVITY_TIER_BUDGET.B.pedestrians);
-    expect(busy.getContentStats().urbanTrafficVehicles).toBe(24);
+    expect(busy.getContentStats().urbanTrafficVehicles).toBe(36);
     expect(busy.getContentStats().urbanPedestrians).toBe(URBAN_ACTIVITY_TIER_BUDGET.B.pedestrians);
     off.dispose();
     light.dispose();
@@ -311,10 +393,11 @@ describe('Aohara city night-lighting rules', () => {
   it('keeps baseline city activity budgets bounded and increasing across C/B/A tiers', () => {
     expect(URBAN_ACTIVITY_TIER_BUDGET.C).toEqual({
       infillBuildings: 8,
-      trafficVehicles: 8,
+      trafficVehicles: 12,
       pedestrians: 16,
+      alleyProps: 64,
     });
-    for (const key of ['infillBuildings', 'trafficVehicles', 'pedestrians'] as const) {
+    for (const key of ['infillBuildings', 'trafficVehicles', 'pedestrians', 'alleyProps'] as const) {
       expect(URBAN_ACTIVITY_TIER_BUDGET.C[key]).toBeLessThan(URBAN_ACTIVITY_TIER_BUDGET.B[key]);
       expect(URBAN_ACTIVITY_TIER_BUDGET.B[key]).toBeLessThan(URBAN_ACTIVITY_TIER_BUDGET.A[key]);
     }
@@ -590,12 +673,13 @@ describe('Aohara city night-lighting rules', () => {
       infillBuildings: URBAN_ACTIVITY_TIER_BUDGET.B.infillBuildings,
       infillHippedRoofs: 4,
       infillFlatRoofs: 8,
+      frontageBuildings: expect.any(Number),
       urbanTrafficVehicles: URBAN_ACTIVITY_TIER_BUDGET.B.trafficVehicles,
-      urbanTrafficPassengerCars: 4,
-      urbanTrafficCityBuses: 3,
-      urbanTrafficRigidTrucks: 3,
-      urbanTrafficSemiTrailerRigs: 3,
-      urbanTrafficFarmTractors: 3,
+      urbanTrafficPassengerCars: 5,
+      urbanTrafficCityBuses: 5,
+      urbanTrafficRigidTrucks: 5,
+      urbanTrafficSemiTrailerRigs: 5,
+      urbanTrafficFarmTractors: 4,
       urbanTrafficBatches: 5,
       urbanPedestrians: URBAN_ACTIVITY_TIER_BUDGET.B.pedestrians,
       urbanActivityBatches: 7,
@@ -604,8 +688,6 @@ describe('Aohara city night-lighting rules', () => {
       mansions: 4,
       houses: 4,
       townhouses: 8,
-      shops: 4,
-      billboards: 18,
       activePointLights: URBAN_NIGHT_TIER_BUDGET.B.pointLights,
     });
     expect(URBAN_CITY_CONFIG.streetLamp.spacingMeters).toBe(40);
@@ -614,8 +696,22 @@ describe('Aohara city night-lighting rules', () => {
     expect(city.getContentStats().streetLightBollards).toBe(30);
     expect(city.getContentStats().nightMoodLightCandidates).toBe(15);
     expect(city.getContentStats().highRiseNightAccentInstances).toBe(33);
-    expect(city.getContentStats().storefrontNightAccentInstances).toBe(18);
-    expect(city.getContentStats().activeMoodPointLights).toBeLessThanOrEqual(
+    const cityStats = city.getContentStats();
+    expect(cityStats.frontageBuildings).toBeGreaterThanOrEqual(240);
+    expect(cityStats.shops).toBeGreaterThan(4);
+    expect(cityStats.billboards).toBe(cityStats.shops + 14);
+    expect(cityStats.storefrontNightAccentInstances).toBe((cityStats.shops + 2) * 3);
+    expect(cityStats.urbanAlleyProps).toBe(URBAN_ACTIVITY_TIER_BUDGET.B.alleyProps);
+    expect(cityStats.urbanAlleyPropsBudget).toBe(URBAN_ACTIVITY_TIER_B.alleyProps);
+    expect(cityStats.urbanAlleyPropBatches).toBeGreaterThan(0);
+    expect(cityStats.urbanAlleyWasteBins +
+      cityStats.urbanAlleyDumpsters +
+      cityStats.urbanAlleyCardboardStacks +
+      cityStats.urbanAlleyHandCarts +
+      cityStats.urbanAlleyCrateStacks +
+      cityStats.urbanAlleyPallets).toBe(cityStats.urbanAlleyProps);
+    expect(city.root.getObjectByName('aohara-alley-props')).not.toBeNull();
+    expect(cityStats.activeMoodPointLights).toBeLessThanOrEqual(
       URBAN_NIGHT_TIER_BUDGET.B.architecturalPointLights,
     );
     expect(city.getContentStats()).toMatchObject({
@@ -642,8 +738,11 @@ describe('Aohara city night-lighting rules', () => {
     ]) {
       expect(city.root.getObjectByName(name)).toBeInstanceOf(InstancedMesh);
     }
-    expect(city.getContentStats().decorativeLights).toBe(
-      44 + URBAN_ACTIVITY_TIER_BUDGET.B.infillBuildings,
+    expect(cityStats.decorativeLights).toBe(
+      40 +
+        cityStats.frontageBuildings +
+        cityStats.infillBuildings +
+        cityStats.shops,
     );
 
     const trafficBodies = city.root.getObjectByName('aohara-traffic-passenger-car-instances');
@@ -705,7 +804,9 @@ describe('Aohara city night-lighting rules', () => {
       networkIntegrated: true,
     });
     const footprints = city.getStaticBuildingFootprints();
-    expect(footprints).toHaveLength(55 + URBAN_ACTIVITY_TIER_BUDGET.B.infillBuildings);
+    expect(footprints).toHaveLength(
+      55 + city.getContentStats().frontageBuildings + URBAN_ACTIVITY_TIER_BUDGET.B.infillBuildings,
+    );
 
     for (let first = 0; first < footprints.length; first += 1) {
       for (let second = first + 1; second < footprints.length; second += 1) {
@@ -718,6 +819,74 @@ describe('Aohara city night-lighting rules', () => {
     }
 
     expect(expectUrbanRoadClearance(city, network)).toBeGreaterThan(1000);
+    expect(expectUrbanAlleyClearance(city, network)).toBeGreaterThan(1000);
+    city.dispose();
+  });
+
+  it('dresses the winding alleys with deterministic clutter without blocking pavement or building shells', () => {
+    const network = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG).roadNetwork;
+    if (network === undefined) {
+      throw new Error('the shared world sampler should expose the road graph');
+    }
+    const city = new UrbanNightWorld('B', {
+      position: [AOHARA_DISTRICT_CONFIG.centerX, 0, AOHARA_DISTRICT_CONFIG.centerZ],
+      roadNetwork: network,
+      networkIntegrated: true,
+    });
+    const buildings = city.getStaticBuildingFootprints();
+    const placements = generateAoharaAlleyPropPlacements(network, 'B', buildings);
+    expect(placements).toEqual(generateAoharaAlleyPropPlacements(network, 'B', buildings));
+    expect(placements).toHaveLength(URBAN_ACTIVITY_TIER_BUDGET.B.alleyProps);
+    expect(new Set(placements.map((placement) => placement.id)).size).toBe(placements.length);
+
+    const edges = new Map(network.edges.map((edge) => [edge.id, edge]));
+    const spawn = SPAWN_POINTS.find((point) => point.id === DEFAULT_SPAWN_ID);
+    for (const placement of placements) {
+      const edge = edges.get(placement.roadEdgeId);
+      if (edge === undefined) throw new Error(`missing alley edge ${placement.roadEdgeId}`);
+      expect(edge.roadClass).toBe('urban-alley');
+      expect(Math.min(placement.alongMeters, edge.lengthMeters - placement.alongMeters)).toBeGreaterThanOrEqual(7);
+      const road = network.sample(placement.x, placement.z);
+      if (road === null) throw new Error(`alley clutter ${placement.id} lost its road sample`);
+      expect(
+        road.distance - road.halfWidthMeters - road.shoulderMeters - placement.widthMeters / 2,
+      ).toBeGreaterThanOrEqual(0.22);
+      if (spawn !== undefined) {
+        expect(Math.hypot(placement.x - spawn.x, placement.z - spawn.z)).toBeGreaterThanOrEqual(18);
+      }
+      const propBox: StaticBuildingBox = {
+        x: placement.x,
+        z: placement.z,
+        yaw: placement.yaw,
+        halfWidth: placement.widthMeters / 2,
+        halfDepth: placement.depthMeters / 2,
+      };
+      for (const building of buildings) {
+        expect(footprintSeparation(propBox, building, 0.25)).toBeGreaterThan(0);
+      }
+    }
+
+    for (let first = 0; first < placements.length; first += 1) {
+      const a = placements[first]!;
+      const boxA: StaticBuildingBox = {
+        x: a.x,
+        z: a.z,
+        yaw: a.yaw,
+        halfWidth: a.widthMeters / 2,
+        halfDepth: a.depthMeters / 2,
+      };
+      for (let second = first + 1; second < placements.length; second += 1) {
+        const b = placements[second]!;
+        const boxB: StaticBuildingBox = {
+          x: b.x,
+          z: b.z,
+          yaw: b.yaw,
+          halfWidth: b.widthMeters / 2,
+          halfDepth: b.depthMeters / 2,
+        };
+        expect(footprintSeparation(boxA, boxB, 0.28)).toBeGreaterThan(0);
+      }
+    }
     city.dispose();
   });
 
@@ -747,29 +916,32 @@ describe('Aohara city night-lighting rules', () => {
       throw new Error('Aohara should remain the configured default spawn');
     }
     const edgeById = new Map(network.edges.map((edge) => [edge.id, edge]));
-    const largestMarkingApproach = Math.max(
-      Math.max(
-        AOHARA_DISTRICT_CONFIG.arterialHalfWidthMeters,
-        AOHARA_DISTRICT_CONFIG.localStreetHalfWidthMeters,
-      ) + 3.8,
-      URBAN_CITY_CONFIG.trafficSignal.stopLineOffsetMeters,
-    );
 
     for (const placement of placements) {
       const edge = edgeById.get(placement.roadEdgeId);
       if (edge === undefined) {
         throw new Error(`unknown furniture road edge ${placement.roadEdgeId}`);
       }
-      const endpointClearance = Math.min(
-        placement.alongMeters,
-        edge.lengthMeters - placement.alongMeters,
-      );
-      expect(endpointClearance).toBeGreaterThanOrEqual(
-        URBAN_STREET_FURNITURE_CONFIG.intersectionClearanceMeters,
-      );
-      expect(
-        endpointClearance - largestMarkingApproach - placement.halfDepthMeters,
-      ).toBeGreaterThanOrEqual(URBAN_STREET_FURNITURE_CONFIG.minimumRoadMarkingClearanceMeters);
+      for (const [nodeId, endpointDistance] of [
+        [edge.from, placement.alongMeters],
+        [edge.to, edge.lengthMeters - placement.alongMeters],
+      ] as const) {
+        const requiredClearance = expectedFurnitureNodeClearance(
+          network,
+          nodeId,
+          placement.halfDepthMeters,
+        );
+        expect(endpointDistance).toBeGreaterThanOrEqual(
+          requiredClearance.minimumDistanceMeters,
+        );
+        expect(
+          endpointDistance -
+            requiredClearance.markingApproachMeters -
+            placement.halfDepthMeters,
+        ).toBeGreaterThanOrEqual(
+          URBAN_STREET_FURNITURE_CONFIG.minimumRoadMarkingClearanceMeters,
+        );
+      }
       expect(Math.hypot(placement.x - spawn.x, placement.z - spawn.z)).toBeGreaterThanOrEqual(
         URBAN_STREET_FURNITURE_CONFIG.spawnClearanceMeters,
       );

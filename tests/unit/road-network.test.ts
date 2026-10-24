@@ -5,7 +5,12 @@ import { describe, expect, it } from 'vitest';
 import { resolveUrbanWetness, URBAN_CITY_CONFIG } from '../../src/config/urban-city';
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
-import { AOHARA_DISTRICT_CONFIG } from '../../src/config/urban-district';
+import { AOHARA_BACKSTREET_BLOCKS, AOHARA_BACKSTREET_CONFIG } from '../../src/config/aohara-backstreets';
+import {
+  AOHARA_DISTRICT_CONFIG,
+  AOHARA_GRID_COLUMNS,
+  AOHARA_GRID_ROWS,
+} from '../../src/config/urban-district';
 import { EnvironmentClock } from '../../src/environment/EnvironmentClock';
 import { roadInfluence } from '../../src/world/road-network';
 import { createTerrainSampler } from '../../src/world/terrain-height';
@@ -56,8 +61,13 @@ describe('road network graph', () => {
     expect(visited.size).toBe(ROAD_NETWORK_CONFIG.nodes.length);
     expect(network.edges.length).toBe(ROAD_NETWORK_CONFIG.edges.length);
     for (const edge of network.edges) {
-      expect(edge.lengthMeters).toBeGreaterThan(50);
-      expect(edge.points.length).toBeGreaterThan(10);
+      if (edge.roadClass === 'urban-alley') {
+        expect(edge.lengthMeters).toBeGreaterThan(7);
+        expect(edge.points.length).toBeGreaterThan(1);
+      } else {
+        expect(edge.lengthMeters).toBeGreaterThan(50);
+        expect(edge.points.length).toBeGreaterThan(10);
+      }
     }
   });
 
@@ -72,30 +82,82 @@ describe('road network graph', () => {
 
   it('keeps the network grade cap except for the authored mountain route', () => {
     for (const edge of network.edges) {
-      expect(edge.maxGrade).toBe(edge.roadClass === 'touge' ? 0.18 : ROAD_NETWORK_CONFIG.maxGrade);
+      const expectedGradeCap =
+        edge.roadClass === 'touge'
+          ? 0.18
+          : edge.roadClass === 'urban-alley'
+            ? AOHARA_BACKSTREET_CONFIG.alleyMaximumGrade
+            : ROAD_NETWORK_CONFIG.maxGrade;
+      expect(edge.maxGrade).toBe(expectedGradeCap);
     }
   });
 
   it('builds the connected 5×5 Aohara grid with arterial spines and a rural gateway', () => {
-    const urbanNodes = [...network.nodes.values()].filter((node) => node.id.startsWith('aohara-'));
+    const gridNodeIds = new Set(
+      AOHARA_GRID_ROWS.flatMap((row) =>
+        AOHARA_GRID_COLUMNS.map((column) =>
+          row.id === 'middle' && column.id === 'center'
+            ? 'aohara-center'
+            : `aohara-${row.id}-${column.id}`,
+        ),
+      ),
+    );
+    const aoharaNodes = [...network.nodes.values()].filter((node) => node.id.startsWith('aohara-'));
+    const gridNodes = aoharaNodes.filter((node) => gridNodeIds.has(node.id));
+    const accessNodes = aoharaNodes.filter((node) => node.id.startsWith('aohara-access-'));
+    const internalNodes = aoharaNodes.filter((node) => node.id.includes('-backstreet-'));
     const urbanEdges = network.edges.filter(
       (edge) => edge.roadClass === 'urban-local' || edge.roadClass === 'urban-arterial',
     );
     const arterialEdges = urbanEdges.filter((edge) => edge.roadClass === 'urban-arterial');
     const localEdges = urbanEdges.filter((edge) => edge.roadClass === 'urban-local');
+    const alleyEdges = network.edges.filter((edge) => edge.roadClass === 'urban-alley');
     const westGateway = network.nodeById('aohara-middle-west-outer');
     const access = network.edges.find((edge) => edge.roadClass === 'city-access');
 
-    expect(urbanNodes).toHaveLength(25);
-    expect(urbanEdges).toHaveLength(40);
-    expect(arterialEdges).toHaveLength(8);
-    expect(localEdges).toHaveLength(32);
+    expect(AOHARA_BACKSTREET_BLOCKS).toHaveLength(16);
+    expect(aoharaNodes).toHaveLength(119);
+    expect(gridNodes).toHaveLength(25);
+    expect(accessNodes).toHaveLength(62);
+    expect(internalNodes).toHaveLength(32);
+    expect(urbanEdges).toHaveLength(102);
+    expect(arterialEdges).toHaveLength(22);
+    expect(localEdges).toHaveLength(80);
+    expect(alleyEdges).toHaveLength(80);
     expect(westGateway).toMatchObject({
       x: AOHARA_DISTRICT_CONFIG.centerX - 2 * AOHARA_DISTRICT_CONFIG.gridSpacingMeters,
       z: AOHARA_DISTRICT_CONFIG.centerZ,
     });
     expect(access?.from).toBe('east-plain');
     expect(access?.to).toBe('aohara-middle-west-outer');
+  });
+
+  it('connects each block face through a winding alley hub and a wider inner courtyard', () => {
+    for (const block of AOHARA_BACKSTREET_BLOCKS) {
+      const hub = network.nodeById(block.hubNodeId);
+      const courtyard = network.nodeById(block.courtyardNodeId);
+      expect(hub).not.toBeNull();
+      expect(courtyard).not.toBeNull();
+      expect(network.neighboursOf(block.hubNodeId)).toHaveLength(5);
+      expect(network.neighboursOf(block.hubNodeId)).toContain(block.courtyardNodeId);
+      for (const access of Object.values(block.accesses)) {
+        expect(network.neighboursOf(access.nodeId)).toContain(block.hubNodeId);
+        const alley = network.edges.find(
+          (edge) =>
+            edge.roadClass === 'urban-alley' &&
+            ((edge.from === access.nodeId && edge.to === block.hubNodeId) ||
+              (edge.to === access.nodeId && edge.from === block.hubNodeId)),
+        );
+        expect(alley?.halfWidthMeters).toBe(AOHARA_BACKSTREET_CONFIG.passageHalfWidthMeters);
+        const authored = ROAD_NETWORK_CONFIG.edges.find(
+          (edge) =>
+            edge.roadClass === 'urban-alley' &&
+            ((edge.from === access.nodeId && edge.to === block.hubNodeId) ||
+              (edge.to === access.nodeId && edge.from === block.hubNodeId)),
+        );
+        expect(authored?.via).toHaveLength(3);
+      }
+    }
   });
 
   it('carries Aohara road classes and widths into visual and physics samples', () => {
@@ -122,13 +184,23 @@ describe('road network graph', () => {
     );
     expect(local?.roadClass).toBe('urban-local');
     expect(local?.halfWidthMeters).toBe(AOHARA_DISTRICT_CONFIG.localStreetHalfWidthMeters);
+
+    const alleyEdge = network.edges.find(
+      (edge) => edge.roadClass === 'urban-alley' && edge.lengthMeters > 40,
+    );
+    if (alleyEdge === undefined) throw new Error('Aohara should contain driveable alley spokes');
+    const alleyPoint = alleyEdge.points[Math.floor(alleyEdge.points.length / 2)]!;
+    const alley = world.roadAt?.(alleyPoint.x, alleyPoint.z);
+    expect(alley?.roadClass).toBe('urban-alley');
+    expect(alley?.halfWidthMeters).toBe(AOHARA_BACKSTREET_CONFIG.passageHalfWidthMeters);
+    expect(sampleTerrainSurface(world, alleyPoint.x, alleyPoint.z).id).toBe('asphalt');
   });
 
   it('batches roads, city sidewalks and crossings into a bounded mesh set', () => {
     const roads = new RoadWorld(network);
     const stats = roads.getStats();
     expect(stats.roadMeshes).toBeLessThanOrEqual(8);
-    expect(stats.urbanSidewalkEdges).toBe(40);
+    expect(stats.urbanSidewalkEdges).toBe(102);
     expect(stats.urbanCrosswalkIntersections).toBe(25);
     expect(roads.object.getObjectByName('aohara-sidewalks')).not.toBeNull();
     expect(roads.object.getObjectByName('aohara-crosswalks-and-stop-lines')).not.toBeNull();
@@ -188,6 +260,9 @@ describe('road network graph', () => {
       );
     }
     for (const edge of network.edges) {
+      if (edge.roadClass === 'urban-alley') {
+        continue;
+      }
       const clipped = trimRoadEdge(
         edge,
         ROAD_MARKING_JUNCTION_CLEARANCE_METERS,

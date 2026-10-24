@@ -189,7 +189,8 @@ export function generateRoadPoles(sampler: TerrainSampler, network: RoadNetwork)
     if (
       edge.roadClass === 'touge' ||
       edge.roadClass === 'urban-local' ||
-      edge.roadClass === 'urban-arterial'
+      edge.roadClass === 'urban-arterial' ||
+      edge.roadClass === 'urban-alley'
     ) {
       return;
     }

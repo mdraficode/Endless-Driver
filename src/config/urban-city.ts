@@ -145,13 +145,15 @@ export interface UrbanActivityTierBudget {
   readonly trafficVehicles: number;
   /** Instanced pedestrians kept on sidewalks; crossings and right-of-way are not simulated. */
   readonly pedestrians: number;
+  /** Static instanced refuse, boxes, carts and loading clutter across the backstreet network. */
+  readonly alleyProps: number;
 }
 
 /** Tier-bounded Aohara activity budgets; these counts are not device-FPS measurements. */
 export const URBAN_ACTIVITY_TIER_BUDGET: Readonly<Record<TierId, UrbanActivityTierBudget>> = {
-  C: { infillBuildings: 8, trafficVehicles: 8, pedestrians: 16 },
-  B: { infillBuildings: 12, trafficVehicles: 16, pedestrians: 32 },
-  A: { infillBuildings: 16, trafficVehicles: 24, pedestrians: 48 },
+  C: { infillBuildings: 8, trafficVehicles: 12, pedestrians: 16, alleyProps: 64 },
+  B: { infillBuildings: 12, trafficVehicles: 24, pedestrians: 32, alleyProps: 128 },
+  A: { infillBuildings: 16, trafficVehicles: 36, pedestrians: 48, alleyProps: 192 },
 };
 
 /** Traffic is the only activity budget scaled by the player-facing traffic-intensity setting. */
@@ -194,10 +196,12 @@ export const URBAN_STREET_FURNITURE_TIER_BUDGET: Readonly<
 
 /** Placement contract for the graph-aligned, static sidewalk furniture batch. */
 export const URBAN_STREET_FURNITURE_CONFIG = {
-  /** Candidate slots stay away from junction nodes, zebra crossings and stop bars. */
-  slotSpacingMeters: 80,
-  slotPhaseMeters: 40,
+  /** Candidate slots stay clear of junctions, crossings, stop bars and split-edge alley mouths. */
+  slotSpacingMeters: 24,
+  slotPhaseMeters: 28,
   intersectionClearanceMeters: 30,
+  /** Keep sidewalk furniture outside a mid-block alley mouth, without treating it as a full intersection. */
+  alleyMouthClearanceMeters: 14,
   /** Clearance from the wider of the crosswalk/stop-bar approach bands at a junction. */
   minimumRoadMarkingClearanceMeters: 12,
   /** Keep at least this much continuous pedestrian width inside every prop footprint. */

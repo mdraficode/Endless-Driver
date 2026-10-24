@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import { GROUND_COVER_CONFIG } from '../../src/config/ground-cover';
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
-import { URBAN_STREET_FURNITURE_TIER_BUDGET } from '../../src/config/urban-city';
+import {
+  URBAN_ACTIVITY_TIER_BUDGET,
+  URBAN_STREET_FURNITURE_TIER_BUDGET,
+} from '../../src/config/urban-city';
 import { RENDER_CONFIG } from '../../src/config/render';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
 import { WORLD_CONFIG } from '../../src/config/world';
@@ -29,20 +32,22 @@ describe('Aohara driving-world integration', () => {
       distantMountainRanges: 4,
       distantMountainVertices: 4 * 73 * 15,
       highRiseBuildings: 32,
+      frontageBuildings: expect.any(Number),
       streetLightPoles: 240,
       districtBanners: 60,
-      billboards: 18,
       stadiums: 1,
       casinos: 2,
       mansions: 4,
       houses: 4,
       townhouses: 8,
-      shops: 4,
       trafficSignals: 2,
       streetLightPointLights: 4,
       architecturalPointLights: 2,
       activePointLights: 6,
-      urbanSidewalkEdges: 40,
+      urbanTrafficVehicles: 12,
+      urbanAlleyProps: URBAN_ACTIVITY_TIER_BUDGET.C.alleyProps,
+      urbanAlleyPropsBudget: URBAN_ACTIVITY_TIER_BUDGET.C.alleyProps,
+      urbanSidewalkEdges: 102,
       urbanCrosswalkIntersections: 25,
       urbanWetLook: 0.85,
       roadMeshes: 8,
@@ -51,6 +56,10 @@ describe('Aohara driving-world integration', () => {
     if (stats === undefined) {
       throw new Error('the driving world should expose integrated enrichment diagnostics');
     }
+    expect(stats.frontageBuildings).toBeGreaterThanOrEqual(240);
+    expect(stats.shops).toBeGreaterThan(4);
+    expect(stats.billboards).toBe(stats.shops + 14);
+    expect(stats.urbanAlleyPropBatches).toBeGreaterThan(0);
     const cityFurnitureBudget = Object.values(URBAN_STREET_FURNITURE_TIER_BUDGET.C).reduce(
       (total, count) => total + count,
       0,
