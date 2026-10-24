@@ -311,18 +311,15 @@ export class RoadWorld {
       if (markingEdge !== null) {
         for (const side of [-1, 1] as const) {
           markingGeometries.push(
-            buildRibbonGeometry(
-              markingEdge,
-              0.15,
-              PAINT_LIFT,
-              side * (halfWidthMeters - 0.45),
-            ),
+            buildRibbonGeometry(markingEdge, 0.15, PAINT_LIFT, side * (halfWidthMeters - 0.45)),
           );
         }
       }
       if (edge.roadClass === 'urban-arterial' && markingEdge !== null) {
         for (const side of [-1, 1] as const) {
-          centerlineGeometries.push(buildRibbonGeometry(markingEdge, 0.11, PAINT_LIFT, side * 0.18));
+          centerlineGeometries.push(
+            buildRibbonGeometry(markingEdge, 0.11, PAINT_LIFT, side * 0.18),
+          );
         }
       }
     }

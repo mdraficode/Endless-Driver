@@ -170,10 +170,7 @@ export function buildDashGeometry(network: RoadNetwork, yOffset: number): Buffer
           1e-6,
           Math.hypot(start.x - startBefore.x, start.z - startBefore.z),
         );
-        const endTangentLength = Math.max(
-          1e-6,
-          Math.hypot(endAfter.x - end.x, endAfter.z - end.z),
-        );
+        const endTangentLength = Math.max(1e-6, Math.hypot(endAfter.x - end.x, endAfter.z - end.z));
         const startSide = sideOf({
           x: (start.x - startBefore.x) / startTangentLength,
           z: (start.z - startBefore.z) / startTangentLength,

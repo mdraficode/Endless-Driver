@@ -7,7 +7,10 @@ import {
 } from '../../src/config/distant-mountains';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
 import { createTerrainSampler } from '../../src/world/terrain-height';
-import { buildDistantMountainGeometry, DistantMountainWorld } from '../../src/world/distant-mountains';
+import {
+  buildDistantMountainGeometry,
+  DistantMountainWorld,
+} from '../../src/world/distant-mountains';
 
 const sampler = createTerrainSampler(TERRAIN_CONFIG);
 
@@ -38,9 +41,7 @@ describe('distant mountain horizon', () => {
       );
       expect(colors.count).toBe(positions.count);
       expect(first.index?.count).toBe(
-        DISTANT_MOUNTAIN_MESH_CONFIG.alongSegments *
-          DISTANT_MOUNTAIN_MESH_CONFIG.crossSegments *
-          6,
+        DISTANT_MOUNTAIN_MESH_CONFIG.alongSegments * DISTANT_MOUNTAIN_MESH_CONFIG.crossSegments * 6,
       );
       expect(first.getAttribute('position').array).toEqual(second.getAttribute('position').array);
       expect([minY, maxY]).toEqual([sameMinY, sameMaxY]);

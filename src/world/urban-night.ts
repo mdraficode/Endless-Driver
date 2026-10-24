@@ -118,8 +118,10 @@ interface CityBuildingSpec {
 }
 
 function hasPitchedRoof(building: CityBuildingSpec): boolean {
-  return building.roofStyle === 'hipped' ||
-    (building.roofStyle === undefined && (building.kind === 'house' || building.kind === 'mansion'));
+  return (
+    building.roofStyle === 'hipped' ||
+    (building.roofStyle === undefined && (building.kind === 'house' || building.kind === 'mansion'))
+  );
 }
 
 interface BillboardSpec extends TransformSpec {

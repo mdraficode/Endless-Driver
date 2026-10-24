@@ -74,7 +74,8 @@ export function buildDistantMountainGeometry(
       const slopeProfile = Math.pow(crossProfile, 1.18);
       const ridgelineRoughness =
         0.96 +
-        0.04 * Math.sin(alongUnit * Math.PI * 38 + phase) *
+        0.04 *
+          Math.sin(alongUnit * Math.PI * 38 + phase) *
           Math.max(0, 1 - Math.abs(crossUnit) * 2.4);
       const relativeHeight = skyline * slopeProfile * ridgelineRoughness;
       const baseHeight = sampler.heightAt(x, z) - footClearanceMeters;
@@ -149,7 +150,10 @@ export class DistantMountainWorld {
   getContentStats(): Readonly<Record<string, number>> {
     return {
       distantMountainRanges: this.#rangeCount,
-      distantMountainVertices: this.#rangeCount * (DISTANT_MOUNTAIN_MESH_CONFIG.alongSegments + 1) * (DISTANT_MOUNTAIN_MESH_CONFIG.crossSegments + 1),
+      distantMountainVertices:
+        this.#rangeCount *
+        (DISTANT_MOUNTAIN_MESH_CONFIG.alongSegments + 1) *
+        (DISTANT_MOUNTAIN_MESH_CONFIG.crossSegments + 1),
     };
   }
 }
