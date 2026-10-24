@@ -118,30 +118,30 @@ does not start the hero-car, weather, or broader Phase 8 work.
 Tiers are **explicit contracts**, not "auto magic". The tier system must be visible in the HUD/debug overlay and
 recorded in every performance claim.
 
-| System                                         | Tier C: mobile/low                                     | Tier B: desktop balanced                                       | Tier A: desktop high                                            |
-| ---------------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------- | --------------------------------------------------------------- |
-| Renderer path                                  | WebGPU preferred; automatic WebGL2 fallback            | WebGPU preferred; automatic WebGL2 fallback                    | WebGPU                                                          |
-| Resolution                                     | DPR ≤ 1.0, FXAA scene scale 0.50–1.0 (spatial upscale) | DPR ≤ 1.25, FXAA scene scale 0.55–1.0 (spatial upscale)        | DPR ≤ 2.0 with resolution cap, TAAU scale 0.75–1.0              |
-| Anti-aliasing                                  | FXAA; no temporal history or velocity attachment       | FXAA + adaptive spatial scaling; no temporal history           | TAAU + dynamic resolution, higher scale floor                   |
-| Shadows                                        | 1 cascade, 1024                                        | 2 cascades, 1024                                               | 4 cascades, 2048–4096                                           |
-| Ambient occlusion                              | Off or baked                                           | SSAO (half res)                                                | SSGI composite (replaces SSAO)                                  |
-| Reflections                                    | Environment IBL + Aohara local clearcoat               | SSR (half res) + probes (pending)                              | SSR + probes (pending); Aohara wet-look is local PBR            |
-| Terrain layers                                 | 2                                                      | 3                                                              | 4 + POM                                                         |
-| Vegetation                                     | Impostors, ≤ 20k; TSL sway off                         | LOD1–2, ≤ 80k; TSL sway ≤ 0.035 m                              | Full LOD0 near, ≤ 200k; TSL sway ≤ 0.065 m                      |
-| Runtime foliage chunks generated per frame     | 1                                                      | 2                                                              | 3                                                               |
-| Clouds/atmosphere                              | HDRI IBL + clear procedural sky; no fog                | Clear procedural sky; clouds off, no fog                       | Sky + clouds/light shafts where enabled; no fog                 |
-| Urban night lights                             | Faint local halo + 2-axis starburst, few active lights | Soft halo + restrained 4-axis starburst, capped lights/windows | Full local halo + subtle 4-axis starburst, source-isolated      |
-| Aohara facade panes/frames + structure details | 2,400 / 512                                            | 4,800 / 1,024                                                  | 7,200 / 1,600                                                   |
-| Vehicle particles / shutter                    | ≤ 32 smoke, 6 sparks, 4 airflow marks; no blur         | ≤ 64 smoke, 10 sparks, 10 airflow marks; no global blur        | ≤ 88 smoke, 14 sparks, 16 airflow marks; 0–0.36 high-speed blur |
-| Post stack                                     | Tone map + grade; SSAO off; no global bloom            | + half-res SSAO; no temporal resolve or global blur            | + SSGI (replaces SSAO) + grain; no global bloom                 |
-| Target frame                                   | 30–60 FPS                                              | 60 FPS                                                         | 60+ FPS where hardware permits                                  |
+| System                                         | Tier C: mobile/low                                                      | Tier B: desktop balanced                                       | Tier A: desktop high                                            |
+| ---------------------------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------- |
+| Renderer path                                  | WebGPU preferred; automatic WebGL2 fallback                             | WebGPU preferred; automatic WebGL2 fallback                    | WebGPU                                                          |
+| Resolution                                     | DPR ≤ 1.0, FXAA; scene scale starts 0.90, adapts to 0.60–1.0            | DPR ≤ 1.25, SMAA; scene scale starts 1.00, adapts to 0.80–1.0  | DPR ≤ 2.0 with resolution cap, TAAU scale 0.75–1.0              |
+| Anti-aliasing                                  | FXAA; no temporal history, velocity attachment, or chromatic aberration | SMAA; no temporal history or velocity attachment               | TAAU + dynamic resolution, higher scale floor                   |
+| Shadows                                        | 1 cascade, 1024                                                         | 2 cascades, 1024                                               | 4 cascades, 2048–4096                                           |
+| Ambient occlusion                              | Off or baked                                                            | SSAO (half res)                                                | SSGI composite (replaces SSAO)                                  |
+| Reflections                                    | Environment IBL + Aohara local clearcoat                                | SSR (half res) + probes (pending)                              | SSR + probes (pending); Aohara wet-look is local PBR            |
+| Terrain layers                                 | 2                                                                       | 3                                                              | 4 + POM                                                         |
+| Vegetation                                     | Impostors, ≤ 20k; TSL sway off                                          | LOD1–2, ≤ 80k; TSL sway ≤ 0.035 m                              | Full LOD0 near, ≤ 200k; TSL sway ≤ 0.065 m                      |
+| Runtime foliage chunks generated per frame     | 1                                                                       | 2                                                              | 3                                                               |
+| Clouds/atmosphere                              | HDRI IBL + clear procedural sky; no fog                                 | Clear procedural sky; clouds off, no fog                       | Sky + clouds/light shafts where enabled; no fog                 |
+| Urban night lights                             | Faint local halo + 2-axis starburst, few active lights                  | Soft halo + restrained 4-axis starburst, capped lights/windows | Full local halo + subtle 4-axis starburst, source-isolated      |
+| Aohara facade panes/frames + structure details | 2,400 / 512                                                             | 4,800 / 1,024                                                  | 7,200 / 1,600                                                   |
+| Vehicle particles / shutter                    | ≤ 32 smoke, 6 sparks, 4 airflow marks; no blur                          | ≤ 64 smoke, 10 sparks, 10 airflow marks; no global blur        | ≤ 88 smoke, 14 sparks, 16 airflow marks; 0–0.36 high-speed blur |
+| Post stack                                     | Tone map + grade; SSAO off; no global bloom                             | + half-res SSAO; no temporal resolve or global blur            | + SSGI (replaces SSAO) + grain; no global bloom                 |
+| Target frame                                   | 30–60 FPS                                                               | 60 FPS                                                         | 60+ FPS where hardware permits                                  |
 
 Budgets from `PROJECT_PLAN.md` §8 remain the reference; every tier gate is validated on **named hardware** with
-recorded resolution and settings. The performance-first C/B profiles start at scene scales 0.72/0.75 and adapt
-within 0.50–1.0 / 0.55–1.0, using 0.3 s intervals and 0.1 steps; A retains its higher-quality temporal path and
-0.5 s/0.05 defaults. All tiers use an elapsed-time-smoothed frame-time signal. Spatial upscaling may soften detail;
-compare that trade on device. These controls are code budgets, not measured FPS guarantees. The dev sandbox
-(SwiftShader) may only validate correctness, never frame rate.
+recorded resolution and settings. C starts at scene scale 0.90 with a 0.60 floor; B starts at 1.00 with a 0.80
+floor. Both use 0.05 steps and 0.5 s adjustment intervals with the shared elapsed-time-smoothed frame-time signal;
+A retains its higher-quality temporal path and 0.75 minimum. Spatial upscaling may soften detail when the controller
+responds to missed frame-time budgets; compare that trade on device. These controls are code budgets, not measured
+FPS guarantees. The dev sandbox (SwiftShader) may only validate correctness, never frame rate.
 
 **Implementation status (Phase 3).** The C/B/A contracts are code, not prose: `src/config/tiers.ts` holds the
 matrix as data and `src/core/QualityTier.ts` resolves and applies it. Selection is deterministic — an explicit
@@ -155,12 +155,14 @@ Two documented deviations from the table above:
 - **Tier C's renderer path.** All tiers leave the backend on `auto`, preferring WebGPU when available and using
   automatic WebGL2 fallback otherwise; pinning the older API on a device that supports WebGPU would surrender
   capability for no quality gain. `?backend=webgl` forces the fallback for comparison.
-- **Anti-aliasing and scaling.** Implemented: MSAA, FXAA, SMAA, and TAAU with dynamic resolution. C/B default
-  to FXAA with temporal history and motion vectors off; their scene pass scales within each tier's bounds to
-  trade detail for fill-rate. A retains TAAU reconstruction and adaptive resolution. Spatial AA linearly upscales
-  and cannot restore lost detail. **No tier uses multisampling by default** (the resolver forces `samples: 0` for
-  non-MSAA modes). `?aa=fxaa|smaa|none|taa` names a strategy outright, and `?res=` fixes a scale; when TAA is
-  switched off on a TAA configuration, the chain falls back to SMAA.
+- **Anti-aliasing and scaling.** Implemented: MSAA, FXAA, SMAA, and TAAU with dynamic resolution. C uses FXAA
+  and B uses SMAA, with temporal history and motion vectors off on both; their scene pass scales within the bounds
+  above. Tier C also disables chromatic aberration and uses more restrained sharpening to reduce the risk of
+  color fringing and edge halos while preserving the performance-first budget. A retains TAAU reconstruction and
+  adaptive resolution. Spatial AA linearly upscales and cannot restore lost detail. **No tier uses multisampling by
+  default** (the resolver forces `samples: 0` for non-MSAA modes). `?aa=fxaa|smaa|none|taa` names a strategy
+  outright, and `?res=` fixes a scale; when TAA is switched off on a TAA configuration, the chain falls back to SMAA.
+  The latest C/B tuning addresses an owner-reported low-resolution/edge-line symptom; it is not visually verified.
 
 **Post-processing status (Phase 3).** The stack is assembled by `src/shaders/post-chain.ts` in a fixed, documented
 order, and every effect is individually toggleable through configuration:
