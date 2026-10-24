@@ -80,13 +80,19 @@ export const INPUT_CONFIG: InputConfig = {
 
 /** Touch-control geometry/tuning for the on-screen driving controls (mobile). */
 export interface TouchControlConfig {
-  /** Joystick travel radius in CSS pixels: full deflection = full steering lock. */
-  readonly joystickRadiusPx: number;
-  /** Fraction of travel ignored around the centre, so a resting thumb holds straight. */
-  readonly joystickDeadzone: number;
+  /** Virtual-wheel turn from centre to full steering lock, in radians. */
+  readonly steeringWheelMaxRotationRad: number;
+  /** Fraction of wheel travel ignored around centre to absorb small thumb tremors. */
+  readonly steeringWheelDeadzone: number;
+  /** Wheel diameter fraction treated as the centre hub's forgiving horizontal-drag zone. */
+  readonly steeringWheelHubRadiusRatio: number;
+  /** Wheel diameter fraction needed to drag the hub from centre to full steering lock. */
+  readonly steeringWheelDragTravelRatio: number;
 }
 
 export const TOUCH_CONTROL_CONFIG: TouchControlConfig = {
-  joystickRadiusPx: 52,
-  joystickDeadzone: 0.12,
+  steeringWheelMaxRotationRad: 1.2,
+  steeringWheelDeadzone: 0.07,
+  steeringWheelHubRadiusRatio: 0.2,
+  steeringWheelDragTravelRatio: 0.42,
 };

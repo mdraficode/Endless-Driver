@@ -10,11 +10,11 @@ export interface OrbitGestureOptions {
 /**
  * Free-space swipe gesture that orbits the chase camera (owner request 2026-10-17).
  *
- * The surface is the canvas itself: every on-screen control (joystick, pedals,
+ * The surface is the canvas itself: every on-screen control (steering wheel, pedals,
  * utility buttons, diagnostics, studio panel) is a separate element that captures
  * its own pointers, so a pointer that goes down on the canvas is by definition a
  * thumb or mouse in empty screen. One pointer orbits at a time; a second thumb on
- * the joystick keeps driving while the first swipes, because the joystick holds its
+ * the steering wheel keeps driving while the first swipes, because the wheel holds its
  * own pointer capture.
  *
  * Pointer events cover touch and mouse with one code path: a mouse drag on desktop

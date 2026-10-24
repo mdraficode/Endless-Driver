@@ -1,6 +1,6 @@
 import { TOUCH_CONTROL_CONFIG } from '../config/input';
 import { requestFullscreenBestEffort } from '../ui/FullscreenOnStart';
-import { joystickSteer, TouchStateTracker, type TouchDriveState } from './touch-state';
+import { SteeringWheelGesture, TouchStateTracker, type TouchDriveState } from './touch-state';
 
 export type TouchCommand = 'reset' | 'toggleCamera' | 'toggleDiagnostics';
 
@@ -16,11 +16,16 @@ export interface TouchControlsOptions {
   readonly force?: boolean;
 }
 
+interface SteeringWheelPointer {
+  readonly id: number;
+  readonly gesture: SteeringWheelGesture;
+}
+
 /**
  * The on-screen driving surface for phones and tablets.
  *
- * Layout is landscape-first racing-game standard: a steering joystick under the left
- * thumb, BRAKE/GAS pedals under the right, handbrake above the brake, and small
+ * Layout is landscape-first racing-game standard: a one-finger rotary steering wheel under the
+ * left thumb, BRAKE/GAS pedals under the right, handbrake above the brake, and small
  * diagnostics/camera/reset/fullscreen buttons top-right. Every control tracks its own pointer ids
  * (multi-touch is the whole point: steer and accelerate at the same time), all state
  * funnels through `TouchStateTracker`, and the surface publishes into the same
@@ -39,7 +44,7 @@ export class TouchControls {
 
   readonly #options: TouchControlsOptions;
 
-  #joystickPointer: { id: number; centreX: number; centreY: number } | null = null;
+  #steeringPointer: SteeringWheelPointer | null = null;
 
   #orientationAttempted = false;
 
@@ -116,61 +121,95 @@ export class TouchControls {
       return element;
     };
 
-    // --- Steering joystick (left thumb) ---
-    const joystick = document.createElement('div');
-    joystick.className = 'touch-joystick';
-    joystick.setAttribute('role', 'application');
-    joystick.setAttribute('aria-label', 'Steering joystick');
-    const knob = document.createElement('div');
-    knob.className = 'touch-joystick-knob';
-    joystick.append(knob);
-    const radius = TOUCH_CONTROL_CONFIG.joystickRadiusPx;
+    // --- Rotary steering wheel (left thumb) ---
+    const steeringWheel = make(
+      'touch-steering-wheel',
+      '',
+      'Steering wheel. Rotate clockwise on the rim to steer right; rotate counterclockwise to steer left. You can also drag left or right from the centre hub.',
+    );
+    steeringWheel.title = 'Turn the rim with one finger, or drag sideways from the centre hub.';
+    const svgNamespace = 'http://www.w3.org/2000/svg';
+    const wheelArtwork = document.createElementNS(svgNamespace, 'svg');
+    wheelArtwork.setAttribute('class', 'touch-steering-wheel-svg');
+    wheelArtwork.setAttribute('viewBox', '0 0 128 128');
+    wheelArtwork.setAttribute('aria-hidden', 'true');
+    wheelArtwork.setAttribute('focusable', 'false');
 
-    const updateJoystick = (event: PointerEvent): void => {
-      if (this.#joystickPointer === null) {
+    const wheelCircle = (className: string, radius: number): SVGCircleElement => {
+      const circle = document.createElementNS(svgNamespace, 'circle');
+      circle.setAttribute('class', className);
+      circle.setAttribute('cx', '64');
+      circle.setAttribute('cy', '64');
+      circle.setAttribute('r', String(radius));
+      return circle;
+    };
+    const wheelSpokes = document.createElementNS(svgNamespace, 'path');
+    wheelSpokes.setAttribute('class', 'touch-steering-wheel-spokes');
+    wheelSpokes.setAttribute('d', 'M64 63 L64 12 M59 68 L21 91 M69 68 L107 91');
+    wheelArtwork.append(
+      wheelCircle('touch-steering-wheel-rim-shadow', 53),
+      wheelCircle('touch-steering-wheel-rim', 53),
+      wheelSpokes,
+      wheelCircle('touch-steering-wheel-hub', 14),
+      wheelCircle('touch-steering-wheel-hub-mark', 5),
+    );
+
+    const resetWheelArtwork = (): void => {
+      wheelArtwork.style.transform = 'rotate(0deg)';
+    };
+    const updateWheel = (event: PointerEvent): void => {
+      const pointer = this.#steeringPointer;
+      if (pointer === null || pointer.id !== event.pointerId) {
         return;
       }
-      const steer = joystickSteer(
-        event.clientX - this.#joystickPointer.centreX,
-        radius,
-        TOUCH_CONTROL_CONFIG.joystickDeadzone,
-      );
-      this.#tracker.setJoystick(event.pointerId, steer);
-      knob.style.transform = `translate(${steer * radius * 0.62}px, 0px)`;
+      const steer = pointer.gesture.update(event.clientX, event.clientY);
+      this.#tracker.setSteering(event.pointerId, steer);
+      const angleDegrees = (pointer.gesture.visualRotationRad * 180) / Math.PI;
+      wheelArtwork.style.transform = `rotate(${angleDegrees.toFixed(1)}deg)`;
       this.#emit();
     };
-    joystick.addEventListener('pointerdown', (event) => {
+    steeringWheel.append(wheelArtwork);
+    steeringWheel.addEventListener('pointerdown', (event) => {
       event.preventDefault();
-      const rect = joystick.getBoundingClientRect();
-      this.#joystickPointer = {
-        id: event.pointerId,
-        centreX: rect.left + rect.width / 2,
-        centreY: rect.top + rect.height / 2,
-      };
-      joystick.setPointerCapture?.(event.pointerId);
-      joystick.classList.add('is-active');
-      updateJoystick(event);
-    });
-    joystick.addEventListener('pointermove', (event) => {
-      if (this.#joystickPointer?.id === event.pointerId) {
-        updateJoystick(event);
+      if (this.#steeringPointer !== null) {
+        return;
       }
+      const rect = steeringWheel.getBoundingClientRect();
+      const diameterPx = Math.max(1, Math.min(rect.width, rect.height));
+      this.#steeringPointer = {
+        id: event.pointerId,
+        gesture: new SteeringWheelGesture({
+          centerX: rect.left + rect.width / 2,
+          centerY: rect.top + rect.height / 2,
+          startX: event.clientX,
+          startY: event.clientY,
+          hubRadiusPx: diameterPx * TOUCH_CONTROL_CONFIG.steeringWheelHubRadiusRatio,
+          dragTravelPx: diameterPx * TOUCH_CONTROL_CONFIG.steeringWheelDragTravelRatio,
+          maxRotationRad: TOUCH_CONTROL_CONFIG.steeringWheelMaxRotationRad,
+          deadzone: TOUCH_CONTROL_CONFIG.steeringWheelDeadzone,
+        }),
+      };
+      steeringWheel.setPointerCapture?.(event.pointerId);
+      steeringWheel.classList.add('is-active');
+      updateWheel(event);
     });
-    const releaseJoystick = (event: PointerEvent): void => {
-      if (this.#joystickPointer?.id !== event.pointerId) {
+    steeringWheel.addEventListener('pointermove', updateWheel);
+    const releaseWheel = (event: PointerEvent): void => {
+      if (this.#steeringPointer?.id !== event.pointerId) {
         return;
       }
       if (event.type === 'pointerup') {
         this.#maybeLockLandscape(event);
       }
-      this.#joystickPointer = null;
-      this.#tracker.releaseJoystick(event.pointerId);
-      knob.style.transform = 'translate(0px, 0px)';
-      joystick.classList.remove('is-active');
+      this.#steeringPointer = null;
+      this.#tracker.releaseSteering(event.pointerId);
+      resetWheelArtwork();
+      steeringWheel.classList.remove('is-active');
       this.#emit();
     };
-    joystick.addEventListener('pointerup', releaseJoystick);
-    joystick.addEventListener('pointercancel', releaseJoystick);
+    steeringWheel.addEventListener('pointerup', releaseWheel);
+    steeringWheel.addEventListener('pointercancel', releaseWheel);
+    steeringWheel.addEventListener('lostpointercapture', releaseWheel);
 
     // --- Pedals (right thumb / index) ---
     const pedal = (
@@ -190,8 +229,8 @@ export class TouchControls {
         if (event.type === 'pointerup') {
           this.#maybeLockLandscape(event);
         }
-        element.classList.remove('is-active');
         this.#tracker.setPressed(control, event.pointerId, false);
+        element.classList.toggle('is-active', this.#tracker.snapshot()[control]);
         this.#emit();
       };
       element.addEventListener('pointerup', release);
@@ -202,10 +241,9 @@ export class TouchControls {
 
     const pedals = document.createElement('div');
     pedals.className = 'touch-pedals';
-    pedals.append(
-      pedal('touch-pedal touch-pedal-brake', 'BRAKE', 'brake'),
-      pedal('touch-pedal touch-pedal-gas', 'GAS', 'throttle'),
-    );
+    const brake = pedal('touch-pedal touch-pedal-brake', 'BRAKE', 'brake');
+    const gas = pedal('touch-pedal touch-pedal-gas', 'GAS', 'throttle');
+    pedals.append(brake, gas);
     const handbrake = pedal('touch-handbrake', 'HB', 'handbrake');
 
     // --- Utility buttons (top-right) ---
@@ -233,7 +271,7 @@ export class TouchControls {
     });
     utilities.append(diagnosticsButton, cameraButton, resetButton, fullscreenButton);
 
-    this.#root.append(joystick, handbrake, pedals, utilities);
+    this.#root.append(steeringWheel, handbrake, pedals, utilities);
 
     // Release safety net: if an element ever misses its pointerup (capture quirks,
     // browser gesture interruptions), the window still hears the thumb lift and no
@@ -242,14 +280,16 @@ export class TouchControls {
       this.#tracker.setPressed('throttle', event.pointerId, false);
       this.#tracker.setPressed('brake', event.pointerId, false);
       this.#tracker.setPressed('handbrake', event.pointerId, false);
-      this.#tracker.releaseJoystick(event.pointerId);
-      if (this.#joystickPointer?.id === event.pointerId) {
-        this.#joystickPointer = null;
-        knob.style.transform = 'translate(0px, 0px)';
+      this.#tracker.releaseSteering(event.pointerId);
+      if (this.#steeringPointer?.id === event.pointerId) {
+        this.#steeringPointer = null;
+        resetWheelArtwork();
       }
-      for (const element of this.#root.querySelectorAll('.is-active')) {
-        element.classList.remove('is-active');
-      }
+      const state = this.#tracker.snapshot();
+      steeringWheel.classList.toggle('is-active', state.steer !== null);
+      gas.classList.toggle('is-active', state.throttle);
+      brake.classList.toggle('is-active', state.brake);
+      handbrake.classList.toggle('is-active', state.handbrake);
       this.#emit();
     };
     window.addEventListener('pointerup', releasePointer);
@@ -261,9 +301,13 @@ export class TouchControls {
     // A hidden tab must never resume with a pedal held down.
     const releaseWhenHidden = (): void => {
       if (document.hidden) {
-        this.#joystickPointer = null;
+        this.#steeringPointer = null;
         this.#tracker.releaseAll();
-        knob.style.transform = 'translate(0px, 0px)';
+        resetWheelArtwork();
+        steeringWheel.classList.remove('is-active');
+        gas.classList.remove('is-active');
+        brake.classList.remove('is-active');
+        handbrake.classList.remove('is-active');
         this.#emit();
       }
     };

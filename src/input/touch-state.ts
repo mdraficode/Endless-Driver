@@ -4,9 +4,9 @@ import { clamp } from '../shared/math';
 /**
  * The driving state the touch surface publishes to `InputManager`.
  *
- * `steer` is analog (-1..1) while the joystick is held and `null` when no thumb is on
- * it — `null`, not 0, so the keyboard path keeps working untouched on hybrid devices
- * and the rate limiter returns the wheel to centre only when the driver lets go.
+ * `steer` is analog (-1..1) while the virtual steering wheel is held and `null` when no thumb is
+ * on it — `null`, not 0, so the keyboard path keeps working untouched on hybrid devices and the
+ * rate limiter returns the wheel to centre only when the driver lets go.
  */
 export interface TouchDriveState {
   readonly steer: number | null;
@@ -22,29 +22,137 @@ export const NEUTRAL_TOUCH_STATE: TouchDriveState = {
   handbrake: false,
 };
 
-/**
- * Maps a joystick thumb offset to a steering value: horizontal deflection over the
- * travel radius, dead-zoned at the centre, clamped to the lock. Vertical deflection is
- * deliberately ignored — pedals do the longitudinal work, and a diagonal thumb drift
- * must not brake or accelerate the car by accident.
- */
-export function joystickSteer(offsetXPx: number, radiusPx: number, deadzone: number): number {
-  const normalized = clamp(offsetXPx / Math.max(1, radiusPx), -1, 1);
+function applySteeringDeadzone(value: number, deadzone: number): number {
+  const normalized = clamp(value, -1, 1);
   const magnitude = Math.abs(normalized);
-  if (magnitude <= deadzone) {
+  const safeDeadzone = clamp(deadzone, 0, 0.95);
+  if (magnitude <= safeDeadzone) {
     return 0;
   }
-  const scaled = (magnitude - deadzone) / (1 - deadzone);
+  const scaled = (magnitude - safeDeadzone) / (1 - safeDeadzone);
   return Math.sign(normalized) * clamp(scaled, 0, 1);
 }
 
 /**
- * Multi-touch state aggregation: every control tracks the set of pointer ids holding
- * it, so two thumbs (steer + throttle) — or a thumb sliding between pedals — never
- * cancel each other. Pure logic; the DOM surface in `TouchControls.ts` feeds it.
+ * Maps rotation of the on-screen wheel to analog steering. Positive clockwise rotation means
+ * steering right; the deadzone keeps small finger tremors from nudging the car on a straight.
+ */
+export function steeringWheelSteer(
+  rotationRad: number,
+  maxRotationRad: number,
+  deadzone: number,
+): number {
+  return applySteeringDeadzone(
+    rotationRad / Math.max(Number.EPSILON, Math.abs(maxRotationRad)),
+    deadzone,
+  );
+}
+
+/** Maps a short horizontal drag that starts on the wheel's centre hub to steering. */
+export function steeringWheelDragSteer(
+  offsetXPx: number,
+  travelPx: number,
+  deadzone: number,
+): number {
+  return applySteeringDeadzone(offsetXPx / Math.max(1, Math.abs(travelPx)), deadzone);
+}
+
+/** Returns the shortest signed angular difference, even when a finger crosses the ±π seam. */
+export function wrappedAngleDelta(currentAngleRad: number, previousAngleRad: number): number {
+  const difference = currentAngleRad - previousAngleRad;
+  return Math.atan2(Math.sin(difference), Math.cos(difference));
+}
+
+export interface SteeringWheelGestureOptions {
+  readonly centerX: number;
+  readonly centerY: number;
+  readonly startX: number;
+  readonly startY: number;
+  /** The inner hub is a forgiving horizontal-drag zone; the outer rim uses a rotary gesture. */
+  readonly hubRadiusPx: number;
+  readonly dragTravelPx: number;
+  readonly maxRotationRad: number;
+  readonly deadzone: number;
+}
+
+/**
+ * One-finger virtual steering-wheel gesture, independent of the DOM/pointer-event layer.
+ * A finger on the rim accumulates clockwise/counter-clockwise rotation; a finger starting on the
+ * hub uses a simpler left/right drag. The wheel angle and steering value clamp at the same lock.
+ */
+export class SteeringWheelGesture {
+  readonly #centerX: number;
+  readonly #centerY: number;
+  readonly #startX: number;
+  readonly #hubRadiusPx: number;
+  readonly #dragTravelPx: number;
+  readonly #maxRotationRad: number;
+  readonly #deadzone: number;
+  readonly #hubDrag: boolean;
+
+  #lastAngleRad: number | null;
+  #rotationRad = 0;
+  #steer = 0;
+
+  constructor(options: SteeringWheelGestureOptions) {
+    this.#centerX = options.centerX;
+    this.#centerY = options.centerY;
+    this.#startX = options.startX;
+    this.#hubRadiusPx = Math.max(0, options.hubRadiusPx);
+    this.#dragTravelPx = Math.max(1, Math.abs(options.dragTravelPx));
+    this.#maxRotationRad = Math.max(Number.EPSILON, Math.abs(options.maxRotationRad));
+    this.#deadzone = clamp(options.deadzone, 0, 0.95);
+
+    const offsetX = options.startX - options.centerX;
+    const offsetY = options.startY - options.centerY;
+    this.#hubDrag = Math.hypot(offsetX, offsetY) <= this.#hubRadiusPx;
+    this.#lastAngleRad = this.#hubDrag ? null : Math.atan2(offsetY, offsetX);
+  }
+
+  get visualRotationRad(): number {
+    return this.#rotationRad;
+  }
+
+  /** Updates the gesture from one pointer position and returns normalized steering (-1..1). */
+  update(pointerX: number, pointerY: number): number {
+    if (this.#hubDrag) {
+      this.#steer = steeringWheelDragSteer(
+        pointerX - this.#startX,
+        this.#dragTravelPx,
+        this.#deadzone,
+      );
+      this.#rotationRad = this.#steer * this.#maxRotationRad;
+      return this.#steer;
+    }
+
+    const offsetX = pointerX - this.#centerX;
+    const offsetY = pointerY - this.#centerY;
+    if (Math.hypot(offsetX, offsetY) <= this.#hubRadiusPx) {
+      // Re-anchor after crossing the hub instead of interpreting it as a half-turn jump.
+      this.#lastAngleRad = null;
+      return this.#steer;
+    }
+
+    const angleRad = Math.atan2(offsetY, offsetX);
+    if (this.#lastAngleRad !== null) {
+      this.#rotationRad = clamp(
+        this.#rotationRad + wrappedAngleDelta(angleRad, this.#lastAngleRad),
+        -this.#maxRotationRad,
+        this.#maxRotationRad,
+      );
+    }
+    this.#lastAngleRad = angleRad;
+    this.#steer = steeringWheelSteer(this.#rotationRad, this.#maxRotationRad, this.#deadzone);
+    return this.#steer;
+  }
+}
+
+/**
+ * Multi-touch state aggregation: each driving control tracks pointer ids independently, so one
+ * thumb can steer while another holds a pedal. Pure logic; the DOM surface feeds it.
  */
 export class TouchStateTracker {
-  readonly #joystickPointers = new Map<number, number>();
+  readonly #steeringPointers = new Map<number, number>();
 
   readonly #throttlePointers = new Set<number>();
 
@@ -52,13 +160,13 @@ export class TouchStateTracker {
 
   readonly #handbrakePointers = new Set<number>();
 
-  /** Registers/updates a joystick pointer with its current steering value. */
-  setJoystick(pointerId: number, steer: number): void {
-    this.#joystickPointers.set(pointerId, clamp(steer, -1, 1));
+  /** Registers/updates a steering-wheel pointer with its current steering value. */
+  setSteering(pointerId: number, steer: number): void {
+    this.#steeringPointers.set(pointerId, clamp(steer, -1, 1));
   }
 
-  releaseJoystick(pointerId: number): void {
-    this.#joystickPointers.delete(pointerId);
+  releaseSteering(pointerId: number): void {
+    this.#steeringPointers.delete(pointerId);
   }
 
   setPressed(
@@ -81,7 +189,7 @@ export class TouchStateTracker {
 
   /** Releases every pointer (blur, visibility loss, detach): the car must stop cleanly. */
   releaseAll(): void {
-    this.#joystickPointers.clear();
+    this.#steeringPointers.clear();
     this.#throttlePointers.clear();
     this.#brakePointers.clear();
     this.#handbrakePointers.clear();
@@ -89,7 +197,7 @@ export class TouchStateTracker {
 
   snapshot(): TouchDriveState {
     let steer: number | null = null;
-    for (const value of this.#joystickPointers.values()) {
+    for (const value of this.#steeringPointers.values()) {
       steer = value; // Last-registered thumb wins while held.
     }
     return {

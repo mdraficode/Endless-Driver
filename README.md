@@ -82,7 +82,7 @@ Vite binds to `0.0.0.0` and accepts the Arena `.e2b.app` preview domain. Browser
 | `C`                    | Cycle Close → Normal → Far chase → debug orbit → cockpit → Close                                              |
 | Free-canvas swipe/drag | Orbit chase views through the surroundings or look around from the cockpit; chase recenters as driving begins |
 
-Touch-capable devices show a virtual steering joystick, gas/brake pedals, handbrake, camera/reset, and fullscreen/landscape controls. Independent touch points support simultaneous steering and acceleration; camera swipes look around from the cockpit or orbit chase views. Real-device acceptance, settings, and broad final polish remain outside the specifically authorized cockpit-camera increment.
+Touch-capable devices show a one-finger rotary steering wheel, gas/brake pedals, handbrake, camera/reset, and fullscreen/landscape controls. Rotate the wheel rim clockwise or counterclockwise to steer; a sideways drag from its centre hub is also supported. Independent touch points support steering and acceleration at the same time; camera swipes look around from the cockpit or orbit chase views. Real-device acceptance, settings, and broad final polish remain outside the specifically authorized cockpit-camera increment.
 
 **Debug camera** (when the orbit camera is active)
 

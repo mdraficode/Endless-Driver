@@ -264,7 +264,7 @@ export class Application {
     this.#cockpitCamera.snapTo(this.#car.getInterpolatedPose(0), this.#car.telemetry);
     // Free-space swipe orbits the chase camera, or looks around from the cockpit. The canvas is
     // the gesture surface and every on-screen control captures its own pointers, so thumbs on the
-    // joystick and pedals never fight a finger looking around (owner request 2026-10-17).
+    // steering wheel and pedals never fight a finger looking around (owner request 2026-10-17).
     this.#orbitGesture = new OrbitGesture(options.canvas, {
       onSwipe: (dx, dy, viewportWidth) => {
         if (this.#cameraMode === 'cockpit') {
@@ -459,7 +459,7 @@ export class Application {
     if (!this.#firstFrameRendered) {
       this.#setStatus(
         this.#touchActive
-          ? 'Touch controls ready — steer with the left joystick, GAS/BRAKE on the right.'
+          ? 'Touch controls ready — turn the left steering wheel; GAS/BRAKE are on the right.'
           : 'Drive with W A S D, Space handbrake, R reset, C camera.',
       );
     }

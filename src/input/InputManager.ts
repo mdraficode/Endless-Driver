@@ -204,8 +204,8 @@ export class InputManager {
     this.#handbrake = this.#smoothAxis(this.#handbrake, handbrakeTarget, dt, config.handbrake);
 
     // Steering: symmetric input, asymmetric rates (centering is faster than turning).
-    // A held joystick publishes an analog target through the same rate limiter, so the
-    // wheel sweeps to the thumb's angle instead of snapping to it.
+    // A held touch steering wheel publishes an analog target through the same rate limiter,
+    // so the in-game steering sweeps with the user's turn instead of snapping to it.
     const keyboardSteer =
       (this.#isAnyPressed(this.#bindings.steerRight) ? 1 : 0) -
       (this.#isAnyPressed(this.#bindings.steerLeft) ? 1 : 0);
