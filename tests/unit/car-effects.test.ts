@@ -60,6 +60,8 @@ const telemetry: VehicleTelemetry = {
   handbrake: false,
   steerAngle: 0,
   contactCount: 4,
+  averageSurfaceGripModifier: 1,
+  averageSurfaceRollingResistance: VEHICLE_CONFIG.tires.rollingResistance,
   isGrounded: true,
   slipAngle: 0,
   lateralAcceleration: 0,

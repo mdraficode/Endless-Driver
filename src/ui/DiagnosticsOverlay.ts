@@ -2,6 +2,7 @@ import type { CameraMode } from '../config/camera';
 import type { AntiAliasingMode, RendererBackendName } from '../config/render';
 import type { TierId } from '../config/tiers';
 import type { TierReason } from '../core/QualityTier';
+import type { WeatherPreset } from '../environment/SurfaceState';
 
 /**
  * Diagnostics HUD.
@@ -82,6 +83,13 @@ export interface DiagnosticsSnapshot {
   /** Swipe-to-orbit offset around the car, degrees (yaw / pitch). */
   readonly cameraOrbit: { readonly yawDegrees: number; readonly pitchDegrees: number };
   readonly cameraFov: number;
+  readonly weather: WeatherPreset;
+  /** Normalized wetness of the active weather preset (0 = dry, 1 = saturated). */
+  readonly wetness: number;
+  /** Mean effective grip multiplier across wheels currently contacting the ground. */
+  readonly averageSurfaceGripModifier: number | null;
+  /** Mean rolling-resistance coefficient across wheels currently contacting the ground. */
+  readonly averageSurfaceRollingResistance: number | null;
   readonly speedKph: number;
   /** Signed speed along the chassis forward axis, m/s (negative when reversing). */
   readonly forwardSpeed: number;
@@ -151,6 +159,25 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
   {
     label: 'Wheels',
     format: (snapshot) => `${snapshot.contactCount}/4 on ground`,
+  },
+  {
+    label: 'Weather',
+    format: (snapshot) =>
+      snapshot.wetness === 0
+        ? `${snapshot.weather} · dry`
+        : `${snapshot.weather} · ${(snapshot.wetness * 100).toFixed(0)}% wet`,
+  },
+  {
+    label: 'Surface',
+    format: (snapshot) => {
+      if (
+        snapshot.averageSurfaceGripModifier === null ||
+        snapshot.averageSurfaceRollingResistance === null
+      ) {
+        return 'no tire contact';
+      }
+      return `grip ${snapshot.averageSurfaceGripModifier.toFixed(2)}× · RR ${snapshot.averageSurfaceRollingResistance.toFixed(4)}`;
+    },
   },
   {
     label: 'Drift',

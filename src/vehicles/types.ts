@@ -96,6 +96,10 @@ export interface VehicleTelemetry {
   /** Applied front-wheel steering angle in radians. */
   readonly steerAngle: number;
   readonly contactCount: number;
+  /** Mean effective grip multiplier across wheels contacting a surface; `null` when airborne. */
+  readonly averageSurfaceGripModifier: number | null;
+  /** Mean rolling-resistance coefficient across contacting wheels; `null` when airborne. */
+  readonly averageSurfaceRollingResistance: number | null;
   readonly isGrounded: boolean;
   /** Chassis slip angle in radians (positive = sliding right). */
   readonly slipAngle: number;

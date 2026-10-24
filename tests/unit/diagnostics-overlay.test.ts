@@ -90,6 +90,10 @@ const SNAPSHOT = {
   handbrake: false,
   steerAngleDegrees: 5,
   contactCount: 4,
+  weather: 'clear',
+  wetness: 0,
+  averageSurfaceGripModifier: 1,
+  averageSurfaceRollingResistance: 0.015,
   drifting: false,
   slipAngleDegrees: 2,
   distanceMeters: 1245,
@@ -129,11 +133,11 @@ describe('full-screen diagnostics report', () => {
     expect(panel.getAttribute('aria-label')).toBe('Live diagnostics report');
     expect(panel.getAttribute('aria-hidden')).toBe('false');
     expect(grid.className).toBe('diagnostics-grid');
-    expect(grid.children).toHaveLength(28);
+    expect(grid.children).toHaveLength(30);
     expect(grid.children.every((metric) => metric.children.length === 2)).toBe(true);
 
     const labels = grid.children.map((metric) => metric.children[0]?.textContent);
-    for (const label of ['Viewport', 'Tier', 'Renderer', 'Resolution']) {
+    for (const label of ['Viewport', 'Tier', 'Renderer', 'Resolution', 'Weather', 'Surface']) {
       expect(labels).toContain(label);
     }
 
@@ -148,7 +152,25 @@ describe('full-screen diagnostics report', () => {
     expect(report.get('Tier')).toBe('C · mobile · 1x shadow');
     expect(report.get('Renderer')).toBe('webgl2 · fxaa');
     expect(report.get('Resolution')).toBe('fxaa @ 90%');
+    expect(report.get('Weather')).toBe('clear · dry');
+    expect(report.get('Surface')).toBe('grip 1.00× · RR 0.0150');
     expect([...report.values()].every((value) => value !== '—')).toBe(true);
+
+    overlay.update({
+      ...SNAPSHOT,
+      weather: 'rain',
+      wetness: 0.85,
+      averageSurfaceGripModifier: 0.813,
+      averageSurfaceRollingResistance: 0.0184,
+    });
+    const rainReport = new Map(
+      grid.children.map((metric) => [
+        metric.children[0]?.textContent,
+        metric.children[1]?.textContent,
+      ]),
+    );
+    expect(rainReport.get('Weather')).toBe('rain · 85% wet');
+    expect(rainReport.get('Surface')).toBe('grip 0.81× · RR 0.0184');
 
     overlay.dispose();
     expect(panel.removed).toBe(true);

@@ -638,6 +638,10 @@ export class Application {
             ? 'Cockpit'
             : this.#chaseCamera.view.label,
       cameraFov: activeCamera.fov,
+      weather: this.#surfaceState.weather,
+      wetness: this.#surfaceState.wetness,
+      averageSurfaceGripModifier: telemetry.averageSurfaceGripModifier,
+      averageSurfaceRollingResistance: telemetry.averageSurfaceRollingResistance,
       speedKph: telemetry.speedKph,
       forwardSpeed: telemetry.forwardSpeed,
       gear: telemetry.gear,

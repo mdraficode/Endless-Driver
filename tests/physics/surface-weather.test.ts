@@ -32,6 +32,9 @@ beforeAll(async () => {
 function cornerResponse(weather: WeatherPreset): {
   readonly speedKph: number;
   readonly lateralForce: number;
+  readonly contactCount: number;
+  readonly averageSurfaceGripModifier: number | null;
+  readonly averageSurfaceRollingResistance: number | null;
 } {
   const physics = new PhysicsWorld({ rapier, worldConfig: OPEN_WORLD });
   const state = resolveSurfaceState(weather);
@@ -57,6 +60,9 @@ function cornerResponse(weather: WeatherPreset): {
   const response = {
     speedKph: car.telemetry.speedKph,
     lateralForce: car.wheels.reduce((total, wheel) => total + Math.abs(wheel.lateralForce), 0),
+    contactCount: car.telemetry.contactCount,
+    averageSurfaceGripModifier: car.telemetry.averageSurfaceGripModifier,
+    averageSurfaceRollingResistance: car.telemetry.averageSurfaceRollingResistance,
   };
   car.dispose();
   physics.dispose();
@@ -69,6 +75,12 @@ describe('Phase 7 wet-surface vehicle coupling', () => {
     const wet = cornerResponse('rain');
 
     expect(dry.speedKph).toBeCloseTo(wet.speedKph, 1);
+    expect(dry.contactCount).toBe(4);
+    expect(wet.contactCount).toBe(4);
+    expect(dry.averageSurfaceGripModifier).toBeCloseTo(1, 3);
+    expect(wet.averageSurfaceGripModifier).toBeCloseTo(0.813, 3);
+    expect(dry.averageSurfaceRollingResistance).toBeCloseTo(0.015, 4);
+    expect(wet.averageSurfaceRollingResistance).toBeCloseTo(0.0184, 4);
     expect(dry.lateralForce).toBeGreaterThan(0);
     expect(wet.lateralForce).toBeLessThan(dry.lateralForce * 0.95);
   });

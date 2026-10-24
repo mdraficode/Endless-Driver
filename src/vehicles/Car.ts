@@ -880,11 +880,15 @@ export class Car {
     const forwardSpeed = dotVec3(linearVelocity, forward);
 
     let contactCount = 0;
+    let surfaceGripTotal = 0;
+    let surfaceRollingResistanceTotal = 0;
     let steerTotal = 0;
     let steerCount = 0;
     for (const wheel of this.wheels) {
       if (wheel.inContact) {
         contactCount += 1;
+        surfaceGripTotal += wheel.surfaceGripModifier;
+        surfaceRollingResistanceTotal += wheel.surfaceRollingResistance;
       }
       if (wheel.isFront) {
         steerTotal += wheel.steerAngle;
@@ -921,6 +925,9 @@ export class Car {
       handbrake: this.#actions.handbrake,
       steerAngle: steerCount > 0 ? steerTotal / steerCount : 0,
       contactCount,
+      averageSurfaceGripModifier: contactCount > 0 ? surfaceGripTotal / contactCount : null,
+      averageSurfaceRollingResistance:
+        contactCount > 0 ? surfaceRollingResistanceTotal / contactCount : null,
       isGrounded: contactCount > 0,
       slipAngle,
       lateralAcceleration,
