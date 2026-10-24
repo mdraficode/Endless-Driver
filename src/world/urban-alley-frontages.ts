@@ -20,6 +20,7 @@ import type { TownCarProbe, TownHit } from './town';
 const FACADE_WALL_GAP_METERS = 3.2;
 const FACADE_WALL_THICKNESS_METERS = 0.18;
 const FACADE_COLLISION_SEGMENT_METERS = 2;
+const FACADE_PROP_CLEARANCE_SEGMENT_METERS = 6;
 const FACADE_ROAD_SAMPLE_METERS = 0.25;
 const FACADE_MIN_ROAD_CLEARANCE_METERS = 2.65;
 const FACADE_BUILDING_DEPTH_METERS = 6.8;
@@ -351,11 +352,42 @@ function makeCollisionBoxes(
   return boxes;
 }
 
+function makePropClearanceFootprints(
+  network: RoadNetwork,
+  placements: readonly UrbanAlleyFacadePlacement[],
+): readonly StaticBuildingBox[] {
+  const edgeById = new Map(network.edges.map((edge) => [edge.id, edge]));
+  const boxes: StaticBuildingBox[] = [];
+  for (const placement of placements) {
+    const edge = edgeById.get(placement.roadEdgeId);
+    if (edge === undefined) continue;
+    const segmentCount = Math.max(
+      1,
+      Math.ceil(placement.widthMeters / FACADE_PROP_CLEARANCE_SEGMENT_METERS),
+    );
+    const segmentLength = placement.widthMeters / segmentCount;
+    const wallCenterOffset = placement.wallOffsetMeters - 0.05 + FACADE_WALL_THICKNESS_METERS / 2;
+    for (let segmentIndex = 0; segmentIndex < segmentCount; segmentIndex += 1) {
+      const alongMeters = placement.startAlongMeters + (segmentIndex + 0.5) * segmentLength;
+      const frame = roadFrameAt(edge, alongMeters);
+      boxes.push({
+        x: frame.x + frame.normalX * placement.side * wallCenterOffset,
+        z: frame.z + frame.normalZ * placement.side * wallCenterOffset,
+        yaw: Math.atan2(frame.tangentZ, frame.tangentX),
+        halfWidth: segmentLength / 2 + 0.05,
+        halfDepth: FACADE_WALL_THICKNESS_METERS / 2 + 0.02,
+      });
+    }
+  }
+  return boxes;
+}
+
 /** Continuous, windowed low-rise façades that make narrow backstreets read as building canyons. */
 export class UrbanAlleyFrontages {
   readonly root = new Group();
   readonly placements: readonly UrbanAlleyFacadePlacement[];
   readonly collisionBoxes: readonly StaticBuildingBox[];
+  readonly propClearanceFootprints: readonly StaticBuildingBox[];
   readonly #meshes: InstancedMesh[] = [];
   readonly #geometries: BufferGeometry[] = [];
   readonly #materials: MeshStandardNodeMaterial[] = [];
@@ -368,6 +400,7 @@ export class UrbanAlleyFrontages {
     this.placements = generateAoharaAlleyFacadePlacements(network, tier);
     const visiblePlacements = this.placements;
     this.collisionBoxes = makeCollisionBoxes(network, visiblePlacements);
+    this.propClearanceFootprints = makePropClearanceFootprints(network, visiblePlacements);
     this.#buildCollisionIndex();
     const [originX, , originZ] = origin;
     const wallGeometry = createContinuousWallGeometry(network, visiblePlacements, originX, originZ);

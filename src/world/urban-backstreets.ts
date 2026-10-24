@@ -165,10 +165,59 @@ function makePropFootprint(
   };
 }
 
+interface FootprintSpatialIndex {
+  readonly cellSize: number;
+  readonly cells: ReadonlyMap<string, readonly StaticBuildingBox[]>;
+}
+
+function makeFootprintSpatialIndex(
+  footprints: readonly StaticBuildingBox[],
+): FootprintSpatialIndex {
+  const cellSize = 24;
+  const cells = new Map<string, StaticBuildingBox[]>();
+  for (const footprint of footprints) {
+    const boundsRadius = Math.hypot(footprint.halfWidth, footprint.halfDepth);
+    const minCellX = Math.floor((footprint.x - boundsRadius) / cellSize);
+    const maxCellX = Math.floor((footprint.x + boundsRadius) / cellSize);
+    const minCellZ = Math.floor((footprint.z - boundsRadius) / cellSize);
+    const maxCellZ = Math.floor((footprint.z + boundsRadius) / cellSize);
+    for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
+      for (let cellZ = minCellZ; cellZ <= maxCellZ; cellZ += 1) {
+        const key = `${cellX}:${cellZ}`;
+        const bucket = cells.get(key) ?? [];
+        bucket.push(footprint);
+        cells.set(key, bucket);
+      }
+    }
+  }
+  return { cellSize, cells };
+}
+
+function nearbyFootprints(
+  index: FootprintSpatialIndex,
+  footprint: StaticBuildingBox,
+): readonly StaticBuildingBox[] {
+  const boundsRadius = Math.hypot(footprint.halfWidth, footprint.halfDepth);
+  const minCellX = Math.floor((footprint.x - boundsRadius) / index.cellSize);
+  const maxCellX = Math.floor((footprint.x + boundsRadius) / index.cellSize);
+  const minCellZ = Math.floor((footprint.z - boundsRadius) / index.cellSize);
+  const maxCellZ = Math.floor((footprint.z + boundsRadius) / index.cellSize);
+  const nearby = new Set<StaticBuildingBox>();
+  for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
+    for (let cellZ = minCellZ; cellZ <= maxCellZ; cellZ += 1) {
+      for (const candidate of index.cells.get(`${cellX}:${cellZ}`) ?? []) {
+        nearby.add(candidate);
+      }
+    }
+  }
+  return [...nearby];
+}
+
 function isPlacementClear(
   network: RoadNetwork,
   candidate: UrbanAlleyPropPlacement,
   buildings: readonly StaticBuildingBox[],
+  facadeFootprints: FootprintSpatialIndex,
   accepted: readonly UrbanAlleyPropPlacement[],
 ): boolean {
   const footprint = makePropFootprint(candidate);
@@ -176,6 +225,9 @@ function isPlacementClear(
     if (footprintSeparation(footprint, building, ALLEY_PROP_BUILDING_CLEARANCE_METERS) <= 0) {
       return false;
     }
+  }
+  for (const facade of nearbyFootprints(facadeFootprints, footprint)) {
+    if (footprintSeparation(footprint, facade, 0) <= 0) return false;
   }
   for (const placement of accepted) {
     if (
@@ -211,7 +263,9 @@ export function generateAoharaAlleyPropPlacements(
   network: RoadNetwork,
   tier: TierId,
   buildingFootprints: readonly StaticBuildingBox[],
+  facadeFootprints: readonly StaticBuildingBox[] = [],
 ): readonly UrbanAlleyPropPlacement[] {
+  const facadeFootprintIndex = makeFootprintSpatialIndex(facadeFootprints);
   const budget = URBAN_ACTIVITY_TIER_BUDGET[tier].alleyProps;
   const basePerBlock = Math.floor(budget / AOHARA_BACKSTREET_BLOCKS.length);
   const remainder = budget % AOHARA_BACKSTREET_BLOCKS.length;
@@ -302,7 +356,9 @@ export function generateAoharaAlleyPropPlacements(
     const selectedForBlock: UrbanAlleyPropPlacement[] = [];
     for (const { placement } of candidates) {
       if (selectedForBlock.length >= target) break;
-      if (isPlacementClear(network, placement, buildingFootprints, placements)) {
+      if (
+        isPlacementClear(network, placement, buildingFootprints, facadeFootprintIndex, placements)
+      ) {
         placements.push(placement);
         selectedForBlock.push(placement);
       }
@@ -423,9 +479,15 @@ export class UrbanBackstreetProps {
     network: RoadNetwork,
     buildingFootprints: readonly StaticBuildingBox[],
     origin: readonly [number, number, number],
+    facadeFootprints: readonly StaticBuildingBox[] = [],
   ) {
     this.root.name = 'aohara-alley-props';
-    this.placements = generateAoharaAlleyPropPlacements(network, tier, buildingFootprints);
+    this.placements = generateAoharaAlleyPropPlacements(
+      network,
+      tier,
+      buildingFootprints,
+      facadeFootprints,
+    );
     this.collisionBoxes = this.placements.map((placement) => makePropFootprint(placement));
     const originX = origin[0];
     const originZ = origin[2];

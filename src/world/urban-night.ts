@@ -1404,11 +1404,13 @@ export class UrbanNightWorld implements SceneContent {
     }
     this.#backstreetProps =
       this.#networkIntegrated && options.roadNetwork !== undefined
-        ? new UrbanBackstreetProps(tier, options.roadNetwork, this.#buildingColliders, [
-            originX,
-            originY,
-            originZ,
-          ])
+        ? new UrbanBackstreetProps(
+            tier,
+            options.roadNetwork,
+            this.#buildingColliders,
+            [originX, originY, originZ],
+            this.#backstreetFrontages?.propClearanceFootprints ?? [],
+          )
         : null;
     if (this.#backstreetProps !== null) {
       this.root.add(this.#backstreetProps.root);
@@ -1714,6 +1716,11 @@ export class UrbanNightWorld implements SceneContent {
   /** Collision footprints for the continuous building walls bordering Aohara's alleys. */
   getBackstreetFacadeFootprints(): readonly StaticBuildingBox[] {
     return (this.#backstreetFrontages?.collisionBoxes ?? []).map((box) => ({ ...box }));
+  }
+
+  /** Compact, longer-chord frontage proxies used only to keep clutter away from the walls. */
+  getBackstreetFacadePropFootprints(): readonly StaticBuildingBox[] {
+    return (this.#backstreetFrontages?.propClearanceFootprints ?? []).map((box) => ({ ...box }));
   }
 
   /** Read-only diagnostic copy of collision footprints for the bounded alley clutter. */

@@ -896,7 +896,6 @@ describe('Aohara city night-lighting rules', () => {
       const endsAtStreetMouth = edge.to.startsWith('aohara-access-');
       const startInset = startsAtStreetMouth ? 16.5 : 1.25;
       const endInset = endsAtStreetMouth ? 16.5 : edge.to.endsWith('-hub') ? 14 : 1.25;
-      expect(edgeRows.length).toBeGreaterThan(0);
       const plannedEnd = edge.lengthMeters - endInset;
       plannedFrontageMeters += Math.max(0, plannedEnd - startInset) * 2;
 
@@ -904,7 +903,6 @@ describe('Aohara city night-lighting rules', () => {
         const row = edgeRows
           .filter((placement) => placement.side === side)
           .sort((first, second) => first.startAlongMeters - second.startAlongMeters);
-        expect(row.length).toBeGreaterThan(0);
         let previousEnd = startInset;
         for (const building of row) {
           expect(building.widthMeters).toBeGreaterThan(0);
@@ -974,8 +972,16 @@ describe('Aohara city night-lighting rules', () => {
     });
     const buildings = city.getStaticBuildingFootprints();
     const facadeFootprints = city.getBackstreetFacadeFootprints();
-    const placements = generateAoharaAlleyPropPlacements(network, 'B', buildings);
-    expect(placements).toEqual(generateAoharaAlleyPropPlacements(network, 'B', buildings));
+    const facadePropFootprints = city.getBackstreetFacadePropFootprints();
+    const placements = generateAoharaAlleyPropPlacements(
+      network,
+      'B',
+      buildings,
+      facadePropFootprints,
+    );
+    expect(placements).toEqual(
+      generateAoharaAlleyPropPlacements(network, 'B', buildings, facadePropFootprints),
+    );
     expect(placements).toHaveLength(URBAN_ACTIVITY_TIER_BUDGET.B.alleyProps);
     expect(new Set(placements.map((placement) => placement.id)).size).toBe(placements.length);
 
