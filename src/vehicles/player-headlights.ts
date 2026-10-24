@@ -1,22 +1,23 @@
 import { Group, SpotLight } from 'three';
 
 /**
- * A fixed pair of player-car low beams. The spots are intentionally unshadowed and are not
- * multiplied across traffic vehicles; they are two vehicle-attached lights, enabled only at night.
- * Aohara's tier-capped city point-light budgets remain unchanged.
+ * A fixed pair of broad player-car flood/low beams. The spots are intentionally unshadowed and are
+ * not multiplied across traffic vehicles; they are two vehicle-attached lights, enabled only at
+ * night. Aohara's tier-capped city point-light budgets remain unchanged.
  */
 export const PLAYER_HEADLIGHT_CONFIG = {
   colorHex: 0xffefd2,
-  intensityCandela: 8_500,
-  rangeMeters: 72,
-  beamHalfAngleRadians: 0.23,
-  penumbra: 0.74,
+  intensityCandela: 14_000,
+  rangeMeters: 86,
+  /** Wide flood cone; together with the outboard splay this approaches the chase-camera FOV. */
+  beamHalfAngleRadians: 0.89,
+  beamSplayRadians: 0.19,
+  penumbra: 0.82,
   decay: 2,
   mountY: 0.27,
   mountZ: -2.06,
   halfSpacing: 0.55,
   aimDistanceMeters: 52,
-  convergenceMeters: 0.16,
   downwardAimMeters: 0.93,
   steeringRatio: 0.55,
   maxSteeringAngleRadians: 0.2,
@@ -30,7 +31,7 @@ export interface PlayerHeadlightRig {
   readonly lights: readonly [SpotLight, SpotLight];
 }
 
-/** Creates exactly two warm, soft-edged, non-shadowing lamps mounted at the player car's nose. */
+/** Creates two powerful, broad, soft-edged, non-shadowing spotlights mounted at the player car's nose. */
 export function createPlayerHeadlightRig(): PlayerHeadlightRig {
   const root = new Group();
   root.name = 'player-headlights';
@@ -81,8 +82,10 @@ function createHeadlight(side: -1 | 1, name: string): SpotLight {
   light.castShadow = false;
   light.visible = false;
   light.target.name = `${name}-target`;
+  const beamSplayMeters =
+    Math.tan(PLAYER_HEADLIGHT_CONFIG.beamSplayRadians) * PLAYER_HEADLIGHT_CONFIG.aimDistanceMeters;
   light.target.position.set(
-    -side * PLAYER_HEADLIGHT_CONFIG.convergenceMeters,
+    side * (PLAYER_HEADLIGHT_CONFIG.halfSpacing + beamSplayMeters),
     -PLAYER_HEADLIGHT_CONFIG.downwardAimMeters,
     -PLAYER_HEADLIGHT_CONFIG.aimDistanceMeters,
   );

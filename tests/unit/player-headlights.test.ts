@@ -1,5 +1,6 @@
 import { SpotLight, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
+import { CHASE_CAMERA_CONFIG } from '../../src/config/camera';
 import {
   createPlayerHeadlightRig,
   PLAYER_HEADLIGHT_CONFIG,
@@ -8,16 +9,23 @@ import {
 } from '../../src/vehicles/player-headlights';
 
 describe('player night headlights', () => {
-  it('builds two warm, soft-edged, non-shadowing spotlights that converge down the road', () => {
+  it('builds powerful, broad, soft-edged spotlights that fan outward and down the road', () => {
     const rig = createPlayerHeadlightRig();
+    const maximumFovRadians = (CHASE_CAMERA_CONFIG.maxFov * Math.PI) / 180;
+    const horizontalViewAngle = 2 * Math.atan(Math.tan(maximumFovRadians / 2) * (16 / 9));
+    const combinedBeamFan =
+      2 * (PLAYER_HEADLIGHT_CONFIG.beamHalfAngleRadians + PLAYER_HEADLIGHT_CONFIG.beamSplayRadians);
 
+    expect(PLAYER_HEADLIGHT_CONFIG.intensityCandela).toBeGreaterThan(8_500);
+    expect(PLAYER_HEADLIGHT_CONFIG.rangeMeters).toBeGreaterThan(72);
+    expect(combinedBeamFan).toBeGreaterThanOrEqual(horizontalViewAngle * 0.98);
     expect(rig.lights).toHaveLength(2);
     expect(rig.lights.every((light) => light instanceof SpotLight)).toBe(true);
     expect(rig.lights.map((light) => light.name)).toEqual([
       'player-headlight-left',
       'player-headlight-right',
     ]);
-    for (const light of rig.lights) {
+    for (const [index, light] of rig.lights.entries()) {
       expect(light.color.getHex()).toBe(PLAYER_HEADLIGHT_CONFIG.colorHex);
       expect(light.intensity).toBe(PLAYER_HEADLIGHT_CONFIG.intensityCandela);
       expect(light.distance).toBe(PLAYER_HEADLIGHT_CONFIG.rangeMeters);
@@ -30,6 +38,8 @@ describe('player night headlights', () => {
       expect(light.target.parent).toBe(rig.aim);
       expect(light.target.position.y).toBeLessThan(light.position.y);
       expect(light.target.position.z).toBeLessThan(light.position.z);
+      const outwardDirection = index === 0 ? -1 : 1;
+      expect((light.target.position.x - light.position.x) * outwardDirection).toBeGreaterThan(0);
     }
 
     rig.root.position.set(12, 1, -8);
