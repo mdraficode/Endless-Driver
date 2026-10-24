@@ -158,11 +158,14 @@ function expectUrbanAlleyClearance(city: UrbanNightWorld, network: RoadNetwork):
         const facadeHit = obstructions.length === 0 ? -1 : firstCollisionIndex(facadeFootprints);
         const propHit = obstructions.length === 0 ? -1 : firstCollisionIndex(propFootprints);
         const hitBox = facadeHit < 0 ? undefined : facadeFootprints[facadeHit];
+        const nearestRoad = hitBox === undefined ? null : network.sample(hitBox.x, hitBox.z);
         const facadeDescription =
           hitBox === undefined
             ? 'none'
             : `#${facadeHit} center(${hitBox.x.toFixed(2)},${hitBox.z.toFixed(2)}) ` +
-              `half(${hitBox.halfWidth.toFixed(2)},${hitBox.halfDepth.toFixed(2)}) yaw${hitBox.yaw.toFixed(3)}`;
+              `half(${hitBox.halfWidth.toFixed(2)},${hitBox.halfDepth.toFixed(2)}) yaw${hitBox.yaw.toFixed(3)} ` +
+              `nearestRoad=${nearestRoad?.edgeId ?? 'none'} distance=${nearestRoad?.distance.toFixed(2) ?? 'n/a'} ` +
+              `halfWidth=${nearestRoad?.halfWidthMeters.toFixed(2) ?? 'n/a'}`;
         expect(
           obstructions,
           `${edge.id} is obstructed at ${point.alongMeters.toFixed(1)} m, lateral ${lateralOffset.toFixed(1)} m ` +
@@ -999,7 +1002,10 @@ describe('Aohara city night-lighting rules', () => {
         if ((propBox.x - facade.x) ** 2 + (propBox.z - facade.z) ** 2 > 64) continue;
         expect(
           footprintSeparation(propBox, facade, 0),
-          `${placement.id} intersects alley frontage at (${facade.x.toFixed(2)},${facade.z.toFixed(2)})`,
+          `${placement.id} box center(${propBox.x.toFixed(2)},${propBox.z.toFixed(2)}) ` +
+            `half(${propBox.halfWidth.toFixed(2)},${propBox.halfDepth.toFixed(2)}) yaw${propBox.yaw.toFixed(3)} ` +
+            `intersects facade center(${facade.x.toFixed(2)},${facade.z.toFixed(2)}) ` +
+            `half(${facade.halfWidth.toFixed(2)},${facade.halfDepth.toFixed(2)}) yaw${facade.yaw.toFixed(3)}`,
         ).toBeGreaterThan(0);
       }
     }
