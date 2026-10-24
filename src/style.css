@@ -280,6 +280,151 @@ body {
   color: #fecaca;
 }
 
+/* Full-screen diagnostics report. Its opaque surface is above the minimap and touch HUD. */
+.diagnostics-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.3rem;
+  overflow: hidden;
+  padding: max(0.45rem, env(safe-area-inset-top)) max(0.55rem, env(safe-area-inset-right))
+    max(0.45rem, env(safe-area-inset-bottom)) max(0.55rem, env(safe-area-inset-left));
+  background: #03080e;
+  color: #e2e8f0;
+}
+
+.diagnostics-panel[hidden] {
+  display: none;
+}
+
+.diagnostics-header {
+  display: flex;
+  min-height: 2.35rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid rgb(148 163 184 / 20%);
+}
+
+.diagnostics-heading-group {
+  min-width: 0;
+}
+
+.diagnostics-title {
+  margin: 0;
+  color: #99f6e4;
+  font-size: clamp(0.72rem, 2.6vmin, 1rem);
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.diagnostics-subtitle {
+  margin: 0.18rem 0 0;
+  color: #94a3b8;
+  font-size: clamp(0.52rem, 1.9vmin, 0.68rem);
+  line-height: 1.1;
+}
+
+.diagnostics-close {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgb(148 163 184 / 28%);
+  border-radius: 9999px;
+  background: rgb(15 23 42 / 92%);
+  color: #e2e8f0;
+  font: inherit;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.diagnostics-grid {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  align-content: start;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  gap: clamp(0.12rem, 0.45vh, 0.32rem) clamp(0.22rem, 0.55vw, 0.5rem);
+  overflow: hidden;
+  margin: 0;
+}
+
+.diagnostics-metric {
+  min-width: 0;
+  padding: 0.16rem 0.3rem;
+  border: 1px solid rgb(148 163 184 / 13%);
+  border-radius: 0.4rem;
+  background: rgb(15 23 42 / 72%);
+}
+
+.diagnostics-label {
+  margin: 0 0 0.08rem;
+  color: #94a3b8;
+  font-family: system-ui, sans-serif;
+  font-size: clamp(0.5rem, 1.8vmin, 0.65rem);
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  line-height: 1.05;
+  text-transform: uppercase;
+}
+
+.diagnostics-value {
+  margin: 0;
+  color: #99f6e4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: clamp(0.55rem, 2vmin, 0.72rem);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.12;
+  overflow-wrap: anywhere;
+}
+
+/* Compact landscape layouts group the full report into five columns instead of scrolling. */
+@media (orientation: landscape) and (max-height: 34rem) {
+  .diagnostics-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.12rem 0.22rem;
+  }
+
+  .diagnostics-metric {
+    padding: 0.08rem 0.18rem;
+  }
+}
+
+@media (orientation: portrait) and (max-width: 30rem) {
+  .diagnostics-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-height: 24rem) {
+  .diagnostics-panel {
+    gap: 0.18rem;
+    padding: max(0.3rem, env(safe-area-inset-top)) max(0.35rem, env(safe-area-inset-right))
+      max(0.3rem, env(safe-area-inset-bottom)) max(0.35rem, env(safe-area-inset-left));
+  }
+
+  .diagnostics-header {
+    min-height: 2rem;
+    padding-bottom: 0.15rem;
+  }
+
+  .diagnostics-close {
+    width: 2rem;
+    height: 2rem;
+  }
+}
+
 /* Right-corner in-game pause control. It appears only after auto-start is ready. */
 .pause-toggle {
   position: absolute;
@@ -822,6 +967,7 @@ body {
 }
 
 .pause-toggle:focus-visible,
+.diagnostics-close:focus-visible,
 .pause-menu-overlay button:focus-visible,
 .pause-menu-select:focus-visible,
 .credits-close:focus-visible,

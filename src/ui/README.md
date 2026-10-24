@@ -14,7 +14,7 @@ DOM UI for diagnostics, pause/home navigation, saved gameplay/display preference
 - `LoadingScreen.ts` — startup stages and first-frame readiness; no Play gate.
 - `FullscreenOnStart.ts` and `LandscapeFallback.ts` — best-effort fullscreen requests, with touch/pen retries at `pointerup` (mouse at `pointerdown`, plus keyboard/accessibility and legacy `touchend` paths), native landscape lock after entry where supported, and a page-level landscape fallback; none claims to override browser gesture or OS rotation policy.
 - `Minimap.ts` — destination map HUD parented to the app rotation/stacking context and hidden while the pause/home menu is open.
-- `DiagnosticsOverlay.ts` — bounded FPS/frame-time, viewport, render, scene, and vehicle metrics; updated at the application's HUD interval, never per frame.
+- `DiagnosticsOverlay.ts` — full-screen live FPS/frame-time, viewport, render, scene, and vehicle report; responsive non-scrolling metric grid sits above the minimap/touch HUD, updates at the application's HUD interval, and closes with × or F2.
 - `TouchControls.ts` — multi-touch steering, pedals and utility buttons; the pause button remains at the upper-right without overlapping the utility row.
 
 ## Preferences with gameplay effects

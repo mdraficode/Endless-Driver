@@ -11,7 +11,9 @@ import type { TierReason } from '../core/QualityTier';
  * WebGL2 fallback engage, and did the HDRI load?" is the first question any rendering problem on a
  * given machine starts with. The overlay only touches the DOM when `update` is called on the
  * application's HUD interval, keeping per-frame work out of the render loop. All values are
- * formatted from the snapshot; nothing here reads engine internals directly.
+ * formatted from the snapshot; nothing here reads engine internals directly. When opened, the report
+ * occupies the full game surface above the minimap and touch HUD, lays every metric into a compact
+ * responsive grid, and remains non-scrollable so a device capture includes the entire snapshot.
  */
 export interface DiagnosticsSnapshot {
   readonly framesPerSecond: number;
@@ -290,34 +292,12 @@ function formatLook(look: string | null, focusDistance: number | null): string {
   return parts.join(' · ');
 }
 
-const PANEL_CLASSES = [
-  'pointer-events-none',
-  'absolute',
-  'top-3',
-  'left-3',
-  'select-none',
-  'rounded-xl',
-  'border',
-  'border-white/10',
-  'bg-slate-950/70',
-  'px-3',
-  'py-2',
-  'font-mono',
-  'text-[11px]',
-  'leading-5',
-  'tabular-nums',
-  'text-slate-200',
-  'shadow-lg',
-  'backdrop-blur-sm',
-  // Player-dismissible instrumentation must never eat a phone screen again: cap the
-  // footprint and scroll internally instead of covering the world.
-  'max-w-[min(80vw,22rem)]',
-  'max-h-[70dvh]',
-  'overflow-y-auto',
-].join(' ');
+const PANEL_CLASSES = ['diagnostics-panel', 'pointer-events-auto', 'select-none', 'font-mono'].join(
+  ' ',
+);
 
-const LABEL_CLASSES = 'text-slate-400';
-const VALUE_CLASSES = 'text-right text-teal-200';
+const LABEL_CLASSES = 'diagnostics-label';
+const VALUE_CLASSES = 'diagnostics-value';
 
 /** Orbit angles only earn screen space once a thumb has actually moved the camera. */
 function orbitSuffix(snapshot: {
@@ -339,34 +319,43 @@ export class DiagnosticsOverlay {
   constructor(options: DiagnosticsOverlayOptions) {
     this.#panel = document.createElement('section');
     this.#panel.className = PANEL_CLASSES;
-    this.#panel.setAttribute('aria-hidden', 'true');
+    this.#panel.setAttribute('role', 'region');
+    this.#panel.setAttribute('aria-label', 'Live diagnostics report');
     this.#visible = options.initiallyVisible ?? true;
-    this.#panel.hidden = !this.#visible;
+    this.setVisible(this.#visible);
 
-    const header = document.createElement('div');
-    header.className = 'mb-1 flex items-start justify-between gap-3';
-    const heading = document.createElement('p');
-    heading.className = 'font-sans text-[10px] font-semibold tracking-[0.18em] uppercase';
-    heading.textContent = options.subtitle ?? 'Phase 3 · renderer & lighting';
-    heading.classList.add('text-teal-300');
+    const header = document.createElement('header');
+    header.className = 'diagnostics-header';
+    const headingGroup = document.createElement('div');
+    headingGroup.className = 'diagnostics-heading-group';
+    const heading = document.createElement('h2');
+    heading.className = 'diagnostics-title';
+    heading.textContent = 'Diagnostics report';
+    const subtitle = document.createElement('p');
+    subtitle.className = 'diagnostics-subtitle';
+    subtitle.textContent = options.subtitle ?? 'Live telemetry · tap × or press F2 to close';
+    headingGroup.append(heading, subtitle);
+
     const closeButton = document.createElement('button');
     closeButton.type = 'button';
     closeButton.textContent = '×';
-    closeButton.setAttribute('aria-label', 'Hide diagnostics');
-    closeButton.className =
-      'pointer-events-auto -mt-1 -mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/10 font-sans text-sm leading-none text-slate-200';
+    closeButton.setAttribute('aria-label', 'Close diagnostics report');
+    closeButton.className = 'diagnostics-close';
     closeButton.addEventListener('click', () => {
       this.setVisible(false);
       options.onClose?.();
     });
-    header.append(heading, closeButton);
+    header.append(headingGroup, closeButton);
     this.#panel.append(header);
 
     const list = document.createElement('dl');
-    list.className = 'grid grid-cols-[auto_auto] gap-x-4';
+    list.className = 'diagnostics-grid';
 
     const valueNodes: HTMLElement[] = [];
     for (const row of ROW_DEFINITIONS) {
+      const metric = document.createElement('div');
+      metric.className = 'diagnostics-metric';
+
       const term = document.createElement('dt');
       term.className = LABEL_CLASSES;
       term.textContent = row.label;
@@ -375,7 +364,8 @@ export class DiagnosticsOverlay {
       value.className = VALUE_CLASSES;
       value.textContent = '—';
 
-      list.append(term, value);
+      metric.append(term, value);
+      list.append(metric);
       valueNodes.push(value);
     }
 
@@ -395,6 +385,7 @@ export class DiagnosticsOverlay {
   setVisible(visible: boolean): void {
     this.#visible = visible;
     this.#panel.hidden = !visible;
+    this.#panel.setAttribute('aria-hidden', String(!visible));
   }
 
   update(snapshot: DiagnosticsSnapshot): void {
