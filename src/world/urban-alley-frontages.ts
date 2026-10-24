@@ -17,11 +17,11 @@ import { collideCarWithStaticBoxes, type StaticBuildingBox } from './static-buil
 import type { TownCarProbe, TownHit } from './town';
 
 // The frontage line stays beyond the narrow clutter strip while remaining one car-width off the alley.
-const FACADE_WALL_GAP_METERS = 3;
+const FACADE_WALL_GAP_METERS = 3.2;
 const FACADE_WALL_THICKNESS_METERS = 0.18;
 const FACADE_COLLISION_SEGMENT_METERS = 2;
-const FACADE_ROAD_SAMPLE_METERS = 0.5;
-const FACADE_MIN_ROAD_CLEARANCE_METERS = 2.5;
+const FACADE_ROAD_SAMPLE_METERS = 0.25;
+const FACADE_MIN_ROAD_CLEARANCE_METERS = 2.65;
 const FACADE_BUILDING_DEPTH_METERS = 6.8;
 const FACADE_ACCESS_SETBACK_METERS = 16.5;
 const FACADE_HUB_SETBACK_METERS = 14;
@@ -55,8 +55,6 @@ export interface UrbanAlleyFacadePlacement {
   readonly halfWidthMeters: number;
   /** Side-specific distance from the road centerline to this continuous facade plane. */
   readonly wallOffsetMeters: number;
-  /** False only where another part of the shared road graph needs a clear opening. */
-  readonly roadClear: boolean;
   readonly widthMeters: number;
   readonly depthMeters: number;
   readonly heightMeters: number;
@@ -170,66 +168,81 @@ export function generateAoharaAlleyFacadePlacements(
     const moduleLength = availableLength / moduleCount;
     const wallColor = choosePalette(FACADE_WALL_PALETTE, edgeIndex, 1637);
     const roofColor = choosePalette(FACADE_ROOF_PALETTE, edgeIndex, 1657);
+    const wallOffsetMeters = edge.halfWidthMeters + FACADE_WALL_GAP_METERS;
+    const wallCenterOffset = wallOffsetMeters - 0.05 + FACADE_WALL_THICKNESS_METERS / 2;
 
     for (let moduleIndex = 0; moduleIndex < moduleCount; moduleIndex += 1) {
-      const startAlongMeters = run.start + moduleIndex * moduleLength;
-      const endAlongMeters =
+      const moduleStartMeters = run.start + moduleIndex * moduleLength;
+      const moduleEndMeters =
         moduleIndex === moduleCount - 1
           ? edge.lengthMeters - run.end
-          : startAlongMeters + moduleLength;
-      const alongMeters = (startAlongMeters + endAlongMeters) / 2;
-      const frame = roadFrameAt(edge, alongMeters);
+          : moduleStartMeters + moduleLength;
+      const sampleCount = Math.max(
+        1,
+        Math.ceil((moduleEndMeters - moduleStartMeters) / FACADE_ROAD_SAMPLE_METERS),
+      );
+      const sampleDistances = Array.from(
+        { length: sampleCount + 1 },
+        (_, sampleIndex) =>
+          moduleStartMeters + ((moduleEndMeters - moduleStartMeters) * sampleIndex) / sampleCount,
+      );
+      const sampleFrames = sampleDistances.map((distance) => roadFrameAt(edge, distance));
       const depthMeters = FACADE_BUILDING_DEPTH_METERS;
-      const yaw = Math.atan2(-frame.tangentZ, frame.tangentX);
       const heightMeters = 9.2 + stableUnit(edgeIndex, moduleIndex, 1669) * 4.1;
 
       for (const side of [-1, 1] as const) {
-        const wallOffsetMeters = edge.halfWidthMeters + FACADE_WALL_GAP_METERS;
-        const wallCenterOffset = wallOffsetMeters - 0.05 + FACADE_WALL_THICKNESS_METERS / 2;
-        const centerOffset = wallOffsetMeters + depthMeters / 2 - 0.05;
-        let roadClear = true;
-        const sampleCount = Math.max(
-          1,
-          Math.ceil((endAlongMeters - startAlongMeters) / FACADE_ROAD_SAMPLE_METERS),
+        const clearSamples = sampleFrames.map((frame) =>
+          hasFacadeRoadClearance(
+            network,
+            frame.x + frame.normalX * side * wallCenterOffset,
+            frame.z + frame.normalZ * side * wallCenterOffset,
+          ),
         );
-        for (let sampleIndex = 0; sampleIndex <= sampleCount; sampleIndex += 1) {
-          const sampleAlongMeters =
-            startAlongMeters + ((endAlongMeters - startAlongMeters) * sampleIndex) / sampleCount;
-          const sampleFrame = roadFrameAt(edge, sampleAlongMeters);
-          if (
-            !hasFacadeRoadClearance(
-              network,
-              sampleFrame.x + sampleFrame.normalX * side * wallCenterOffset,
-              sampleFrame.z + sampleFrame.normalZ * side * wallCenterOffset,
-            )
-          ) {
-            roadClear = false;
-            break;
+        let clearRunStart = -1;
+        let spanIndex = 0;
+        const appendClearSpan = (firstInterval: number, endInterval: number): void => {
+          const startAlongMeters = sampleDistances[firstInterval]!;
+          const endAlongMeters = sampleDistances[endInterval]!;
+          if (endAlongMeters - startAlongMeters < 0.1) return;
+          const alongMeters = (startAlongMeters + endAlongMeters) / 2;
+          const frame = roadFrameAt(edge, alongMeters);
+          const yaw = Math.atan2(-frame.tangentZ, frame.tangentX);
+          const centerOffset = wallOffsetMeters + depthMeters / 2 - 0.05;
+          placements.push({
+            id: `${edge.id}:${side}:${moduleIndex}:${spanIndex}`,
+            roadEdgeId: edge.id,
+            side,
+            alongMeters,
+            startAlongMeters,
+            endAlongMeters,
+            x: frame.x + frame.normalX * side * centerOffset,
+            z: frame.z + frame.normalZ * side * centerOffset,
+            yaw,
+            tangentX: frame.tangentX,
+            tangentZ: frame.tangentZ,
+            normalX: frame.normalX,
+            normalZ: frame.normalZ,
+            halfWidthMeters: edge.halfWidthMeters,
+            wallOffsetMeters,
+            widthMeters: endAlongMeters - startAlongMeters,
+            depthMeters,
+            heightMeters,
+            color: wallColor,
+            roofColor,
+          });
+          spanIndex += 1;
+        };
+
+        for (let intervalIndex = 0; intervalIndex < sampleCount; intervalIndex += 1) {
+          const intervalClear = clearSamples[intervalIndex] && clearSamples[intervalIndex + 1];
+          if (intervalClear) {
+            if (clearRunStart < 0) clearRunStart = intervalIndex;
+          } else if (clearRunStart >= 0) {
+            appendClearSpan(clearRunStart, intervalIndex);
+            clearRunStart = -1;
           }
         }
-        placements.push({
-          id: `${edge.id}:${side}:${moduleIndex}`,
-          roadEdgeId: edge.id,
-          side,
-          alongMeters,
-          startAlongMeters,
-          endAlongMeters,
-          x: frame.x + frame.normalX * side * centerOffset,
-          z: frame.z + frame.normalZ * side * centerOffset,
-          yaw,
-          tangentX: frame.tangentX,
-          tangentZ: frame.tangentZ,
-          normalX: frame.normalX,
-          normalZ: frame.normalZ,
-          halfWidthMeters: edge.halfWidthMeters,
-          wallOffsetMeters,
-          roadClear,
-          widthMeters: endAlongMeters - startAlongMeters,
-          depthMeters,
-          heightMeters,
-          color: wallColor,
-          roofColor,
-        });
+        if (clearRunStart >= 0) appendClearSpan(clearRunStart, sampleCount);
       }
     }
   });
@@ -264,7 +277,6 @@ function createContinuousWallGeometry(
   };
 
   for (const placement of placements) {
-    if (!placement.roadClear) continue;
     const edge = edgeById.get(placement.roadEdgeId);
     if (edge === undefined) continue;
     const color = new Color(placement.color);
@@ -314,7 +326,6 @@ function makeCollisionBoxes(
   const edgeById = new Map(network.edges.map((edge) => [edge.id, edge]));
   const boxes: StaticBuildingBox[] = [];
   for (const placement of placements) {
-    if (!placement.roadClear) continue;
     const edge = edgeById.get(placement.roadEdgeId);
     if (edge === undefined) continue;
     const segmentCount = Math.max(
@@ -355,7 +366,7 @@ export class UrbanAlleyFrontages {
   constructor(tier: TierId, network: RoadNetwork, origin: readonly [number, number, number]) {
     this.root.name = 'aohara-backstreet-frontages';
     this.placements = generateAoharaAlleyFacadePlacements(network, tier);
-    const visiblePlacements = this.placements.filter((placement) => placement.roadClear);
+    const visiblePlacements = this.placements;
     this.collisionBoxes = makeCollisionBoxes(network, visiblePlacements);
     this.#buildCollisionIndex();
     const [originX, , originZ] = origin;
@@ -463,7 +474,12 @@ export class UrbanAlleyFrontages {
       const faceOffset = placement.depthMeters / 2 + 0.02;
       const faceX = placement.x - placement.normalX * placement.side * faceOffset;
       const faceZ = placement.z - placement.normalZ * placement.side * faceOffset;
-      const alongOffsets = [-placement.widthMeters * 0.28, 0, placement.widthMeters * 0.28];
+      const alongOffsets =
+        placement.widthMeters >= 6
+          ? [-placement.widthMeters * 0.28, 0, placement.widthMeters * 0.28]
+          : placement.widthMeters >= 3
+            ? [0]
+            : [];
       const floorHeights = placement.heightMeters >= 11.2 ? [2.7, 5.7, 8.7] : [2.7, 5.7];
       for (const localAlong of alongOffsets) {
         for (const floorY of floorHeights) {
@@ -482,7 +498,7 @@ export class UrbanAlleyFrontages {
           });
         }
       }
-      if (index % 3 === 0) doorPlacements.push(placement);
+      if (index % 3 === 0 && placement.widthMeters >= 2.5) doorPlacements.push(placement);
     });
 
     buildings.instanceMatrix.needsUpdate = true;
@@ -538,7 +554,6 @@ export class UrbanAlleyFrontages {
     const lastPlacementByRow = new Map<string, UrbanAlleyFacadePlacement>();
     let wallRunCount = 0;
     for (const placement of this.placements) {
-      if (!placement.roadClear) continue;
       const rowKey = `${placement.roadEdgeId}:${placement.side}`;
       const previous = lastPlacementByRow.get(rowKey);
       if (

@@ -888,6 +888,8 @@ describe('Aohara city night-lighting rules', () => {
 
     const alleyEdges = network.edges.filter((edge) => edge.roadClass === 'urban-alley');
     expect(alleyEdges.length).toBeGreaterThan(40);
+    let plannedFrontageMeters = 0;
+    let clearFrontageMeters = 0;
     for (const edge of alleyEdges) {
       const edgeRows = placements.filter((placement) => placement.roadEdgeId === edge.id);
       const startsAtStreetMouth = edge.from.startsWith('aohara-access-');
@@ -895,49 +897,38 @@ describe('Aohara city night-lighting rules', () => {
       const startInset = startsAtStreetMouth ? 16.5 : 1.25;
       const endInset = endsAtStreetMouth ? 16.5 : edge.to.endsWith('-hub') ? 14 : 1.25;
       expect(edgeRows.length).toBeGreaterThan(0);
+      const plannedEnd = edge.lengthMeters - endInset;
+      plannedFrontageMeters += Math.max(0, plannedEnd - startInset) * 2;
 
       for (const side of [-1, 1] as const) {
         const row = edgeRows
           .filter((placement) => placement.side === side)
           .sort((first, second) => first.startAlongMeters - second.startAlongMeters);
         expect(row.length).toBeGreaterThan(0);
-        expect(row[0]!.startAlongMeters).toBeCloseTo(startInset, 6);
-        expect(row[row.length - 1]!.endAlongMeters).toBeCloseTo(edge.lengthMeters - endInset, 6);
-        for (const [index, building] of row.entries()) {
+        let previousEnd = startInset;
+        for (const building of row) {
           expect(building.widthMeters).toBeGreaterThan(0);
           expect(building.widthMeters).toBeLessThanOrEqual(12.000001);
-          if (index > 0) {
-            expect(building.startAlongMeters).toBeCloseTo(row[index - 1]!.endAlongMeters, 6);
-          }
+          expect(building.startAlongMeters).toBeGreaterThanOrEqual(previousEnd - 1e-6);
+          expect(building.startAlongMeters).toBeGreaterThanOrEqual(startInset - 1e-6);
+          expect(building.endAlongMeters).toBeLessThanOrEqual(plannedEnd + 1e-6);
+          expect(building.wallOffsetMeters).toBeCloseTo(edge.halfWidthMeters + 3.2, 6);
+          clearFrontageMeters += building.widthMeters;
+          previousEnd = building.endAlongMeters;
         }
       }
-
-      // Planned row modules touch end-to-end; roadClear may later mask only modules at conflicts.
-      if (startsAtStreetMouth) {
-        expect(
-          Math.min(...edgeRows.map((building) => building.startAlongMeters)),
-        ).toBeGreaterThanOrEqual(16.5);
-      }
-      if (endsAtStreetMouth) {
-        expect(
-          edge.lengthMeters - Math.max(...edgeRows.map((building) => building.endAlongMeters)),
-        ).toBeGreaterThanOrEqual(16.5 - 1e-6);
-      }
     }
+    expect(clearFrontageMeters).toBeLessThan(plannedFrontageMeters);
+    expect(clearFrontageMeters / plannedFrontageMeters).toBeGreaterThan(0.75);
 
     const city = new UrbanNightWorld('B', {
       position: [AOHARA_DISTRICT_CONFIG.centerX, 0, AOHARA_DISTRICT_CONFIG.centerZ],
       roadNetwork: network,
       networkIntegrated: true,
     });
-    const visiblePlacements = placements.filter((placement) => placement.roadClear);
-    const clearanceOpenings = placements.filter((placement) => !placement.roadClear);
-    expect(clearanceOpenings.length).toBeGreaterThan(0);
-    expect(visiblePlacements.length).toBeGreaterThan(placements.length * 0.75);
     const facadeFootprints = city.getBackstreetFacadeFootprints();
-    expect(visiblePlacements.length).toBeGreaterThan(0);
-    expect(facadeFootprints.length).toBeGreaterThan(visiblePlacements.length);
-    expect(facadeFootprints.length).toBeLessThanOrEqual(visiblePlacements.length * 24);
+    expect(facadeFootprints.length).toBeGreaterThan(0);
+    expect(facadeFootprints.length).toBeLessThanOrEqual(placements.length * 24);
     for (const footprint of facadeFootprints) {
       const nearestRoad = network.sample(footprint.x, footprint.z);
       if (nearestRoad === null) continue;
@@ -949,7 +940,6 @@ describe('Aohara city night-lighting rules', () => {
     const lastPlacementByRow = new Map<string, (typeof placements)[number]>();
     let expectedWallRuns = 0;
     for (const placement of placements) {
-      if (!placement.roadClear) continue;
       const rowKey = `${placement.roadEdgeId}:${placement.side}`;
       const previous = lastPlacementByRow.get(rowKey);
       if (
@@ -961,7 +951,7 @@ describe('Aohara city night-lighting rules', () => {
       lastPlacementByRow.set(rowKey, placement);
     }
     expect(city.getContentStats()).toMatchObject({
-      urbanAlleyFacadeBuildings: visiblePlacements.length,
+      urbanAlleyFacadeBuildings: placements.length,
       urbanAlleyFacadeWindows: expect.any(Number),
       urbanAlleyFacadeDoors: expect.any(Number),
       urbanAlleyFacadeWallRuns: expectedWallRuns,
