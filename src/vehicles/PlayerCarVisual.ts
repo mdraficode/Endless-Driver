@@ -1,4 +1,4 @@
-import { Group, Mesh, MeshStandardMaterial, Object3D, Vector3 } from 'three';
+import { Box3, Group, Mesh, MeshStandardMaterial, Object3D, Vector3 } from 'three';
 import { loadModelAsset, type LoadedModel } from '../assets/ModelAsset';
 import { COCKPIT_CAMERA_CONFIG, FALLBACK_COCKPIT_EYE_ANCHOR } from '../config/camera';
 import type { PlayerCarModel } from '../config/game-preferences';
@@ -11,9 +11,16 @@ import {
 } from './VehicleImpact';
 import { WHEEL_INDEX, type VehiclePose } from './types';
 import {
+  createPlayerHeadlightRig,
+  setAdaptiveHeadlightSteering,
+  setPlayerHeadlightsEnabled,
+} from './player-headlights';
+import {
   BRAKE_LAMP_ACTIVE_INTENSITY,
   BRAKE_LAMP_EMISSIVE_COLOR,
   BRAKE_LAMP_IDLE_INTENSITY,
+  HEADLAMP_ACTIVE_EMISSIVE_INTENSITY,
+  HEADLAMP_EMISSIVE_COLOR,
 } from './vehicle-materials';
 
 export const PLAYER_HERO_CAR_ASSET_ID = 'hero-car-mmc-generic-sport-coupe';
@@ -47,20 +54,24 @@ interface ModelLodNodes {
 export class PlayerCarVisual {
   readonly root = new Group();
   readonly #fallback = new CarVisual();
+  readonly #headlightRig = createPlayerHeadlightRig();
   readonly #impact = createVehicleImpactState();
   #loaded: LoadedModel | null = null;
   #lodNodes: readonly ModelLodNodes[] = [];
   #brakeLampMaterials: readonly MeshStandardMaterial[] = [];
+  #headlampMaterials: readonly MeshStandardMaterial[] = [];
   #lastPose: VehiclePose | null = null;
   #loadAttempted = false;
   #fallbackDisposed = false;
   #disposed = false;
+  #headlightsEnabled = false;
   readonly #selectedModel: PlayerCarModel;
 
   constructor(selectedModel: PlayerCarModel = 'generic-sport-coupe') {
     this.#selectedModel = selectedModel;
     this.root.name = 'player-car-visual';
     this.root.add(this.#fallback.root);
+    this.#fallback.root.add(this.#headlightRig.root);
   }
 
   get model(): PlayerCarModel {
@@ -69,6 +80,22 @@ export class PlayerCarVisual {
 
   get isHeroModelLoaded(): boolean {
     return this.#loaded !== null;
+  }
+
+  /** Applies the resolved night state to both the beam pair and the authored fallback lenses. */
+  setHeadlightsEnabled(enabled: boolean): void {
+    if (this.#headlightsEnabled === enabled) {
+      return;
+    }
+    this.#headlightsEnabled = enabled;
+    setPlayerHeadlightsEnabled(this.#headlightRig, enabled);
+    if (!this.#fallbackDisposed) {
+      this.#fallback.setHeadlightsEnabled(enabled);
+    }
+    const lensIntensity = enabled ? HEADLAMP_ACTIVE_EMISSIVE_INTENSITY : 0;
+    for (const material of this.#headlampMaterials) {
+      material.emissiveIntensity = lensIntensity;
+    }
   }
 
   /** Model-specific seat point: the hero uses its measured left-hand steering-wheel position. */
@@ -98,10 +125,14 @@ export class PlayerCarVisual {
       }
       const lodNodes = resolveLodNodes(model);
       const brakeLampMaterials = resolveBrakeLampMaterials(model);
+      const headlampMaterials = resolveHeadlampMaterials(model, this.#headlightsEnabled);
       this.root.add(model.object);
+      // The lamp rig moves from the fallback chassis to the loaded car's physics-pose root.
+      this.root.add(this.#headlightRig.root);
       this.#loaded = model;
       this.#lodNodes = lodNodes;
       this.#brakeLampMaterials = brakeLampMaterials;
+      this.#headlampMaterials = headlampMaterials;
       if (this.#lastPose !== null) this.sync(this.#lastPose);
       this.root.remove(this.#fallback.root);
       this.#fallback.dispose();
@@ -113,10 +144,14 @@ export class PlayerCarVisual {
     } catch (error) {
       if (model !== null) {
         this.root.remove(model.object);
+        if (this.#headlightRig.root.parent === this.root) {
+          this.#fallback.root.add(this.#headlightRig.root);
+        }
         if (this.#loaded === model) {
           this.#loaded = null;
           this.#lodNodes = [];
           this.#brakeLampMaterials = [];
+          this.#headlampMaterials = [];
         }
         model.dispose();
       }
@@ -128,9 +163,16 @@ export class PlayerCarVisual {
     }
   }
 
-  /** Applies the physics pose to every LOD's wheel/steering pivots and rear brake-lamp intensity. */
+  /** Applies the physics pose to every LOD, including adaptive headlight steering and brake lamps. */
   sync(pose: VehiclePose): void {
     this.#lastPose = pose;
+    const frontStates = pose.wheels.filter((wheel) => wheel.isFront);
+    const averageSteeringAngle =
+      frontStates.length > 0
+        ? frontStates.reduce((total, wheel) => total + wheel.steerAngle, 0) / frontStates.length
+        : 0;
+    setAdaptiveHeadlightSteering(this.#headlightRig, averageSteeringAngle);
+
     const model = this.#loaded;
     if (model === null) {
       this.#fallback.sync(pose);
@@ -148,7 +190,6 @@ export class PlayerCarVisual {
       }
     }
 
-    const frontStates = pose.wheels.filter((wheel) => wheel.isFront);
     const steeringRotation =
       frontStates.length > 0
         ? -(
@@ -213,8 +254,51 @@ export class PlayerCarVisual {
     }
     this.#lodNodes = [];
     this.#brakeLampMaterials = [];
+    this.#headlampMaterials = [];
     this.root.clear();
   }
+}
+
+/**
+ * Adds warm emission only to the source model's clear front-lamp lenses. The imported model also
+ * uses clear glass at the rear for reverse lamps, so local forward bounds keep those unlit.
+ */
+function resolveHeadlampMaterials(
+  model: LoadedModel,
+  enabled: boolean,
+): readonly MeshStandardMaterial[] {
+  const headlampMaterials: MeshStandardMaterial[] = [];
+  const modelRoot = model.object;
+  modelRoot.updateWorldMatrix(true, true);
+  const modelWorldInverse = modelRoot.matrixWorld.clone().invert();
+  const frontLampZ = -VEHICLE_CONFIG.chassis.halfExtents[2] * 0.72;
+  const lensIntensity = enabled ? HEADLAMP_ACTIVE_EMISSIVE_INTENSITY : 0;
+
+  modelRoot.traverse((object) => {
+    if (!(object instanceof Mesh)) return;
+    const bounds = new Box3().setFromObject(object).applyMatrix4(modelWorldInverse);
+    if (bounds.isEmpty() || bounds.getCenter(new Vector3()).z >= frontLampZ) return;
+
+    const sourceMaterials = Array.isArray(object.material) ? object.material : [object.material];
+    const replacementMaterials = sourceMaterials.map((material) => {
+      if (!(material instanceof MeshStandardMaterial) || material.name !== 'Glass - Clear') {
+        return material;
+      }
+      const headlamp = material.clone();
+      headlamp.name = 'player-headlamp-lens';
+      headlamp.emissive.set(HEADLAMP_EMISSIVE_COLOR);
+      headlamp.emissiveIntensity = lensIntensity;
+      headlampMaterials.push(headlamp);
+      return headlamp;
+    });
+
+    if (replacementMaterials.some((material, index) => material !== sourceMaterials[index])) {
+      object.material = Array.isArray(object.material)
+        ? replacementMaterials
+        : (replacementMaterials[0] ?? object.material);
+    }
+  });
+  return headlampMaterials;
 }
 
 /** Bind the source model's named red-glass lenses; a mismatch keeps the authored fallback visible. */

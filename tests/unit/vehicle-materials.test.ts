@@ -30,6 +30,7 @@ describe('vehicle node materials', () => {
     expect(lamp).toBeInstanceOf(MeshStandardNodeMaterial);
     expect(lamp.map).toBeNull();
     expect(lamp.emissiveMap).toBeNull();
+    expect(lamp.emissiveIntensity).toBe(0);
     glass.dispose();
     lamp.dispose();
   });

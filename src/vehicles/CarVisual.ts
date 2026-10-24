@@ -19,6 +19,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
   BRAKE_LAMP_ACTIVE_INTENSITY,
   BRAKE_LAMP_IDLE_INTENSITY,
+  HEADLAMP_ACTIVE_EMISSIVE_INTENSITY,
   createAutomotivePaintMaterial,
   createBrakeLightMaterial,
   createExhaustInteriorMaterial,
@@ -48,7 +49,9 @@ export class CarVisual {
   readonly #geometries: BufferGeometry[] = [];
   readonly #materials: Material[] = [];
   readonly #wheels: WheelVisual[] = [];
+  readonly #headlampMaterial: ReturnType<typeof createHeadlightMaterial>;
   readonly #brakeLightMaterial: ReturnType<typeof createBrakeLightMaterial>;
+  #headlightsEnabled = false;
   #steeringWheel: Group | null = null;
 
   constructor() {
@@ -62,6 +65,7 @@ export class CarVisual {
     const trim = this.#track(createExhaustInteriorMaterial());
     const exhaustMetal = this.#track(createExhaustMetalMaterial());
     const headlamp = this.#track(createHeadlightMaterial());
+    this.#headlampMaterial = headlamp;
     this.#brakeLightMaterial = this.#track(createBrakeLightMaterial());
     glass.side = DoubleSide;
 
@@ -244,6 +248,15 @@ export class CarVisual {
     this.#createWheels(rubber, wheelMetal);
     this.#createExhaust(exhaustMetal, trim);
     this.#mergeStaticRootMeshes();
+  }
+
+  /** Switches the authored lens emission with the night-only player headlight beams. */
+  setHeadlightsEnabled(enabled: boolean): void {
+    if (this.#headlightsEnabled === enabled) {
+      return;
+    }
+    this.#headlightsEnabled = enabled;
+    this.#headlampMaterial.emissiveIntensity = enabled ? HEADLAMP_ACTIVE_EMISSIVE_INTENSITY : 0;
   }
 
   sync(pose: VehiclePose): void {

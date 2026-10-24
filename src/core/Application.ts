@@ -842,6 +842,7 @@ export class Application {
 
     // 2b. Time advances, and time becomes light for the next frame.
     this.#daylight = this.#daylightController.update(delta, this.#scene, this.#engine);
+    this.#carVisual.setHeadlightsEnabled(this.#daylight.isNight);
 
     // 3. Presentation interpolates between the last two authoritative poses.
     const pose = this.#car.getInterpolatedPose(this.#physics.interpolationAlpha);
@@ -927,8 +928,9 @@ export class Application {
   #applyDaylight(): void {
     // `update(0, …)` advances nothing (the clock is either frozen or has already been advanced this
     // frame) and still resolves and applies the light, so the pre-first-frame call and the per-frame
-    // call are the same code path.
+    // call are the same code path. Player headlights consume this same resolved night gate.
     this.#daylight = this.#daylightController.update(0, this.#scene, this.#engine);
+    this.#carVisual.setHeadlightsEnabled(this.#daylight.isNight);
   }
 
   /**

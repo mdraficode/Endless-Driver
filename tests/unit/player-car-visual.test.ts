@@ -7,6 +7,7 @@ import {
   BRAKE_LAMP_ACTIVE_INTENSITY,
   BRAKE_LAMP_EMISSIVE_COLOR,
   BRAKE_LAMP_IDLE_INTENSITY,
+  HEADLAMP_ACTIVE_EMISSIVE_INTENSITY,
 } from '../../src/vehicles/vehicle-materials';
 import { WHEEL_INDEX, type VehiclePose } from '../../src/vehicles/types';
 import type { LoadedModel } from '../../src/assets/ModelAsset';
@@ -63,6 +64,10 @@ function createLoadedHero(includeBrakeLamps = true): LoadedModel {
       clearGlassMesh.name = `clear-glass-lod${level.level}`;
       tailLamps.add(redLampMesh, roughRedLampMesh, clearGlassMesh);
       lod.add(tailLamps);
+      const frontHeadlampLens = new Mesh(new BoxGeometry(0.2, 0.08, 0.02), clearGlass);
+      frontHeadlampLens.name = `front-headlamp-lens-lod${level.level}`;
+      frontHeadlampLens.position.set(-0.55, 0.18, -1.95);
+      lod.add(frontHeadlampLens);
     }
     for (const wheel of WHEELS) {
       const pivot = new Group();
@@ -122,6 +127,38 @@ function getHeroBrakeLampMaterials(model: LoadedModel): MeshStandardMaterial[] {
       );
     });
   }
+  return materials;
+}
+
+function getFallbackHeadlampMaterial(visual: PlayerCarVisual): MeshStandardMaterial {
+  const fallback = visual.root.getObjectByName('kaminari-gt-roadster');
+  if (fallback === undefined) throw new Error('missing authored car fallback');
+
+  let headlampMaterial: MeshStandardMaterial | undefined;
+  fallback.traverse((object) => {
+    if (!(object instanceof Mesh)) return;
+    const candidates = Array.isArray(object.material) ? object.material : [object.material];
+    headlampMaterial = candidates.find(
+      (material): material is MeshStandardMaterial =>
+        material instanceof MeshStandardMaterial && material.name === 'headlamp-emissive-no-map',
+    );
+  });
+  if (headlampMaterial === undefined) throw new Error('missing fallback headlamp material');
+  return headlampMaterial;
+}
+
+function getHeroHeadlampMaterials(model: LoadedModel): MeshStandardMaterial[] {
+  const materials: MeshStandardMaterial[] = [];
+  model.object.traverse((object) => {
+    if (!(object instanceof Mesh)) return;
+    const candidates = Array.isArray(object.material) ? object.material : [object.material];
+    materials.push(
+      ...candidates.filter(
+        (material): material is MeshStandardMaterial =>
+          material instanceof MeshStandardMaterial && material.name === 'player-headlamp-lens',
+      ),
+    );
+  });
   return materials;
 }
 
@@ -217,6 +254,42 @@ describe('PlayerCarVisual', () => {
     expect(model.updateForDistance).toHaveBeenCalledOnce();
     visual.dispose();
     expect(model.dispose).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the adaptive night beams attached to the active car and lights fallback lenses', async () => {
+    const model = createLoadedHero();
+    loadModelAssetMock.mockResolvedValue(model);
+    const visual = new PlayerCarVisual();
+    visual.sync(POSE);
+
+    const fallback = visual.root.getObjectByName('kaminari-gt-roadster');
+    const rig = visual.root.getObjectByName('player-headlights');
+    const aim = visual.root.getObjectByName('player-headlight-aim');
+    const leftBeam = visual.root.getObjectByName('player-headlight-left');
+    const headlampMaterial = getFallbackHeadlampMaterial(visual);
+    expect(rig?.parent).toBe(fallback);
+    expect(aim?.rotation.y).toBeCloseTo(0.11);
+    expect(leftBeam?.visible).toBe(false);
+    expect(headlampMaterial.emissiveIntensity).toBe(0);
+
+    visual.setHeadlightsEnabled(true);
+    expect(leftBeam?.visible).toBe(true);
+    expect(headlampMaterial.emissiveIntensity).toBe(HEADLAMP_ACTIVE_EMISSIVE_INTENSITY);
+    await expect(visual.load({})).resolves.toBe(true);
+    expect(rig?.parent).toBe(visual.root);
+    expect(leftBeam?.visible).toBe(true);
+    const heroHeadlamps = getHeroHeadlampMaterials(model);
+    expect(heroHeadlamps).toHaveLength(3);
+    expect(
+      heroHeadlamps.every(
+        (material) => material.emissiveIntensity === HEADLAMP_ACTIVE_EMISSIVE_INTENSITY,
+      ),
+    ).toBe(true);
+
+    visual.setHeadlightsEnabled(false);
+    expect(leftBeam?.visible).toBe(false);
+    expect(heroHeadlamps.every((material) => material.emissiveIntensity === 0)).toBe(true);
+    visual.dispose();
   });
 
   it('drives the hero red-glass rear lamps from brake input across every LOD', async () => {

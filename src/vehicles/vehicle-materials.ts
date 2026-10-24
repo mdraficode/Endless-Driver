@@ -8,7 +8,10 @@ const TIRE_COLOR = 0x14171b;
 const HUB_COLOR = 0xb9c0c8;
 const MARKER_COLOR = 0xe0e6ee;
 const LIGHT_COLOR = 0xfff3d0;
-const LIGHT_EMISSIVE = 0x2a2413;
+export const HEADLAMP_EMISSIVE_COLOR = 0xffe5b2;
+
+/** Headlamp lens emission is visible only while the player's night-time beams are active. */
+export const HEADLAMP_ACTIVE_EMISSIVE_INTENSITY = 2.4;
 
 export const BRAKE_LAMP_IDLE_INTENSITY = 0.24;
 export const BRAKE_LAMP_ACTIVE_INTENSITY = 2.1;
@@ -107,7 +110,8 @@ export function createHeadlightMaterial(): MeshStandardNodeMaterial {
   const material = new MeshStandardNodeMaterial();
   material.name = 'headlamp-emissive-no-map';
   material.color.set(LIGHT_COLOR);
-  material.emissive.set(LIGHT_EMISSIVE);
+  material.emissive.set(HEADLAMP_EMISSIVE_COLOR);
+  material.emissiveIntensity = 0;
   material.metalness = 0;
   material.roughness = 0.4;
   return material;
