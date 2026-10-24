@@ -76,6 +76,7 @@ const ALLEY_PROP_KINDS: readonly UrbanAlleyPropKind[] = [
 const ALLEY_PROP_MINIMUM_SEPARATION_METERS = 0.28;
 const ALLEY_PROP_BUILDING_CLEARANCE_METERS = 0.25;
 const ALLEY_PROP_ROAD_CLEARANCE_METERS = 0.22;
+const ALLEY_PROP_VEHICLE_CLEARANCE_METERS = 1.4;
 const ALLEY_PROP_ACCESS_CLEARANCE_METERS = 20;
 const ALLEY_PROP_HUB_CLEARANCE_METERS = 14;
 const ALLEY_PROP_SPAWN_CLEARANCE_METERS = 18;
@@ -257,7 +258,8 @@ export function generateAoharaAlleyPropPlacements(
           const dimensions = ALLEY_PROP_DIMENSIONS[kind];
           const outwardX = sideX * side;
           const outwardZ = sideZ * side;
-          const lateralOffset = edge.halfWidthMeters + dimensions.width / 2 + 0.42;
+          const lateralOffset =
+            edge.halfWidthMeters + dimensions.width / 2 + ALLEY_PROP_VEHICLE_CLEARANCE_METERS;
           const colorPalette = ALLEY_PROP_COLORS[kind];
           const color =
             colorPalette[
