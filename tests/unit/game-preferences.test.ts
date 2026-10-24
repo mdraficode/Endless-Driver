@@ -35,6 +35,7 @@ describe('persistent game preferences', () => {
         carModel: 'kaminari-gt-roadster',
         cameraMode: 'missing-camera',
         steeringSensitivity: 'responsive',
+        nightMood: true,
       }),
     );
 
@@ -44,7 +45,24 @@ describe('persistent game preferences', () => {
       carModel: 'kaminari-gt-roadster',
       cameraMode: DEFAULT_GAME_PREFERENCES.cameraMode,
       steeringSensitivity: 'responsive',
+      nightMood: true,
     });
+  });
+
+  it('defaults older preference records to daytime and rejects malformed night-mood values', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      GAME_PREFERENCES_STORAGE_KEY,
+      JSON.stringify({ graphicsTier: 'B', nightMood: 'yes' }),
+    );
+
+    expect(readGamePreferences(storage)).toMatchObject({
+      graphicsTier: 'B',
+      nightMood: false,
+    });
+
+    storage.setItem(GAME_PREFERENCES_STORAGE_KEY, JSON.stringify({ nightMood: true }));
+    expect(readGamePreferences(storage).nightMood).toBe(true);
   });
 
   it('ignores malformed JSON and non-object data', () => {
@@ -63,6 +81,7 @@ describe('persistent game preferences', () => {
       carModel: 'kaminari-gt-roadster',
       cameraMode: 'cockpit',
       steeringSensitivity: 'relaxed',
+      nightMood: true,
     } as const;
 
     expect(saveGamePreferences(preferences, storage)).toBe(true);

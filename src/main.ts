@@ -34,6 +34,7 @@ import { urlForSpawn } from './ui/StartLocationSelector';
 import { PauseMenu } from './ui/PauseMenu';
 import { yawFromQuat } from './shared/vector';
 import { readWeatherPreset } from './environment/SurfaceState';
+import { EnvironmentClock } from './environment/EnvironmentClock';
 
 export interface EndlessDriverDebugHandle {
   getDiagnostics():
@@ -234,6 +235,13 @@ function persistPreference<K extends keyof GamePreferences>(
   return saveGamePreferences(next);
 }
 
+function clearTimeOverrideFromUrl(): void {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has('time')) return;
+  url.searchParams.delete('time');
+  window.history.replaceState(window.history.state, '', url.toString());
+}
+
 function updateDriveUrl(spawnId: string | undefined, clearGraphicsOverride: boolean): void {
   const url = new URL(
     spawnId === undefined
@@ -322,13 +330,19 @@ async function startDrivingScene(restarting = false): Promise<void> {
     const rapier = await loadRapier();
     loadingScreen?.update(0.14, 'Physics ready — selecting the graphics profile…');
     const preferences = readGamePreferences();
+    const startHour = readTimeRequest(window.location.search);
+    const nightMood = startHour === null && preferences.nightMood;
+    const menuNightMood =
+      startHour === null
+        ? preferences.nightMood
+        : new EnvironmentClock({ startHour }).daylight().isNight;
     const effectivePreferences: GamePreferences = {
       ...preferences,
       graphicsTier: readTierRequest(window.location.search) ?? preferences.graphicsTier,
+      nightMood: menuNightMood,
     };
     const { config, tier } = resolveRenderConfig(preferences);
 
-    const startHour = readTimeRequest(window.location.search);
     const spawnId = readSpawnRequest(window.location.search);
     const options: ApplicationOptions = {
       canvas,
@@ -340,6 +354,7 @@ async function startDrivingScene(restarting = false): Promise<void> {
       worldConfig: WORLD_CONFIG,
       tier,
       clock: startHour === null ? undefined : { startHour },
+      nightMood,
       ...(spawnId === undefined ? {} : { spawnId }),
       carModel: preferences.carModel,
       trafficIntensity: preferences.trafficIntensity,
@@ -409,7 +424,14 @@ async function startDrivingScene(restarting = false): Promise<void> {
         },
         onRestart: restartCurrentDrive,
         onApplySpawn: applySpawnInPlace,
-        onPreferenceChange: persistPreference,
+        onPreferenceChange: (key, value) => {
+          const saved = persistPreference(key, value);
+          if (key === 'nightMood' && typeof value === 'boolean') {
+            activeApplication.setNightMood(value);
+            clearTimeOverrideFromUrl();
+          }
+          return saved;
+        },
         onOpenCredits: (source) => creditsPanel?.open(source),
         isCreditsOpen: () => creditsPanel?.isOpen ?? false,
         onFullscreen: (event) => fullscreenOnStart.request(event),

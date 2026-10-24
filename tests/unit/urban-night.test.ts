@@ -1,5 +1,9 @@
 import { InstancedMesh, Matrix4, Mesh, PointLight } from 'three';
-import { MeshPhysicalNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
+import {
+  MeshBasicNodeMaterial,
+  MeshPhysicalNodeMaterial,
+  MeshStandardNodeMaterial,
+} from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -431,6 +435,10 @@ describe('Aohara city night-lighting rules', () => {
     );
     expect(cityLights).toHaveLength(URBAN_NIGHT_TIER_BUDGET.C.pointLights);
     expect(cityLights.every((light) => !light.castShadow)).toBe(true);
+    const streetLights = cityLights.filter((light) =>
+      light.name.startsWith('aohara-streetlight-point-'),
+    );
+    expect(new Set(streetLights.map((light) => light.color.getHex())).size).toBeGreaterThan(1);
     expect(lowStats.stadiums).toBe(1);
     expect(lowStats.casinos).toBe(1);
     expect(lowStats.mansions).toBe(1);
@@ -456,6 +464,12 @@ describe('Aohara city night-lighting rules', () => {
     expect(lowStats.facadeDetailInstances).toBeLessThanOrEqual(
       URBAN_NIGHT_TIER_BUDGET.C.facadeDetailInstances,
     );
+    const banner = cityC.root.getObjectByName('aohara-street-banner-panels-0');
+    expect(banner).toBeInstanceOf(InstancedMesh);
+    if (!(banner instanceof InstancedMesh)) {
+      throw new Error('Aohara banners should use a bounded instanced pool');
+    }
+    expect(banner.material).toBeInstanceOf(MeshBasicNodeMaterial);
     const glazing = cityC.root.getObjectByName('aohara-facade-glazing');
     expect(glazing).toBeInstanceOf(Mesh);
     if (!(glazing instanceof Mesh)) {

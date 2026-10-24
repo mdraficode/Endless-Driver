@@ -12,6 +12,8 @@ export interface GamePreferences {
   readonly carModel: PlayerCarModel;
   readonly cameraMode: CameraMode;
   readonly steeringSensitivity: SteeringSensitivity;
+  /** Persistent live lighting preset; off preserves the daytime default. */
+  readonly nightMood: boolean;
 }
 
 export interface PreferenceStorage {
@@ -27,6 +29,7 @@ export const DEFAULT_GAME_PREFERENCES: Readonly<GamePreferences> = {
   carModel: 'generic-sport-coupe',
   cameraMode: 'chase',
   steeringSensitivity: 'standard',
+  nightMood: false,
 };
 
 const TRAFFIC_INTENSITIES: readonly TrafficIntensity[] = ['off', 'light', 'standard', 'busy'];
@@ -89,6 +92,10 @@ export function readGamePreferences(storage?: PreferenceStorage): GamePreference
       steeringSensitivity: isSteeringSensitivity(parsed['steeringSensitivity'])
         ? parsed['steeringSensitivity']
         : DEFAULT_GAME_PREFERENCES.steeringSensitivity,
+      nightMood:
+        typeof parsed['nightMood'] === 'boolean'
+          ? parsed['nightMood']
+          : DEFAULT_GAME_PREFERENCES.nightMood,
     };
   } catch {
     return { ...DEFAULT_GAME_PREFERENCES };

@@ -43,6 +43,7 @@ import { OrbitGesture } from '../input/orbit-gesture';
 import { TouchControls } from '../input/TouchControls';
 import type { PerspectiveCamera } from 'three';
 import { DaylightController } from '../environment/DaylightController';
+import { applyNightMoodToClock } from '../environment/night-mood';
 import {
   applySurfaceState,
   resolveSurfaceState,
@@ -79,6 +80,8 @@ export interface ApplicationOptions {
   readonly tier?: TierResolution;
   /** Time-of-day options; the entrypoint forwards the `?time=` debug switch through this. */
   readonly clock?: EnvironmentClockOptions | undefined;
+  /** Persistent night-mood preset; ignored by the entrypoint when `?time=` explicitly overrides it. */
+  readonly nightMood?: boolean;
   /** Pinned start (`?spawn=<id>`); omit for the default Aohara Metropolis start. */
   readonly spawnId?: string;
   /** Random source used only when `spawnId` is explicitly `random`; injectable for tests/captures. */
@@ -289,6 +292,9 @@ export class Application {
     this.#carEffects = new CarEffects(this.#tier.id);
     this.#scene.addObject(this.#carEffects.root);
     this.#clock = new EnvironmentClock(options.clock);
+    if (options.nightMood === true) {
+      applyNightMoodToClock(this.#clock, true);
+    }
     this.#daylightController = new DaylightController(this.#clock);
 
     this.#scene.setVegetationStateProvider((key) => this.#treeField.getVisualState(key));
@@ -392,6 +398,12 @@ export class Application {
   /** Current time of day in hours, and the resolved lighting state. */
   get clock(): EnvironmentClock {
     return this.#clock;
+  }
+
+  /** Applies the live home-menu lighting preset through the shared daylight pipeline. */
+  setNightMood(enabled: boolean): void {
+    applyNightMoodToClock(this.#clock, enabled);
+    this.#applyDaylight();
   }
 
   get isRunning(): boolean {

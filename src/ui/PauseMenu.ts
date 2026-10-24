@@ -49,6 +49,7 @@ export interface PauseMenuOptions {
   readonly onFullscreen: (event: Event) => Promise<boolean>;
 }
 
+// Night Mood is excluded: it changes the running scene immediately and never needs Apply & Restart.
 const PREFERENCE_KEYS: readonly (keyof GamePreferences)[] = [
   'graphicsTier',
   'trafficIntensity',
@@ -105,7 +106,7 @@ const CAR_CHOICES: readonly {
   },
 ];
 
-/** In-game pause/home menu. All selections are persisted and take effect on restart. */
+/** In-game pause/home menu. Night Mood applies immediately; other options may require restart. */
 export class PauseMenu {
   readonly #options: PauseMenuOptions;
   readonly #root: HTMLElement;
@@ -388,15 +389,53 @@ export class PauseMenu {
       'CITY TRAFFIC',
       `${this.#options.activeTrafficVehicleCount} vehicles · ${this.#trafficLabel(this.#initialPreferences.trafficIntensity)}`,
     );
+    const nightPanel = document.createElement('section');
+    nightPanel.className = 'pause-menu-night-panel';
+    const nightCopy = document.createElement('div');
+    nightCopy.className = 'pause-menu-night-copy';
+    const nightTitle = document.createElement('strong');
+    nightTitle.textContent = 'Night Mood';
+    const nightDescription = document.createElement('span');
+    nightDescription.textContent =
+      'Moonlight, glowing windows, vivid signs and Aohara street lights — toggle now, no restart.';
+    nightCopy.append(nightTitle, nightDescription);
+    const nightToggle = document.createElement('button');
+    nightToggle.className = 'pause-menu-night-toggle';
+    nightToggle.type = 'button';
+    nightToggle.setAttribute('role', 'switch');
+    nightToggle.setAttribute('aria-label', 'Night Mood');
+    nightToggle.dataset['nightMoodToggle'] = 'true';
+    const nightState = document.createElement('span');
+    nightState.className = 'pause-menu-night-state';
+    const nightTrack = document.createElement('span');
+    nightTrack.className = 'pause-menu-night-track';
+    nightTrack.setAttribute('aria-hidden', 'true');
+    const nightThumb = document.createElement('span');
+    nightThumb.className = 'pause-menu-night-thumb';
+    nightTrack.append(nightThumb);
+    nightToggle.append(nightState, nightTrack);
+    const syncNightToggle = (): void => {
+      const enabled = this.#preferences.nightMood;
+      nightToggle.classList.toggle('is-active', enabled);
+      nightToggle.setAttribute('aria-checked', String(enabled));
+      nightState.textContent = enabled ? 'ON' : 'OFF';
+    };
+    nightToggle.addEventListener('click', () => {
+      this.#setPreference('nightMood', !this.#preferences.nightMood);
+      syncNightToggle();
+    });
+    syncNightToggle();
+    nightPanel.append(nightCopy, nightToggle);
+
     const callout = document.createElement('div');
     callout.className = 'pause-menu-callout';
     const calloutTitle = document.createElement('strong');
     calloutTitle.textContent = 'Your options are remembered';
     const calloutText = document.createElement('span');
     calloutText.textContent =
-      'Changes are saved as you make them. Restart the drive to apply new gameplay, car, traffic or graphics settings.';
+      'Changes are saved as you make them. Night Mood switches immediately; restart for gameplay, car, traffic or graphics changes.';
     callout.append(calloutTitle, calloutText);
-    page.append(heading, intro, statusGrid, callout);
+    page.append(heading, intro, statusGrid, nightPanel, callout);
   }
 
   #renderSpawn(page: HTMLElement): void {

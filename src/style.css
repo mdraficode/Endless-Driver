@@ -745,6 +745,103 @@ body {
   font-weight: 650;
 }
 
+.pause-menu-night-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  max-width: 42rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgb(125 161 176 / 24%);
+  border-radius: 0.78rem;
+  background:
+    radial-gradient(ellipse at 90% 50%, rgb(103 80 255 / 13%), transparent 42%),
+    linear-gradient(125deg, rgb(13 31 48 / 95%), rgb(8 16 28 / 92%));
+}
+
+.pause-menu-night-copy {
+  display: grid;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.pause-menu-night-copy strong {
+  color: #eff6ff;
+  font-size: 0.8rem;
+  font-weight: 730;
+}
+
+.pause-menu-night-copy span {
+  max-width: 32rem;
+  color: #9bacc0;
+  font-size: 0.68rem;
+  line-height: 1.45;
+}
+
+.pause-menu-night-toggle {
+  display: inline-flex;
+  min-width: 6.15rem;
+  min-height: 2.55rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.48rem;
+  padding: 0.35rem 0.55rem 0.35rem 0.68rem;
+  border: 1px solid rgb(125 161 176 / 35%);
+  border-radius: 9999px;
+  background: rgb(10 20 30 / 94%);
+  color: #c4d0dc;
+  font: inherit;
+  font-size: 0.63rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.pause-menu-night-toggle.is-active {
+  border-color: rgb(100 224 255 / 70%);
+  background: linear-gradient(120deg, rgb(30 95 130 / 48%), rgb(92 48 145 / 42%));
+  color: #b8f4ff;
+  box-shadow: inset 0 0 1.2rem rgb(73 158 255 / 13%);
+}
+
+.pause-menu-night-state {
+  min-width: 1.5rem;
+  text-align: center;
+}
+
+.pause-menu-night-track {
+  display: flex;
+  width: 1.72rem;
+  height: 0.94rem;
+  align-items: center;
+  padding: 0.12rem;
+  border: 1px solid rgb(148 163 184 / 36%);
+  border-radius: 9999px;
+  background: #182638;
+  transition: background 160ms ease;
+}
+
+.pause-menu-night-thumb {
+  width: 0.58rem;
+  height: 0.58rem;
+  border-radius: 50%;
+  background: #9ba8b8;
+  transition:
+    transform 160ms ease,
+    background 160ms ease;
+}
+
+.pause-menu-night-toggle.is-active .pause-menu-night-track {
+  background: #285474;
+}
+
+.pause-menu-night-toggle.is-active .pause-menu-night-thumb {
+  transform: translateX(0.72rem);
+  background: #b5f4ff;
+  box-shadow: 0 0 0.55rem rgb(101 227 255 / 70%);
+}
+
 .pause-menu-callout {
   display: grid;
   gap: 0.25rem;
@@ -1180,6 +1277,16 @@ body {
 
   .pause-menu-footer-status {
     font-size: 0.62rem;
+  }
+
+  .pause-menu-night-panel {
+    align-items: flex-start;
+    gap: 0.65rem;
+    padding: 0.7rem;
+  }
+
+  .pause-menu-night-toggle {
+    min-width: 5.35rem;
   }
 
   .pause-menu-resume-button {

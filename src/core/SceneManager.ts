@@ -5,6 +5,7 @@ import {
   Mesh,
   PerspectiveCamera,
   Scene,
+  SphereGeometry,
   Vector3,
   type BufferGeometry,
   type Material,
@@ -14,6 +15,7 @@ import {
 import { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { SkyMesh } from 'three/addons/objects/SkyMesh.js';
+import { MeshBasicNodeMaterial } from 'three/webgpu';
 import {
   loadEnvironmentAsset,
   loadHdrTexture,
@@ -27,6 +29,11 @@ import type { DaylightState } from '../environment/EnvironmentClock';
 import type { SurfaceState } from '../environment/SurfaceState';
 import type { Vec3 } from '../shared/vector';
 import { scaleBaseline } from '../environment/daylight-levels';
+import {
+  MOONLIGHT_COLOR_HEX,
+  MOONLIGHT_INTENSITY_SCALE,
+  resolveMoonDirection,
+} from '../environment/night-mood';
 import { createAtmosphereSky } from '../shaders/atmosphere-sky';
 import type { Viewport } from './Engine';
 import { createDrivingWorld } from '../world/DrivingWorld';
@@ -94,8 +101,8 @@ const DEG_TO_RAD = Math.PI / 180;
  *
  * Phase 3 responsibilities:
  * - the sky is a Preetham atmosphere model (`SkyMesh`, TSL) instead of a hand-written gradient
- *   shader, so the horizon, sun disc, and cloud layer respond to the same sun direction the shadow
- *   camera uses;
+ *   shader, so the horizon, sun disc, and cloud layer respond to the actual solar direction; at
+ *   night the existing shadow-casting key becomes moonlight and a camera-following moon disc appears;
  * - image-based lighting comes from a verified CC0 HDRI resolved through the asset manifest, so the
  *   scene reflects a real captured environment while remaining licence-auditable;
  * - shadows are cascaded (`CSMShadowNode`) so the car keeps a crisp shadow at distance without the
@@ -116,9 +123,13 @@ export class SceneManager {
   readonly #sky: SkyMesh;
   readonly #sun: DirectionalLight;
   readonly #ambient: AmbientLight;
-  /** Unit vector toward the sun, replaced by each daylight update. */
+  readonly #moon: Mesh;
+  /** Unit vector toward the actual sun, used by the atmosphere and sun diagnostics. */
   readonly #sunDirection = new Vector3(0, 1, 0);
+  /** Unit direction for the shadow-casting key: sun by day, moon at night. */
   readonly #sunOffset: Vector3;
+  readonly #moonDirection = new Vector3(0, 1, 0);
+  readonly #moonDistance: number;
   readonly #sunTarget = new Vector3();
   readonly #csm: CSMShadowNode | null;
   #content: SceneContent;
@@ -168,14 +179,29 @@ export class SceneManager {
     this.controls.update();
 
     this.#sky = createAtmosphereSky(config);
+    this.#moonDistance = metersToThreeUnits(config.camera.far * 0.72);
+    const moonMaterial = new MeshBasicNodeMaterial();
+    moonMaterial.name = 'night-moon-disc-material';
+    moonMaterial.color.setHex(MOONLIGHT_COLOR_HEX);
+    moonMaterial.toneMapped = false;
+    this.#moon = new Mesh(
+      new SphereGeometry(this.#moonDistance * Math.tan(Math.PI / 720), 32, 24),
+      moonMaterial,
+    );
+    this.#moon.name = 'night-moon-disc';
+    this.#moon.visible = false;
+    this.#moon.frustumCulled = false;
+    this.#moon.castShadow = false;
+    this.#moon.receiveShadow = false;
+    this.#moon.renderOrder = 1;
     const ambient = new AmbientLight(
       config.lighting.ambientColor,
       config.lighting.ambientIntensity,
     );
     this.#ambient = ambient;
     this.#sun = createSun(config);
-    // The configured sun position is the initial direction; `applyDaylight` replaces it once the
-    // application has resolved the time of day, and `focusSun` places the light from it each frame.
+    // The configured sun position is the initial key direction; `applyDaylight` selects sun or
+    // moonlight, and `focusSun` places that shared shadow-casting light each frame.
     this.#sunOffset = new Vector3(...metersToThreePoint(config.lighting.sunPosition)).normalize();
     this.#csm = attachCascades(this.#sun, config);
 
@@ -202,7 +228,7 @@ export class SceneManager {
         : {}),
     });
 
-    this.scene.add(this.#sky, ambient, this.#sun, this.#sun.target, this.#content.root);
+    this.scene.add(this.#sky, this.#moon, ambient, this.#sun, this.#sun.target, this.#content.root);
     if (this.#godraysLight !== null) {
       this.scene.add(this.#godraysLight, this.#godraysLight.target);
     }
@@ -214,8 +240,8 @@ export class SceneManager {
    * Loads the configured HDRI from the asset manifest and lights the scene with it.
    *
    * Called once by the composition root after the renderer is initialised. Until (and if) the asset
-   * resolves, the scene is lit by the procedural sky and the directional sun alone, which is a valid
-   * — if flatter — look, never a black scene.
+   * resolves, the scene is lit by the procedural sky and its time-of-day directional key, which is a
+   * valid — if flatter — look, never a black scene.
    */
   async loadEnvironment(assetId?: string): Promise<EnvironmentAsset | null> {
     if (this.#disposed || !this.#config.environment.enabled) {
@@ -274,7 +300,7 @@ export class SceneManager {
   }
 
   /**
-   * Switches image-based lighting off, leaving only the sun, sky, and ambient fill.
+   * Switches image-based lighting off, leaving the time-of-day directional key, sky, and ambient fill.
    *
    * Worth having as a switch rather than a config value: the fastest way to find out whether a
    * surface looks wrong because of its own parameters or because of the environment it is standing
@@ -327,6 +353,11 @@ export class SceneManager {
    */
   followCamera(position: Vec3): void {
     this.#sky.position.set(position.x, position.y, position.z);
+    this.#moon.position.set(
+      position.x + this.#moonDirection.x * this.#moonDistance,
+      position.y + this.#moonDirection.y * this.#moonDistance,
+      position.z + this.#moonDirection.z * this.#moonDistance,
+    );
   }
 
   /**
@@ -356,7 +387,7 @@ export class SceneManager {
   }
 
   /**
-   * Moves the sun and its shadow focus to follow the vehicle.
+   * Moves the sun-or-moon key and its shadow focus to follow the vehicle.
    *
    * The focus is quantized to a couple of meters so the shadow map does not shimmer as the car
    * creeps forward, and the vertical focus stays at ground level so the shadow camera always points
@@ -404,10 +435,10 @@ export class SceneManager {
   /**
    * Applies a resolved time of day to everything the scene owns.
    *
-   * One call, one source of truth: the sun's direction, colour, and strength, the ambient fill, the
-   * atmosphere's scattering and sun disc, and the intensity of the image-based
-   * lighting all come from the same `DaylightState`. Nothing recomputes the sun separately, so the
-   * sky, the shadows, and the light on the car can never disagree about where the sun is.
+   * One call, one source of truth: solar direction, the sun-or-moon shadow-casting key, ambient
+   * fill, atmosphere, visible moon disc and image-based lighting are all resolved from the same
+   * `DaylightState`. At night the existing directional light becomes restrained blue moonlight; the
+   * sky itself continues to follow the real sun direction.
    *
    * The procedural sky always follows the clock. When `?envbg=1` selects the HDRI backdrop for look-dev, that
    * texture is a fixed daylight capture, so only its intensity is modulated — the sky does not redden.
@@ -418,15 +449,21 @@ export class SceneManager {
       state.sunDirection.y,
       state.sunDirection.z,
     );
-    this.#sunOffset.copy(direction);
-
-    this.#sun.color.setHex(state.sunColorHex);
-    // The clock's phase values are MULTIPLIERS on the baseline lighting
-    // (config/daylight.ts says so). Applying them as absolute values ran
-    // the daytime fill light at 1.0 instead of 0.35 and the sun at 1.0
-    // instead of 2.4: a 1:1 sun/fill ratio with no shadow contrast, which
-    // read as a milky haze over the whole frame (owner report, 2026-10-17).
-    this.#sun.intensity = scaleBaseline(this.#config.lighting.sunIntensity, state.sunIntensity);
+    if (state.isNight) {
+      const moonDirection = resolveMoonDirection(state.sunDirection);
+      this.#moonDirection.set(moonDirection.x, moonDirection.y, moonDirection.z);
+      this.#sunOffset.copy(this.#moonDirection);
+      this.#sun.color.setHex(MOONLIGHT_COLOR_HEX);
+      this.#sun.intensity = this.#config.lighting.sunIntensity * MOONLIGHT_INTENSITY_SCALE;
+      this.#moon.visible = true;
+    } else {
+      this.#sunOffset.copy(direction);
+      this.#sun.color.setHex(state.sunColorHex);
+      // Daylight phase values multiply the tier's authored baseline; the moon reuses this same
+      // shadow-casting directional light at a deliberately restrained fraction of that baseline.
+      this.#sun.intensity = scaleBaseline(this.#config.lighting.sunIntensity, state.sunIntensity);
+      this.#moon.visible = false;
+    }
     this.#ambient.color.setHex(state.ambientColorHex);
     this.#ambient.intensity = scaleBaseline(
       this.#config.lighting.ambientIntensity,

@@ -76,6 +76,7 @@ const LOOKDEV_TOWERS: readonly TowerSpec[] = [
 ];
 
 const SIGNAL_ASPECTS: readonly TrafficSignalAspect[] = ['red', 'amber', 'green'];
+const STREET_LAMP_PALETTE = [0xffbf68, 0xff5ad3, 0x54dcff, 0xa78bfa] as const;
 const SIGNAL_ON_COLOR: Readonly<Record<TrafficSignalAspect, number>> = {
   red: 0xff3028,
   amber: 0xffb52e,
@@ -171,6 +172,12 @@ function stableUnit(a: number, b: number, salt: number): number {
   value = Math.imul(value, 0x85ebca6b);
   value ^= value >>> 13;
   return (value >>> 0) / 0x1_0000_0000;
+}
+
+function streetLampPaletteIndex(position: readonly [number, number, number]): number {
+  const gridCellX = Math.floor(position[0] / 24);
+  const gridCellZ = Math.floor(position[2] / 40);
+  return Math.abs(gridCellX + gridCellZ) % STREET_LAMP_PALETTE.length;
 }
 
 const CITY_FACADE_PALETTE = [0x202b36, 0x27333e, 0x30343e, 0x3a3735] as const;
@@ -1056,6 +1063,7 @@ export class UrbanNightWorld implements SceneContent {
   readonly #architecturalLightGain = uniform(1);
   readonly #streetLights: PointLight[] = [];
   readonly #streetLightFlares: Sprite[] = [];
+  readonly #streetLightFlareMaterials: readonly SpriteNodeMaterial[];
   readonly #streetLightCandidates: (readonly [number, number, number])[] = [];
   readonly #architecturalLights: PointLight[] = [];
   readonly #architecturalFlares: Sprite[] = [];
@@ -1114,13 +1122,15 @@ export class UrbanNightWorld implements SceneContent {
     const activityBudget = URBAN_ACTIVITY_TIER_BUDGET[tier];
     this.#streetLightBudget = budget.streetPointLights;
     this.#architecturalLightBudget = budget.architecturalPointLights;
-    const warmFlare = createFlareMaterial(
-      0xffd19a,
-      this.#nightGain,
-      budget.cardinalStarburst,
-      budget.diagonalStarburst,
-      'aohara-warm-gaussian-diffraction',
-      this.#streetLightGain,
+    this.#streetLightFlareMaterials = STREET_LAMP_PALETTE.map((color, index) =>
+      createFlareMaterial(
+        color,
+        this.#nightGain,
+        budget.cardinalStarburst,
+        budget.diagonalStarburst,
+        `aohara-streetlight-color-${index + 1}-diffraction`,
+        this.#streetLightGain,
+      ),
     );
     const architecturalFlare = createFlareMaterial(
       0xffc17b,
@@ -1187,7 +1197,6 @@ export class UrbanNightWorld implements SceneContent {
     this.root.add(this.#streetFurniture.root);
     const streetStats = this.#buildStreetLights(
       budget.streetPointLights,
-      warmFlare,
       options.roadNetwork,
       originX,
       originZ,
@@ -1336,8 +1345,11 @@ export class UrbanNightWorld implements SceneContent {
       if (light === undefined || flare === undefined) {
         return;
       }
+      const paletteIndex = streetLampPaletteIndex(position);
       light.position.set(...position);
+      light.color.setHex(STREET_LAMP_PALETTE[paletteIndex]!);
       flare.position.set(...position);
+      flare.material = this.#streetLightFlareMaterials[paletteIndex]!;
       flare.visible = coverage > 0;
     });
     this.#setStreetLightIntensity();
@@ -2112,7 +2124,7 @@ export class UrbanNightWorld implements SceneContent {
       );
     }
 
-    const billboardColors = [0x8cded2, 0xf0c47d, 0xf19394, 0xb6a1ed] as const;
+    const billboardColors = [0x35e3ff, 0xff52c8, 0xffd45a, 0x9b79ff] as const;
     const billboards: BillboardSpec[] = [];
     const attachedBuildings = buildings.filter(
       (building) => building.kind === 'shop' || building.kind === 'casino',
@@ -2246,7 +2258,6 @@ export class UrbanNightWorld implements SceneContent {
 
   #buildStreetLights(
     pointLightBudget: number,
-    flareMaterial: SpriteNodeMaterial,
     roadNetwork: RoadNetwork | undefined,
     originX: number,
     originZ: number,
@@ -2284,7 +2295,7 @@ export class UrbanNightWorld implements SceneContent {
       );
     }
 
-    const bannerPalette = [0x814c56, 0x3f7680, 0xa37c4f, 0x625b8b] as const;
+    const bannerPalette = [0xff4f9a, 0x38dfff, 0xffbe48, 0x9b79ff] as const;
     const bannerGroups = new Map<number, TransformSpec[]>();
     const bannerStride = this.#networkIntegrated ? 5 : 2;
     const bannerPlacements = placements
@@ -2304,10 +2315,11 @@ export class UrbanNightWorld implements SceneContent {
         return transform;
       });
     for (const [index, [color, transforms]] of [...bannerGroups].entries()) {
-      const material = new MeshStandardNodeMaterial();
-      material.color.setHex(color);
-      material.roughness = 0.89;
-      material.name = `aohara-district-banner-${index}`;
+      const material = createNightEmissiveMaterial(
+        color,
+        this.#nightGain,
+        `aohara-district-banner-${index}`,
+      );
       addInstancedBoxes(
         this.root,
         new BoxGeometry(1, 1, 1),
@@ -2338,9 +2350,11 @@ export class UrbanNightWorld implements SceneContent {
     const budgetedPositions = this.#networkIntegrated
       ? selectNearestStreetLights(bulbPositions, pointLightBudget, 0, defaultSpawnZ)
       : bulbPositions.slice(0, pointLightBudget);
-    budgetedPositions.forEach(([x, y, z], index) => {
+    budgetedPositions.forEach((position, index) => {
+      const [x, y, z] = position;
+      const paletteIndex = streetLampPaletteIndex(position);
       const light = new PointLight(
-        0xffc27a,
+        STREET_LAMP_PALETTE[paletteIndex]!,
         URBAN_CITY_CONFIG.streetLamp.pointLightIntensity *
           this.#nightGain.value *
           this.#streetLightSpatialGain,
@@ -2353,7 +2367,7 @@ export class UrbanNightWorld implements SceneContent {
       this.root.add(light);
       this.#streetLights.push(light);
 
-      const flare = new Sprite(flareMaterial);
+      const flare = new Sprite(this.#streetLightFlareMaterials[paletteIndex]!);
       flare.position.set(x, y, z);
       flare.scale.setScalar(URBAN_CITY_CONFIG.streetLamp.haloScaleMeters);
       flare.visible = this.#streetLightSpatialGain > 0;
