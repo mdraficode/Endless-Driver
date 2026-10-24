@@ -129,6 +129,33 @@ function hasFacadeRoadClearance(network: RoadNetwork, x: number, z: number): boo
   );
 }
 
+function hasFacadeOffsetTransitionClearance(
+  network: RoadNetwork,
+  edge: RoadEdge,
+  side: -1 | 1,
+  alongMeters: number,
+  startOffsetMeters: number,
+  endOffsetMeters: number,
+): boolean {
+  const frame = roadFrameAt(edge, alongMeters);
+  const stepCount = Math.max(1, Math.ceil(Math.abs(endOffsetMeters - startOffsetMeters) / 0.1));
+  for (let index = 0; index <= stepCount; index += 1) {
+    const t = index / stepCount;
+    const wallOffset = startOffsetMeters + (endOffsetMeters - startOffsetMeters) * t;
+    const centerOffset = wallOffset - 0.05 + FACADE_WALL_THICKNESS_METERS / 2;
+    if (
+      !hasFacadeRoadClearance(
+        network,
+        frame.x + frame.normalX * side * centerOffset,
+        frame.z + frame.normalZ * side * centerOffset,
+      )
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function facadeRunFor(edge: RoadEdge): { readonly start: number; readonly end: number } {
   const isCourtyardLink = edge.from.endsWith('-hub') || edge.to.endsWith('-yard');
   const start = edge.from.startsWith('aohara-access-')
@@ -152,11 +179,19 @@ function choosePalette<T>(palette: readonly T[], seed: number, salt: number): T 
   return palette[index] ?? palette[0]!;
 }
 
+const FACADE_PLACEMENT_CACHE = new WeakMap<
+  RoadNetwork,
+  Map<TierId, readonly UrbanAlleyFacadePlacement[]>
+>();
+
 /** Deterministic building modules form close-set rows on both sides of every Aohara passage. */
 export function generateAoharaAlleyFacadePlacements(
   network: RoadNetwork,
   tier: TierId,
 ): readonly UrbanAlleyFacadePlacement[] {
+  const cachedPlacements = FACADE_PLACEMENT_CACHE.get(network)?.get(tier);
+  if (cachedPlacements !== undefined) return cachedPlacements;
+
   const placements: UrbanAlleyFacadePlacement[] = [];
   const targetModuleLength = FACADE_MODULE_LENGTH_METERS[tier];
   const alleyEdges = network.edges.filter((edge) => edge.roadClass === 'urban-alley');
@@ -199,16 +234,17 @@ export function generateAoharaAlleyFacadePlacements(
             frame.z + frame.normalZ * side * wallCenterOffset,
           ),
         );
-        let clearRunStart = -1;
         let spanIndex = 0;
-        const appendClearSpan = (firstInterval: number, endInterval: number): void => {
-          const startAlongMeters = sampleDistances[firstInterval]!;
-          const endAlongMeters = sampleDistances[endInterval]!;
+        const appendSpan = (
+          startAlongMeters: number,
+          endAlongMeters: number,
+          spanWallOffsetMeters: number,
+        ): void => {
           if (endAlongMeters - startAlongMeters < 0.1) return;
           const alongMeters = (startAlongMeters + endAlongMeters) / 2;
           const frame = roadFrameAt(edge, alongMeters);
           const yaw = Math.atan2(-frame.tangentZ, frame.tangentX);
-          const centerOffset = wallOffsetMeters + depthMeters / 2 - 0.05;
+          const centerOffset = spanWallOffsetMeters + depthMeters / 2 - 0.05;
           placements.push({
             id: `${edge.id}:${side}:${moduleIndex}:${spanIndex}`,
             roadEdgeId: edge.id,
@@ -224,7 +260,7 @@ export function generateAoharaAlleyFacadePlacements(
             normalX: frame.normalX,
             normalZ: frame.normalZ,
             halfWidthMeters: edge.halfWidthMeters,
-            wallOffsetMeters,
+            wallOffsetMeters: spanWallOffsetMeters,
             widthMeters: endAlongMeters - startAlongMeters,
             depthMeters,
             heightMeters,
@@ -234,21 +270,177 @@ export function generateAoharaAlleyFacadePlacements(
           spanIndex += 1;
         };
 
+        let fullModuleWallOffset: number | null = clearSamples.every(Boolean)
+          ? wallOffsetMeters
+          : null;
+        // Nudge a whole module only if a nearby setback clears every sample; otherwise keep only
+        // the clear spans at the tight frontage line and open the small conflicting road pocket.
+        if (fullModuleWallOffset === null) {
+          const minimumWallOffset =
+            edge.halfWidthMeters +
+            edge.shoulderMeters +
+            FACADE_MIN_ROAD_CLEARANCE_METERS -
+            0.05 +
+            FACADE_WALL_THICKNESS_METERS / 2;
+          const checkpointIndices = [
+            ...new Set([
+              0,
+              Math.round(sampleCount / 4),
+              Math.round(sampleCount / 2),
+              Math.round((sampleCount * 3) / 4),
+              sampleCount,
+            ]),
+          ];
+          for (let step = 1; step <= 4 && fullModuleWallOffset === null; step += 1) {
+            const delta = step * 0.25;
+            for (const candidateOffset of [wallOffsetMeters - delta, wallOffsetMeters + delta]) {
+              if (candidateOffset < minimumWallOffset) continue;
+              const candidateCenterOffset =
+                candidateOffset - 0.05 + FACADE_WALL_THICKNESS_METERS / 2;
+              const hasClearCheckpoints = checkpointIndices.every((sampleIndex) => {
+                const frame = sampleFrames[sampleIndex]!;
+                return hasFacadeRoadClearance(
+                  network,
+                  frame.x + frame.normalX * side * candidateCenterOffset,
+                  frame.z + frame.normalZ * side * candidateCenterOffset,
+                );
+              });
+              if (!hasClearCheckpoints) continue;
+              const hasClearModule = sampleFrames.every((frame) =>
+                hasFacadeRoadClearance(
+                  network,
+                  frame.x + frame.normalX * side * candidateCenterOffset,
+                  frame.z + frame.normalZ * side * candidateCenterOffset,
+                ),
+              );
+              if (hasClearModule) {
+                fullModuleWallOffset = candidateOffset;
+                break;
+              }
+            }
+          }
+        }
+
+        if (fullModuleWallOffset !== null) {
+          appendSpan(moduleStartMeters, moduleEndMeters, fullModuleWallOffset);
+          continue;
+        }
+
+        let clearRunStart = -1;
         for (let intervalIndex = 0; intervalIndex < sampleCount; intervalIndex += 1) {
           const intervalClear = clearSamples[intervalIndex] && clearSamples[intervalIndex + 1];
           if (intervalClear) {
             if (clearRunStart < 0) clearRunStart = intervalIndex;
           } else if (clearRunStart >= 0) {
-            appendClearSpan(clearRunStart, intervalIndex);
+            appendSpan(
+              sampleDistances[clearRunStart]!,
+              sampleDistances[intervalIndex]!,
+              wallOffsetMeters,
+            );
             clearRunStart = -1;
           }
         }
-        if (clearRunStart >= 0) appendClearSpan(clearRunStart, sampleCount);
+        if (clearRunStart >= 0) {
+          appendSpan(
+            sampleDistances[clearRunStart]!,
+            sampleDistances[sampleCount]!,
+            wallOffsetMeters,
+          );
+        }
       }
     }
   });
 
+  let cachedByTier = FACADE_PLACEMENT_CACHE.get(network);
+  if (cachedByTier === undefined) {
+    cachedByTier = new Map();
+    FACADE_PLACEMENT_CACHE.set(network, cachedByTier);
+  }
+  cachedByTier.set(tier, placements);
   return placements;
+}
+
+interface FacadeOffsetConnector {
+  readonly edge: RoadEdge;
+  readonly frame: RoadFrame;
+  readonly side: -1 | 1;
+  readonly startOffsetMeters: number;
+  readonly endOffsetMeters: number;
+  readonly footprint: StaticBuildingBox;
+}
+
+function adjacentFacadePlacementPairs(
+  placements: readonly UrbanAlleyFacadePlacement[],
+): readonly (readonly [UrbanAlleyFacadePlacement, UrbanAlleyFacadePlacement])[] {
+  const placementsByRow = new Map<string, UrbanAlleyFacadePlacement[]>();
+  for (const placement of placements) {
+    const key = `${placement.roadEdgeId}:${placement.side}`;
+    const row = placementsByRow.get(key) ?? [];
+    row.push(placement);
+    placementsByRow.set(key, row);
+  }
+
+  const pairs: (readonly [UrbanAlleyFacadePlacement, UrbanAlleyFacadePlacement])[] = [];
+  for (const row of placementsByRow.values()) {
+    row.sort((first, second) => first.startAlongMeters - second.startAlongMeters);
+    for (let index = 1; index < row.length; index += 1) {
+      const previous = row[index - 1]!;
+      const current = row[index]!;
+      if (Math.abs(previous.endAlongMeters - current.startAlongMeters) <= 1e-6) {
+        pairs.push([previous, current]);
+      }
+    }
+  }
+  return pairs;
+}
+
+function makeFacadeOffsetConnector(
+  network: RoadNetwork,
+  previous: UrbanAlleyFacadePlacement,
+  current: UrbanAlleyFacadePlacement,
+): FacadeOffsetConnector | null {
+  const offsetDifference = current.wallOffsetMeters - previous.wallOffsetMeters;
+  if (
+    Math.abs(offsetDifference) <= 1e-6 ||
+    current.roadEdgeId !== previous.roadEdgeId ||
+    current.side !== previous.side
+  ) {
+    return null;
+  }
+  const edge = network.edges.find((candidate) => candidate.id === previous.roadEdgeId);
+  if (
+    edge === undefined ||
+    !hasFacadeOffsetTransitionClearance(
+      network,
+      edge,
+      previous.side,
+      previous.endAlongMeters,
+      previous.wallOffsetMeters,
+      current.wallOffsetMeters,
+    )
+  ) {
+    return null;
+  }
+
+  const frame = roadFrameAt(edge, previous.endAlongMeters);
+  const centerOffset =
+    (previous.wallOffsetMeters + current.wallOffsetMeters) / 2 -
+    0.05 +
+    FACADE_WALL_THICKNESS_METERS / 2;
+  return {
+    edge,
+    frame,
+    side: previous.side,
+    startOffsetMeters: previous.wallOffsetMeters,
+    endOffsetMeters: current.wallOffsetMeters,
+    footprint: {
+      x: frame.x + frame.normalX * previous.side * centerOffset,
+      z: frame.z + frame.normalZ * previous.side * centerOffset,
+      yaw: Math.atan2(frame.normalZ * previous.side, frame.normalX * previous.side),
+      halfWidth: Math.abs(offsetDifference) / 2 + 0.02,
+      halfDepth: FACADE_WALL_THICKNESS_METERS / 2,
+    },
+  };
 }
 
 function createContinuousWallGeometry(
@@ -312,6 +504,25 @@ function createContinuousWallGeometry(
     }
   }
 
+  for (const [previous, current] of adjacentFacadePlacementPairs(placements)) {
+    const connector = makeFacadeOffsetConnector(network, previous, current);
+    if (connector === null) continue;
+    const { frame, side, startOffsetMeters, endOffsetMeters } = connector;
+    const startX = frame.x + frame.normalX * side * startOffsetMeters - originX;
+    const startZ = frame.z + frame.normalZ * side * startOffsetMeters - originZ;
+    const endX = frame.x + frame.normalX * side * endOffsetMeters - originX;
+    const endZ = frame.z + frame.normalZ * side * endOffsetMeters - originZ;
+    appendQuad(
+      [
+        [startX, FACADE_BASE_Y, startZ],
+        [endX, FACADE_BASE_Y, endZ],
+        [endX, FACADE_BASE_Y + FACADE_WALL_HEIGHT_METERS, endZ],
+        [startX, FACADE_BASE_Y + FACADE_WALL_HEIGHT_METERS, startZ],
+      ],
+      new Color(current.color),
+    );
+  }
+
   const geometry = new BufferGeometry();
   geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
   geometry.setAttribute('color', new Float32BufferAttribute(colors, 3));
@@ -349,6 +560,10 @@ function makeCollisionBoxes(
       });
     }
   }
+  for (const [previous, current] of adjacentFacadePlacementPairs(placements)) {
+    const connector = makeFacadeOffsetConnector(network, previous, current);
+    if (connector !== null) boxes.push(connector.footprint);
+  }
   return boxes;
 }
 
@@ -376,6 +591,16 @@ function makePropClearanceFootprints(
         yaw: Math.atan2(frame.tangentZ, frame.tangentX),
         halfWidth: segmentLength / 2 + 0.05,
         halfDepth: FACADE_WALL_THICKNESS_METERS / 2 + 0.02,
+      });
+    }
+  }
+  for (const [previous, current] of adjacentFacadePlacementPairs(placements)) {
+    const connector = makeFacadeOffsetConnector(network, previous, current);
+    if (connector !== null) {
+      boxes.push({
+        ...connector.footprint,
+        halfWidth: connector.footprint.halfWidth + 0.05,
+        halfDepth: connector.footprint.halfDepth + 0.02,
       });
     }
   }
