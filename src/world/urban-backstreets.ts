@@ -76,6 +76,7 @@ const ALLEY_PROP_KINDS: readonly UrbanAlleyPropKind[] = [
 const ALLEY_PROP_MINIMUM_SEPARATION_METERS = 0.28;
 const ALLEY_PROP_BUILDING_CLEARANCE_METERS = 0.25;
 const ALLEY_PROP_ROAD_CLEARANCE_METERS = 0.22;
+const ALLEY_PROP_ENDPOINT_CLEARANCE_METERS = 14;
 const ALLEY_PROP_SPAWN_CLEARANCE_METERS = 18;
 const ALLEY_PROP_BASE_Y = -0.55;
 
@@ -236,11 +237,13 @@ export function generateAoharaAlleyPropPlacements(
     blockEdges.forEach((edge, edgeIndex) => {
       const shortCourt = edge.lengthMeters < 20;
       const step = shortCourt ? edge.lengthMeters + 1 : 12;
-      const firstAlong = shortCourt ? edge.lengthMeters / 2 : 7 + stableUnit(blockIndex, edgeIndex, 137) * 2;
+      const firstAlong = shortCourt
+        ? edge.lengthMeters / 2
+        : ALLEY_PROP_ENDPOINT_CLEARANCE_METERS + stableUnit(blockIndex, edgeIndex, 137) * 2;
       let positionIndex = 0;
       for (
         let alongMeters = firstAlong;
-        alongMeters < edge.lengthMeters - (shortCourt ? 0 : 7);
+        alongMeters < edge.lengthMeters - (shortCourt ? 0 : ALLEY_PROP_ENDPOINT_CLEARANCE_METERS);
         alongMeters += step
       ) {
         const point = roadPositionAt(edge, alongMeters);

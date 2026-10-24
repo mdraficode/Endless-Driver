@@ -182,7 +182,8 @@ function expectUrbanRoadClearance(city: UrbanNightWorld, network: RoadNetwork): 
         };
         expect(
           city.collide(probe),
-          `${edge.id} has a building footprint across the road/sidewalk probe at ${point.alongMeters.toFixed(1)} m`,
+          `${edge.id} has an obstruction across the road/sidewalk probe at ${point.alongMeters.toFixed(1)} m, ` +
+            `lateral ${lateralOffset.toFixed(1)} m`,
         ).toHaveLength(0);
         probeCount += 1;
       }
@@ -702,7 +703,7 @@ describe('Aohara city night-lighting rules', () => {
     expect(cityStats.billboards).toBe(cityStats.shops + 14);
     expect(cityStats.storefrontNightAccentInstances).toBe((cityStats.shops + 2) * 3);
     expect(cityStats.urbanAlleyProps).toBe(URBAN_ACTIVITY_TIER_BUDGET.B.alleyProps);
-    expect(cityStats.urbanAlleyPropsBudget).toBe(URBAN_ACTIVITY_TIER_B.alleyProps);
+    expect(cityStats.urbanAlleyPropsBudget).toBe(URBAN_ACTIVITY_TIER_BUDGET.B.alleyProps);
     expect(cityStats.urbanAlleyPropBatches).toBeGreaterThan(0);
     expect(cityStats.urbanAlleyWasteBins +
       cityStats.urbanAlleyDumpsters +
@@ -845,7 +846,15 @@ describe('Aohara city night-lighting rules', () => {
       const edge = edges.get(placement.roadEdgeId);
       if (edge === undefined) throw new Error(`missing alley edge ${placement.roadEdgeId}`);
       expect(edge.roadClass).toBe('urban-alley');
-      expect(Math.min(placement.alongMeters, edge.lengthMeters - placement.alongMeters)).toBeGreaterThanOrEqual(7);
+      const endpointClearanceMeters = Math.min(
+        placement.alongMeters,
+        edge.lengthMeters - placement.alongMeters,
+      );
+      if (edge.lengthMeters < 20) {
+        expect(endpointClearanceMeters).toBeCloseTo(edge.lengthMeters / 2, 6);
+      } else {
+        expect(endpointClearanceMeters).toBeGreaterThanOrEqual(14);
+      }
       const road = network.sample(placement.x, placement.z);
       if (road === null) throw new Error(`alley clutter ${placement.id} lost its road sample`);
       expect(

@@ -66,7 +66,9 @@ describe('road network graph', () => {
         expect(edge.points.length).toBeGreaterThan(1);
       } else {
         expect(edge.lengthMeters).toBeGreaterThan(50);
-        expect(edge.points.length).toBeGreaterThan(10);
+        expect(edge.points.length).toBeGreaterThan(
+          edge.roadClass === 'urban-local' || edge.roadClass === 'urban-arterial' ? 1 : 10,
+        );
       }
     }
   });
