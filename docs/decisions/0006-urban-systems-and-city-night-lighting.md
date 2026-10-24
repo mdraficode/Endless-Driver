@@ -29,3 +29,4 @@ The owner later requested a brighter Aohara night drive with denser streetlamps,
 - The brightening follow-up is still Phase 9 scope and does not turn into global post-processing, weather, or unrestricted light count; architectural pointlights, pole/window/billboard instances and banners use explicit C/B/A budgets.
 - The eventual district must preserve the no-white-ground, streaming, mobile-tier and licensing constraints already recorded in `AGENTS.md`, `PROJECT_PLAN.md` and the asset policy.
 - Later owner direction on 2026-10-24 opened Phase 7 and authorized the specific Night Mood control above. Phase 8 remains gated except for that menu-toggle/night-mood feature; no unrelated Phase 8 scope is opened.
+- The Night Mood headlight follow-up adds a fixed pair of night-gated, unshadowed spotlights for the player vehicle only; it is separate from Aohara's city point-light allocations and does not raise any C/B/A city cap.
