@@ -35,9 +35,9 @@ interface SteeringWheelPointer {
  * The on-screen driving surface for phones and tablets.
  *
  * Layout is landscape-first: a selectable one-finger rotary wheel or left/right steering buttons
- * under the left thumb, BRAKE/GAS pedals, handbrake and N₂O boost under the right, and small
- * diagnostics/camera/reset/fullscreen buttons top-right. Each control tracks pointer ids so the
- * player can steer, accelerate and boost simultaneously. State funnels through `TouchStateTracker`
+ * under the left thumb, a BRAKE pedal and GAS/N₂O stack under the right (N₂O directly above GAS),
+ * handbrake and small diagnostics/camera/reset/fullscreen buttons top-right. Each control tracks
+ * pointer ids so the player can steer, accelerate and boost simultaneously. State funnels through `TouchStateTracker`
  * into the same `InputManager` seam as keyboard/gamepad input.
  *
  * Visibility: rendered only when the device reports a coarse pointer (or `force`).
@@ -350,12 +350,15 @@ export class TouchControls {
     const pedals = document.createElement('div');
     pedals.className = 'touch-pedals';
     const brake = pedal('touch-pedal touch-pedal-brake', 'BRAKE', 'brake');
-    const gas = pedal('touch-pedal touch-pedal-gas', 'GAS', 'throttle');
-    pedals.append(brake, gas);
-    const handbrake = pedal('touch-handbrake', 'HB', 'handbrake');
+    const gasStack = document.createElement('div');
+    gasStack.className = 'touch-gas-stack';
     const nitro = pedal('touch-boost', 'N₂O', 'boost');
-    nitro.setAttribute('aria-label', 'Hold N2O boost while accelerating');
-    nitro.title = 'Hold while accelerating to use N₂O boost.';
+    nitro.setAttribute('aria-label', 'Hold N2O boost to accelerate without using the gas pedal');
+    nitro.title = 'Hold for a quick boost; it works independently of the gas pedal.';
+    const gas = pedal('touch-pedal touch-pedal-gas', 'GAS', 'throttle');
+    gasStack.append(nitro, gas);
+    pedals.append(brake, gasStack);
+    const handbrake = pedal('touch-handbrake', 'HB', 'handbrake');
 
     // --- Utility buttons (top-right) ---
     const utilities = document.createElement('div');
@@ -382,7 +385,7 @@ export class TouchControls {
     });
     utilities.append(diagnosticsButton, cameraButton, resetButton, fullscreenButton);
 
-    this.#root.append(steeringWheel, arrowControls, handbrake, nitro, pedals, utilities);
+    this.#root.append(steeringWheel, arrowControls, handbrake, pedals, utilities);
 
     // Release safety net: if an element ever misses its pointerup (capture quirks,
     // browser gesture interruptions), the window still hears the thumb lift and no

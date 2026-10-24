@@ -1,15 +1,17 @@
 import { clamp } from '../shared/math';
 
-/** Bounded N₂O timing and force assistance, tuned as a brief refillable arcade boost. */
+/** Refillable N₂O timing and high-response arcade thrust. */
 export const NITRO_BOOST_CONFIG = {
   /** Full tank lasts this long when held continuously. */
   useDurationSeconds: 3.5,
-  /** Empty tank takes this long to refill while boost is released. */
+  /** Empty tank takes this long to refill after the boost control is released. */
   rechargeDurationSeconds: 8,
-  /** Multiplies driven-wheel force while boost is active. */
+  /** Multiplies driven-wheel force while boost and throttle are both active. */
   driveForceMultiplier: 1.55,
-  /** Boost only fires when there is enough throttle to make it useful. */
-  minimumThrottle: 0.08,
+  /** Standalone longitudinal acceleration; boost does not require the gas pedal. */
+  accelerationMps2: 30,
+  /** Speed toward which the standalone boost accelerates the car while held. */
+  targetSpeedKph: 250,
 } as const;
 
 export interface NitroBoostState {
@@ -28,18 +30,18 @@ export class NitroBoost {
     return { charge: this.#charge, active: this.#active };
   }
 
-  update(deltaSeconds: number, requested: boolean, throttle: number): NitroBoostState {
+  update(deltaSeconds: number, requested: boolean, forwardGearAvailable = true): NitroBoostState {
     const delta = Number.isFinite(deltaSeconds) ? Math.max(0, deltaSeconds) : 0;
-    const usableRequest = requested && throttle >= NITRO_BOOST_CONFIG.minimumThrottle;
+    const canBoost = requested && forwardGearAvailable;
 
-    if (usableRequest && this.#charge > 0) {
+    if (canBoost && this.#charge > 0) {
       this.#charge = clamp(this.#charge - delta / NITRO_BOOST_CONFIG.useDurationSeconds, 0, 1);
-      this.#active = true;
+      this.#active = this.#charge > 0;
     } else {
       this.#active = false;
-      // Holding the boost input on an empty tank does not allow it to refill underneath the
-      // player's finger; release the control to let the tank recharge.
-      if (!usableRequest) {
+      // Boost only recharges once the player releases the control; holding an empty tank
+      // (or holding boost while in reverse) cannot refill charge underneath their finger.
+      if (!requested) {
         this.#charge = clamp(
           this.#charge + delta / NITRO_BOOST_CONFIG.rechargeDurationSeconds,
           0,

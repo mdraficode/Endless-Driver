@@ -1664,6 +1664,14 @@ body {
   background: rgb(20 83 45 / 55%);
 }
 
+.touch-gas-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.55rem;
+  pointer-events: none;
+}
+
 .touch-pedal.is-active {
   filter: brightness(1.6);
   border-color: rgb(255 255 255 / 80%);
@@ -1694,9 +1702,7 @@ body {
 }
 
 .touch-boost {
-  position: absolute;
-  right: calc(max(1.1rem, env(safe-area-inset-right)) + 12.2rem);
-  bottom: max(1.1rem, env(safe-area-inset-bottom));
+  flex: 0 0 auto;
   width: 3.7rem;
   height: 3.7rem;
   border: 2px solid rgb(103 232 249 / 50%);
@@ -1709,10 +1715,7 @@ body {
   letter-spacing: 0.02em;
   pointer-events: auto;
   touch-action: none;
-  transform: scale(var(--touch-control-scale));
-  transform-origin: right bottom;
   transition:
-    transform 140ms ease,
     filter 120ms ease,
     border-color 120ms ease;
 }
@@ -1754,12 +1757,12 @@ body {
   filter: brightness(1.7);
 }
 
-/* Compact top-corner status: the N₂O canister shows the exact charge without covering the road. */
+/* Compact upper-right status: the N₂O canister shows its charge without covering the road. */
 .nitro-gauge {
   position: absolute;
   z-index: 20;
   top: max(0.8rem, env(safe-area-inset-top));
-  left: max(0.8rem, env(safe-area-inset-left));
+  right: max(0.8rem, env(safe-area-inset-right));
   display: flex;
   min-width: 7.8rem;
   align-items: center;
@@ -1779,6 +1782,11 @@ body {
 
 .nitro-gauge[hidden] {
   display: none !important;
+}
+
+/* Keep the charge panel below the touch utility row in the upper-right corner. */
+body.touch-enabled .nitro-gauge {
+  top: calc(max(0.8rem, env(safe-area-inset-top)) + 4.3rem);
 }
 
 .nitro-gauge-tank {

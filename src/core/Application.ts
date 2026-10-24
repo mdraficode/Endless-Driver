@@ -466,8 +466,8 @@ export class Application {
     if (!this.#firstFrameRendered) {
       this.#setStatus(
         this.#touchActive
-          ? 'Touch controls ready — steer with the selected wheel or arrows; hold N₂O while accelerating for boost.'
-          : 'Drive with W A S D; hold Shift while accelerating for N₂O boost. Space handbrake, R reset, C camera.',
+          ? 'Touch controls ready — steer with the selected wheel or arrows; hold N₂O for a quick boost, with or without GAS.'
+          : 'Drive with W A S D; hold Shift for a quick N₂O boost, with or without throttle. Space handbrake, R reset, C camera.',
       );
     }
   }
@@ -739,11 +739,7 @@ export class Application {
     // 1. Input becomes intent. Smoothing runs on frame time; the vehicle consumes it per step.
     this.#input.update(delta);
     const actions = this.#input.actions;
-    const boostState = this.#boostTank.update(
-      delta,
-      actions.boost && this.#car.telemetry.gear > 0,
-      actions.throttle,
-    );
+    const boostState = this.#boostTank.update(delta, actions.boost, this.#car.telemetry.gear > 0);
     this.#onBoostState?.(boostState);
     this.#car.setActions({
       ...actions,

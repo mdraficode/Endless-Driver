@@ -600,9 +600,7 @@ export class Car {
       ? [WHEEL_INDEX.frontLeft, WHEEL_INDEX.frontRight, WHEEL_INDEX.rearLeft, WHEEL_INDEX.rearRight]
       : [WHEEL_INDEX.rearLeft, WHEEL_INDEX.rearRight];
     const boostMultiplier =
-      actions.boost && !reversing && actions.throttle >= NITRO_BOOST_CONFIG.minimumThrottle
-        ? NITRO_BOOST_CONFIG.driveForceMultiplier
-        : 1;
+      actions.boost && !reversing ? NITRO_BOOST_CONFIG.driveForceMultiplier : 1;
     const driveForcePerWheel =
       (drivetrainState.driveForce * boostMultiplier) / drivenWheelIndices.length;
 
@@ -727,6 +725,23 @@ export class Car {
       addScaledVec3(scratch.force, scratch.force, scratch.wheelRight, lateralForce);
       scaleVec3(scratch.impulse, scratch.force, dt);
       body.applyImpulseAtPoint(scratch.impulse, wheel.contactPoint, true);
+    }
+
+    // N₂O has its own propulsion path, so it can launch the car without GAS. This arcade
+    // thrust is applied through the chassis centre instead of asking the driven tires to exceed
+    // their grip budget, and it tapers off at the boosted top-speed target.
+    if (actions.boost && !reversing) {
+      const boostForwardSpeed = dotVec3(body.linvel(), scratch.forward);
+      const boostTargetSpeed = NITRO_BOOST_CONFIG.targetSpeedKph / 3.6;
+      const remainingBoostSpeed = boostTargetSpeed - boostForwardSpeed;
+      if (remainingBoostSpeed > 0) {
+        const boostSpeedStep = Math.min(
+          NITRO_BOOST_CONFIG.accelerationMps2 * dt,
+          remainingBoostSpeed,
+        );
+        scaleVec3(scratch.impulse, scratch.forward, body.mass() * boostSpeedStep);
+        body.applyImpulse(scratch.impulse, true);
+      }
     }
 
     // Yaw stability assist: damp rotation toward the rate the steering asks for

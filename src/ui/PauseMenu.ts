@@ -619,22 +619,22 @@ export class PauseMenu {
       'W / ↑ — accelerate',
       'S / ↓ — brake and reverse',
       'A / D or ← / → — steer',
-      'Hold Shift while accelerating — N₂O boost',
+      'Hold Shift for a quick N₂O boost, with or without throttle',
       'Space — handbrake · R — reset car',
       'C — switch camera · P or Esc — pause',
     ]);
     this.#appendHelpCard(grid, 'TOUCH', [
       'Steer with the wheel or left/right arrows, selected in Gameplay Options',
       'Adjust touch-control size in Gameplay Options',
-      'Right-side pedals — gas and brake',
-      'Hold N₂O while accelerating to boost; the top-left tank shows charge',
+      'Right-side pedals — brake, GAS and N₂O directly above GAS',
+      'Hold N₂O for a quick boost even without GAS; the upper-right tank shows charge',
       'HB — handbrake · camera and reset are in the utility row',
       'Pause button stays at the upper-right',
     ]);
     this.#appendHelpCard(grid, 'GAMEPAD', [
       'Left stick — steer',
       'Right trigger — accelerate · left trigger — brake',
-      'Hold B / Circle while accelerating — N₂O boost',
+      'Hold B / Circle for a quick N₂O boost, with or without throttle',
       'A / Cross or RB — handbrake · Y / Triangle — reset',
       'X / Square — switch camera',
     ]);

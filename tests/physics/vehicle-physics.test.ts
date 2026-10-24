@@ -4,6 +4,7 @@ import { PhysicsWorld } from '../../src/physics/PhysicsWorld';
 import { loadRapier, type RapierModule } from '../../src/physics/RapierModule';
 import { yawFromQuat } from '../../src/shared/vector';
 import { Car } from '../../src/vehicles/Car';
+import { NITRO_BOOST_CONFIG } from '../../src/vehicles/NitroBoost';
 import { NEUTRAL_ACTIONS, type VehicleActions } from '../../src/vehicles/types';
 
 /**
@@ -102,6 +103,17 @@ describe('vehicle physics (headless Rapier)', () => {
     // Straight-line acceleration must not wander: the heading stays essentially fixed.
     expect(Math.abs(heading(rig))).toBeLessThan(0.02);
     expect(Math.abs(rig.car.position.x)).toBeLessThan(0.2);
+  });
+
+  it('boosts from a standstill toward its high-speed target without gas input', () => {
+    const rig = createRig();
+    drive(rig, 1, NEUTRAL_ACTIONS);
+
+    drive(rig, 3, actions({ boost: true }));
+
+    expect(rig.car.telemetry.throttle).toBe(0);
+    expect(rig.car.telemetry.forwardSpeed).toBeGreaterThan(0);
+    expect(rig.car.telemetry.speedKph).toBeGreaterThan(NITRO_BOOST_CONFIG.targetSpeedKph - 30);
   });
 
   it('increases higher-speed acceleration while the N₂O boost is active', () => {
