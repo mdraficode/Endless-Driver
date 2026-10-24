@@ -385,6 +385,11 @@ describe('Aohara city night-lighting rules', () => {
     expect(cityC.kind).toBe('aohara-city-night');
     expect(lowStats.highRiseBuildings).toBe(8);
     expect(lowStats.infillBuildings).toBe(0);
+    expect(lowStats.highRiseNightAccentInstances).toBeGreaterThan(0);
+    expect(highStats.highRiseNightAccentInstances).toBeGreaterThan(
+      lowStats.highRiseNightAccentInstances ?? 0,
+    );
+    expect(lowStats.storefrontNightAccentInstances).toBeGreaterThan(0);
     expect(lowStats.urbanTrafficVehicles).toBe(0);
     expect(lowStats.urbanPedestrians).toBe(0);
     expect(lowStats.streetLightPointLights).toBe(URBAN_NIGHT_TIER_BUDGET.C.streetPointLights);
@@ -447,9 +452,28 @@ describe('Aohara city night-lighting rules', () => {
     expect(lowStats.shops).toBe(1);
     expect(lowStats.billboards).toBeGreaterThan(0);
     expect(lowStats.districtBanners).toBeGreaterThan(0);
+    expect(lowStats.streetLightBollards).toBeGreaterThan(0);
+    expect(lowStats.nightMoodLightCandidates).toBeGreaterThan(0);
+    expect(lowStats.activeMoodPointLights).toBeLessThanOrEqual(
+      URBAN_NIGHT_TIER_BUDGET.C.architecturalPointLights,
+    );
     expect(cityC.root.getObjectByName('aohara-stadium-open-bowl-shell')).toBeDefined();
     expect(cityC.root.getObjectByName('aohara-abstract-billboards-0')).toBeDefined();
     expect(cityC.root.getObjectByName('aohara-street-banner-panels-0')).toBeDefined();
+    const highRiseNightAccents = cityC.root.getObjectByName(
+      'aohara-highrise-night-accent-strips-0',
+    );
+    const storefrontNightAccents = cityC.root.getObjectByName('aohara-storefront-night-accents-0');
+    const curbBollards = cityC.root.getObjectByName('aohara-sidewalk-light-bollards-0');
+    for (const accents of [highRiseNightAccents, storefrontNightAccents, curbBollards]) {
+      expect(accents).toBeInstanceOf(InstancedMesh);
+      if (!(accents instanceof InstancedMesh)) {
+        throw new Error('night decorations should use bounded instanced batches');
+      }
+      expect(accents.material).toBeInstanceOf(MeshBasicNodeMaterial);
+      expect((accents.material as MeshBasicNodeMaterial).colorNode).not.toBeNull();
+      expect((accents.material as MeshBasicNodeMaterial).toneMapped).toBe(false);
+    }
     expect(lowStats.illuminatedWindows).toBeLessThanOrEqual(
       URBAN_NIGHT_TIER_BUDGET.C.litWindowInstances,
     );
@@ -586,7 +610,14 @@ describe('Aohara city night-lighting rules', () => {
     });
     expect(URBAN_CITY_CONFIG.streetLamp.spacingMeters).toBe(40);
     expect(city.getContentStats().streetLightPoles).toBe(240);
-    expect(city.getContentStats().districtBanners).toBe(48);
+    expect(city.getContentStats().districtBanners).toBe(60);
+    expect(city.getContentStats().streetLightBollards).toBe(30);
+    expect(city.getContentStats().nightMoodLightCandidates).toBe(15);
+    expect(city.getContentStats().highRiseNightAccentInstances).toBe(33);
+    expect(city.getContentStats().storefrontNightAccentInstances).toBe(18);
+    expect(city.getContentStats().activeMoodPointLights).toBeLessThanOrEqual(
+      URBAN_NIGHT_TIER_BUDGET.B.architecturalPointLights,
+    );
     expect(city.getContentStats()).toMatchObject({
       urbanStreetFurnitureBatches: 4,
       urbanStreetFurnitureInstances:

@@ -76,7 +76,10 @@ const LOOKDEV_TOWERS: readonly TowerSpec[] = [
 ];
 
 const SIGNAL_ASPECTS: readonly TrafficSignalAspect[] = ['red', 'amber', 'green'];
-const STREET_LAMP_PALETTE = [0xffbf68, 0xff5ad3, 0x54dcff, 0xa78bfa] as const;
+const STREET_LAMP_PALETTE = [0xffbf68, 0xff5ad3, 0x54dcff, 0xa78bfa, 0x5ce4b5, 0xff7c62] as const;
+const NIGHT_DECORATION_PALETTE = [
+  0x38dfff, 0xff4f9a, 0xffbe48, 0x9b79ff, 0x54e1ba, 0xff785c,
+] as const;
 const SIGNAL_ON_COLOR: Readonly<Record<TrafficSignalAspect, number>> = {
   red: 0xff3028,
   amber: 0xffb52e,
@@ -137,7 +140,12 @@ interface ArchitecturalLightCandidate {
   readonly color: number;
   readonly intensity: number;
   readonly distance: number;
-  readonly source: 'shop' | 'casino' | 'stadium' | 'billboard' | 'lantern';
+  readonly source: 'shop' | 'casino' | 'stadium' | 'billboard' | 'lantern' | 'mood';
+}
+
+interface NightArchitectureAccentStats {
+  readonly highRiseInstances: number;
+  readonly storefrontInstances: number;
 }
 
 interface CityTypologyStats {
@@ -885,6 +893,8 @@ interface StreetLampPlacement {
 interface StreetLampBuildStats {
   readonly poleCount: number;
   readonly bannerCount: number;
+  readonly bollardCount: number;
+  readonly moodLightCandidateCount: number;
 }
 
 function roadPositionAt(
@@ -985,6 +995,13 @@ function selectNearestArchitecturalLights(
     .map(({ candidate }) => candidate);
 }
 
+function architecturalFlareScale(source: ArchitecturalLightCandidate['source']): number {
+  if (source === 'stadium') {
+    return 4.2;
+  }
+  return source === 'mood' ? 1.35 : 2.25;
+}
+
 function createSignalHead(
   root: Group,
   position: readonly [number, number, number],
@@ -1068,6 +1085,11 @@ export class UrbanNightWorld implements SceneContent {
   readonly #architecturalLights: PointLight[] = [];
   readonly #architecturalFlares: Sprite[] = [];
   readonly #architecturalLightCandidates: ArchitecturalLightCandidate[] = [];
+  readonly #architecturalFlareMaterials = new Map<number, SpriteNodeMaterial>();
+  readonly #highRiseNightAccentInstances: number;
+  readonly #storefrontNightAccentInstances: number;
+  readonly #streetLightBollardInstances: number;
+  readonly #nightMoodLightCandidates: number;
   readonly #activeArchitecturalCandidates: ArchitecturalLightCandidate[] = [];
   readonly #signalHeads: SignalHead[] = [];
   readonly #windowInstances: number;
@@ -1132,14 +1154,6 @@ export class UrbanNightWorld implements SceneContent {
         this.#streetLightGain,
       ),
     );
-    const architecturalFlare = createFlareMaterial(
-      0xffc17b,
-      this.#nightGain,
-      budget.cardinalStarburst * 0.76,
-      budget.diagonalStarburst * 0.7,
-      'aohara-architectural-gaussian-diffraction',
-      this.#architecturalLightGain,
-    );
     const signalFlares: Readonly<Record<TrafficSignalAspect, SpriteNodeMaterial>> = {
       red: createFlareMaterial(
         SIGNAL_ON_COLOR.red,
@@ -1172,6 +1186,9 @@ export class UrbanNightWorld implements SceneContent {
       : [];
     const additionalBuildings = [...existingBuildings, ...infillBuildings];
     const typologyCounts = this.#buildCityTypologies(additionalBuildings);
+    const accentStats = this.#buildNightArchitectureAccents(this.#towers, additionalBuildings);
+    this.#highRiseNightAccentInstances = accentStats.highRiseInstances;
+    this.#storefrontNightAccentInstances = accentStats.storefrontInstances;
     this.#facadeDetailInstances = this.#buildFacadeDetails(
       this.#towers,
       additionalBuildings,
@@ -1202,8 +1219,24 @@ export class UrbanNightWorld implements SceneContent {
       originZ,
     );
     this.#streetLightPoleCount = streetStats.poleCount;
+    this.#streetLightBollardInstances = streetStats.bollardCount;
+    this.#nightMoodLightCandidates = streetStats.moodLightCandidateCount;
     this.#cityTypologyStats = { ...typologyCounts, districtBanners: streetStats.bannerCount };
-    this.#buildArchitecturalLights(budget.architecturalPointLights, architecturalFlare);
+    for (const colorHex of new Set(this.#architecturalLightCandidates.map(({ color }) => color))) {
+      const colorName = colorHex.toString(16).padStart(6, '0');
+      this.#architecturalFlareMaterials.set(
+        colorHex,
+        createFlareMaterial(
+          colorHex,
+          this.#nightGain,
+          budget.cardinalStarburst * 0.76,
+          budget.diagonalStarburst * 0.7,
+          `aohara-architectural-${colorName}-gaussian-diffraction`,
+          this.#architecturalLightGain,
+        ),
+      );
+    }
+    this.#buildArchitecturalLights(budget.architecturalPointLights);
     this.#buildSignals(signalFlares);
     this.#activity = this.#networkIntegrated
       ? new UrbanStreetActivity(tier, {
@@ -1378,6 +1411,13 @@ export class UrbanNightWorld implements SceneContent {
       infillHippedRoofs: this.#cityTypologyStats.infillHippedRoofs,
       infillFlatRoofs: this.#cityTypologyStats.infillFlatRoofs,
       streetLightPoles: this.#streetLightPoleCount,
+      streetLightBollards: this.#streetLightBollardInstances,
+      nightMoodLightCandidates: this.#nightMoodLightCandidates,
+      activeMoodPointLights: this.#activeArchitecturalCandidates.filter(
+        (candidate) => candidate.source === 'mood',
+      ).length,
+      highRiseNightAccentInstances: this.#highRiseNightAccentInstances,
+      storefrontNightAccentInstances: this.#storefrontNightAccentInstances,
       streetLightPointLights: this.#streetLights.length,
       architecturalPointLights: this.#architecturalLights.length,
       activePointLights: this.#streetLights.length + this.#architecturalLights.length,
@@ -1659,6 +1699,121 @@ export class UrbanNightWorld implements SceneContent {
     });
     roofs.instanceMatrix.needsUpdate = true;
     this.root.add(roofs);
+  }
+
+  /** Adds tier-bounded neon crown strips and storefront accents, gated by the shared night gain. */
+  #buildNightArchitectureAccents(
+    towers: readonly TowerSpec[],
+    buildings: readonly CityBuildingSpec[],
+  ): NightArchitectureAccentStats {
+    const unitBox = new BoxGeometry(1, 1, 1);
+    const towerGroups = new Map<number, TransformSpec[]>();
+    const storefrontGroups = new Map<number, TransformSpec[]>();
+    const addTransform = (
+      groups: Map<number, TransformSpec[]>,
+      color: number,
+      transform: TransformSpec,
+    ): void => {
+      const group = groups.get(color) ?? [];
+      group.push(transform);
+      groups.set(color, group);
+    };
+    const towerStride = this.#tier === 'C' ? 4 : this.#tier === 'B' ? 3 : 2;
+    towers.forEach((tower, towerIndex) => {
+      if (towerIndex % towerStride !== 0) {
+        return;
+      }
+      const color =
+        NIGHT_DECORATION_PALETTE[
+          Math.floor(towerIndex / towerStride) % NIGHT_DECORATION_PALETTE.length
+        ]!;
+      const stripHeight = Math.max(8, tower.height - 10);
+      const frontZ = tower.z + tower.depth / 2 + 0.1;
+      for (const side of [-1, 1] as const) {
+        addTransform(towerGroups, color, {
+          x: tower.x + side * (tower.width / 2 + 0.025),
+          y: WORLD_BASE_Y + 5 + stripHeight / 2,
+          z: frontZ,
+          scale: [0.16, stripHeight, 0.12],
+        });
+      }
+      addTransform(towerGroups, color, {
+        x: tower.x,
+        y: WORLD_BASE_Y + tower.height - 0.7,
+        z: frontZ,
+        scale: [tower.width * 0.78, 0.14, 0.12],
+      });
+    });
+    for (const [index, [color, transforms]] of [...towerGroups].entries()) {
+      addInstancedBoxes(
+        this.root,
+        unitBox,
+        createNightEmissiveMaterial(
+          color,
+          this.#nightGain,
+          `aohara-highrise-night-accent-${index}`,
+        ),
+        transforms,
+        `aohara-highrise-night-accent-strips-${index}`,
+      );
+    }
+
+    let commercialIndex = 0;
+    for (const building of buildings) {
+      if (building.kind !== 'shop' && building.kind !== 'casino') {
+        continue;
+      }
+      const color = NIGHT_DECORATION_PALETTE[commercialIndex % NIGHT_DECORATION_PALETTE.length]!;
+      commercialIndex += 1;
+      const yaw = building.yaw ?? 0;
+      const frontDistance = building.width / 2 + 0.16;
+      const frontX = building.x + Math.cos(yaw) * frontDistance;
+      const frontZ = building.z - Math.sin(yaw) * frontDistance;
+      const awningY =
+        WORLD_BASE_Y + Math.min(building.height - 1.4, Math.max(2.6, building.height * 0.52));
+      const awningLength = Math.min(building.depth * 0.76, building.kind === 'casino' ? 28 : 14);
+      addTransform(storefrontGroups, color, {
+        x: frontX,
+        y: awningY,
+        z: frontZ,
+        yaw,
+        scale: [0.18, 0.16, awningLength],
+      });
+      for (const side of [-1, 1] as const) {
+        const along = (side * awningLength) / 2;
+        addTransform(storefrontGroups, color, {
+          x: frontX + Math.sin(yaw) * along,
+          y: awningY - 0.85,
+          z: frontZ + Math.cos(yaw) * along,
+          yaw,
+          scale: [0.16, 1.7, 0.16],
+        });
+      }
+    }
+    for (const [index, [color, transforms]] of [...storefrontGroups].entries()) {
+      addInstancedBoxes(
+        this.root,
+        unitBox,
+        createNightEmissiveMaterial(
+          color,
+          this.#nightGain,
+          `aohara-storefront-night-accent-${index}`,
+        ),
+        transforms,
+        `aohara-storefront-night-accents-${index}`,
+      );
+    }
+
+    return {
+      highRiseInstances: [...towerGroups.values()].reduce(
+        (total, group) => total + group.length,
+        0,
+      ),
+      storefrontInstances: [...storefrontGroups.values()].reduce(
+        (total, group) => total + group.length,
+        0,
+      ),
+    };
   }
 
   /** Bounded instanced ribs, floor bands, plinths and rooftop plant across all current city buildings. */
@@ -2124,7 +2279,7 @@ export class UrbanNightWorld implements SceneContent {
       );
     }
 
-    const billboardColors = [0x35e3ff, 0xff52c8, 0xffd45a, 0x9b79ff] as const;
+    const billboardColors = NIGHT_DECORATION_PALETTE;
     const billboards: BillboardSpec[] = [];
     const attachedBuildings = buildings.filter(
       (building) => building.kind === 'shop' || building.kind === 'casino',
@@ -2295,9 +2450,9 @@ export class UrbanNightWorld implements SceneContent {
       );
     }
 
-    const bannerPalette = [0xff4f9a, 0x38dfff, 0xffbe48, 0x9b79ff] as const;
+    const bannerPalette = NIGHT_DECORATION_PALETTE;
     const bannerGroups = new Map<number, TransformSpec[]>();
-    const bannerStride = this.#networkIntegrated ? 5 : 2;
+    const bannerStride = this.#networkIntegrated ? 4 : 2;
     const bannerPlacements = placements
       .filter((_, index) => index % bannerStride === 0)
       .map((placement, index) => {
@@ -2306,7 +2461,7 @@ export class UrbanNightWorld implements SceneContent {
           y: WORLD_BASE_Y + 4.1,
           z: placement.pole.z,
           yaw: placement.pole.yaw ?? 0,
-          scale: [0.8, 1.5, 0.12],
+          scale: [index % 2 === 0 ? 0.88 : 0.68, index % 3 === 0 ? 1.75 : 1.4, 0.12],
         };
         const color = bannerPalette[index % bannerPalette.length]!;
         const group = bannerGroups.get(color) ?? [];
@@ -2329,21 +2484,72 @@ export class UrbanNightWorld implements SceneContent {
       );
     }
 
-    const emitter = new MeshBasicNodeMaterial();
-    emitter.colorNode = vec4(vec3(1, 0.76, 0.47).mul(this.#nightGain), 1);
-    emitter.toneMapped = false;
-    emitter.name = 'aohara-street-lamp-emitter';
     const emitterGeometry = new SphereGeometry(0.25, 10, 8);
     const bulbPositions = placements.map((placement) => placement.bulb);
     this.#streetLightCandidates.push(...bulbPositions);
-    if (bulbPositions.length > 0) {
+    const emitterGroups = new Map<number, TransformSpec[]>();
+    for (const [x, y, z] of bulbPositions) {
+      const color = STREET_LAMP_PALETTE[streetLampPaletteIndex([x, y, z])]!;
+      const group = emitterGroups.get(color) ?? [];
+      group.push({ x, y, z });
+      emitterGroups.set(color, group);
+    }
+    for (const [index, [color, transforms]] of [...emitterGroups].entries()) {
+      const tint = new Color(color);
+      const emitter = new MeshBasicNodeMaterial();
+      emitter.colorNode = vec4(vec3(tint.r, tint.g, tint.b).mul(this.#nightGain), 1);
+      emitter.toneMapped = false;
+      emitter.name = `aohara-street-lamp-emitter-${index}`;
       addInstancedBoxes(
         this.root,
         emitterGeometry,
         emitter,
-        bulbPositions.map(([x, y, z]) => ({ x, y, z })),
-        'aohara-street-lamp-emitters',
+        transforms,
+        `aohara-street-lamp-emitters-${index}`,
       );
+    }
+
+    const bollardStride = pointLightBudget === 4 ? 12 : pointLightBudget === 6 ? 8 : 6;
+    const bollardGroups = new Map<number, TransformSpec[]>();
+    let bollardCount = 0;
+    let moodLightCandidateCount = 0;
+    placements.forEach((placement, index) => {
+      if (index % bollardStride !== 0) {
+        return;
+      }
+      const yaw = placement.pole.yaw ?? 0;
+      const x = placement.pole.x - Math.cos(yaw) * 1.28;
+      const z = placement.pole.z + Math.sin(yaw) * 1.28;
+      const color = NIGHT_DECORATION_PALETTE[bollardCount % NIGHT_DECORATION_PALETTE.length]!;
+      const group = bollardGroups.get(color) ?? [];
+      group.push({ x, y: WORLD_BASE_Y + 0.46, z });
+      bollardGroups.set(color, group);
+      bollardCount += 1;
+
+      // Every second curb beacon can supply a low-energy, local road-edge pool when it is among
+      // the nearest architecture lights. Active point-light totals remain within the C/B/A cap.
+      if ((bollardCount - 1) % 2 === 0) {
+        this.#architecturalLightCandidates.push({
+          position: [x, WORLD_BASE_Y + 0.82, z],
+          color,
+          intensity: 7.5,
+          distance: 24,
+          source: 'mood',
+        });
+        moodLightCandidateCount += 1;
+      }
+    });
+    const bollardGeometry = new CylinderGeometry(0.13, 0.18, 0.92, 8);
+    for (const [index, [color, transforms]] of [...bollardGroups].entries()) {
+      const bollards = addInstancedBoxes(
+        this.root,
+        bollardGeometry,
+        createNightEmissiveMaterial(color, this.#nightGain, `aohara-curb-bollard-glow-${index}`),
+        transforms,
+        `aohara-sidewalk-light-bollards-${index}`,
+      );
+      bollards.castShadow = false;
+      bollards.receiveShadow = false;
     }
 
     const defaultSpawnZ = -AOHARA_DISTRICT_CONFIG.gridSpacingMeters / 2;
@@ -2375,10 +2581,15 @@ export class UrbanNightWorld implements SceneContent {
       this.root.add(flare);
       this.#streetLightFlares.push(flare);
     });
-    return { poleCount: placements.length, bannerCount: bannerPlacements.length };
+    return {
+      poleCount: placements.length,
+      bannerCount: bannerPlacements.length,
+      bollardCount,
+      moodLightCandidateCount,
+    };
   }
 
-  #buildArchitecturalLights(pointLightBudget: number, flareMaterial: SpriteNodeMaterial): void {
+  #buildArchitecturalLights(pointLightBudget: number): void {
     const focusZ = this.#networkIntegrated ? -AOHARA_DISTRICT_CONFIG.gridSpacingMeters / 2 : 0;
     this.#updateArchitecturalLightSelection(0, focusZ, 1);
     this.#activeArchitecturalCandidates.forEach((candidate, index) => {
@@ -2394,9 +2605,13 @@ export class UrbanNightWorld implements SceneContent {
       this.root.add(light);
       this.#architecturalLights.push(light);
 
+      const flareMaterial = this.#architecturalFlareMaterials.get(candidate.color);
+      if (flareMaterial === undefined) {
+        throw new Error(`missing Aohara architectural flare material for ${candidate.color}`);
+      }
       const flare = new Sprite(flareMaterial);
       flare.position.set(...candidate.position);
-      flare.scale.setScalar(candidate.source === 'stadium' ? 4.2 : 2.25);
+      flare.scale.setScalar(architecturalFlareScale(candidate.source));
       flare.visible = true;
       flare.name = `aohara-architecture-${candidate.source}-diffraction-${index + 1}`;
       this.root.add(flare);
@@ -2433,7 +2648,11 @@ export class UrbanNightWorld implements SceneContent {
       light.color.setHex(candidate.color);
       light.distance = candidate.distance;
       flare.position.set(...candidate.position);
-      flare.scale.setScalar(candidate.source === 'stadium' ? 4.2 : 2.25);
+      const flareMaterial = this.#architecturalFlareMaterials.get(candidate.color);
+      if (flareMaterial !== undefined) {
+        flare.material = flareMaterial;
+      }
+      flare.scale.setScalar(architecturalFlareScale(candidate.source));
       flare.visible = coverage > 0;
     });
     this.#setArchitecturalLightIntensity();

@@ -7,7 +7,7 @@ import { Group, SpotLight } from 'three';
  */
 export const PLAYER_HEADLIGHT_CONFIG = {
   colorHex: 0xffefd2,
-  intensityCandela: 11_500,
+  intensityCandela: 10_500,
   rangeMeters: 86,
   /** Wide flood cone; together with the outboard splay this approaches the chase-camera FOV. */
   beamHalfAngleRadians: 0.89,
