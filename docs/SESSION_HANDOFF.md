@@ -2324,3 +2324,13 @@ Distant mountain geometry retains the existing four-range vertex budget but repl
 **Push and verification:** code commit `418b2a9` (`Slightly reduce player headlight intensity`) was pushed to `main` and the remote SHA verified before tests. The focused headlight/player-visual/night-mood/material suites passed (4 files / 17 tests). Full `npm run check` passed on `418b2a9`: formatting, lint, GLSL guard, both TypeScript checks, 79 test files / 581 tests, asset verification (20 assets / 47,814,431 bytes), and production build. Existing non-fatal Three.js non-indexed-geometry notices and the Vite large-chunk warning remain.
 
 **Limitations / review:** no rendered browser comparison, owner-device review, or measured road illumination was performed. This is a modest numeric reduction, not a device-calibrated brightness result; visual comfort and beam performance still need gameplay review with Night Mood on. The previously reported low-resolution/jagged-road issue remains unrelated.
+
+## 108. Second small Night Mood headlight intensity trim (2026-10-24)
+
+**Owner follow-up:** “Maybe a little bit more.” Reduce the still-too-bright beam a little further while preserving the broad front coverage.
+
+**Implementation:** intensity is reduced again, from 12,500 to **11,500 cd per lamp** (8% lower than the previous setting, about 18% below the 14,000-cd wide-beam checkpoint). No other lighting property changes: the two-beam count, 86 m range, 0.89 rad half-angle, 0.19 rad outboard splay, soft penumbra, steering, night gate, and lens glow are preserved. City-light budgets remain unchanged.
+
+**Push and verification:** code commit `c66b88c` (`Trim player headlight intensity further`) was pushed to `main` and SHA-verified before tests. Focused headlight/player-visual/night-mood/material tests passed (4 files / 17 tests). Full `npm run check` passed on `c66b88c`: formatting, lint, GLSL guard, both TypeScript checks, 79 test files / 581 tests, asset verification (20 assets / 47,814,431 bytes), and production build. Existing non-fatal Three.js non-indexed-geometry notices and the Vite large-chunk warning remain.
+
+**Limitations / review:** there is still no rendered browser comparison, owner-device review, or measured road illumination. This second small trim is a settings adjustment, not a visual or photometric acceptance claim. Review with Night Mood on in gameplay; the unrelated low-resolution/jagged-road report remains unresolved.
