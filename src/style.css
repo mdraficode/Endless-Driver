@@ -1497,8 +1497,8 @@ body {
   position: absolute;
   left: max(1.1rem, env(safe-area-inset-left));
   bottom: max(1.1rem, env(safe-area-inset-bottom));
-  width: 8.5rem;
-  height: 8.5rem;
+  width: 9.25rem;
+  height: 9.25rem;
   display: grid;
   place-items: center;
   padding: 0;
