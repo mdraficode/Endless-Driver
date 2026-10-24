@@ -51,6 +51,8 @@ function telemetry(overrides: Partial<VehicleTelemetry> = {}): VehicleTelemetry 
     handbrake: false,
     steerAngle: 0,
     contactCount: 0,
+    averageSurfaceGripModifier: null,
+    averageSurfaceRollingResistance: null,
     isGrounded: false,
     slipAngle: 0,
     lateralAcceleration: 0,
