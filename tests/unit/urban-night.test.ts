@@ -138,14 +138,22 @@ function expectUrbanAlleyClearance(city: UrbanNightWorld, network: RoadNetwork):
           velocityZ: 0,
         };
         const obstructions = city.collide(probe);
-        const buildingObstructions =
+        const buildingHits =
           obstructions.length === 0
-            ? 0
-            : collideCarWithStaticBoxes(probe, buildingFootprints).length;
+            ? []
+            : buildingFootprints.flatMap((footprint, footprintIndex) =>
+                collideCarWithStaticBoxes(probe, [footprint]).length === 0
+                  ? []
+                  : [
+                      `#${footprintIndex} center(${footprint.x.toFixed(1)},${footprint.z.toFixed(1)}) ` +
+                        `half(${footprint.halfWidth.toFixed(1)},${footprint.halfDepth.toFixed(1)}) ` +
+                        `yaw${footprint.yaw.toFixed(2)}`,
+                    ],
+              );
         expect(
           obstructions,
           `${edge.id} is obstructed at ${point.alongMeters.toFixed(1)} m, lateral ${lateralOffset.toFixed(1)} m ` +
-            `(building hits: ${buildingObstructions})`,
+            `position (${probe.x.toFixed(1)},${probe.z.toFixed(1)}); building hits: ${buildingHits.join('; ') || 'none'}`,
         ).toHaveLength(0);
         probeCount += 1;
       }
