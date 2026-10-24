@@ -151,10 +151,19 @@ function expectUrbanAlleyClearance(city: UrbanNightWorld, network: RoadNetwork):
                         `yaw${footprint.yaw.toFixed(2)}`,
                     ],
               );
+        const firstCollisionIndex = (boxes: readonly StaticBuildingBox[]): number =>
+          boxes.findIndex((box) => collideCarWithStaticBoxes(probe, [box]).length > 0);
+        const facadeHit =
+          obstructions.length === 0
+            ? -1
+            : firstCollisionIndex(city.getBackstreetFacadeFootprints());
+        const propHit =
+          obstructions.length === 0 ? -1 : firstCollisionIndex(city.getBackstreetPropFootprints());
         expect(
           obstructions,
           `${edge.id} is obstructed at ${point.alongMeters.toFixed(1)} m, lateral ${lateralOffset.toFixed(1)} m ` +
-            `position (${probe.x.toFixed(1)},${probe.z.toFixed(1)}); building hits: ${buildingHits.join('; ') || 'none'}`,
+            `position (${probe.x.toFixed(1)},${probe.z.toFixed(1)}); building hits: ${buildingHits.join('; ') || 'none'}, ` +
+            `facade hit: ${facadeHit}, prop hit: ${propHit}`,
         ).toHaveLength(0);
         probeCount += 1;
       }
@@ -916,7 +925,7 @@ describe('Aohara city night-lighting rules', () => {
     });
     const facadeFootprints = city.getBackstreetFacadeFootprints();
     expect(facadeFootprints.length).toBeGreaterThan(placements.length);
-    expect(facadeFootprints.length).toBeLessThanOrEqual(placements.length * 3);
+    expect(facadeFootprints.length).toBeLessThanOrEqual(placements.length * 6);
     expect(city.getContentStats()).toMatchObject({
       urbanAlleyFacadeBuildings: placements.length,
       urbanAlleyFacadeWindows: expect.any(Number),

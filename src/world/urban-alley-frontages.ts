@@ -18,6 +18,7 @@ import type { TownCarProbe, TownHit } from './town';
 
 const FACADE_WALL_GAP_METERS = 0.72;
 const FACADE_WALL_THICKNESS_METERS = 0.18;
+const FACADE_COLLISION_SEGMENT_METERS = 2;
 const FACADE_BUILDING_DEPTH_METERS = 6.8;
 const FACADE_ACCESS_SETBACK_METERS = 16.5;
 const FACADE_HUB_SETBACK_METERS = 1.25;
@@ -308,7 +309,10 @@ function makeCollisionBoxes(
   for (const placement of placements) {
     const edge = edgeById.get(placement.roadEdgeId);
     if (edge === undefined) continue;
-    const segmentCount = Math.max(1, Math.ceil(placement.widthMeters / 4));
+    const segmentCount = Math.max(
+      1,
+      Math.ceil(placement.widthMeters / FACADE_COLLISION_SEGMENT_METERS),
+    );
     const segmentLength = placement.widthMeters / segmentCount;
     const wallCenterOffset =
       placement.halfWidthMeters + FACADE_WALL_GAP_METERS - 0.05 + FACADE_WALL_THICKNESS_METERS / 2;
