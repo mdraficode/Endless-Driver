@@ -158,7 +158,8 @@ function makePropFootprint(
   return {
     x: placement.x,
     z: placement.z,
-    yaw: placement.yaw,
+    // The mesh uses Three.js Y-rotation, while static OBB collision's local X basis is (cos, sin).
+    yaw: -placement.yaw,
     halfWidth: placement.widthMeters / 2,
     halfDepth: placement.depthMeters / 2,
   };

@@ -933,6 +933,14 @@ describe('Aohara city night-lighting rules', () => {
     const facadeFootprints = city.getBackstreetFacadeFootprints();
     expect(facadeFootprints.length).toBeGreaterThan(placements.length);
     expect(facadeFootprints.length).toBeLessThanOrEqual(placements.length * 6);
+    for (const footprint of facadeFootprints) {
+      const nearestRoad = network.sample(footprint.x, footprint.z);
+      if (nearestRoad === null) continue;
+      expect(
+        nearestRoad.distance - nearestRoad.halfWidthMeters - nearestRoad.shoulderMeters,
+        `${nearestRoad.edgeId} is too close to an alley facade collider`,
+      ).toBeGreaterThanOrEqual(2.5);
+    }
     expect(city.getContentStats()).toMatchObject({
       urbanAlleyFacadeBuildings: placements.length,
       urbanAlleyFacadeWindows: expect.any(Number),
@@ -991,7 +999,7 @@ describe('Aohara city night-lighting rules', () => {
       const propBox: StaticBuildingBox = {
         x: placement.x,
         z: placement.z,
-        yaw: placement.yaw,
+        yaw: -placement.yaw,
         halfWidth: placement.widthMeters / 2,
         halfDepth: placement.depthMeters / 2,
       };
@@ -1015,7 +1023,7 @@ describe('Aohara city night-lighting rules', () => {
       const boxA: StaticBuildingBox = {
         x: a.x,
         z: a.z,
-        yaw: a.yaw,
+        yaw: -a.yaw,
         halfWidth: a.widthMeters / 2,
         halfDepth: a.depthMeters / 2,
       };
@@ -1024,7 +1032,7 @@ describe('Aohara city night-lighting rules', () => {
         const boxB: StaticBuildingBox = {
           x: b.x,
           z: b.z,
-          yaw: b.yaw,
+          yaw: -b.yaw,
           halfWidth: b.widthMeters / 2,
           halfDepth: b.depthMeters / 2,
         };

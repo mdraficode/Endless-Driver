@@ -20,6 +20,8 @@ import type { TownCarProbe, TownHit } from './town';
 const FACADE_WALL_GAP_METERS = 2.75;
 const FACADE_WALL_THICKNESS_METERS = 0.18;
 const FACADE_COLLISION_SEGMENT_METERS = 2;
+const FACADE_MIN_ROAD_CLEARANCE_METERS = 2.5;
+const FACADE_MAX_ADDITIONAL_SETBACK_METERS = 16;
 const FACADE_BUILDING_DEPTH_METERS = 6.8;
 const FACADE_ACCESS_SETBACK_METERS = 16.5;
 const FACADE_HUB_SETBACK_METERS = 14;
@@ -51,6 +53,8 @@ export interface UrbanAlleyFacadePlacement {
   readonly normalX: number;
   readonly normalZ: number;
   readonly halfWidthMeters: number;
+  /** Side-specific distance from the road centerline to this continuous facade plane. */
+  readonly wallOffsetMeters: number;
   readonly widthMeters: number;
   readonly depthMeters: number;
   readonly heightMeters: number;
@@ -115,6 +119,55 @@ function roadFrameAt(edge: RoadEdge, distanceMeters: number): RoadFrame {
   };
 }
 
+function hasFacadeRoadClearance(network: RoadNetwork, x: number, z: number): boolean {
+  const nearestRoad = network.sample(x, z);
+  return (
+    nearestRoad === null ||
+    nearestRoad.distance - nearestRoad.halfWidthMeters - nearestRoad.shoulderMeters >=
+      FACADE_MIN_ROAD_CLEARANCE_METERS
+  );
+}
+
+function resolveFacadeWallOffset(
+  network: RoadNetwork,
+  edge: RoadEdge,
+  side: -1 | 1,
+  startAlongMeters: number,
+  endAlongMeters: number,
+): number {
+  const baseOffset = edge.halfWidthMeters + FACADE_WALL_GAP_METERS;
+  for (
+    let additionalOffset = 0;
+    additionalOffset <= FACADE_MAX_ADDITIONAL_SETBACK_METERS;
+    additionalOffset += 0.5
+  ) {
+    const wallOffset = baseOffset + additionalOffset;
+    let isClear = true;
+    const sampleCount = Math.max(
+      1,
+      Math.ceil((endAlongMeters - startAlongMeters) / FACADE_COLLISION_SEGMENT_METERS),
+    );
+    for (let index = 0; index <= sampleCount; index += 1) {
+      const alongMeters =
+        startAlongMeters + ((endAlongMeters - startAlongMeters) * index) / sampleCount;
+      const frame = roadFrameAt(edge, alongMeters);
+      const wallCenterOffset = wallOffset - 0.05 + FACADE_WALL_THICKNESS_METERS / 2;
+      if (
+        !hasFacadeRoadClearance(
+          network,
+          frame.x + frame.normalX * side * wallCenterOffset,
+          frame.z + frame.normalZ * side * wallCenterOffset,
+        )
+      ) {
+        isClear = false;
+        break;
+      }
+    }
+    if (isClear) return wallOffset;
+  }
+  return baseOffset + FACADE_MAX_ADDITIONAL_SETBACK_METERS;
+}
+
 function facadeRunFor(edge: RoadEdge): { readonly start: number; readonly end: number } {
   const isCourtyardLink = edge.from.endsWith('-hub') || edge.to.endsWith('-yard');
   const start = edge.from.startsWith('aohara-access-')
@@ -151,6 +204,11 @@ export function generateAoharaAlleyFacadePlacements(
     const run = facadeRunFor(edge);
     const availableLength = Math.max(0, edge.lengthMeters - run.start - run.end);
     if (availableLength < 1) return;
+    const endAlongMeters = edge.lengthMeters - run.end;
+    const rowOffsets: Readonly<Record<-1 | 1, number>> = {
+      [-1]: resolveFacadeWallOffset(network, edge, -1, run.start, endAlongMeters),
+      [1]: resolveFacadeWallOffset(network, edge, 1, run.start, endAlongMeters),
+    };
     const moduleCount = Math.max(1, Math.ceil(availableLength / targetModuleLength));
     const moduleLength = availableLength / moduleCount;
     const wallColor = choosePalette(FACADE_WALL_PALETTE, edgeIndex, 1637);
@@ -165,11 +223,12 @@ export function generateAoharaAlleyFacadePlacements(
       const alongMeters = (startAlongMeters + endAlongMeters) / 2;
       const frame = roadFrameAt(edge, alongMeters);
       const depthMeters = FACADE_BUILDING_DEPTH_METERS;
-      const centerOffset = edge.halfWidthMeters + FACADE_WALL_GAP_METERS + depthMeters / 2 - 0.05;
       const yaw = Math.atan2(-frame.tangentZ, frame.tangentX);
       const heightMeters = 9.2 + stableUnit(edgeIndex, moduleIndex, 1669) * 4.1;
 
       for (const side of [-1, 1] as const) {
+        const wallOffsetMeters = rowOffsets[side];
+        const centerOffset = wallOffsetMeters + depthMeters / 2 - 0.05;
         placements.push({
           id: `${edge.id}:${side}:${moduleIndex}`,
           roadEdgeId: edge.id,
@@ -185,6 +244,7 @@ export function generateAoharaAlleyFacadePlacements(
           normalX: frame.normalX,
           normalZ: frame.normalZ,
           halfWidthMeters: edge.halfWidthMeters,
+          wallOffsetMeters,
           widthMeters: endAlongMeters - startAlongMeters,
           depthMeters,
           heightMeters,
@@ -236,22 +296,36 @@ function createContinuousWallGeometry(
     if (edgePlacements === undefined || edgePlacements.length === 0) continue;
     const run = facadeRunFor(edge);
     const facadeColor = new Color(edgePlacements[0]!.color);
-    const sampleDistances = [
-      run.start,
-      ...edge.points
-        .map((point) => point.alongMeters)
-        .filter(
-          (distance) =>
-            distance > run.start + 0.01 && distance < edge.lengthMeters - run.end - 0.01,
-        ),
-      edge.lengthMeters - run.end,
-    ];
+    const endAlongMeters = edge.lengthMeters - run.end;
+    const wallSegmentCount = Math.max(
+      1,
+      Math.ceil((endAlongMeters - run.start) / FACADE_COLLISION_SEGMENT_METERS),
+    );
+    const sampleDistances = Array.from(
+      { length: wallSegmentCount + 1 },
+      (_, index) => run.start + ((endAlongMeters - run.start) * index) / wallSegmentCount,
+    );
 
     for (const side of [-1, 1] as const) {
-      const wallOffset = edge.halfWidthMeters + FACADE_WALL_GAP_METERS;
+      const sidePlacement = edgePlacements.find((placement) => placement.side === side);
+      if (sidePlacement === undefined) continue;
+      const wallOffset = sidePlacement.wallOffsetMeters;
       for (let index = 0; index + 1 < sampleDistances.length; index += 1) {
-        const start = roadFrameAt(edge, sampleDistances[index]!);
-        const end = roadFrameAt(edge, sampleDistances[index + 1]!);
+        const startDistance = sampleDistances[index]!;
+        const endDistance = sampleDistances[index + 1]!;
+        const middle = roadFrameAt(edge, (startDistance + endDistance) / 2);
+        const wallCenterOffset = wallOffset - 0.05 + FACADE_WALL_THICKNESS_METERS / 2;
+        if (
+          !hasFacadeRoadClearance(
+            network,
+            middle.x + middle.normalX * side * wallCenterOffset,
+            middle.z + middle.normalZ * side * wallCenterOffset,
+          )
+        ) {
+          continue;
+        }
+        const start = roadFrameAt(edge, startDistance);
+        const end = roadFrameAt(edge, endDistance);
         const startX = start.x + start.normalX * side * wallOffset - originX;
         const startZ = start.z + start.normalZ * side * wallOffset - originZ;
         const endX = end.x + end.normalX * side * wallOffset - originX;
@@ -318,8 +392,7 @@ function makeCollisionBoxes(
       Math.ceil(placement.widthMeters / FACADE_COLLISION_SEGMENT_METERS),
     );
     const segmentLength = placement.widthMeters / segmentCount;
-    const wallCenterOffset =
-      placement.halfWidthMeters + FACADE_WALL_GAP_METERS - 0.05 + FACADE_WALL_THICKNESS_METERS / 2;
+    const wallCenterOffset = placement.wallOffsetMeters - 0.05 + FACADE_WALL_THICKNESS_METERS / 2;
     for (let segmentIndex = 0; segmentIndex < segmentCount; segmentIndex += 1) {
       const alongMeters = placement.startAlongMeters + (segmentIndex + 0.5) * segmentLength;
       const frame = roadFrameAt(edge, alongMeters);
