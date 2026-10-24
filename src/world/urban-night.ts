@@ -1402,13 +1402,9 @@ export class UrbanNightWorld implements SceneContent {
     if (this.#backstreetFrontages !== null) {
       this.root.add(this.#backstreetFrontages.root);
     }
-    const alleyObstacles = [
-      ...this.#buildingColliders,
-      ...(this.#backstreetFrontages?.collisionBoxes ?? []),
-    ];
     this.#backstreetProps =
       this.#networkIntegrated && options.roadNetwork !== undefined
-        ? new UrbanBackstreetProps(tier, options.roadNetwork, alleyObstacles, [
+        ? new UrbanBackstreetProps(tier, options.roadNetwork, this.#buildingColliders, [
             originX,
             originY,
             originZ,

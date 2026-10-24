@@ -870,7 +870,7 @@ describe('Aohara city night-lighting rules', () => {
     city.dispose();
   });
 
-  it('builds uninterrupted low-rise frontage rows along the winding alleys while preserving street mouths', () => {
+  it('builds continuous low-rise frontage rows, opening only where road clearance requires it', () => {
     const network = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG).roadNetwork;
     if (network === undefined) {
       throw new Error('the shared world sampler should expose the road graph');
@@ -912,7 +912,7 @@ describe('Aohara city night-lighting rules', () => {
         }
       }
 
-      // The street-mouth inset is intentionally open; the rest of both passage rows touch end-to-end.
+      // Planned row modules touch end-to-end; roadClear may later mask only modules at conflicts.
       if (startsAtStreetMouth) {
         expect(
           Math.min(...edgeRows.map((building) => building.startAlongMeters)),
@@ -930,9 +930,14 @@ describe('Aohara city night-lighting rules', () => {
       roadNetwork: network,
       networkIntegrated: true,
     });
+    const visiblePlacements = placements.filter((placement) => placement.roadClear);
+    const clearanceOpenings = placements.filter((placement) => !placement.roadClear);
+    expect(clearanceOpenings.length).toBeGreaterThan(0);
+    expect(visiblePlacements.length).toBeGreaterThan(placements.length * 0.75);
     const facadeFootprints = city.getBackstreetFacadeFootprints();
-    expect(facadeFootprints.length).toBeGreaterThan(placements.length);
-    expect(facadeFootprints.length).toBeLessThanOrEqual(placements.length * 24);
+    expect(visiblePlacements.length).toBeGreaterThan(0);
+    expect(facadeFootprints.length).toBeGreaterThan(visiblePlacements.length);
+    expect(facadeFootprints.length).toBeLessThanOrEqual(visiblePlacements.length * 24);
     for (const footprint of facadeFootprints) {
       const nearestRoad = network.sample(footprint.x, footprint.z);
       if (nearestRoad === null) continue;
@@ -941,11 +946,25 @@ describe('Aohara city night-lighting rules', () => {
         `${nearestRoad.edgeId} is too close to an alley facade collider`,
       ).toBeGreaterThanOrEqual(2.5);
     }
+    const lastPlacementByRow = new Map<string, (typeof placements)[number]>();
+    let expectedWallRuns = 0;
+    for (const placement of placements) {
+      if (!placement.roadClear) continue;
+      const rowKey = `${placement.roadEdgeId}:${placement.side}`;
+      const previous = lastPlacementByRow.get(rowKey);
+      if (
+        previous === undefined ||
+        Math.abs(previous.endAlongMeters - placement.startAlongMeters) > 1e-6
+      ) {
+        expectedWallRuns += 1;
+      }
+      lastPlacementByRow.set(rowKey, placement);
+    }
     expect(city.getContentStats()).toMatchObject({
-      urbanAlleyFacadeBuildings: placements.length,
+      urbanAlleyFacadeBuildings: visiblePlacements.length,
       urbanAlleyFacadeWindows: expect.any(Number),
       urbanAlleyFacadeDoors: expect.any(Number),
-      urbanAlleyFacadeWallRuns: alleyEdges.length * 2,
+      urbanAlleyFacadeWallRuns: expectedWallRuns,
       urbanAlleyFacadeBatches: 5,
     });
     expect(city.getContentStats().urbanAlleyFacadeWindows).toBeGreaterThan(1000);
@@ -965,9 +984,8 @@ describe('Aohara city night-lighting rules', () => {
     });
     const buildings = city.getStaticBuildingFootprints();
     const facadeFootprints = city.getBackstreetFacadeFootprints();
-    const propObstacles = [...buildings, ...facadeFootprints];
-    const placements = generateAoharaAlleyPropPlacements(network, 'B', propObstacles);
-    expect(placements).toEqual(generateAoharaAlleyPropPlacements(network, 'B', propObstacles));
+    const placements = generateAoharaAlleyPropPlacements(network, 'B', buildings);
+    expect(placements).toEqual(generateAoharaAlleyPropPlacements(network, 'B', buildings));
     expect(placements).toHaveLength(URBAN_ACTIVITY_TIER_BUDGET.B.alleyProps);
     expect(new Set(placements.map((placement) => placement.id)).size).toBe(placements.length);
 

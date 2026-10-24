@@ -19,9 +19,9 @@ import type { TownCarProbe, TownHit } from './town';
 // The frontage line stays beyond the narrow clutter strip while remaining one car-width off the alley.
 const FACADE_WALL_GAP_METERS = 3;
 const FACADE_WALL_THICKNESS_METERS = 0.18;
-const FACADE_COLLISION_SEGMENT_METERS = 0.5;
+const FACADE_COLLISION_SEGMENT_METERS = 2;
+const FACADE_ROAD_SAMPLE_METERS = 0.5;
 const FACADE_MIN_ROAD_CLEARANCE_METERS = 2.5;
-const FACADE_MAX_ADDITIONAL_SETBACK_METERS = 16;
 const FACADE_BUILDING_DEPTH_METERS = 6.8;
 const FACADE_ACCESS_SETBACK_METERS = 16.5;
 const FACADE_HUB_SETBACK_METERS = 14;
@@ -55,6 +55,8 @@ export interface UrbanAlleyFacadePlacement {
   readonly halfWidthMeters: number;
   /** Side-specific distance from the road centerline to this continuous facade plane. */
   readonly wallOffsetMeters: number;
+  /** False only where another part of the shared road graph needs a clear opening. */
+  readonly roadClear: boolean;
   readonly widthMeters: number;
   readonly depthMeters: number;
   readonly heightMeters: number;
@@ -128,46 +130,6 @@ function hasFacadeRoadClearance(network: RoadNetwork, x: number, z: number): boo
   );
 }
 
-function resolveFacadeWallOffset(
-  network: RoadNetwork,
-  edge: RoadEdge,
-  side: -1 | 1,
-  startAlongMeters: number,
-  endAlongMeters: number,
-): number {
-  const baseOffset = edge.halfWidthMeters + FACADE_WALL_GAP_METERS;
-  for (
-    let additionalOffset = 0;
-    additionalOffset <= FACADE_MAX_ADDITIONAL_SETBACK_METERS;
-    additionalOffset += 0.5
-  ) {
-    const wallOffset = baseOffset + additionalOffset;
-    let isClear = true;
-    const sampleCount = Math.max(
-      1,
-      Math.ceil((endAlongMeters - startAlongMeters) / FACADE_COLLISION_SEGMENT_METERS),
-    );
-    for (let index = 0; index <= sampleCount; index += 1) {
-      const alongMeters =
-        startAlongMeters + ((endAlongMeters - startAlongMeters) * index) / sampleCount;
-      const frame = roadFrameAt(edge, alongMeters);
-      const wallCenterOffset = wallOffset - 0.05 + FACADE_WALL_THICKNESS_METERS / 2;
-      if (
-        !hasFacadeRoadClearance(
-          network,
-          frame.x + frame.normalX * side * wallCenterOffset,
-          frame.z + frame.normalZ * side * wallCenterOffset,
-        )
-      ) {
-        isClear = false;
-        break;
-      }
-    }
-    if (isClear) return wallOffset;
-  }
-  return baseOffset + FACADE_MAX_ADDITIONAL_SETBACK_METERS;
-}
-
 function facadeRunFor(edge: RoadEdge): { readonly start: number; readonly end: number } {
   const isCourtyardLink = edge.from.endsWith('-hub') || edge.to.endsWith('-yard');
   const start = edge.from.startsWith('aohara-access-')
@@ -204,11 +166,6 @@ export function generateAoharaAlleyFacadePlacements(
     const run = facadeRunFor(edge);
     const availableLength = Math.max(0, edge.lengthMeters - run.start - run.end);
     if (availableLength < 1) return;
-    const endAlongMeters = edge.lengthMeters - run.end;
-    const rowOffsets: Readonly<Record<-1 | 1, number>> = {
-      [-1]: resolveFacadeWallOffset(network, edge, -1, run.start, endAlongMeters),
-      [1]: resolveFacadeWallOffset(network, edge, 1, run.start, endAlongMeters),
-    };
     const moduleCount = Math.max(1, Math.ceil(availableLength / targetModuleLength));
     const moduleLength = availableLength / moduleCount;
     const wallColor = choosePalette(FACADE_WALL_PALETTE, edgeIndex, 1637);
@@ -227,8 +184,29 @@ export function generateAoharaAlleyFacadePlacements(
       const heightMeters = 9.2 + stableUnit(edgeIndex, moduleIndex, 1669) * 4.1;
 
       for (const side of [-1, 1] as const) {
-        const wallOffsetMeters = rowOffsets[side];
+        const wallOffsetMeters = edge.halfWidthMeters + FACADE_WALL_GAP_METERS;
+        const wallCenterOffset = wallOffsetMeters - 0.05 + FACADE_WALL_THICKNESS_METERS / 2;
         const centerOffset = wallOffsetMeters + depthMeters / 2 - 0.05;
+        let roadClear = true;
+        const sampleCount = Math.max(
+          1,
+          Math.ceil((endAlongMeters - startAlongMeters) / FACADE_ROAD_SAMPLE_METERS),
+        );
+        for (let sampleIndex = 0; sampleIndex <= sampleCount; sampleIndex += 1) {
+          const sampleAlongMeters =
+            startAlongMeters + ((endAlongMeters - startAlongMeters) * sampleIndex) / sampleCount;
+          const sampleFrame = roadFrameAt(edge, sampleAlongMeters);
+          if (
+            !hasFacadeRoadClearance(
+              network,
+              sampleFrame.x + sampleFrame.normalX * side * wallCenterOffset,
+              sampleFrame.z + sampleFrame.normalZ * side * wallCenterOffset,
+            )
+          ) {
+            roadClear = false;
+            break;
+          }
+        }
         placements.push({
           id: `${edge.id}:${side}:${moduleIndex}`,
           roadEdgeId: edge.id,
@@ -245,6 +223,7 @@ export function generateAoharaAlleyFacadePlacements(
           normalZ: frame.normalZ,
           halfWidthMeters: edge.halfWidthMeters,
           wallOffsetMeters,
+          roadClear,
           widthMeters: endAlongMeters - startAlongMeters,
           depthMeters,
           heightMeters,
@@ -264,13 +243,7 @@ function createContinuousWallGeometry(
   originX: number,
   originZ: number,
 ): BufferGeometry {
-  const placementsByEdge = new Map<string, UrbanAlleyFacadePlacement[]>();
-  for (const placement of placements) {
-    const edgePlacements = placementsByEdge.get(placement.roadEdgeId) ?? [];
-    edgePlacements.push(placement);
-    placementsByEdge.set(placement.roadEdgeId, edgePlacements);
-  }
-
+  const edgeById = new Map(network.edges.map((edge) => [edge.id, edge]));
   const positions: number[] = [];
   const colors: number[] = [];
   const appendQuad = (
@@ -290,83 +263,39 @@ function createContinuousWallGeometry(
     }
   };
 
-  for (const edge of network.edges) {
-    if (edge.roadClass !== 'urban-alley') continue;
-    const edgePlacements = placementsByEdge.get(edge.id);
-    if (edgePlacements === undefined || edgePlacements.length === 0) continue;
-    const run = facadeRunFor(edge);
-    const facadeColor = new Color(edgePlacements[0]!.color);
-    const endAlongMeters = edge.lengthMeters - run.end;
-    const wallSegmentCount = Math.max(
+  for (const placement of placements) {
+    if (!placement.roadClear) continue;
+    const edge = edgeById.get(placement.roadEdgeId);
+    if (edge === undefined) continue;
+    const color = new Color(placement.color);
+    const segmentCount = Math.max(
       1,
-      Math.ceil((endAlongMeters - run.start) / FACADE_COLLISION_SEGMENT_METERS),
+      Math.ceil(placement.widthMeters / FACADE_COLLISION_SEGMENT_METERS),
     );
-    const sampleDistances = Array.from(
-      { length: wallSegmentCount + 1 },
-      (_, index) => run.start + ((endAlongMeters - run.start) * index) / wallSegmentCount,
-    );
-
-    for (const side of [-1, 1] as const) {
-      const sidePlacement = edgePlacements.find((placement) => placement.side === side);
-      if (sidePlacement === undefined) continue;
-      const wallOffset = sidePlacement.wallOffsetMeters;
-      for (let index = 0; index + 1 < sampleDistances.length; index += 1) {
-        const startDistance = sampleDistances[index]!;
-        const endDistance = sampleDistances[index + 1]!;
-        const middle = roadFrameAt(edge, (startDistance + endDistance) / 2);
-        const wallCenterOffset = wallOffset - 0.05 + FACADE_WALL_THICKNESS_METERS / 2;
-        if (
-          !hasFacadeRoadClearance(
-            network,
-            middle.x + middle.normalX * side * wallCenterOffset,
-            middle.z + middle.normalZ * side * wallCenterOffset,
-          )
-        ) {
-          continue;
-        }
-        const start = roadFrameAt(edge, startDistance);
-        const end = roadFrameAt(edge, endDistance);
-        const startX = start.x + start.normalX * side * wallOffset - originX;
-        const startZ = start.z + start.normalZ * side * wallOffset - originZ;
-        const endX = end.x + end.normalX * side * wallOffset - originX;
-        const endZ = end.z + end.normalZ * side * wallOffset - originZ;
-        const lowerY = FACADE_BASE_Y;
-        const upperY = FACADE_BASE_Y + FACADE_WALL_HEIGHT_METERS;
-        appendQuad(
-          [
-            [startX, lowerY, startZ],
-            [endX, lowerY, endZ],
-            [endX, upperY, endZ],
-            [startX, upperY, startZ],
-          ],
-          facadeColor,
-        );
-      }
-
-      // Close each end at the street mouth and small interior court to avoid open wall caps.
-      const first = roadFrameAt(edge, run.start);
-      const last = roadFrameAt(edge, edge.lengthMeters - run.end);
-      for (const [frame, facing] of [
-        [first, -1],
-        [last, 1],
-      ] as const) {
-        const x = frame.x + frame.normalX * side * wallOffset - originX;
-        const z = frame.z + frame.normalZ * side * wallOffset - originZ;
-        const halfDepth = FACADE_WALL_THICKNESS_METERS / 2;
-        const capCenterX = x - frame.tangentX * facing * halfDepth;
-        const capCenterZ = z - frame.tangentZ * facing * halfDepth;
-        const alongX = frame.normalX * side * halfDepth;
-        const alongZ = frame.normalZ * side * halfDepth;
-        appendQuad(
-          [
-            [capCenterX - alongX, FACADE_BASE_Y, capCenterZ - alongZ],
-            [capCenterX + alongX, FACADE_BASE_Y, capCenterZ + alongZ],
-            [capCenterX + alongX, FACADE_BASE_Y + FACADE_WALL_HEIGHT_METERS, capCenterZ + alongZ],
-            [capCenterX - alongX, FACADE_BASE_Y + FACADE_WALL_HEIGHT_METERS, capCenterZ - alongZ],
-          ],
-          facadeColor,
-        );
-      }
+    const segmentLength = placement.widthMeters / segmentCount;
+    for (let segmentIndex = 0; segmentIndex < segmentCount; segmentIndex += 1) {
+      const startDistance = placement.startAlongMeters + segmentIndex * segmentLength;
+      const endDistance =
+        segmentIndex === segmentCount - 1
+          ? placement.endAlongMeters
+          : startDistance + segmentLength;
+      const start = roadFrameAt(edge, startDistance);
+      const end = roadFrameAt(edge, endDistance);
+      const side = placement.side;
+      const wallOffset = placement.wallOffsetMeters;
+      const startX = start.x + start.normalX * side * wallOffset - originX;
+      const startZ = start.z + start.normalZ * side * wallOffset - originZ;
+      const endX = end.x + end.normalX * side * wallOffset - originX;
+      const endZ = end.z + end.normalZ * side * wallOffset - originZ;
+      appendQuad(
+        [
+          [startX, FACADE_BASE_Y, startZ],
+          [endX, FACADE_BASE_Y, endZ],
+          [endX, FACADE_BASE_Y + FACADE_WALL_HEIGHT_METERS, endZ],
+          [startX, FACADE_BASE_Y + FACADE_WALL_HEIGHT_METERS, startZ],
+        ],
+        color,
+      );
     }
   }
 
@@ -385,6 +314,7 @@ function makeCollisionBoxes(
   const edgeById = new Map(network.edges.map((edge) => [edge.id, edge]));
   const boxes: StaticBuildingBox[] = [];
   for (const placement of placements) {
+    if (!placement.roadClear) continue;
     const edge = edgeById.get(placement.roadEdgeId);
     if (edge === undefined) continue;
     const segmentCount = Math.max(
@@ -425,10 +355,11 @@ export class UrbanAlleyFrontages {
   constructor(tier: TierId, network: RoadNetwork, origin: readonly [number, number, number]) {
     this.root.name = 'aohara-backstreet-frontages';
     this.placements = generateAoharaAlleyFacadePlacements(network, tier);
-    this.collisionBoxes = makeCollisionBoxes(network, this.placements);
+    const visiblePlacements = this.placements.filter((placement) => placement.roadClear);
+    this.collisionBoxes = makeCollisionBoxes(network, visiblePlacements);
     this.#buildCollisionIndex();
     const [originX, , originZ] = origin;
-    const wallGeometry = createContinuousWallGeometry(network, this.placements, originX, originZ);
+    const wallGeometry = createContinuousWallGeometry(network, visiblePlacements, originX, originZ);
     const wallMaterial = new MeshStandardNodeMaterial();
     wallMaterial.name = 'aohara-continuous-alley-facade-material';
     wallMaterial.color.setHex(0xffffff);
@@ -451,7 +382,11 @@ export class UrbanAlleyFrontages {
     buildingMaterial.color.setHex(0xffffff);
     buildingMaterial.roughness = 0.82;
     buildingMaterial.metalness = 0.04;
-    const buildings = new InstancedMesh(buildingGeometry, buildingMaterial, this.placements.length);
+    const buildings = new InstancedMesh(
+      buildingGeometry,
+      buildingMaterial,
+      visiblePlacements.length,
+    );
     buildings.name = 'aohara-alley-rowhouse-volumes';
     buildings.frustumCulled = false;
     buildings.castShadow = true;
@@ -464,7 +399,7 @@ export class UrbanAlleyFrontages {
     roofMaterial.color.setHex(0xffffff);
     roofMaterial.roughness = 0.91;
     roofMaterial.metalness = 0.02;
-    const roofs = new InstancedMesh(roofGeometry, roofMaterial, this.placements.length);
+    const roofs = new InstancedMesh(roofGeometry, roofMaterial, visiblePlacements.length);
     roofs.name = 'aohara-alley-rowhouse-roofs';
     roofs.frustumCulled = false;
     roofs.castShadow = true;
@@ -496,7 +431,7 @@ export class UrbanAlleyFrontages {
     const doorPlacements: UrbanAlleyFacadePlacement[] = [];
 
     const transform = new Object3D();
-    this.placements.forEach((placement, index) => {
+    visiblePlacements.forEach((placement, index) => {
       transform.position.set(
         placement.x - originX,
         FACADE_BASE_Y + placement.heightMeters / 2,
@@ -600,12 +535,25 @@ export class UrbanAlleyFrontages {
     this.#geometries.push(doorGeometry);
     this.#materials.push(doorMaterial);
 
-    const alleyEdgeCount = network.edges.filter((edge) => edge.roadClass === 'urban-alley').length;
+    const lastPlacementByRow = new Map<string, UrbanAlleyFacadePlacement>();
+    let wallRunCount = 0;
+    for (const placement of this.placements) {
+      if (!placement.roadClear) continue;
+      const rowKey = `${placement.roadEdgeId}:${placement.side}`;
+      const previous = lastPlacementByRow.get(rowKey);
+      if (
+        previous === undefined ||
+        Math.abs(previous.endAlongMeters - placement.startAlongMeters) > 1e-6
+      ) {
+        wallRunCount += 1;
+      }
+      lastPlacementByRow.set(rowKey, placement);
+    }
     this.#stats = {
-      urbanAlleyFacadeBuildings: this.placements.length,
+      urbanAlleyFacadeBuildings: visiblePlacements.length,
       urbanAlleyFacadeWindows: windowTransforms.length,
       urbanAlleyFacadeDoors: doorPlacements.length,
-      urbanAlleyFacadeWallRuns: alleyEdgeCount * 2,
+      urbanAlleyFacadeWallRuns: wallRunCount,
       urbanAlleyFacadeBatches: this.#meshes.length + 1,
     };
   }
