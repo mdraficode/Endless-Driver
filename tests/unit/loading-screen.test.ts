@@ -39,7 +39,7 @@ function makeLoadingDom() {
   return { root, rootAttributes, progressAttributes, classes, bar, label, percent, retry, dataset };
 }
 
-function stubLoadingWindow() {
+function stubLoadingWindow(prefersReducedMotion = false) {
   const frames = new Map<number, FrameRequestCallback>();
   const hideTimers: Array<() => void> = [];
   let nextFrameId = 0;
@@ -55,7 +55,7 @@ function stubLoadingWindow() {
       return id;
     },
     cancelAnimationFrame: (id: number) => frames.delete(id),
-    matchMedia: () => ({ matches: false }),
+    matchMedia: () => ({ matches: prefersReducedMotion }),
   } as unknown as Window);
 
   const advanceFrame = (timestamp: number): void => {
@@ -138,8 +138,8 @@ describe('startup progress', () => {
     }
   });
 
-  it('does not jump to 88% or pause there when that reported stage stalls', () => {
-    const { frames, advanceFrame } = stubLoadingWindow();
+  it('does not jump to 88% or pause there when that reported stage stalls, even with reduced motion', () => {
+    const { frames, advanceFrame } = stubLoadingWindow(true);
 
     try {
       const dom = makeLoadingDom();
@@ -155,6 +155,7 @@ describe('startup progress', () => {
       expect(afterOneSecond).toBeLessThan(9);
       expect(dom.progressAttributes.get('aria-valuenow')).toBe('88');
       expect(dom.percent.textContent).not.toContain('-');
+      expect(dom.dataset['progressPhase']).toBe('animating');
 
       for (let timestamp = 1_100; timestamp <= 6_000 && frames.size > 0; timestamp += 100) {
         advanceFrame(timestamp);

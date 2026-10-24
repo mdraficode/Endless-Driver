@@ -227,8 +227,7 @@ body {
 
 .loading-screen[data-progress-phase='animating'] .loading-progress-fill,
 .loading-screen[data-progress-phase='finalizing'] .loading-progress-fill,
-.loading-screen[data-progress-phase='waiting'] .loading-progress-fill,
-.loading-screen[data-progress-phase='static'] .loading-progress-fill {
+.loading-screen[data-progress-phase='waiting'] .loading-progress-fill {
   transition: none;
 }
 
@@ -293,8 +292,7 @@ body {
 
   .loading-screen[data-progress-phase='animating'] .loading-progress-fill,
   .loading-screen[data-progress-phase='finalizing'] .loading-progress-fill,
-  .loading-screen[data-progress-phase='waiting'] .loading-progress-fill,
-  .loading-screen[data-progress-phase='static'] .loading-progress-fill {
+  .loading-screen[data-progress-phase='waiting'] .loading-progress-fill {
     transition-duration: 0.01ms;
   }
 

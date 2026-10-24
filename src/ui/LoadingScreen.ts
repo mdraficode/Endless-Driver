@@ -83,25 +83,8 @@ export class LoadingScreen {
       return;
     }
 
-    const prefersReducedMotion =
-      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-    if (prefersReducedMotion) {
-      this.#stopProgressAnimation();
-      this.#displayFraction = this.#fraction >= 0.94 ? 1 : this.#fraction;
-      this.#root.dataset['progressPhase'] = this.#displayFraction >= 1 ? 'waiting' : 'static';
-      this.#bar.style.width = `${Math.round(this.#displayFraction * 100)}%`;
-      this.#percent.textContent = this.#displayFraction >= 1 ? 'Still working…' : `${percent}%`;
-      this.#label.textContent =
-        this.#fraction >= 0.94 ? 'Finishing the first playable frame…' : label;
-      this.#progress.setAttribute(
-        'aria-valuetext',
-        this.#displayFraction >= 1
-          ? 'The bar is full; startup is still in progress.'
-          : 'Startup is in progress.',
-      );
-      return;
-    }
-
+    // Keep the progress movement itself gradual even for reduced-motion users; CSS suppresses
+    // decorative sheen and transitions for that preference without snapping to a reported stage.
     this.#label.textContent =
       this.#fraction >= 0.94 ? 'Finishing the first playable frame…' : label;
     this.#progress.setAttribute(
