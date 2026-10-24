@@ -1705,7 +1705,7 @@ export class UrbanNightWorld implements SceneContent {
     if (this.#disposed) return [];
     return [
       ...collideCarWithStaticBoxes(car, this.#buildingColliders),
-      ...collideCarWithStaticBoxes(car, this.#backstreetFrontages?.collisionBoxes ?? []),
+      ...(this.#backstreetFrontages?.collide(car) ?? []),
       ...collideCarWithStaticBoxes(car, this.#backstreetProps?.collisionBoxes ?? []),
     ];
   }

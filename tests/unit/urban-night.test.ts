@@ -915,7 +915,8 @@ describe('Aohara city night-lighting rules', () => {
       networkIntegrated: true,
     });
     const facadeFootprints = city.getBackstreetFacadeFootprints();
-    expect(facadeFootprints).toHaveLength(placements.length);
+    expect(facadeFootprints.length).toBeGreaterThan(placements.length);
+    expect(facadeFootprints.length).toBeLessThanOrEqual(placements.length * 3);
     expect(city.getContentStats()).toMatchObject({
       urbanAlleyFacadeBuildings: placements.length,
       urbanAlleyFacadeWindows: expect.any(Number),

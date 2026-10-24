@@ -13,7 +13,8 @@ import { MeshStandardNodeMaterial } from 'three/webgpu';
 
 import type { TierId } from '../config/tiers';
 import type { RoadEdge, RoadNetwork } from './road-network';
-import type { StaticBuildingBox } from './static-building-collision';
+import { collideCarWithStaticBoxes, type StaticBuildingBox } from './static-building-collision';
+import type { TownCarProbe, TownHit } from './town';
 
 const FACADE_WALL_GAP_METERS = 0.72;
 const FACADE_WALL_THICKNESS_METERS = 0.18;
@@ -299,24 +300,33 @@ function createContinuousWallGeometry(
 }
 
 function makeCollisionBoxes(
+  network: RoadNetwork,
   placements: readonly UrbanAlleyFacadePlacement[],
 ): readonly StaticBuildingBox[] {
-  return placements.map((placement) => {
+  const edgeById = new Map(network.edges.map((edge) => [edge.id, edge]));
+  const boxes: StaticBuildingBox[] = [];
+  for (const placement of placements) {
+    const edge = edgeById.get(placement.roadEdgeId);
+    if (edge === undefined) continue;
+    const segmentCount = Math.max(1, Math.ceil(placement.widthMeters / 4));
+    const segmentLength = placement.widthMeters / segmentCount;
     const wallCenterOffset =
       placement.halfWidthMeters + FACADE_WALL_GAP_METERS - 0.05 + FACADE_WALL_THICKNESS_METERS / 2;
-    const bodyCenterOffset =
-      placement.halfWidthMeters + FACADE_WALL_GAP_METERS + placement.depthMeters / 2 - 0.05;
-    const centerOffset = bodyCenterOffset - wallCenterOffset;
-    return {
-      x: placement.x - placement.normalX * placement.side * centerOffset,
-      z: placement.z - placement.normalZ * placement.side * centerOffset,
-      // Static collision uses local X aligned to (cos(yaw), sin(yaw)); this sign differs from
-      // Three.js Y-rotation, so compute the equivalent tangent-aligned collision yaw explicitly.
-      yaw: Math.atan2(placement.tangentZ, placement.tangentX),
-      halfWidth: placement.widthMeters / 2 + 0.02,
-      halfDepth: FACADE_WALL_THICKNESS_METERS / 2,
-    };
-  });
+    for (let segmentIndex = 0; segmentIndex < segmentCount; segmentIndex += 1) {
+      const alongMeters = placement.startAlongMeters + (segmentIndex + 0.5) * segmentLength;
+      const frame = roadFrameAt(edge, alongMeters);
+      boxes.push({
+        x: frame.x + frame.normalX * placement.side * wallCenterOffset,
+        z: frame.z + frame.normalZ * placement.side * wallCenterOffset,
+        // Static collision uses local X aligned to (cos(yaw), sin(yaw)); this sign differs from
+        // Three.js Y-rotation, so compute the equivalent tangent-aligned collision yaw explicitly.
+        yaw: Math.atan2(frame.tangentZ, frame.tangentX),
+        halfWidth: segmentLength / 2 + 0.02,
+        halfDepth: FACADE_WALL_THICKNESS_METERS / 2,
+      });
+    }
+  }
+  return boxes;
 }
 
 /** Continuous, windowed low-rise façades that make narrow backstreets read as building canyons. */
@@ -327,13 +337,15 @@ export class UrbanAlleyFrontages {
   readonly #meshes: InstancedMesh[] = [];
   readonly #geometries: BufferGeometry[] = [];
   readonly #materials: MeshStandardNodeMaterial[] = [];
+  readonly #collisionCells = new Map<string, StaticBuildingBox[]>();
   readonly #stats: Readonly<Record<string, number>>;
   #disposed = false;
 
   constructor(tier: TierId, network: RoadNetwork, origin: readonly [number, number, number]) {
     this.root.name = 'aohara-backstreet-frontages';
     this.placements = generateAoharaAlleyFacadePlacements(network, tier);
-    this.collisionBoxes = makeCollisionBoxes(this.placements);
+    this.collisionBoxes = makeCollisionBoxes(network, this.placements);
+    this.#buildCollisionIndex();
     const [originX, , originZ] = origin;
     const wallGeometry = createContinuousWallGeometry(network, this.placements, originX, originZ);
     const wallMaterial = new MeshStandardNodeMaterial();
@@ -515,6 +527,44 @@ export class UrbanAlleyFrontages {
       urbanAlleyFacadeWallRuns: alleyEdgeCount * 2,
       urbanAlleyFacadeBatches: this.#meshes.length + 1,
     };
+  }
+
+  #buildCollisionIndex(): void {
+    const cellSize = 32;
+    for (const box of this.collisionBoxes) {
+      const boundsRadius = Math.hypot(box.halfWidth, box.halfDepth);
+      const minCellX = Math.floor((box.x - boundsRadius) / cellSize);
+      const maxCellX = Math.floor((box.x + boundsRadius) / cellSize);
+      const minCellZ = Math.floor((box.z - boundsRadius) / cellSize);
+      const maxCellZ = Math.floor((box.z + boundsRadius) / cellSize);
+      for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
+        for (let cellZ = minCellZ; cellZ <= maxCellZ; cellZ += 1) {
+          const key = `${cellX}:${cellZ}`;
+          const boxes = this.#collisionCells.get(key) ?? [];
+          boxes.push(box);
+          this.#collisionCells.set(key, boxes);
+        }
+      }
+    }
+  }
+
+  collide(car: TownCarProbe): TownHit[] {
+    if (this.#disposed) return [];
+    const cellSize = 32;
+    const searchRadius = 5.5;
+    const minCellX = Math.floor((car.x - searchRadius) / cellSize);
+    const maxCellX = Math.floor((car.x + searchRadius) / cellSize);
+    const minCellZ = Math.floor((car.z - searchRadius) / cellSize);
+    const maxCellZ = Math.floor((car.z + searchRadius) / cellSize);
+    const nearby = new Set<StaticBuildingBox>();
+    for (let cellX = minCellX; cellX <= maxCellX; cellX += 1) {
+      for (let cellZ = minCellZ; cellZ <= maxCellZ; cellZ += 1) {
+        for (const box of this.#collisionCells.get(`${cellX}:${cellZ}`) ?? []) {
+          nearby.add(box);
+        }
+      }
+    }
+    return collideCarWithStaticBoxes(car, [...nearby]);
   }
 
   getContentStats(): Readonly<Record<string, number>> {
