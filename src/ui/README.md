@@ -1,6 +1,6 @@
 # User interface
 
-**Status (2026-10-23):** Restart/apply rebuilds in-page, the minimap is hidden while paused, and fullscreen attempts native landscape lock where supported. Touch/pen retries use `pointerup` (or `touchend` without Pointer Events), since `pointerdown` is not a reliable Android Chrome activation event. Full `npm run check` passes at `7d1fb8e` (73 test files / 552 tests); manual Android-device review remains pending. Auto-start and best-effort handling are unchanged.
+**Status (2026-10-24):** Restart/apply rebuilds in-page, the minimap is hidden while paused, and fullscreen attempts native landscape lock where supported. Touch/pen retries use `pointerup` (or `touchend` without Pointer Events), since `pointerdown` is not a reliable Android Chrome activation event. The full-screen diagnostics report now includes weather/wetness and mean contacting-wheel grip/rolling resistance; the 30-card layout has DOM coverage but no refreshed rendered/device fit review. Full `npm run check` passed at `d12c838` (77 test files / 571 tests); manual Android-device review remains pending. Auto-start and best-effort handling are unchanged.
 
 ## Responsibility
 
@@ -14,7 +14,7 @@ DOM UI for diagnostics, pause/home navigation, saved gameplay/display preference
 - `LoadingScreen.ts` — startup stages and first-frame readiness; no Play gate.
 - `FullscreenOnStart.ts` and `LandscapeFallback.ts` — best-effort fullscreen requests, with touch/pen retries at `pointerup` (mouse at `pointerdown`, plus keyboard/accessibility and legacy `touchend` paths), native landscape lock after entry where supported, and a page-level landscape fallback; none claims to override browser gesture or OS rotation policy.
 - `Minimap.ts` — destination map HUD parented to the app rotation/stacking context and hidden while the pause/home menu is open.
-- `DiagnosticsOverlay.ts` — full-screen live FPS/frame-time, viewport, render, scene, and vehicle report; responsive non-scrolling metric grid sits above the minimap/touch HUD, updates at the application's HUD interval, and closes with × or F2.
+- `DiagnosticsOverlay.ts` — full-screen live FPS/frame-time, viewport, render, scene, vehicle, weather and surface-response report; responsive non-scrolling metric grid sits above the minimap/touch HUD, updates at the application's HUD interval, and closes with × or F2.
 - `TouchControls.ts` — multi-touch steering, pedals and utility buttons; the pause button remains at the upper-right without overlapping the utility row.
 
 ## Preferences with gameplay effects
@@ -25,4 +25,4 @@ DOM UI for diagnostics, pause/home navigation, saved gameplay/display preference
 
 ## Still out of scope
 
-A continuously updating speed/RPM/gear HUD, photo mode, broad Phase 8 polish, Phase 7 weather/seasons, and visual/device-performance acceptance remain separate work. See [the project plan](../../PROJECT_PLAN.md) and [architecture](../../docs/ARCHITECTURE.md).
+A continuously updating speed/RPM/gear HUD, photo mode, broad Phase 8 polish, Phase 7 visual weather/seasons, and visual/device-performance acceptance remain separate work. The authorized clear/rain physics presets and contact-wheel surface telemetry are implemented; visual precipitation remains open. See [the project plan](../../PROJECT_PLAN.md) and [architecture](../../docs/ARCHITECTURE.md).

@@ -1,6 +1,6 @@
 # Environment state
 
-**Status (2026-10-24):** Phase 3 delivered the time-of-day clock (`EnvironmentClock.ts`, `solar.ts`). Phase 7 is now authorized; `SurfaceState.ts` adds a physics-only clear/rain comparison for tire grip and rolling resistance. Visual precipitation, transitions, seasons, snow/ice/mud and the radiance-cascades hardware go/no-go remain open.
+**Status (2026-10-24):** Phase 3 delivered the time-of-day clock (`EnvironmentClock.ts`, `solar.ts`). Phase 7 is now authorized; `SurfaceState.ts` adds physics-only clear/rain responses; the diagnostics report exposes preset wetness and mean contacting-wheel grip/rolling resistance. Visual precipitation, transitions, seasons, snow/ice/mud and the radiance-cascades hardware go/no-go remain open.
 
 ## Responsibility
 
