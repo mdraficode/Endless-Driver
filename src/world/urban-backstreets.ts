@@ -41,13 +41,15 @@ interface PropDimensions {
   readonly height: number;
 }
 
+// Keep the prop footprint narrow across the alley while allowing carts, stacks and dumpsters to
+// extend along the wall; the 1.4 m vehicle apron remains available in front of each building row.
 const ALLEY_PROP_DIMENSIONS: Readonly<Record<UrbanAlleyPropKind, PropDimensions>> = {
   'waste-bin': { width: 0.74, depth: 0.72, height: 1.16 },
-  dumpster: { width: 1.62, depth: 1.12, height: 1.42 },
-  'cardboard-stack': { width: 1.04, depth: 0.92, height: 0.96 },
-  'hand-cart': { width: 0.9, depth: 1.32, height: 1.28 },
-  'crate-stack': { width: 1.02, depth: 0.9, height: 1.32 },
-  pallet: { width: 1.26, depth: 0.98, height: 0.28 },
+  dumpster: { width: 0.8, depth: 1.62, height: 1.42 },
+  'cardboard-stack': { width: 0.78, depth: 1.04, height: 0.96 },
+  'hand-cart': { width: 0.72, depth: 1.32, height: 1.28 },
+  'crate-stack': { width: 0.78, depth: 1.02, height: 1.32 },
+  pallet: { width: 0.8, depth: 1.26, height: 0.28 },
 };
 
 const ALLEY_PROP_COLORS: Readonly<Record<UrbanAlleyPropKind, readonly number[]>> = {

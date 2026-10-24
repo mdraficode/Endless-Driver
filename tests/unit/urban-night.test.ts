@@ -949,6 +949,7 @@ describe('Aohara city night-lighting rules', () => {
       networkIntegrated: true,
     });
     const buildings = city.getStaticBuildingFootprints();
+    const facadeFootprints = city.getBackstreetFacadeFootprints();
     const placements = generateAoharaAlleyPropPlacements(network, 'B', buildings);
     expect(placements).toEqual(generateAoharaAlleyPropPlacements(network, 'B', buildings));
     expect(placements).toHaveLength(URBAN_ACTIVITY_TIER_BUDGET.B.alleyProps);
@@ -989,6 +990,10 @@ describe('Aohara city night-lighting rules', () => {
       };
       for (const building of buildings) {
         expect(footprintSeparation(propBox, building, 0.25)).toBeGreaterThan(0);
+      }
+      for (const facade of facadeFootprints) {
+        if ((propBox.x - facade.x) ** 2 + (propBox.z - facade.z) ** 2 > 64) continue;
+        expect(footprintSeparation(propBox, facade, 0)).toBeGreaterThan(0);
       }
     }
 
