@@ -116,6 +116,7 @@ function expectedFurnitureNodeClearance(
 
 function expectUrbanAlleyClearance(city: UrbanNightWorld, network: RoadNetwork): number {
   let probeCount = 0;
+  const buildingFootprints = city.getStaticBuildingFootprints();
   const alleyEdges = network.edges.filter((edge) => edge.roadClass === 'urban-alley');
   for (const edge of alleyEdges) {
     for (let index = 0; index < edge.points.length; index += 1) {
@@ -129,15 +130,22 @@ function expectUrbanAlleyClearance(city: UrbanNightWorld, network: RoadNetwork):
       const sideZ = -tangentX;
       const yaw = Math.atan2(-tangentX, -tangentZ);
       for (const lateralOffset of [0, -1.2, 1.2]) {
+        const probe = {
+          x: point.x + sideX * lateralOffset,
+          z: point.z + sideZ * lateralOffset,
+          yaw,
+          velocityX: 0,
+          velocityZ: 0,
+        };
+        const obstructions = city.collide(probe);
+        const buildingObstructions =
+          obstructions.length === 0
+            ? 0
+            : collideCarWithStaticBoxes(probe, buildingFootprints).length;
         expect(
-          city.collide({
-            x: point.x + sideX * lateralOffset,
-            z: point.z + sideZ * lateralOffset,
-            yaw,
-            velocityX: 0,
-            velocityZ: 0,
-          }),
-          `${edge.id} is obstructed at ${point.alongMeters.toFixed(1)} m`,
+          obstructions,
+          `${edge.id} is obstructed at ${point.alongMeters.toFixed(1)} m, lateral ${lateralOffset.toFixed(1)} m ` +
+            `(building hits: ${buildingObstructions})`,
         ).toHaveLength(0);
         probeCount += 1;
       }
