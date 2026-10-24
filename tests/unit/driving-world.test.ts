@@ -58,7 +58,7 @@ describe('Aohara driving-world integration', () => {
     }
     expect(stats.frontageBuildings).toBeGreaterThanOrEqual(240);
     expect(stats.shops).toBeGreaterThan(4);
-    expect(stats.billboards).toBe(stats.shops + 14);
+    expect(stats.billboards).toBe(stats.shops! + 14);
     expect(stats.urbanAlleyPropBatches).toBeGreaterThan(0);
     const cityFurnitureBudget = Object.values(URBAN_STREET_FURNITURE_TIER_BUDGET.C).reduce(
       (total, count) => total + count,

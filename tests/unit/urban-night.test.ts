@@ -730,18 +730,18 @@ describe('Aohara city night-lighting rules', () => {
     const cityStats = city.getContentStats();
     expect(cityStats.frontageBuildings).toBeGreaterThanOrEqual(240);
     expect(cityStats.shops).toBeGreaterThan(4);
-    expect(cityStats.billboards).toBe(cityStats.shops + 14);
-    expect(cityStats.storefrontNightAccentInstances).toBe((cityStats.shops + 2) * 3);
+    expect(cityStats.billboards).toBe(cityStats.shops! + 14);
+    expect(cityStats.storefrontNightAccentInstances).toBe((cityStats.shops! + 2) * 3);
     expect(cityStats.urbanAlleyProps).toBe(URBAN_ACTIVITY_TIER_BUDGET.B.alleyProps);
     expect(cityStats.urbanAlleyPropsBudget).toBe(URBAN_ACTIVITY_TIER_BUDGET.B.alleyProps);
     expect(cityStats.urbanAlleyPropBatches).toBeGreaterThan(0);
     expect(
-      cityStats.urbanAlleyWasteBins +
-        cityStats.urbanAlleyDumpsters +
-        cityStats.urbanAlleyCardboardStacks +
-        cityStats.urbanAlleyHandCarts +
-        cityStats.urbanAlleyCrateStacks +
-        cityStats.urbanAlleyPallets,
+      cityStats.urbanAlleyWasteBins! +
+        cityStats.urbanAlleyDumpsters! +
+        cityStats.urbanAlleyCardboardStacks! +
+        cityStats.urbanAlleyHandCarts! +
+        cityStats.urbanAlleyCrateStacks! +
+        cityStats.urbanAlleyPallets!,
     ).toBe(cityStats.urbanAlleyProps);
     expect(city.root.getObjectByName('aohara-alley-props')).not.toBeNull();
     expect(cityStats.activeMoodPointLights).toBeLessThanOrEqual(
@@ -772,7 +772,7 @@ describe('Aohara city night-lighting rules', () => {
       expect(city.root.getObjectByName(name)).toBeInstanceOf(InstancedMesh);
     }
     expect(cityStats.decorativeLights).toBe(
-      40 + cityStats.frontageBuildings + cityStats.infillBuildings + cityStats.shops,
+      40 + cityStats.frontageBuildings! + cityStats.infillBuildings! + cityStats.shops!,
     );
 
     const trafficBodies = city.root.getObjectByName('aohara-traffic-passenger-car-instances');
@@ -835,7 +835,7 @@ describe('Aohara city night-lighting rules', () => {
     });
     const footprints = city.getStaticBuildingFootprints();
     expect(footprints).toHaveLength(
-      55 + city.getContentStats().frontageBuildings + URBAN_ACTIVITY_TIER_BUDGET.B.infillBuildings,
+      55 + city.getContentStats().frontageBuildings! + URBAN_ACTIVITY_TIER_BUDGET.B.infillBuildings,
     );
 
     for (let first = 0; first < footprints.length; first += 1) {
