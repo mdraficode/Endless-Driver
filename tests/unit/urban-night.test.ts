@@ -118,6 +118,8 @@ function expectedFurnitureNodeClearance(
 function expectUrbanAlleyClearance(city: UrbanNightWorld, network: RoadNetwork): number {
   let probeCount = 0;
   const buildingFootprints = city.getStaticBuildingFootprints();
+  const facadeFootprints = city.getBackstreetFacadeFootprints();
+  const propFootprints = city.getBackstreetPropFootprints();
   const alleyEdges = network.edges.filter((edge) => edge.roadClass === 'urban-alley');
   for (const edge of alleyEdges) {
     for (let index = 0; index < edge.points.length; index += 1) {
@@ -153,17 +155,19 @@ function expectUrbanAlleyClearance(city: UrbanNightWorld, network: RoadNetwork):
               );
         const firstCollisionIndex = (boxes: readonly StaticBuildingBox[]): number =>
           boxes.findIndex((box) => collideCarWithStaticBoxes(probe, [box]).length > 0);
-        const facadeHit =
-          obstructions.length === 0
-            ? -1
-            : firstCollisionIndex(city.getBackstreetFacadeFootprints());
-        const propHit =
-          obstructions.length === 0 ? -1 : firstCollisionIndex(city.getBackstreetPropFootprints());
+        const facadeHit = obstructions.length === 0 ? -1 : firstCollisionIndex(facadeFootprints);
+        const propHit = obstructions.length === 0 ? -1 : firstCollisionIndex(propFootprints);
+        const hitBox = facadeHit < 0 ? undefined : facadeFootprints[facadeHit];
+        const facadeDescription =
+          hitBox === undefined
+            ? 'none'
+            : `#${facadeHit} center(${hitBox.x.toFixed(2)},${hitBox.z.toFixed(2)}) ` +
+              `half(${hitBox.halfWidth.toFixed(2)},${hitBox.halfDepth.toFixed(2)}) yaw${hitBox.yaw.toFixed(3)}`;
         expect(
           obstructions,
           `${edge.id} is obstructed at ${point.alongMeters.toFixed(1)} m, lateral ${lateralOffset.toFixed(1)} m ` +
             `position (${probe.x.toFixed(1)},${probe.z.toFixed(1)}); building hits: ${buildingHits.join('; ') || 'none'}, ` +
-            `facade hit: ${facadeHit}, prop hit: ${propHit}`,
+            `facade hit: ${facadeDescription}, prop hit: ${propHit}`,
         ).toHaveLength(0);
         probeCount += 1;
       }
@@ -993,7 +997,10 @@ describe('Aohara city night-lighting rules', () => {
       }
       for (const facade of facadeFootprints) {
         if ((propBox.x - facade.x) ** 2 + (propBox.z - facade.z) ** 2 > 64) continue;
-        expect(footprintSeparation(propBox, facade, 0)).toBeGreaterThan(0);
+        expect(
+          footprintSeparation(propBox, facade, 0),
+          `${placement.id} intersects alley frontage at (${facade.x.toFixed(2)},${facade.z.toFixed(2)})`,
+        ).toBeGreaterThan(0);
       }
     }
 
