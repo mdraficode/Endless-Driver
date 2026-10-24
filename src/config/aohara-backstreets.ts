@@ -258,14 +258,17 @@ function buildBlocks(): readonly AoharaBackstreetBlock[] {
       const blockId = `aohara-backstreet-r${rowIndex}-c${columnIndex}`;
       const hubLocalX = centerLocalX + (stableUnit(rowIndex, columnIndex, 1229) - 0.5) * 14;
       const hubLocalZ = centerLocalZ + (stableUnit(rowIndex, columnIndex, 1237) - 0.5) * 14;
-      const courtyardDirection = Math.floor(stableUnit(rowIndex, columnIndex, 1249) * 4);
+      // Outer blocks have paired towers flanking east/west, so keep their short courtyard branches
+      // on the north/south axis; central blocks retain all four directions around avenue towers.
+      const hasCentralAvenueTowers =
+        (rowIndex === 1 || rowIndex === 2) && (columnIndex === 1 || columnIndex === 2);
+      const courtyardOffsets = hasCentralAvenueTowers
+        ? ([[1, 0], [0, 1], [-1, 0], [0, -1]] as const)
+        : ([[0, 1], [0, -1]] as const);
+      const courtyardDirection = Math.floor(
+        stableUnit(rowIndex, columnIndex, 1249) * courtyardOffsets.length,
+      );
       const courtyardDistance = 8 + stableUnit(rowIndex, columnIndex, 1261) * 3;
-      const courtyardOffsets = [
-        [1, 0],
-        [0, 1],
-        [-1, 0],
-        [0, -1],
-      ] as const;
       const [courtyardDX, courtyardDZ] = courtyardOffsets[courtyardDirection]!;
       const courtyardNodeId = `${blockId}-yard`;
       blocks.push({
