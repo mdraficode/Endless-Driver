@@ -162,7 +162,7 @@ Two documented deviations from the table above:
   adaptive resolution. Spatial AA linearly upscales and cannot restore lost detail. **No tier uses multisampling by
   default** (the resolver forces `samples: 0` for non-MSAA modes). `?aa=fxaa|smaa|none|taa` names a strategy
   outright, and `?res=` fixes a scale; when TAA is switched off on a TAA configuration, the chain falls back to SMAA.
-  The latest C/B tuning addresses an owner-reported low-resolution/edge-line symptom; it is not visually verified.
+  The latest C/B tuning addresses an owner-reported low-resolution/edge-line symptom, described as jagged/flickering across Android, iOS/iPadOS, and desktop/laptop; a screenshot and visual retest are still pending.
 
 **Post-processing status (Phase 3).** The stack is assembled by `src/shaders/post-chain.ts` in a fixed, documented
 order, and every effect is individually toggleable through configuration:
