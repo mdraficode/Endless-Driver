@@ -23,6 +23,8 @@ const FACADE_COLLISION_SEGMENT_METERS = 2;
 const FACADE_PROP_CLEARANCE_SEGMENT_METERS = 6;
 const FACADE_ROAD_SAMPLE_METERS = 0.1;
 const FACADE_MIN_ROAD_CLEARANCE_METERS = 2.55;
+const FACADE_MODULE_MAX_ADJUSTMENT_METERS = 2;
+const FACADE_MODULE_ADJUSTMENT_STEP_METERS = 0.25;
 const FACADE_BUILDING_DEPTH_METERS = 6.8;
 const FACADE_ACCESS_SETBACK_METERS = 16.5;
 const FACADE_HUB_SETBACK_METERS = 14;
@@ -291,8 +293,13 @@ export function generateAoharaAlleyFacadePlacements(
               sampleCount,
             ]),
           ];
-          for (let step = 1; step <= 4 && fullModuleWallOffset === null; step += 1) {
-            const delta = step * 0.25;
+          for (
+            let step = 1;
+            step * FACADE_MODULE_ADJUSTMENT_STEP_METERS <= FACADE_MODULE_MAX_ADJUSTMENT_METERS &&
+            fullModuleWallOffset === null;
+            step += 1
+          ) {
+            const delta = step * FACADE_MODULE_ADJUSTMENT_STEP_METERS;
             for (const candidateOffset of [wallOffsetMeters - delta, wallOffsetMeters + delta]) {
               if (candidateOffset < minimumWallOffset) continue;
               const candidateCenterOffset =

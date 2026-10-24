@@ -912,7 +912,7 @@ describe('Aohara city night-lighting rules', () => {
           expect(building.endAlongMeters).toBeLessThanOrEqual(plannedEnd + 1e-6);
           expect(
             Math.abs(building.wallOffsetMeters - (edge.halfWidthMeters + 3.2)),
-          ).toBeLessThanOrEqual(1.000001);
+          ).toBeLessThanOrEqual(2.000001);
           clearFrontageMeters += building.widthMeters;
           previousEnd = building.endAlongMeters;
         }
