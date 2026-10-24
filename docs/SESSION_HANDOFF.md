@@ -2392,6 +2392,6 @@ Distant mountain geometry retains the existing four-range vertex budget but repl
 
 **Implementation:** all button descendants of `.touch-controls` now use 18% opacity at rest and return to full opacity while pressed or active; keyboard focus also reveals them fully for accessibility. This includes the steering wheel/arrows, brake/gas/N₂O/handbrake and the gameplay utility buttons. Opacity does not alter their active hit boxes, pointer handling, or the menu/settings buttons. `src/input/README.md` records the behavior.
 
-**Push-before-check status:** validation pending. Per the owner's standing instruction, commit and push this code/docs change and verify the remote SHA before running checks.
+**Push-before-check / validation:** code/docs commit `18f66c0957f2df8d2d4d6c97f60bd6b7f9ced49d` (`Dim gameplay touch controls until pressed`) was pushed to `main`, and the local/remote SHAs matched before checks. Full `npm run check` passed on that SHA: Prettier, ESLint, GLSL guard, both TypeScript checks, **80 test files / 596 tests**, asset verification (20 assets / 47,814,431 bytes), and production build. Existing non-fatal Three.js `BufferGeometry.toNonIndexed()` notices and the Vite large-chunk warning remain. `npm ci` reported two moderate audit findings; no audit fix was run.
 
-**Limitations / next action:** no browser or physical-device review has been performed. The opacity behavior is source-level only until someone checks it in gameplay on a phone/tablet.
+**Limitations / next action:** no browser or physical-device review has been performed. This confirms automated checks and preserves input behavior, but not the perceived idle visibility or touch response on an owner device. Please review it during gameplay on a phone/tablet.
