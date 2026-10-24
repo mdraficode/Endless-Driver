@@ -21,7 +21,11 @@ import { AOHARA_DISTRICT_CONFIG } from '../../src/config/urban-district';
 import { DEFAULT_SPAWN_ID, SPAWN_POINTS } from '../../src/config/spawns';
 import { EnvironmentClock } from '../../src/environment/EnvironmentClock';
 import { UrbanNightWorld } from '../../src/world/urban-night';
-import { advanceTrafficWithSignal, UrbanStreetActivity } from '../../src/world/urban-activity';
+import {
+  advanceTrafficWithSignal,
+  constrainTrafficFollowingTravel,
+  UrbanStreetActivity,
+} from '../../src/world/urban-activity';
 import { generateAoharaStreetFurniturePlacements } from '../../src/world/urban-furniture';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
 import type { RoadNetwork } from '../../src/world/road-network';
@@ -168,6 +172,16 @@ describe('Aohara city night-lighting rules', () => {
     expect(advanceTrafficWithSignal(20, 100, 50, 5, 'amber')).toBeLessThan(50);
     expect(advanceTrafficWithSignal(40, 100, 50, 5, 'amber')).toBe(45);
     expect(advanceTrafficWithSignal(40, 100, 50, 5, 'green')).toBe(45);
+  });
+
+  it('keeps mixed-class traffic at a safe headway across the route wrap', () => {
+    const constrainedTravel = constrainTrafficFollowingTravel(100, 92, 9, 4.5, 7, 1.5, 12, 8);
+    expect(constrainedTravel).toBeCloseTo(0.25);
+    const resultingGap = 7 + 1.5 + 100 - (92 + constrainedTravel);
+    expect(resultingGap).toBeCloseTo(16.25);
+
+    expect(constrainTrafficFollowingTravel(100, 10, 9, 4.5, 35, 2, 4.5, 8)).toBe(9);
+    expect(constrainTrafficFollowingTravel(100, 92, 9, 4.5, 2, 0, 12, 8)).toBe(0);
   });
 
   it('fills every traffic class inside the existing C/B/A vehicle and draw-call budgets', () => {

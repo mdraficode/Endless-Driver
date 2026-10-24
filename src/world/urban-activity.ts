@@ -83,6 +83,7 @@ interface TrafficVehicle {
   readonly heightMeters: number;
   readonly speedMetersPerSecond: number;
   distance: number;
+  proposedTravelMeters: number;
   collisionHoldSeconds: number;
   readonly impact: VehicleImpactState;
   body: RapierRigidBody | null;
@@ -104,6 +105,10 @@ interface TrafficQueueEntry {
 
 function wrapDistance(distance: number, routeLength: number): number {
   return ((distance % routeLength) + routeLength) % routeLength;
+}
+
+function compareTrafficDistance(first: TrafficVehicle, second: TrafficVehicle): number {
+  return first.distance - second.distance || first.index - second.index;
 }
 
 function wrapAngle(angle: number): number {
@@ -332,6 +337,41 @@ export function advanceTrafficWithSignal(
   return wrapDistance(currentDistance + allowedTravel, routeLength);
 }
 
+/** Caps route progress to preserve a mixed-size pair's center-to-center following gap. */
+export function constrainTrafficFollowingTravel(
+  routeLengthMeters: number,
+  followerDistance: number,
+  followerTravelMeters: number,
+  followerLengthMeters: number,
+  leaderDistance: number,
+  leaderTravelMeters: number,
+  leaderLengthMeters: number,
+  bumperGapMeters: number,
+): number {
+  if (
+    !Number.isFinite(routeLengthMeters) ||
+    routeLengthMeters <= 0 ||
+    !Number.isFinite(followerDistance) ||
+    !Number.isFinite(leaderDistance) ||
+    !Number.isFinite(followerLengthMeters) ||
+    followerLengthMeters < 0 ||
+    !Number.isFinite(leaderLengthMeters) ||
+    leaderLengthMeters < 0
+  ) {
+    return 0;
+  }
+
+  const requestedTravel = Number.isFinite(followerTravelMeters)
+    ? Math.max(0, followerTravelMeters)
+    : 0;
+  const leaderTravel = Number.isFinite(leaderTravelMeters) ? Math.max(0, leaderTravelMeters) : 0;
+  const bumperGap = Number.isFinite(bumperGapMeters) ? Math.max(0, bumperGapMeters) : 0;
+  const currentGap = wrapDistance(leaderDistance - followerDistance, routeLengthMeters);
+  const requiredCenterGap = (followerLengthMeters + leaderLengthMeters) / 2 + bumperGap;
+  const availableTravel = Math.max(0, currentGap + leaderTravel - requiredCenterGap);
+  return Math.min(requestedTravel, availableTravel);
+}
+
 export interface UrbanStreetActivityOptions {
   readonly physics?: PhysicsWorld;
   /** Runtime traffic budget; pedestrians remain at the selected tier's fixed budget. */
@@ -545,6 +585,7 @@ export class UrbanStreetActivity {
     }
     for (let routeIndex = 0; routeIndex < this.#vehiclesByRoute.length; routeIndex += 1) {
       const route = this.#trafficRoutes[routeIndex]!;
+      const routeVehicles = this.#vehiclesByRoute[routeIndex]!;
       const queue = this.#trafficQueueScratch[routeIndex]!;
       for (const entry of queue) {
         const vehicle = this.#vehicles[entry.vehicleIndex]!;
@@ -561,7 +602,7 @@ export class UrbanStreetActivity {
         const centerToSlotMeters = queueOffsetMeters + vehicle.lengthMeters / 2;
         const pausedByImpact = vehicle.collisionHoldSeconds > 0;
         vehicle.collisionHoldSeconds = Math.max(0, vehicle.collisionHoldSeconds - delta);
-        vehicle.distance = advanceTrafficWithSignal(
+        const nextDistance = advanceTrafficWithSignal(
           vehicle.distance,
           route.length,
           route.stopDistance,
@@ -570,8 +611,51 @@ export class UrbanStreetActivity {
           queuePosition,
           centerToSlotMeters,
         );
+        vehicle.proposedTravelMeters = wrapDistance(nextDistance - vehicle.distance, route.length);
         queueOffsetMeters += vehicle.lengthMeters + URBAN_CITY_CONFIG.trafficSignal.queueGapMeters;
       });
+
+      if (routeVehicles.length > 1) {
+        routeVehicles.sort(compareTrafficDistance);
+        let largestGapIndex = 0;
+        let largestGap = -1;
+        for (let index = 0; index < routeVehicles.length; index += 1) {
+          const current = routeVehicles[index]!;
+          const next = routeVehicles[(index + 1) % routeVehicles.length]!;
+          const gap = wrapDistance(next.distance - current.distance, route.length);
+          if (gap > largestGap) {
+            largestGap = gap;
+            largestGapIndex = index;
+          }
+        }
+
+        // Start at the largest loop gap, then constrain each follower behind its already-resolved
+        // leader in one linear pass. No per-vehicle route-state array or temporary object is needed.
+        for (let step = 1; step < routeVehicles.length; step += 1) {
+          const followerIndex =
+            (largestGapIndex - step + routeVehicles.length) % routeVehicles.length;
+          const leaderIndex = (followerIndex + 1) % routeVehicles.length;
+          const follower = routeVehicles[followerIndex]!;
+          const leader = routeVehicles[leaderIndex]!;
+          follower.proposedTravelMeters = constrainTrafficFollowingTravel(
+            route.length,
+            follower.distance,
+            follower.proposedTravelMeters,
+            follower.lengthMeters,
+            leader.distance,
+            leader.proposedTravelMeters,
+            leader.lengthMeters,
+            URBAN_CITY_CONFIG.trafficSignal.queueGapMeters,
+          );
+        }
+      }
+
+      for (const vehicle of routeVehicles) {
+        vehicle.distance = wrapDistance(
+          vehicle.distance + vehicle.proposedTravelMeters,
+          route.length,
+        );
+      }
     }
   }
 
@@ -598,6 +682,7 @@ export class UrbanStreetActivity {
             spec.minimumSpeedMetersPerSecond +
             deterministicUnit(index, routeIndex + 11) *
               (spec.maximumSpeedMetersPerSecond - spec.minimumSpeedMetersPerSecond),
+          proposedTravelMeters: 0,
           collisionHoldSeconds: 0,
           impact: createVehicleImpactState(),
           body: null,
