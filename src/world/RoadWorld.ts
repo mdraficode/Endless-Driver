@@ -210,7 +210,7 @@ export class RoadWorld {
 
   readonly #urbanWetness = uniform(URBAN_CITY_CONFIG.wetRoad.wetnessDay);
 
-  #baseUrbanWetness = URBAN_CITY_CONFIG.wetRoad.wetnessDay;
+  #baseUrbanWetness: number = URBAN_CITY_CONFIG.wetRoad.wetnessDay;
 
   #surfaceWetness = 0;
 
