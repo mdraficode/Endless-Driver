@@ -35,10 +35,7 @@ import {
   URBAN_NIGHT_TIER_BUDGET,
   type TrafficSignalAspect,
 } from '../config/urban-city';
-import {
-  AOHARA_BACKSTREET_BLOCKS,
-  AOHARA_BACKSTREET_CONFIG,
-} from '../config/aohara-backstreets';
+import { AOHARA_BACKSTREET_BLOCKS, AOHARA_BACKSTREET_CONFIG } from '../config/aohara-backstreets';
 import {
   AOHARA_DISTRICT_CONFIG,
   AOHARA_GRID_COLUMNS,
@@ -111,13 +108,7 @@ interface RankedFacadeBand {
 }
 
 type CityBuildingKind =
-  | 'house'
-  | 'townhouse'
-  | 'mansion'
-  | 'shop'
-  | 'casino'
-  | 'infill'
-  | 'frontage';
+  'house' | 'townhouse' | 'mansion' | 'shop' | 'casino' | 'infill' | 'frontage';
 type CityRoofStyle = 'flat' | 'hipped';
 
 interface CityBuildingSpec {
@@ -171,10 +162,8 @@ function footprintSeparation(a: StaticBuildingBox, b: StaticBuildingBox, margin:
     ...[...aAxes, ...bAxes].map(([axisX, axisZ]) => {
       const centerDistance = Math.abs(dx * axisX + dz * axisZ);
       const radius = (box: StaticBuildingBox, axes: typeof aAxes): number =>
-        (box.halfWidth + margin) *
-          Math.abs(axes[0]![0] * axisX + axes[0]![1] * axisZ) +
-        (box.halfDepth + margin) *
-          Math.abs(axes[1]![0] * axisX + axes[1]![1] * axisZ);
+        (box.halfWidth + margin) * Math.abs(axes[0]![0] * axisX + axes[0]![1] * axisZ) +
+        (box.halfDepth + margin) * Math.abs(axes[1]![0] * axisX + axes[1]![1] * axisZ);
       return centerDistance - radius(a, aAxes) - radius(b, bAxes);
     }),
   );
@@ -503,8 +492,10 @@ function buildAoharaInfillBuildingCandidates(): readonly CityBuildingSpec[] {
           rank: stableUnit(blockIndex, cornerIndex, 827),
           building: {
             kind: 'infill',
-            x: block.centerLocalX + xSign * AOHARA_BACKSTREET_CONFIG.innerBuildingCornerOffsetMeters,
-            z: block.centerLocalZ + zSign * AOHARA_BACKSTREET_CONFIG.innerBuildingCornerOffsetMeters,
+            x:
+              block.centerLocalX + xSign * AOHARA_BACKSTREET_CONFIG.innerBuildingCornerOffsetMeters,
+            z:
+              block.centerLocalZ + zSign * AOHARA_BACKSTREET_CONFIG.innerBuildingCornerOffsetMeters,
             width: 12.8 + stableUnit(blockIndex, cornerIndex, 839) * 4,
             depth: 10 + stableUnit(blockIndex, cornerIndex, 853) * 3.4,
             height: 6.3 + stableUnit(blockIndex, cornerIndex, 877) * 4.2,
@@ -1404,7 +1395,11 @@ export class UrbanNightWorld implements SceneContent {
     const typologyCounts = this.#buildCityTypologies(additionalBuildings);
     this.#backstreetProps =
       this.#networkIntegrated && options.roadNetwork !== undefined
-        ? new UrbanBackstreetProps(tier, options.roadNetwork, this.#buildingColliders, [originX, originY, originZ])
+        ? new UrbanBackstreetProps(tier, options.roadNetwork, this.#buildingColliders, [
+            originX,
+            originY,
+            originZ,
+          ])
         : null;
     if (this.#backstreetProps !== null) {
       this.root.add(this.#backstreetProps.root);

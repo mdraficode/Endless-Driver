@@ -1,8 +1,4 @@
-import {
-  AOHARA_DISTRICT_CONFIG,
-  AOHARA_GRID_COLUMNS,
-  AOHARA_GRID_ROWS,
-} from './urban-district';
+import { AOHARA_DISTRICT_CONFIG, AOHARA_GRID_COLUMNS, AOHARA_GRID_ROWS } from './urban-district';
 
 export type AoharaBackstreetSide = 'north' | 'east' | 'south' | 'west';
 export type AoharaAccessThird = 1 | 2;
@@ -263,8 +259,16 @@ function buildBlocks(): readonly AoharaBackstreetBlock[] {
       const hasCentralAvenueTowers =
         (rowIndex === 1 || rowIndex === 2) && (columnIndex === 1 || columnIndex === 2);
       const courtyardOffsets = hasCentralAvenueTowers
-        ? ([[1, 0], [0, 1], [-1, 0], [0, -1]] as const)
-        : ([[0, 1], [0, -1]] as const);
+        ? ([
+            [1, 0],
+            [0, 1],
+            [-1, 0],
+            [0, -1],
+          ] as const)
+        : ([
+            [0, 1],
+            [0, -1],
+          ] as const);
       const courtyardDirection = Math.floor(
         stableUnit(rowIndex, columnIndex, 1249) * courtyardOffsets.length,
       );

@@ -18,12 +18,7 @@ import type { RoadNetwork } from './road-network';
 import type { StaticBuildingBox } from './static-building-collision';
 
 export type UrbanAlleyPropKind =
-  | 'waste-bin'
-  | 'dumpster'
-  | 'cardboard-stack'
-  | 'hand-cart'
-  | 'crate-stack'
-  | 'pallet';
+  'waste-bin' | 'dumpster' | 'cardboard-stack' | 'hand-cart' | 'crate-stack' | 'pallet';
 
 export interface UrbanAlleyPropPlacement {
   readonly id: string;
@@ -118,7 +113,12 @@ function footprintSeparation(a: StaticBuildingBox, b: StaticBuildingBox, margin:
 function roadPositionAt(
   edge: RoadNetwork['edges'][number],
   distanceMeters: number,
-): { readonly x: number; readonly z: number; readonly tangentX: number; readonly tangentZ: number } {
+): {
+  readonly x: number;
+  readonly z: number;
+  readonly tangentX: number;
+  readonly tangentZ: number;
+} {
   let nextIndex = 1;
   while (
     nextIndex < edge.points.length - 1 &&
@@ -170,9 +170,7 @@ function isPlacementClear(
 ): boolean {
   const footprint = makePropFootprint(candidate);
   for (const building of buildings) {
-    if (
-      footprintSeparation(footprint, building, ALLEY_PROP_BUILDING_CLEARANCE_METERS) <= 0
-    ) {
+    if (footprintSeparation(footprint, building, ALLEY_PROP_BUILDING_CLEARANCE_METERS) <= 0) {
       return false;
     }
   }
@@ -253,7 +251,11 @@ export function generateAoharaAlleyPropPlacements(
         const sideZ = -point.tangentX;
         for (const side of [-1, 1] as const) {
           const sideIndex = side < 0 ? 0 : 1;
-          const kindRank = stableUnit(blockIndex * 31 + edgeIndex, positionIndex * 2 + sideIndex, 151);
+          const kindRank = stableUnit(
+            blockIndex * 31 + edgeIndex,
+            positionIndex * 2 + sideIndex,
+            151,
+          );
           const kind = choosePropKind(kindRank);
           const dimensions = ALLEY_PROP_DIMENSIONS[kind];
           const outwardX = sideX * side;
@@ -263,8 +265,10 @@ export function generateAoharaAlleyPropPlacements(
           const colorPalette = ALLEY_PROP_COLORS[kind];
           const color =
             colorPalette[
-              Math.floor(stableUnit(blockIndex, positionIndex + edgeIndex * 7 + sideIndex, 163) *
-                colorPalette.length)
+              Math.floor(
+                stableUnit(blockIndex, positionIndex + edgeIndex * 7 + sideIndex, 163) *
+                  colorPalette.length,
+              )
             ] ?? colorPalette[0]!;
           const placement: UrbanAlleyPropPlacement = {
             id: `${block.id}:${edge.id}:${side}:${Math.round(alongMeters * 100)}`,
@@ -349,7 +353,10 @@ function mergedPropGeometry(kind: UrbanAlleyPropKind): BufferGeometry {
     case 'cardboard-stack':
       parts = [
         boxPart([width * 0.62, height * 0.57, depth * 0.67], [-width * 0.16, height * 0.285, 0]),
-        boxPart([width * 0.6, height * 0.43, depth * 0.58], [width * 0.18, height * 0.215, depth * 0.13]),
+        boxPart(
+          [width * 0.6, height * 0.43, depth * 0.58],
+          [width * 0.18, height * 0.215, depth * 0.13],
+        ),
         boxPart([width * 0.2, 0.025, depth * 0.55], [-width * 0.16, height * 0.58, 0]),
       ];
       break;
@@ -367,7 +374,10 @@ function mergedPropGeometry(kind: UrbanAlleyPropKind): BufferGeometry {
     case 'crate-stack':
       parts = [
         boxPart([width * 0.72, height * 0.48, depth * 0.82], [-width * 0.1, height * 0.24, 0]),
-        boxPart([width * 0.63, height * 0.42, depth * 0.7], [width * 0.16, height * 0.69, -depth * 0.06]),
+        boxPart(
+          [width * 0.63, height * 0.42, depth * 0.7],
+          [width * 0.16, height * 0.69, -depth * 0.06],
+        ),
         boxPart([width * 0.77, 0.055, depth * 0.07], [-width * 0.1, height * 0.48, -depth * 0.37]),
         boxPart([width * 0.77, 0.055, depth * 0.07], [-width * 0.1, height * 0.48, depth * 0.37]),
       ];
@@ -436,11 +446,7 @@ export class UrbanBackstreetProps {
       mesh.receiveShadow = true;
       const transform = new Object3D();
       instances.forEach((placement, index) => {
-        transform.position.set(
-          placement.x - originX,
-          ALLEY_PROP_BASE_Y,
-          placement.z - originZ,
-        );
+        transform.position.set(placement.x - originX, ALLEY_PROP_BASE_Y, placement.z - originZ);
         transform.rotation.set(0, placement.yaw, 0);
         transform.scale.set(1, 1, 1);
         transform.updateMatrix();

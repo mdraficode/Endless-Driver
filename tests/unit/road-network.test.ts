@@ -5,7 +5,10 @@ import { describe, expect, it } from 'vitest';
 import { resolveUrbanWetness, URBAN_CITY_CONFIG } from '../../src/config/urban-city';
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
-import { AOHARA_BACKSTREET_BLOCKS, AOHARA_BACKSTREET_CONFIG } from '../../src/config/aohara-backstreets';
+import {
+  AOHARA_BACKSTREET_BLOCKS,
+  AOHARA_BACKSTREET_CONFIG,
+} from '../../src/config/aohara-backstreets';
 import {
   AOHARA_DISTRICT_CONFIG,
   AOHARA_GRID_COLUMNS,

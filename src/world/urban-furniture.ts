@@ -138,7 +138,9 @@ interface NodeFurnitureClearance {
   readonly markingApproachMeters: number;
 }
 
-function buildNodeFurnitureClearances(network: RoadNetwork): ReadonlyMap<string, NodeFurnitureClearance> {
+function buildNodeFurnitureClearances(
+  network: RoadNetwork,
+): ReadonlyMap<string, NodeFurnitureClearance> {
   const clearances = new Map<string, NodeFurnitureClearance>();
   const markingGap = URBAN_STREET_FURNITURE_CONFIG.minimumRoadMarkingClearanceMeters;
   for (const node of network.nodes) {

@@ -423,7 +423,12 @@ describe('Aohara city night-lighting rules', () => {
       pedestrians: 16,
       alleyProps: 64,
     });
-    for (const key of ['infillBuildings', 'trafficVehicles', 'pedestrians', 'alleyProps'] as const) {
+    for (const key of [
+      'infillBuildings',
+      'trafficVehicles',
+      'pedestrians',
+      'alleyProps',
+    ] as const) {
       expect(URBAN_ACTIVITY_TIER_BUDGET.C[key]).toBeLessThan(URBAN_ACTIVITY_TIER_BUDGET.B[key]);
       expect(URBAN_ACTIVITY_TIER_BUDGET.B[key]).toBeLessThan(URBAN_ACTIVITY_TIER_BUDGET.A[key]);
     }
@@ -730,12 +735,14 @@ describe('Aohara city night-lighting rules', () => {
     expect(cityStats.urbanAlleyProps).toBe(URBAN_ACTIVITY_TIER_BUDGET.B.alleyProps);
     expect(cityStats.urbanAlleyPropsBudget).toBe(URBAN_ACTIVITY_TIER_BUDGET.B.alleyProps);
     expect(cityStats.urbanAlleyPropBatches).toBeGreaterThan(0);
-    expect(cityStats.urbanAlleyWasteBins +
-      cityStats.urbanAlleyDumpsters +
-      cityStats.urbanAlleyCardboardStacks +
-      cityStats.urbanAlleyHandCarts +
-      cityStats.urbanAlleyCrateStacks +
-      cityStats.urbanAlleyPallets).toBe(cityStats.urbanAlleyProps);
+    expect(
+      cityStats.urbanAlleyWasteBins +
+        cityStats.urbanAlleyDumpsters +
+        cityStats.urbanAlleyCardboardStacks +
+        cityStats.urbanAlleyHandCarts +
+        cityStats.urbanAlleyCrateStacks +
+        cityStats.urbanAlleyPallets,
+    ).toBe(cityStats.urbanAlleyProps);
     expect(city.root.getObjectByName('aohara-alley-props')).not.toBeNull();
     expect(cityStats.activeMoodPointLights).toBeLessThanOrEqual(
       URBAN_NIGHT_TIER_BUDGET.B.architecturalPointLights,
@@ -765,10 +772,7 @@ describe('Aohara city night-lighting rules', () => {
       expect(city.root.getObjectByName(name)).toBeInstanceOf(InstancedMesh);
     }
     expect(cityStats.decorativeLights).toBe(
-      40 +
-        cityStats.frontageBuildings +
-        cityStats.infillBuildings +
-        cityStats.shops,
+      40 + cityStats.frontageBuildings + cityStats.infillBuildings + cityStats.shops,
     );
 
     const trafficBodies = city.root.getObjectByName('aohara-traffic-passenger-car-instances');
@@ -968,16 +972,10 @@ describe('Aohara city night-lighting rules', () => {
           nodeId,
           placement.halfDepthMeters,
         );
-        expect(endpointDistance).toBeGreaterThanOrEqual(
-          requiredClearance.minimumDistanceMeters,
-        );
+        expect(endpointDistance).toBeGreaterThanOrEqual(requiredClearance.minimumDistanceMeters);
         expect(
-          endpointDistance -
-            requiredClearance.markingApproachMeters -
-            placement.halfDepthMeters,
-        ).toBeGreaterThanOrEqual(
-          URBAN_STREET_FURNITURE_CONFIG.minimumRoadMarkingClearanceMeters,
-        );
+          endpointDistance - requiredClearance.markingApproachMeters - placement.halfDepthMeters,
+        ).toBeGreaterThanOrEqual(URBAN_STREET_FURNITURE_CONFIG.minimumRoadMarkingClearanceMeters);
       }
       expect(Math.hypot(placement.x - spawn.x, placement.z - spawn.z)).toBeGreaterThanOrEqual(
         URBAN_STREET_FURNITURE_CONFIG.spawnClearanceMeters,

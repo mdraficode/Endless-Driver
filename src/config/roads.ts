@@ -16,12 +16,7 @@ import {
 } from './urban-district';
 
 export type RoadClass =
-  | 'rural'
-  | 'touge'
-  | 'city-access'
-  | 'urban-local'
-  | 'urban-arterial'
-  | 'urban-alley';
+  'rural' | 'touge' | 'city-access' | 'urban-local' | 'urban-arterial' | 'urban-alley';
 
 /** Optional volcano-side switchback start; the default remains Aohara Central Avenue. */
 export const HINODE_TOUGE_START = {
@@ -116,10 +111,10 @@ const AOHARA_BACKSTREET_ACCESSES: readonly AoharaBackstreetAccess[] =
 
 const AOHARA_BACKSTREET_ACCESS_NODES: readonly RoadNodeConfig[] = [
   ...new Map(
-    AOHARA_BACKSTREET_ACCESSES.map((access) => [
-      access.nodeId,
-      { id: access.nodeId, x: access.worldX, z: access.worldZ },
-    ] as const),
+    AOHARA_BACKSTREET_ACCESSES.map(
+      (access) =>
+        [access.nodeId, { id: access.nodeId, x: access.worldX, z: access.worldZ }] as const,
+    ),
   ).values(),
 ];
 
