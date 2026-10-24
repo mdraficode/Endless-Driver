@@ -16,7 +16,7 @@ describe('player night headlights', () => {
     const combinedBeamFan =
       2 * (PLAYER_HEADLIGHT_CONFIG.beamHalfAngleRadians + PLAYER_HEADLIGHT_CONFIG.beamSplayRadians);
 
-    expect(PLAYER_HEADLIGHT_CONFIG.intensityCandela).toBeGreaterThan(8_500);
+    expect(PLAYER_HEADLIGHT_CONFIG.intensityCandela).toBe(12_500);
     expect(PLAYER_HEADLIGHT_CONFIG.rangeMeters).toBeGreaterThan(72);
     expect(combinedBeamFan).toBeGreaterThanOrEqual(horizontalViewAngle * 0.98);
     expect(rig.lights).toHaveLength(2);
