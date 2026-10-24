@@ -95,15 +95,13 @@ export function buildDistantMountainGeometry(
       const flankExponent = fromCrest < 0 ? 1.28 : 0.9;
       const crossProfile = Math.pow(Math.cos(normalizedFlank * Math.PI * 0.5), flankExponent);
       const flankVariation =
-        0.94 +
-        0.12 * valueNoise(alongUnit * 13 + crossUnit * 0.9, range.seed + 139);
+        0.94 + 0.12 * valueNoise(alongUnit * 13 + crossUnit * 0.9, range.seed + 139);
       const relativeHeight = skyline * crossProfile * flankVariation;
       const baseHeight = sampler.heightAt(x, z) - footClearanceMeters;
       const y = baseHeight + relativeHeight * range.heightMeters;
       const vertexIndex = alongIndex * verticesPerRow + crossIndex;
       const offset = vertexIndex * 3;
-      const colorVariation =
-        valueNoise(alongUnit * 19 + crossUnit * 0.9, range.seed + 173) - 0.5;
+      const colorVariation = valueNoise(alongUnit * 19 + crossUnit * 0.9, range.seed + 173) - 0.5;
       const tint = mountainColor(relativeHeight, colorVariation);
       positions[offset] = x;
       positions[offset + 1] = y;

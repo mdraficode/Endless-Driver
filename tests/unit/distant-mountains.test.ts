@@ -80,8 +80,10 @@ describe('distant mountain horizon', () => {
 
     const peakCount = relief
       .slice(2, -2)
-      .filter((height, index, values) => height > (values[index - 1] ?? Infinity) && height >= (values[index + 1] ?? Infinity))
-      .length;
+      .filter(
+        (height, index, values) =>
+          height > (values[index - 1] ?? Infinity) && height >= (values[index + 1] ?? Infinity),
+      ).length;
     expect(peakCount).toBeGreaterThanOrEqual(3);
     geometry.dispose();
   });

@@ -233,8 +233,7 @@ export class TerrainWorld implements SceneContent {
     this.#surfaceSets = loaded;
     // POM is only honest with all three active displacement maps; without them the near
     // material is the same splat, just on its own instance.
-    this.#pomActive =
-      this.#enableParallaxOcclusion && loaded.every((set) => set.height !== null);
+    this.#pomActive = this.#enableParallaxOcclusion && loaded.every((set) => set.height !== null);
     this.#applySurfaceNodes(loaded, this.#material, false);
     this.#applySurfaceNodes(loaded, this.#nearMaterial, this.#pomActive);
   }
@@ -399,13 +398,7 @@ export class TerrainWorld implements SceneContent {
       nextCenter.cz !== this.#center.cz;
     if (centerChanged) {
       this.#center = nextCenter;
-      this.#plan = planChunksAround(
-        this.#config,
-        nextCenter.cx,
-        nextCenter.cz,
-        focus.x,
-        focus.z,
-      );
+      this.#plan = planChunksAround(this.#config, nextCenter.cx, nextCenter.cz, focus.x, focus.z);
       this.#planBuilds += 1;
       this.#desiredChunks = new Map(
         this.#plan.map((chunk) => [chunkKey(chunk.cx, chunk.cz), chunk]),
@@ -427,12 +420,13 @@ export class TerrainWorld implements SceneContent {
     const desired = this.#desiredChunks;
     // Once every planned chunk is present, there is no queue to rebuild. While builds remain,
     // recheck loaded LODs so completed worker jobs are not requested again.
-    const queue = centerChanged || this.#pendingBuilds > 0
-      ? plan.filter((chunk) => {
-          const loaded = this.#chunks.get(chunkKey(chunk.cx, chunk.cz));
-          return loaded === undefined || loaded.segments !== chunk.segments;
-        })
-      : [];
+    const queue =
+      centerChanged || this.#pendingBuilds > 0
+        ? plan.filter((chunk) => {
+            const loaded = this.#chunks.get(chunkKey(chunk.cx, chunk.cz));
+            return loaded === undefined || loaded.segments !== chunk.segments;
+          })
+        : [];
     this.#pendingBuilds = queue.length;
     this.#buildsLastFrame = 0;
 

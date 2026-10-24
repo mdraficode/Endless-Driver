@@ -118,23 +118,23 @@ does not start the hero-car, weather, or broader Phase 8 work.
 Tiers are **explicit contracts**, not "auto magic". The tier system must be visible in the HUD/debug overlay and
 recorded in every performance claim.
 
-| System                                         | Tier C: mobile/low                                     | Tier B: desktop balanced                                        | Tier A: desktop high                                            |
-| ---------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------- | --------------------------------------------------------------- |
-| Renderer path                                  | WebGPU preferred; automatic WebGL2 fallback            | WebGPU preferred; automatic WebGL2 fallback                     | WebGPU                                                          |
-| Resolution                                     | DPR ≤ 1.0, FXAA scene scale 0.50–1.0 (spatial upscale) | DPR ≤ 1.25, FXAA scene scale 0.55–1.0 (spatial upscale)         | DPR ≤ 2.0 with resolution cap, TAAU scale 0.75–1.0              |
-| Anti-aliasing                                  | FXAA; no temporal history or velocity attachment       | FXAA + adaptive spatial scaling; no temporal history            | TAAU + dynamic resolution, higher scale floor                   |
-| Shadows                                        | 1 cascade, 1024                                         | 2 cascades, 1024                                                | 4 cascades, 2048–4096                                           |
-| Ambient occlusion                              | Off or baked                                           | SSAO (half res)                                                 | SSGI composite (replaces SSAO)                                  |
-| Reflections                                    | Environment IBL + Aohara local clearcoat               | SSR (half res) + probes (pending)                               | SSR + probes (pending); Aohara wet-look is local PBR            |
-| Terrain layers                                 | 2                                                      | 3                                                               | 4 + POM                                                         |
-| Vegetation                                     | Impostors, ≤ 20k; TSL sway off                         | LOD1–2, ≤ 80k; TSL sway ≤ 0.035 m                               | Full LOD0 near, ≤ 200k; TSL sway ≤ 0.065 m                      |
-| Runtime foliage chunks generated per frame     | 1                                                      | 2                                                               | 3                                                               |
-| Clouds/atmosphere                              | HDRI IBL + clear procedural sky; no fog                | Clear procedural sky; clouds off, no fog                         | Sky + clouds/light shafts where enabled; no fog                 |
-| Urban night lights                             | Faint local halo + 2-axis starburst, few active lights | Soft halo + restrained 4-axis starburst, capped lights/windows  | Full local halo + subtle 4-axis starburst, source-isolated      |
-| Aohara facade panes/frames + structure details | 2,400 / 512                                            | 4,800 / 1,024                                                   | 7,200 / 1,600                                                   |
-| Vehicle particles / shutter                    | ≤ 32 smoke, 6 sparks, 4 airflow marks; no blur         | ≤ 64 smoke, 10 sparks, 10 airflow marks; no global blur          | ≤ 88 smoke, 14 sparks, 16 airflow marks; 0–0.36 high-speed blur |
-| Post stack                                     | Tone map + grade; SSAO off; no global bloom            | + half-res SSAO; no temporal resolve or global blur              | + SSGI (replaces SSAO) + grain; no global bloom                 |
-| Target frame                                   | 30–60 FPS                                              | 60 FPS                                                          | 60+ FPS where hardware permits                                  |
+| System                                         | Tier C: mobile/low                                     | Tier B: desktop balanced                                       | Tier A: desktop high                                            |
+| ---------------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------- | --------------------------------------------------------------- |
+| Renderer path                                  | WebGPU preferred; automatic WebGL2 fallback            | WebGPU preferred; automatic WebGL2 fallback                    | WebGPU                                                          |
+| Resolution                                     | DPR ≤ 1.0, FXAA scene scale 0.50–1.0 (spatial upscale) | DPR ≤ 1.25, FXAA scene scale 0.55–1.0 (spatial upscale)        | DPR ≤ 2.0 with resolution cap, TAAU scale 0.75–1.0              |
+| Anti-aliasing                                  | FXAA; no temporal history or velocity attachment       | FXAA + adaptive spatial scaling; no temporal history           | TAAU + dynamic resolution, higher scale floor                   |
+| Shadows                                        | 1 cascade, 1024                                        | 2 cascades, 1024                                               | 4 cascades, 2048–4096                                           |
+| Ambient occlusion                              | Off or baked                                           | SSAO (half res)                                                | SSGI composite (replaces SSAO)                                  |
+| Reflections                                    | Environment IBL + Aohara local clearcoat               | SSR (half res) + probes (pending)                              | SSR + probes (pending); Aohara wet-look is local PBR            |
+| Terrain layers                                 | 2                                                      | 3                                                              | 4 + POM                                                         |
+| Vegetation                                     | Impostors, ≤ 20k; TSL sway off                         | LOD1–2, ≤ 80k; TSL sway ≤ 0.035 m                              | Full LOD0 near, ≤ 200k; TSL sway ≤ 0.065 m                      |
+| Runtime foliage chunks generated per frame     | 1                                                      | 2                                                              | 3                                                               |
+| Clouds/atmosphere                              | HDRI IBL + clear procedural sky; no fog                | Clear procedural sky; clouds off, no fog                       | Sky + clouds/light shafts where enabled; no fog                 |
+| Urban night lights                             | Faint local halo + 2-axis starburst, few active lights | Soft halo + restrained 4-axis starburst, capped lights/windows | Full local halo + subtle 4-axis starburst, source-isolated      |
+| Aohara facade panes/frames + structure details | 2,400 / 512                                            | 4,800 / 1,024                                                  | 7,200 / 1,600                                                   |
+| Vehicle particles / shutter                    | ≤ 32 smoke, 6 sparks, 4 airflow marks; no blur         | ≤ 64 smoke, 10 sparks, 10 airflow marks; no global blur        | ≤ 88 smoke, 14 sparks, 16 airflow marks; 0–0.36 high-speed blur |
+| Post stack                                     | Tone map + grade; SSAO off; no global bloom            | + half-res SSAO; no temporal resolve or global blur            | + SSGI (replaces SSAO) + grain; no global bloom                 |
+| Target frame                                   | 30–60 FPS                                              | 60 FPS                                                         | 60+ FPS where hardware permits                                  |
 
 Budgets from `PROJECT_PLAN.md` §8 remain the reference; every tier gate is validated on **named hardware** with
 recorded resolution and settings. The performance-first C/B profiles start at scene scales 0.72/0.75 and adapt
@@ -168,8 +168,8 @@ order, and every effect is individually toggleable through configuration:
 | Stage                   | Effects                                                                                                      | State   |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------ | ------- |
 | Scene (linear HDR)      | ambient occlusion (SSAO), applied via the scene pass                                                         | Shipped |
-| Scene-stage HDR         | SSGI composite (tier A; replaces SSAO), contact shadows (tier A)                                              | Shipped |
-| Temporal resolve        | TAAU + dynamic resolution (tier A; wraps the scene pass)                                                      | Shipped |
+| Scene-stage HDR         | SSGI composite (tier A; replaces SSAO), contact shadows (tier A)                                             | Shipped |
+| Temporal resolve        | TAAU + dynamic resolution (tier A; wraps the scene pass)                                                     | Shipped |
 | Linear HDR              | motion blur (tier A shutter), god rays (tier A), time-of-day grade, bloom, depth of field                    | Shipped |
 | Pre-sRGB                | SMAA (fallback when the temporal path is off)                                                                | Shipped |
 | Colour-space conversion | tone mapping + sRGB (once)                                                                                   | Shipped |
