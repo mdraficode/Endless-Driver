@@ -135,15 +135,16 @@ function getFallbackHeadlampMaterial(visual: PlayerCarVisual): MeshStandardNodeM
   const fallback = visual.root.getObjectByName('kaminari-gt-roadster');
   if (fallback === undefined) throw new Error('missing authored car fallback');
 
-  let headlampMaterial: MeshStandardMaterial | undefined;
+  let headlampMaterial: MeshStandardNodeMaterial | undefined;
   fallback.traverse((object) => {
     if (!(object instanceof Mesh)) return;
     const candidates = Array.isArray(object.material) ? object.material : [object.material];
-    headlampMaterial = candidates.find(
+    const candidate = candidates.find(
       (material): material is MeshStandardNodeMaterial =>
         material instanceof MeshStandardNodeMaterial &&
         material.name === 'headlamp-emissive-no-map',
     );
+    if (candidate !== undefined) headlampMaterial = candidate;
   });
   if (headlampMaterial === undefined) throw new Error('missing fallback headlamp material');
   return headlampMaterial;
