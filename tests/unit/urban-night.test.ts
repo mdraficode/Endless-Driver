@@ -37,7 +37,10 @@ import { generateAoharaStreetFurniturePlacements } from '../../src/world/urban-f
 import { generateAoharaAlleyPropPlacements } from '../../src/world/urban-backstreets';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
 import type { RoadNetwork } from '../../src/world/road-network';
-import type { StaticBuildingBox } from '../../src/world/static-building-collision';
+import {
+  collideCarWithStaticBoxes,
+  type StaticBuildingBox,
+} from '../../src/world/static-building-collision';
 
 function footprintSeparation(a: StaticBuildingBox, b: StaticBuildingBox, margin: number): number {
   const aAxes = [
@@ -145,6 +148,7 @@ function expectUrbanAlleyClearance(city: UrbanNightWorld, network: RoadNetwork):
 
 function expectUrbanRoadClearance(city: UrbanNightWorld, network: RoadNetwork): number {
   let probeCount = 0;
+  const buildingFootprints = city.getStaticBuildingFootprints();
   const urbanEdges = network.edges.filter(
     (edge) => edge.roadClass === 'urban-local' || edge.roadClass === 'urban-arterial',
   );
@@ -180,10 +184,15 @@ function expectUrbanRoadClearance(city: UrbanNightWorld, network: RoadNetwork): 
           velocityX: 0,
           velocityZ: 0,
         };
+        const obstructions = city.collide(probe);
+        const buildingObstructions =
+          obstructions.length === 0
+            ? 0
+            : collideCarWithStaticBoxes(probe, buildingFootprints).length;
         expect(
-          city.collide(probe),
+          obstructions,
           `${edge.id} has an obstruction across the road/sidewalk probe at ${point.alongMeters.toFixed(1)} m, ` +
-            `lateral ${lateralOffset.toFixed(1)} m`,
+            `lateral ${lateralOffset.toFixed(1)} m (building hits: ${buildingObstructions})`,
         ).toHaveLength(0);
         probeCount += 1;
       }
@@ -846,14 +855,17 @@ describe('Aohara city night-lighting rules', () => {
       const edge = edges.get(placement.roadEdgeId);
       if (edge === undefined) throw new Error(`missing alley edge ${placement.roadEdgeId}`);
       expect(edge.roadClass).toBe('urban-alley');
-      const endpointClearanceMeters = Math.min(
-        placement.alongMeters,
-        edge.lengthMeters - placement.alongMeters,
-      );
       if (edge.lengthMeters < 20) {
-        expect(endpointClearanceMeters).toBeCloseTo(edge.lengthMeters / 2, 6);
+        expect(placement.alongMeters).toBeCloseTo(edge.lengthMeters / 2, 6);
       } else {
-        expect(endpointClearanceMeters).toBeGreaterThanOrEqual(14);
+        const accessDistanceMeters = edge.from.startsWith('aohara-access-')
+          ? placement.alongMeters
+          : edge.lengthMeters - placement.alongMeters;
+        const hubDistanceMeters = edge.from.startsWith('aohara-access-')
+          ? edge.lengthMeters - placement.alongMeters
+          : placement.alongMeters;
+        expect(accessDistanceMeters).toBeGreaterThanOrEqual(20);
+        expect(hubDistanceMeters).toBeGreaterThanOrEqual(14);
       }
       const road = network.sample(placement.x, placement.z);
       if (road === null) throw new Error(`alley clutter ${placement.id} lost its road sample`);
