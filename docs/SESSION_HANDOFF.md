@@ -2354,3 +2354,13 @@ Distant mountain geometry retains the existing four-range vertex budget but repl
 **Push and verification:** code/test commit `7523a7c` (`Replace touch steering joystick with rotary wheel`) was pushed to `main` and remote-SHA verified before tests. Focused touch/orbit suites passed (2 files / 15 tests); full `npm run check` passed (Prettier, ESLint, GLSL guard, both TypeScript checks, 79 test files / 585 tests, asset verification for 20 assets / 47,814,431 bytes, and production build). Existing non-fatal Three.js non-indexed-geometry notices, Vite large-chunk warning, and two moderate npm audit findings remain.
 
 **Limitations / review:** automated coverage exercises rotary direction, angular wrap, steering lock, hub-drag fallback, and multi-touch/input merging. It does not exercise actual browser pointer capture, touch ergonomics, or the rendered control on an owner device. No device visual/interaction acceptance is claimed; please try the wheel on the target phone/tablet and report whether its rotation travel feels comfortable.
+
+## 111. Slightly enlarge the mobile steering wheel (2026-10-24)
+
+**Owner request:** “Make the steering wheel button on the left a bit bigger.”
+
+**Implementation:** increased `.touch-steering-wheel` width and height from 8.5rem to **9.25rem** (about 9% larger in diameter), keeping the same bottom-left safe-area placement. The inline wheel artwork scales with the control, and rotary/hub-drag gesture thresholds continue to derive from the rendered wheel diameter, so no steering feel, pedal layout, input, or vehicle behavior was intentionally changed.
+
+**Push and verification:** code commit `24eb238` (`Enlarge the touch steering wheel slightly`) was pushed to `main` and remote-SHA verified before checks. Full `npm run check` passed: formatting, lint, GLSL guard, both TypeScript checks, 79 test files / 585 tests, asset verification (20 assets / 47,814,431 bytes), and production build. Existing non-fatal Three.js geometry notices and the Vite large-chunk warning remain.
+
+**Limitations / review:** the CSS enlargement is verified by formatting/build, not by a physical-device fit or touch-ergonomics review. Confirm that the larger wheel still clears nearby controls and leaves the road view unobstructed on the target phone/tablet.
