@@ -80,7 +80,7 @@ describe('startup progress', () => {
     expect(normalizeLoadingProgress(Number.NaN, 0.6)).toBe(0.6);
   });
 
-  it('keeps moving beyond 94% until the first playable frame is actually ready', () => {
+  it('advances gradually toward reported progress and completes only on the first playable frame', () => {
     const { frames, hideTimers, advanceFrame } = stubLoadingWindow();
 
     try {
@@ -90,7 +90,7 @@ describe('startup progress', () => {
       loading.update(0.94, 'Starting the simulation…');
 
       expect(dom.dataset['progressPhase']).toBe('finalizing');
-      expect(dom.percent.textContent).toMatch(/^~/);
+      expect(dom.percent.textContent).toBe('Est. 0%');
       expect(dom.label.textContent).toBe('Finishing the first playable frame…');
       expect(dom.progressAttributes.get('aria-valuenow')).toBe('94');
 
@@ -98,11 +98,19 @@ describe('startup progress', () => {
         advanceFrame(timestamp);
       }
       const afterOneSecond = Number.parseFloat(dom.bar.style.width);
-      expect(afterOneSecond).toBeGreaterThan(90);
-      expect(afterOneSecond).toBeLessThan(100);
-      expect(dom.percent.textContent).not.toBe('94%');
+      expect(afterOneSecond).toBeGreaterThan(7);
+      expect(afterOneSecond).toBeLessThan(9);
+      expect(dom.percent.textContent).toMatch(/^Est\. \d+%$/);
+      expect(dom.percent.textContent).not.toContain('-');
 
-      for (let timestamp = 1_100; timestamp <= 10_000 && frames.size > 0; timestamp += 100) {
+      for (let timestamp = 1_100; timestamp <= 5_000 && frames.size > 0; timestamp += 100) {
+        advanceFrame(timestamp);
+      }
+      const afterFiveSeconds = Number.parseFloat(dom.bar.style.width);
+      expect(afterFiveSeconds).toBeGreaterThan(40);
+      expect(afterFiveSeconds).toBeLessThan(45);
+
+      for (let timestamp = 5_100; timestamp <= 20_000 && frames.size > 0; timestamp += 100) {
         advanceFrame(timestamp);
       }
       expect(dom.bar.style.width).toBe('100%');
@@ -130,6 +138,41 @@ describe('startup progress', () => {
     }
   });
 
+  it('does not jump to 88% or pause there when that reported stage stalls', () => {
+    const { frames, advanceFrame } = stubLoadingWindow();
+
+    try {
+      const dom = makeLoadingDom();
+      const loading = new LoadingScreen(dom.root);
+      loading.show();
+      loading.update(0.88, 'Preparing the starting roads, terrain and trees…');
+
+      for (let timestamp = 0; timestamp <= 1_000; timestamp += 100) {
+        advanceFrame(timestamp);
+      }
+      const afterOneSecond = Number.parseFloat(dom.bar.style.width);
+      expect(afterOneSecond).toBeGreaterThan(7);
+      expect(afterOneSecond).toBeLessThan(9);
+      expect(dom.progressAttributes.get('aria-valuenow')).toBe('88');
+      expect(dom.percent.textContent).not.toContain('-');
+
+      for (let timestamp = 1_100; timestamp <= 6_000 && frames.size > 0; timestamp += 100) {
+        advanceFrame(timestamp);
+      }
+      expect(Number.parseFloat(dom.bar.style.width)).toBeGreaterThan(49);
+      expect(Number.parseFloat(dom.bar.style.width)).toBeLessThan(53);
+      expect(dom.progressAttributes.get('aria-valuenow')).toBe('88');
+      expect(frames.size).toBeGreaterThan(0);
+
+      loading.fail('renderer did not start');
+      expect(dom.dataset['state']).toBe('error');
+      expect(dom.bar.style.width).toBe('88%');
+      expect(frames.size).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('continues the estimated fill when a real startup stage stops reporting progress', () => {
     const { frames, advanceFrame } = stubLoadingWindow();
 
@@ -145,7 +188,8 @@ describe('startup progress', () => {
 
       expect(dom.progressAttributes.get('aria-valuenow')).toBe('20');
       expect(Number.parseFloat(dom.bar.style.width)).toBeGreaterThan(20);
-      expect(dom.percent.textContent).toMatch(/^~\d+%$/);
+      expect(dom.percent.textContent).toMatch(/^Est\. \d+%$/);
+      expect(dom.percent.textContent).not.toContain('-');
       expect(frames.size).toBeGreaterThan(0);
 
       loading.fail('renderer did not start');

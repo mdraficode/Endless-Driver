@@ -3,8 +3,12 @@ export interface LoadingProgress {
   readonly label: string;
 }
 
-const VISUAL_CREEP_PER_SECOND = 0.012;
-const ACTUAL_PROGRESS_FOLLOW_MS = 240;
+/**
+ * Fraction rates: a minimum crawl during stalls, with bounded catch-up toward reported progress.
+ */
+const MIN_VISUAL_PROGRESS_PER_SECOND = 0.04;
+const MAX_VISUAL_PROGRESS_PER_SECOND = 0.085;
+const PROGRESS_FOLLOW_GAIN = 0.5;
 const MAX_FRAME_DELTA_MS = 100;
 
 /** Clamp reported startup progress and keep its completed-work fraction monotonic. */
@@ -128,10 +132,13 @@ export class LoadingScreen {
         : Math.min(MAX_FRAME_DELTA_MS, Math.max(0, timestamp - this.#lastFrameTimestamp));
     this.#lastFrameTimestamp = timestamp;
 
-    const follow = 1 - Math.exp(-elapsedMs / ACTUAL_PROGRESS_FOLLOW_MS);
-    const catchingUp = this.#displayFraction + (this.#fraction - this.#displayFraction) * follow;
-    const creeping = this.#displayFraction + (elapsedMs / 1000) * VISUAL_CREEP_PER_SECOND;
-    this.#displayFraction = Math.min(1, Math.max(this.#displayFraction, catchingUp, creeping));
+    const elapsedSeconds = elapsedMs / 1000;
+    const gapToReportedProgress = Math.max(0, this.#fraction - this.#displayFraction);
+    const visualRate = Math.min(
+      MAX_VISUAL_PROGRESS_PER_SECOND,
+      MIN_VISUAL_PROGRESS_PER_SECOND + gapToReportedProgress * PROGRESS_FOLLOW_GAIN,
+    );
+    this.#displayFraction = Math.min(1, this.#displayFraction + visualRate * elapsedSeconds);
     this.#paintProgress();
     this.#scheduleProgressFrame();
   };
@@ -155,8 +162,8 @@ export class LoadingScreen {
     this.#root.dataset['progressPhase'] =
       this.#fraction >= 0.94 || this.#displayFraction >= 0.94 ? 'finalizing' : 'animating';
     this.#bar.style.width = `${(this.#displayFraction * 100).toFixed(2)}%`;
-    const estimatedPercent = Math.min(99, Math.floor(this.#displayFraction * 100));
-    this.#percent.textContent = `~${estimatedPercent}%`;
+    const estimatedPercent = Math.max(0, Math.min(99, Math.floor(this.#displayFraction * 100)));
+    this.#percent.textContent = `Est. ${estimatedPercent}%`;
     if (this.#fraction >= 0.94) {
       this.#label.textContent = 'Finishing the first playable frame…';
     }
