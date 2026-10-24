@@ -28,5 +28,6 @@ mutates vehicle transforms.
 - Input only ever produces intent: `Application` copies the actions onto the vehicle before the next
   fixed step, and the vehicle never queries the keyboard.
 - An `InputTarget` interface keeps the manager instantiable in Node tests without a DOM.
+- Gameplay touch buttons are faint at rest and fully visible while pressed or keyboard-focused. Their hit areas and pointer tracking are unchanged; menu and settings buttons are not affected.
 
 See [the project plan](../../PROJECT_PLAN.md) and [architecture](../../docs/ARCHITECTURE.md).

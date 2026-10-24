@@ -1494,6 +1494,17 @@ body {
   touch-action: none;
 }
 
+.touch-controls button {
+  opacity: 0.18;
+  transition: opacity 120ms ease;
+}
+
+.touch-controls button.is-active,
+.touch-controls button:active,
+.touch-controls button:focus-visible {
+  opacity: 1;
+}
+
 .touch-steering-wheel {
   position: absolute;
   left: max(1.1rem, env(safe-area-inset-left));
@@ -1512,7 +1523,9 @@ body {
   touch-action: none;
   transform: scale(var(--touch-control-scale));
   transform-origin: left bottom;
-  transition: transform 140ms ease;
+  transition:
+    transform 140ms ease,
+    opacity 120ms ease;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -1713,7 +1726,9 @@ body {
   touch-action: none;
   transform: scale(var(--touch-control-scale));
   transform-origin: right bottom;
-  transition: transform 140ms ease;
+  transition:
+    transform 140ms ease,
+    opacity 120ms ease;
 }
 
 .touch-handbrake.is-active {
@@ -1737,7 +1752,8 @@ body {
   touch-action: none;
   transition:
     filter 120ms ease,
-    border-color 120ms ease;
+    border-color 120ms ease,
+    opacity 120ms ease;
 }
 
 .touch-boost.is-active {

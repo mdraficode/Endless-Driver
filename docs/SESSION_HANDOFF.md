@@ -2385,3 +2385,13 @@ Distant mountain geometry retains the existing four-range vertex budget but repl
 **Push-before-check / validation:** implementation commit `68e7a663234d86da8455bb5c37ea89494385d420` (`Enlarge touch steering arrow controls`) was pushed to `main`; local and remote SHAs matched before checks. The first `npm run check` stopped at `prettier --check .`, which reported only `src/input/README.md` formatting; later stages did not run. Formatting/docs commit `646f6c94eee80c611cc90ec822961c1c8341f4a1` was then pushed and remote-SHA verified before retrying. Full `npm run check` passed on `646f6c9`: Prettier, ESLint, GLSL guard, both TypeScript checks, **80 test files / 596 tests**, asset verification (20 assets / 47,814,431 bytes), and production build. Existing non-fatal Three.js `BufferGeometry.toNonIndexed()` notices and the Vite large-chunk warning remain. `npm ci` reported two moderate audit findings; no audit fix was run.
 
 **Limitations / next action:** no browser or physical-device touch review has been performed. This verifies formatting/build and preserves the pointer-handling code; it does not establish touch ergonomics or rendered acceptance on an owner device. Please try the wider target on a phone/tablet when convenient.
+
+## 114. Fade gameplay touch buttons until pressed (2026-10-25)
+
+**Owner request:** “Make all the buttons transparent and only become normally visible when touched.” Scope was clarified to gameplay touch controls only, with a faint idle appearance; menus and settings remain normally visible.
+
+**Implementation:** all button descendants of `.touch-controls` now use 18% opacity at rest and return to full opacity while pressed or active; keyboard focus also reveals them fully for accessibility. This includes the steering wheel/arrows, brake/gas/N₂O/handbrake and the gameplay utility buttons. Opacity does not alter their active hit boxes, pointer handling, or the menu/settings buttons. `src/input/README.md` records the behavior.
+
+**Push-before-check status:** validation pending. Per the owner's standing instruction, commit and push this code/docs change and verify the remote SHA before running checks.
+
+**Limitations / next action:** no browser or physical-device review has been performed. The opacity behavior is source-level only until someone checks it in gameplay on a phone/tablet.
