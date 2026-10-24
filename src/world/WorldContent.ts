@@ -1,6 +1,7 @@
 import type { Object3D } from 'three';
 import type { RenderConfig } from '../config/render';
 import type { DaylightState } from '../environment/EnvironmentClock';
+import type { SurfaceState } from '../environment/SurfaceState';
 import type { WorldConfig } from '../config/world';
 import type { PhysicsWorld } from '../physics/PhysicsWorld';
 import type { TerrainSampler } from './terrain-height';
@@ -93,6 +94,8 @@ export interface SceneContentContext {
    * full density at tier C melted software rasterisers, 2026-10-18).
    */
   readonly qualityTier?: string;
+  /** Current shared surface condition, forwarded to visuals without deriving physics from pixels. */
+  readonly surfaceState?: SurfaceState;
   /** Player-selected Aohara traffic amount; the activity system preserves tier-specific safety caps. */
   readonly trafficIntensity?: import('../config/game-preferences').TrafficIntensity;
 }

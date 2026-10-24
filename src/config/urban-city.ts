@@ -40,7 +40,7 @@ export const URBAN_CITY_CONFIG = {
     activeLightRefreshDistanceMeters: 12,
   },
   wetRoad: {
-    /** Art-directed Aohara-only wet look; this is not weather, standing water, or traction state. */
+    /** Aohara day/night wet-look baseline; surface wetness can raise it, but it is not standing water or traction. */
     wetnessDay: 0.12,
     wetnessNight: 0.9,
     dryRoughness: 0.58,
@@ -225,8 +225,8 @@ export function resolveUrbanNightGain(sunElevationDegrees: number): number {
 }
 
 /**
- * Aohara-only art direction for a damp-looking road finish. It has no weather/physics coupling;
- * the city becomes glossier toward night, while the rural road material remains unchanged.
+ * Aohara's established day/night baseline for a damp-looking road finish. RoadWorld may raise this
+ * visual blend from the shared surface wetness; this resolver itself does not change physics.
  */
 export function resolveUrbanWetness(sunElevationDegrees: number): number {
   const night = resolveUrbanNightGain(sunElevationDegrees);

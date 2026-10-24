@@ -2,7 +2,7 @@ import { clamp } from '../shared/math';
 import type { SurfaceResponse } from '../vehicles/types';
 import type { TerrainSurfaceId } from '../world/terrain-surface';
 
-/** The first Phase 7 comparison presets. Visual precipitation and transitions are separate work. */
+/** The first Phase 7 comparison presets. The wet road sheen uses wetness; precipitation and transitions remain separate. */
 export type WeatherPreset = 'clear' | 'rain';
 
 export interface SurfaceState {

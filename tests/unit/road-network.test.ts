@@ -142,8 +142,18 @@ describe('road network graph', () => {
     expect(asphaltMaterial.clearcoatNode).not.toBeNull();
     expect(asphaltMaterial.clearcoatRoughnessNode).not.toBeNull();
     expect(roads.getStats().urbanWetLook).toBe(URBAN_CITY_CONFIG.wetRoad.wetnessDay);
+    roads.setSurfaceWetness(0.85);
+    expect(roads.getStats().urbanWetLook).toBe(0.85);
     const daylight = new EnvironmentClock({ startHour: 23.5 }).daylight();
     roads.setDaylight(daylight);
+    expect(roads.getStats().urbanWetLook).toBeCloseTo(
+      Math.max(resolveUrbanWetness(daylight.sunElevationDegrees), 0.85),
+    );
+    roads.setSurfaceWetness(0);
+    expect(roads.getStats().urbanWetLook).toBeCloseTo(
+      resolveUrbanWetness(daylight.sunElevationDegrees),
+    );
+    roads.setSurfaceWetness(Number.NaN);
     expect(roads.getStats().urbanWetLook).toBeCloseTo(
       resolveUrbanWetness(daylight.sunElevationDegrees),
     );

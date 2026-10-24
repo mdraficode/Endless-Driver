@@ -15,6 +15,7 @@ import { configureTiledSurface, SurfaceTextureLibrary } from '../assets/SurfaceT
 import { createArchitecturalMaterial } from './architectural-materials';
 import { bindScannedPbrMaps } from './scanned-pbr';
 import { resolveUrbanWetness, URBAN_CITY_CONFIG } from '../config/urban-city';
+import { clamp } from '../shared/math';
 import type { DaylightState } from '../environment/EnvironmentClock';
 import type { RoadNetwork } from './road-network';
 import {
@@ -209,6 +210,10 @@ export class RoadWorld {
 
   readonly #urbanWetness = uniform(URBAN_CITY_CONFIG.wetRoad.wetnessDay);
 
+  #baseUrbanWetness = URBAN_CITY_CONFIG.wetRoad.wetnessDay;
+
+  #surfaceWetness = 0;
+
   readonly #urbanSidewalkEdges: number;
 
   readonly #urbanCrosswalkIntersections: number;
@@ -234,9 +239,9 @@ export class RoadWorld {
     this.#shoulderMaterial.roughness = 1;
     this.#shoulderMaterial.metalness = 0;
 
-    // Aohara's static wet-look is a bounded PBR material response: night raises clearcoat and
-    // lowers roughness so the existing HDRI and nearby streetlights create local glints. It does
-    // not add rain, puddles, a weather state, SSR, or a traction change.
+    // Aohara's bounded PBR wet-look blends the existing night art direction with the selected
+    // surface wetness. Clearcoat and roughness reveal local HDRI/streetlight glints; this adds no
+    // standing puddles, precipitation, SSR, or traction change.
     this.#urbanAsphaltMaterial = new MeshPhysicalNodeMaterial();
     this.#urbanAsphaltMaterial.color.set(0x222a32);
     this.#urbanAsphaltMaterial.roughness = URBAN_CITY_CONFIG.wetRoad.dryRoughness;
@@ -416,9 +421,22 @@ export class RoadWorld {
     this.object = group;
   }
 
-  /** Adjust the Aohara-only visual road sheen with the existing dusk/night lighting gate. */
+  /** Adjust the Aohara-only art-directed road sheen with the existing dusk/night lighting gate. */
   setDaylight(state: DaylightState): void {
-    this.#urbanWetness.value = resolveUrbanWetness(state.sunElevationDegrees);
+    this.#baseUrbanWetness = resolveUrbanWetness(state.sunElevationDegrees);
+    this.#updateUrbanWetness();
+  }
+
+  /** Apply the shared weather/surface wetness to the existing Aohara asphalt material. */
+  setSurfaceWetness(wetness: number): void {
+    this.#surfaceWetness = clamp(Number.isFinite(wetness) ? wetness : 0, 0, 1);
+    this.#updateUrbanWetness();
+  }
+
+  #updateUrbanWetness(): void {
+    // Preserve the established day/night look in clear weather; rain raises the sheen to at least
+    // the sampled surface wetness. The uniform is shared by the same bounded urban road batch.
+    this.#urbanWetness.value = Math.max(this.#baseUrbanWetness, this.#surfaceWetness);
   }
 
   /**
@@ -482,8 +500,8 @@ export class RoadWorld {
         normalStrength: 0.72,
       });
 
-      // Reuse the CC0 asphalt maps for Aohara's static wet-look surface. The roughness/clearcoat
-      // response remains local to the city; there is no weather state or traction change.
+      // Reuse the CC0 asphalt maps for Aohara's existing wet-look surface. The weather uniform
+      // only affects this city's roughness/clearcoat response; it adds no traction or draw pass.
       bindScannedPbrMaps(this.#urbanAsphaltMaterial, asphalt, roadUv, {
         albedoTint: vec4(0.72, 0.77, 0.83, 1).mul(macroTint),
         normalStrength: 0.65,

@@ -7,6 +7,7 @@ import { RENDER_CONFIG } from '../../src/config/render';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
 import { WORLD_CONFIG } from '../../src/config/world';
 import type { DaylightState } from '../../src/environment/EnvironmentClock';
+import { resolveSurfaceState } from '../../src/environment/SurfaceState';
 import { createDrivingWorld } from '../../src/world/DrivingWorld';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
 
@@ -18,6 +19,7 @@ describe('Aohara driving-world integration', () => {
       worldConfig: WORLD_CONFIG,
       terrainSampler,
       qualityTier: 'C',
+      surfaceState: resolveSurfaceState('rain'),
     });
 
     expect(content.kind).toBe('driving');
@@ -42,6 +44,7 @@ describe('Aohara driving-world integration', () => {
       activePointLights: 6,
       urbanSidewalkEdges: 40,
       urbanCrosswalkIntersections: 25,
+      urbanWetLook: 0.85,
       roadMeshes: 8,
     });
     const stats = content.getContentStats?.();
@@ -81,6 +84,7 @@ describe('Aohara driving-world integration', () => {
       gradeTint: { r: 1, g: 1, b: 1 },
     };
     content.setDaylight?.(night);
+    expect(content.getContentStats?.().urbanWetLook).toBeCloseTo(0.9);
     content.update?.(1);
     content.dispose();
     expect(content.root.getObjectByName('aohara-street-furniture')).toBeUndefined();

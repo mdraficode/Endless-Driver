@@ -87,7 +87,7 @@ export interface ApplicationOptions {
   readonly carModel?: PlayerCarModel;
   /** Player-selected Aohara traffic activity budget. */
   readonly trafficIntensity?: TrafficIntensity;
-  /** Deterministic physics comparison preset (`?weather=clear|rain`); visual weather is separate. */
+  /** Deterministic preset (`?weather=clear|rain`) drives tire response and the bounded Aohara road sheen. */
   readonly weather?: WeatherPreset;
   /** Optional camera selected on startup. */
   readonly cameraMode?: CameraMode;
@@ -226,6 +226,7 @@ export class Application {
       terrainSampler,
       renderer: this.#engine.renderer,
       qualityTier: this.#tier.id,
+      surfaceState: this.#surfaceState,
       ...(options.trafficIntensity !== undefined
         ? { trafficIntensity: options.trafficIntensity }
         : {}),

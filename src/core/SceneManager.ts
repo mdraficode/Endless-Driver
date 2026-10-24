@@ -24,6 +24,7 @@ import { METERS_PER_THREE_UNIT, metersToThreePoint, metersToThreeUnits } from '.
 import { WORLD_CONFIG, type WorldConfig } from '../config/world';
 import type { PhysicsWorld } from '../physics/PhysicsWorld';
 import type { DaylightState } from '../environment/EnvironmentClock';
+import type { SurfaceState } from '../environment/SurfaceState';
 import type { Vec3 } from '../shared/vector';
 import { scaleBaseline } from '../environment/daylight-levels';
 import { createAtmosphereSky } from '../shaders/atmosphere-sky';
@@ -49,6 +50,8 @@ export interface SceneManagerOptions {
   readonly content?: SceneContentFactory;
   /** Resolved quality tier id, forwarded to streamed content for detail budgets. */
   readonly qualityTier?: string;
+  /** Current surface condition, forwarded to world content for coordinated visuals. */
+  readonly surfaceState?: SurfaceState;
   /** Player-selected traffic amount, forwarded to the Aohara driving activity. */
   readonly trafficIntensity?: import('../config/game-preferences').TrafficIntensity;
   /**
@@ -193,6 +196,7 @@ export class SceneManager {
       ...(options.terrainSampler !== undefined ? { terrainSampler: options.terrainSampler } : {}),
       ...(options.renderer !== undefined ? { renderer: options.renderer } : {}),
       ...(options.qualityTier !== undefined ? { qualityTier: options.qualityTier } : {}),
+      ...(options.surfaceState !== undefined ? { surfaceState: options.surfaceState } : {}),
       ...(options.trafficIntensity !== undefined
         ? { trafficIntensity: options.trafficIntensity }
         : {}),

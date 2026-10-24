@@ -40,6 +40,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
     terrainSampler.roadNetwork !== undefined
       ? new RoadWorld(terrainSampler.roadNetwork, surfaceTextures)
       : null;
+  roads?.setSurfaceWetness(context.surfaceState?.wetness ?? 0);
   if (roads !== null) {
     root.add(roads.object);
   }
