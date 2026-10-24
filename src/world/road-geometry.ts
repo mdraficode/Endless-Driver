@@ -12,6 +12,8 @@ import type { RoadEdge, RoadNetwork, RoadPoint } from './road-network';
  * the asphalt and gravel scans are sampled at.
  */
 
+export const ROAD_MARKING_JUNCTION_CLEARANCE_METERS = 14;
+
 function tangentAt(points: readonly RoadPoint[], index: number): { x: number; z: number } {
   const previous = points[Math.max(0, index - 1)] as RoadPoint;
   const next = points[Math.min(points.length - 1, index + 1)] as RoadPoint;
@@ -19,6 +21,71 @@ function tangentAt(points: readonly RoadPoint[], index: number): { x: number; z:
   const dz = next.z - previous.z;
   const length = Math.hypot(dx, dz) || 1;
   return { x: dx / length, z: dz / length };
+}
+
+function pointAtDistance(points: readonly RoadPoint[], distance: number): RoadPoint {
+  const first = points[0];
+  const last = points[points.length - 1];
+  if (first === undefined || last === undefined) {
+    throw new Error('A road ribbon requires at least one profile point');
+  }
+  if (distance <= first.alongMeters) {
+    return first;
+  }
+  if (distance >= last.alongMeters) {
+    return last;
+  }
+
+  let low = 0;
+  let high = points.length - 1;
+  while (low + 1 < high) {
+    const middle = Math.floor((low + high) / 2);
+    if ((points[middle]?.alongMeters ?? 0) <= distance) {
+      low = middle;
+    } else {
+      high = middle;
+    }
+  }
+  const start = points[low] as RoadPoint;
+  const end = points[high] as RoadPoint;
+  const span = Math.max(1e-9, end.alongMeters - start.alongMeters);
+  const t = Math.min(1, Math.max(0, (distance - start.alongMeters) / span));
+  return {
+    x: start.x + (end.x - start.x) * t,
+    y: start.y + (end.y - start.y) * t,
+    z: start.z + (end.z - start.z) * t,
+    alongMeters: distance,
+  };
+}
+
+/**
+ * Returns a profile clipped back from each junction, with interpolated end points so road paint
+ * stops cleanly before cross traffic rather than continuing through the middle of the crossing.
+ */
+export function trimRoadEdge(
+  edge: RoadEdge,
+  startTrimMeters: number,
+  endTrimMeters = startTrimMeters,
+): RoadEdge | null {
+  if (edge.points.length < 2) {
+    return null;
+  }
+  const firstDistance = edge.points[0]?.alongMeters ?? 0;
+  const lastDistance = edge.points.at(-1)?.alongMeters ?? edge.lengthMeters;
+  const startTrim = Number.isFinite(startTrimMeters) ? Math.max(0, startTrimMeters) : 0;
+  const endTrim = Number.isFinite(endTrimMeters) ? Math.max(0, endTrimMeters) : 0;
+  const startDistance = Math.min(lastDistance, firstDistance + startTrim);
+  const endDistance = Math.max(firstDistance, lastDistance - endTrim);
+  if (endDistance - startDistance < 0.01) {
+    return null;
+  }
+
+  const interior = edge.points.filter(
+    (point) => point.alongMeters > startDistance + 1e-4 && point.alongMeters < endDistance - 1e-4,
+  );
+  const points = [pointAtDistance(edge.points, startDistance), ...interior];
+  points.push(pointAtDistance(edge.points, endDistance));
+  return { ...edge, points };
 }
 
 /** Side direction (centre → right edge) for a tangent: rotate -90° about Y. */
@@ -72,7 +139,7 @@ export function buildRibbonGeometry(
 
 /**
  * Centreline dashes for the whole network as one geometry: 3 m painted, 6 m gap,
- * suppressed near junctions where overlapping edge dashes would scribble.
+ * sampled at exact profile distances and kept clear of every junction approach.
  */
 export function buildDashGeometry(network: RoadNetwork, yOffset: number): BufferGeometry {
   const positions: number[] = [];
@@ -80,41 +147,60 @@ export function buildDashGeometry(network: RoadNetwork, yOffset: number): Buffer
   const dashLength = 3;
   const cycle = 9;
   const halfWidth = 0.09;
+  const junctionClearance = ROAD_MARKING_JUNCTION_CLEARANCE_METERS;
   for (const edge of network.edges) {
     const { points } = edge;
     // Rural/connector/local streets use one centre dash. The wider Aohara avenue has
     // two same-direction lane dividers; its double amber centreline is batched separately.
     const laneOffsets = edge.roadClass === 'urban-arterial' ? [-3.4, 3.4] : [0];
     for (const laneOffset of laneOffsets) {
-      for (let along = 12; along + dashLength < edge.lengthMeters - 12; along += cycle) {
-        const startIndex = Math.min(
-          points.length - 2,
-          Math.floor(along / network.config.sampleSpacingMeters),
+      for (
+        let along = junctionClearance;
+        along + dashLength < edge.lengthMeters - junctionClearance;
+        along += cycle
+      ) {
+        const start = pointAtDistance(points, along);
+        const end = pointAtDistance(points, along + dashLength);
+        const startBefore = pointAtDistance(points, Math.max(0, along - 0.5));
+        const endAfter = pointAtDistance(
+          points,
+          Math.min(edge.lengthMeters, along + dashLength + 0.5),
         );
-        const start = points[startIndex] as RoadPoint;
-        const end = points[startIndex + 1] as RoadPoint;
-        const tangent = tangentAt(points, startIndex);
-        const side = sideOf(tangent);
+        const startTangentLength = Math.max(
+          1e-6,
+          Math.hypot(start.x - startBefore.x, start.z - startBefore.z),
+        );
+        const endTangentLength = Math.max(
+          1e-6,
+          Math.hypot(endAfter.x - end.x, endAfter.z - end.z),
+        );
+        const startSide = sideOf({
+          x: (start.x - startBefore.x) / startTangentLength,
+          z: (start.z - startBefore.z) / startTangentLength,
+        });
+        const endSide = sideOf({
+          x: (endAfter.x - end.x) / endTangentLength,
+          z: (endAfter.z - end.z) / endTangentLength,
+        });
+        const startX = start.x + startSide.x * laneOffset;
+        const startZ = start.z + startSide.z * laneOffset;
+        const endX = end.x + endSide.x * laneOffset;
+        const endZ = end.z + endSide.z * laneOffset;
         const base = positions.length / 3;
-        const startX = start.x + side.x * laneOffset;
-        const startZ = start.z + side.z * laneOffset;
-        const endX = end.x + side.x * laneOffset;
-        const endZ = end.z + side.z * laneOffset;
-        const corners: [number, number][] = [
-          [startX - side.x * halfWidth, startZ - side.z * halfWidth],
-          [startX + side.x * halfWidth, startZ + side.z * halfWidth],
-          [endX - side.x * halfWidth, endZ - side.z * halfWidth],
-          [endX + side.x * halfWidth, endZ + side.z * halfWidth],
-        ];
-        // Dash length follows the segment direction from the sampled start point.
-        const scale = dashLength / Math.max(1, Math.hypot(end.x - start.x, end.z - start.z));
-        const farX = startX + (end.x - start.x) * scale;
-        const farZ = startZ + (end.z - start.z) * scale;
-        corners[2] = [farX - side.x * halfWidth, farZ - side.z * halfWidth];
-        corners[3] = [farX + side.x * halfWidth, farZ + side.z * halfWidth];
-        for (const [x, z] of corners) {
-          positions.push(x, start.y + yOffset, z);
-        }
+        positions.push(
+          startX - startSide.x * halfWidth,
+          start.y + yOffset,
+          startZ - startSide.z * halfWidth,
+          startX + startSide.x * halfWidth,
+          start.y + yOffset,
+          startZ + startSide.z * halfWidth,
+          endX - endSide.x * halfWidth,
+          end.y + yOffset,
+          endZ - endSide.z * halfWidth,
+          endX + endSide.x * halfWidth,
+          end.y + yOffset,
+          endZ + endSide.z * halfWidth,
+        );
         indices.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
       }
     }

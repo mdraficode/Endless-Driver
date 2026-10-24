@@ -17,7 +17,12 @@ import { bindScannedPbrMaps } from './scanned-pbr';
 import { resolveUrbanWetness, URBAN_CITY_CONFIG } from '../config/urban-city';
 import type { DaylightState } from '../environment/EnvironmentClock';
 import type { RoadNetwork } from './road-network';
-import { buildDashGeometry, buildRibbonGeometry } from './road-geometry';
+import {
+  buildDashGeometry,
+  buildRibbonGeometry,
+  ROAD_MARKING_JUNCTION_CLEARANCE_METERS,
+  trimRoadEdge,
+} from './road-geometry';
 
 export interface RoadWorldStats {
   roadLengthMeters: number;
@@ -298,14 +303,26 @@ export class RoadWorld {
       } else {
         asphaltGeometries.push(asphaltGeometry);
       }
-      for (const side of [-1, 1] as const) {
-        markingGeometries.push(
-          buildRibbonGeometry(edge, 0.15, PAINT_LIFT, side * (halfWidthMeters - 0.45)),
-        );
-      }
-      if (edge.roadClass === 'urban-arterial') {
+      const markingEdge = trimRoadEdge(
+        edge,
+        ROAD_MARKING_JUNCTION_CLEARANCE_METERS,
+        ROAD_MARKING_JUNCTION_CLEARANCE_METERS,
+      );
+      if (markingEdge !== null) {
         for (const side of [-1, 1] as const) {
-          centerlineGeometries.push(buildRibbonGeometry(edge, 0.11, PAINT_LIFT, side * 0.18));
+          markingGeometries.push(
+            buildRibbonGeometry(
+              markingEdge,
+              0.15,
+              PAINT_LIFT,
+              side * (halfWidthMeters - 0.45),
+            ),
+          );
+        }
+      }
+      if (edge.roadClass === 'urban-arterial' && markingEdge !== null) {
+        for (const side of [-1, 1] as const) {
+          centerlineGeometries.push(buildRibbonGeometry(markingEdge, 0.11, PAINT_LIFT, side * 0.18));
         }
       }
     }

@@ -1,9 +1,9 @@
 # Session Handoff — Endless Driver
 
-**Updated:** 2026-10-23  
-**Current stage:** Repository `mdraficode/Endless-Driver`, branch `main`; latest code commit `876c61d` is pushed. It fixes the reported 100% loading-overlay stall and strengthens the page-level landscape fallback for coarse-pointer portrait browsers. `npm run check` passed on `876c61d`: 70 test files / 536 tests, 20 assets / 47,814,431 bytes verified, and production build.  
-**Authorized scope:** only the specifically requested startup/orientation/cockpit items and Phase 9 traffic/route work; preserve Aohara Central Avenue as the default, do not begin Phase 7 weather/seasons or unrelated Phase 8 polish, and do not add visible vehicle deformation.  
-**Next action:** ask the owner to retest the deployed page on the affected device. Manual device/orientation verification and FPS/performance acceptance remain pending; do not claim OS-level rotation or device acceptance without that retest.
+**Updated:** 2026-10-24  
+**Current stage:** Repository `mdraficode/Endless-Driver`, branch `main`; latest pushed main at the start of this increment was `ad44eee6ec3f994a3f8e536fac00a3d5119d780b`. The cockpit recenter change remains shipped. The active owner request adds richer/more varied world scenery, denser city activity, distant mountain views, and fixes road-border markings crossing junctions; implementation and tests are being prepared under the standing push-before-test rule. No tests, builds, or gameplay captures have yet been run for this increment.  
+**Authorized scope:** the requested world and road-detail increment, the existing Phase 6/9 scopes, and the already implemented cockpit behavior. Preserve the fictional Hinode/Aohara setting, snow-free terrain, no paid/restricted assets, no fog/mist/haze or global bloom, Aohara's default spawn, mobile tier budgets, and the prohibition on unrelated Phase 7/8 work.  
+**Next action:** push the coherent source/test/docs increment before running `npm run check`; then record exact results. Browser visual acceptance remains separate and is not claimed: prior gameplay capture crashed during environment/KTX2 loading in this constrained sandbox.
 
 > **Re-plan (2026-10-14, decisions resolved):** the owner rejected the Phase 2 presentation and set a
 > Forza-Horizon-class visual target. Research and specification are complete and committed alongside
@@ -2139,3 +2139,11 @@ This is a narrow continuation of the appearance-only review authorized with the 
 **Visual/device acceptance remains separate:** no gameplay screenshot or owner-device retest was performed for this behavior. The earlier full-app headless capture crashed during environment/KTX2 loading in the constrained sandbox, so automated camera-angle tests are not visual acceptance.
 
 **Next step:** hard-refresh https://mdraficode.github.io/Endless-Driver/, choose Cockpit, look away using a canvas swipe/drag, then press the throttle or W. Confirm the view eases back to the centered forward road when driving starts. If the timing or recenter behavior is not right, share a short recording and say whether the hero or fallback car is selected.
+
+## 91. World enrichment and road-marking junction correction (2026-10-24)
+
+**Owner request:** enrich the driving world with denser and more varied buildings and visible activity; address road-edge markings that appear across the roadway at generated intersections; add distant, attractive mountain scenery; and give underdetailed road sections stronger visual support. Preserve the fictional Hinode/Aohara setting, snow-free terrain, mobile tier limits, no paid/restricted assets, and no fog/mist/haze or global bloom.
+
+**Implementation in progress:** road-edge paint and arterial double-center lines are clipped 14 m from junctions; lane dashes now sample exact distances and share the same junction clearance. A tier-bounded city pass raises Aohara infill/traffic/pedestrian baselines and adds deterministic low-rise color, size, height, and roof-style variety. A new terrain-sampled, snow-free low-poly ridge layer adds four distant mountain ranges using a few thousand vertices and no external assets. Regression tests cover junction clearances, deterministic mountain geometry, city budgets, and driving-world integration.
+
+**Verification state at first push:** source/tests/docs are to be committed and pushed before any test, build, or browser capture, following the owner's standing order. Results remain pending until that pushed SHA is checked. The previously observed full-app headless `Target crashed` during environment/KTX2 loading remains an unverified sandbox limitation; no gameplay visual acceptance is claimed.

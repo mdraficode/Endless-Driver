@@ -73,7 +73,7 @@ Check the repository root, current branch, local changes, remote URL, and latest
 - Prefer typed interfaces, data-driven tuning, narrow ES imports, and explicit lifecycle ownership.
 - Do not add speculative dependencies, a second framework, or another physics engine without a documented reason.
 - Install with `npm ci`; preserve the lockfile and exact direct versions. Tool/dependency upgrades require validation and a recorded rationale.
-- Run `npm run check` (format check, lint, types, tests, production build) before committing. Add relevant tests as features appear.
+- Follow the owner's standing order: commit and push each coherent source/test/docs increment before running tests, builds, or browser captures; then run `npm run check` (format check, lint, types, tests, production build). If verification requires fixes, push the follow-up before rerunning. Add relevant tests as features appear.
 - Keep `tests/` honest: unit tests are Node-environment logic tests and cannot prove rendering, shadows, touch input, or frame rate. Record browser/device verification separately with the tool and conditions used.
 - State which interactive/device tests were performed and which remain unverified.
 - Scaffold tests and successful builds are not evidence of vehicle realism, browser compatibility, or 60 FPS.

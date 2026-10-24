@@ -172,9 +172,9 @@ describe('Aohara city night-lighting rules', () => {
 
   it('fills every traffic class inside the existing C/B/A vehicle and draw-call budgets', () => {
     const expectedByTier = {
-      C: { passengerCars: 2, cityBuses: 1, rigidTrucks: 1, semiTrailerRigs: 1, farmTractors: 1 },
-      B: { passengerCars: 3, cityBuses: 3, rigidTrucks: 2, semiTrailerRigs: 2, farmTractors: 2 },
-      A: { passengerCars: 4, cityBuses: 4, rigidTrucks: 4, semiTrailerRigs: 3, farmTractors: 3 },
+      C: { passengerCars: 2, cityBuses: 2, rigidTrucks: 2, semiTrailerRigs: 1, farmTractors: 1 },
+      B: { passengerCars: 4, cityBuses: 3, rigidTrucks: 3, semiTrailerRigs: 3, farmTractors: 3 },
+      A: { passengerCars: 5, cityBuses: 5, rigidTrucks: 5, semiTrailerRigs: 5, farmTractors: 4 },
     } as const;
 
     for (const tier of ['C', 'B', 'A'] as const) {
@@ -212,15 +212,15 @@ describe('Aohara city night-lighting rules', () => {
   });
 
   it('applies the selected traffic intensity without changing pedestrian budgets', () => {
-    expect(trafficVehicleCountFor('C', 'light')).toBe(3);
-    expect(trafficVehicleCountFor('C', 'standard')).toBe(6);
-    expect(trafficVehicleCountFor('C', 'busy')).toBe(9);
+    expect(trafficVehicleCountFor('C', 'light')).toBe(4);
+    expect(trafficVehicleCountFor('C', 'standard')).toBe(8);
+    expect(trafficVehicleCountFor('C', 'busy')).toBe(12);
     expect(trafficVehicleCountFor('B', 'off')).toBe(0);
-    expect(trafficVehicleCountFor('B', 'light')).toBe(6);
-    expect(trafficVehicleCountFor('B', 'busy')).toBe(18);
-    expect(trafficVehicleCountFor('A', 'light')).toBe(9);
-    expect(trafficVehicleCountFor('A', 'standard')).toBe(18);
-    expect(trafficVehicleCountFor('A', 'busy')).toBe(27);
+    expect(trafficVehicleCountFor('B', 'light')).toBe(8);
+    expect(trafficVehicleCountFor('B', 'busy')).toBe(24);
+    expect(trafficVehicleCountFor('A', 'light')).toBe(12);
+    expect(trafficVehicleCountFor('A', 'standard')).toBe(24);
+    expect(trafficVehicleCountFor('A', 'busy')).toBe(36);
 
     const off = new UrbanStreetActivity('B', { trafficIntensity: 'off' });
     const light = new UrbanStreetActivity('B', { trafficIntensity: 'light' });
@@ -230,9 +230,9 @@ describe('Aohara city night-lighting rules', () => {
       urbanTrafficBatches: 0,
     });
     expect(off.getContentStats().urbanPedestrians).toBe(URBAN_ACTIVITY_TIER_BUDGET.B.pedestrians);
-    expect(light.getContentStats().urbanTrafficVehicles).toBe(6);
+    expect(light.getContentStats().urbanTrafficVehicles).toBe(8);
     expect(light.getContentStats().urbanPedestrians).toBe(URBAN_ACTIVITY_TIER_BUDGET.B.pedestrians);
-    expect(busy.getContentStats().urbanTrafficVehicles).toBe(18);
+    expect(busy.getContentStats().urbanTrafficVehicles).toBe(24);
     expect(busy.getContentStats().urbanPedestrians).toBe(URBAN_ACTIVITY_TIER_BUDGET.B.pedestrians);
     off.dispose();
     light.dispose();
@@ -241,9 +241,9 @@ describe('Aohara city night-lighting rules', () => {
 
   it('keeps baseline city activity budgets bounded and increasing across C/B/A tiers', () => {
     expect(URBAN_ACTIVITY_TIER_BUDGET.C).toEqual({
-      infillBuildings: 6,
-      trafficVehicles: 6,
-      pedestrians: 12,
+      infillBuildings: 8,
+      trafficVehicles: 8,
+      pedestrians: 16,
     });
     for (const key of ['infillBuildings', 'trafficVehicles', 'pedestrians'] as const) {
       expect(URBAN_ACTIVITY_TIER_BUDGET.C[key]).toBeLessThan(URBAN_ACTIVITY_TIER_BUDGET.B[key]);
@@ -485,12 +485,14 @@ describe('Aohara city night-lighting rules', () => {
       cityBlocks: 16,
       highRiseBuildings: 32,
       infillBuildings: URBAN_ACTIVITY_TIER_BUDGET.B.infillBuildings,
+      infillHippedRoofs: 4,
+      infillFlatRoofs: 8,
       urbanTrafficVehicles: URBAN_ACTIVITY_TIER_BUDGET.B.trafficVehicles,
-      urbanTrafficPassengerCars: 3,
+      urbanTrafficPassengerCars: 4,
       urbanTrafficCityBuses: 3,
-      urbanTrafficRigidTrucks: 2,
-      urbanTrafficSemiTrailerRigs: 2,
-      urbanTrafficFarmTractors: 2,
+      urbanTrafficRigidTrucks: 3,
+      urbanTrafficSemiTrailerRigs: 3,
+      urbanTrafficFarmTractors: 3,
       urbanTrafficBatches: 5,
       urbanPedestrians: URBAN_ACTIVITY_TIER_BUDGET.B.pedestrians,
       urbanActivityBatches: 7,

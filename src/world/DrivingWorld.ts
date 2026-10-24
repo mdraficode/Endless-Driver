@@ -3,6 +3,7 @@ import { AOHARA_DISTRICT_CONFIG, AOHARA_JUNCTION_NODE_ID } from '../config/urban
 import { SurfaceTextureLibrary } from '../assets/SurfaceTextureLibrary';
 import type { TierId } from '../config/tiers';
 import { RoadWorld } from './RoadWorld';
+import { DistantMountainWorld } from './distant-mountains';
 import { UrbanNightWorld } from './urban-night';
 import { TerrainWorld } from './TerrainWorld';
 import { HinodeTougeWorld } from './hinode-touge';
@@ -27,6 +28,8 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
   const surfaceTextures = new SurfaceTextureLibrary();
   const terrain = new TerrainWorld(terrainSampler);
   root.add(terrain.root);
+  const distantMountains = new DistantMountainWorld(terrainSampler);
+  root.add(distantMountains.root);
   // Road ribbons exist only when the shared sampler carries the carved network; the
   // mesh-less samplers used by unit fixtures simply stay roadless.
   const roads =
@@ -137,6 +140,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
     },
     getContentStats: () => {
       const terrainStats = terrain.getContentStats();
+      const mountainStats = distantMountains.getContentStats();
       const roadStats = roads?.getStats() ?? {};
       const vegetationStats = vegetation.getContentStats();
       const townStats = town.getContentStats();
@@ -148,6 +152,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       const streetFurnitureBudget = urbanStats.urbanStreetFurnitureInstanceBudget ?? 0;
       return {
         ...terrainStats,
+        ...mountainStats,
         ...roadStats,
         ...vegetationStats,
         ...townStats,

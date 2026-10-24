@@ -11,6 +11,10 @@ import { roadInfluence } from '../../src/world/road-network';
 import { createTerrainSampler } from '../../src/world/terrain-height';
 import { sampleTerrainSurface } from '../../src/world/terrain-surface';
 import { RoadWorld } from '../../src/world/RoadWorld';
+import {
+  ROAD_MARKING_JUNCTION_CLEARANCE_METERS,
+  trimRoadEdge,
+} from '../../src/world/road-geometry';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
 
 /**
@@ -143,6 +147,45 @@ describe('road network graph', () => {
     expect(roads.getStats().urbanWetLook).toBeCloseTo(
       resolveUrbanWetness(daylight.sunElevationDegrees),
     );
+    roads.dispose();
+  });
+
+  it('trims road-edge paint and dashes back from junctions instead of crossing the roadway', () => {
+    const roads = new RoadWorld(network);
+    const minimumClearance = ROAD_MARKING_JUNCTION_CLEARANCE_METERS - 0.04;
+    for (const name of ['road-edge-markings', 'road-lane-dashes', 'road-urban-centerlines']) {
+      const marking = roads.object.getObjectByName(name);
+      expect(marking).toBeInstanceOf(Mesh);
+      if (!(marking instanceof Mesh)) {
+        throw new Error(`missing road marking batch: ${name}`);
+      }
+      const positions = marking.geometry.getAttribute('position');
+      for (const node of network.nodes) {
+        for (let index = 0; index < positions.count; index += 1) {
+          const dx = positions.getX(index) - node.x;
+          const dz = positions.getZ(index) - node.z;
+          expect(Math.hypot(dx, dz), `${name} near ${node.id}`).toBeGreaterThanOrEqual(
+            minimumClearance,
+          );
+        }
+      }
+    }
+    for (const edge of network.edges) {
+      const clipped = trimRoadEdge(
+        edge,
+        ROAD_MARKING_JUNCTION_CLEARANCE_METERS,
+        ROAD_MARKING_JUNCTION_CLEARANCE_METERS,
+      );
+      expect(clipped).not.toBeNull();
+      if (clipped === null) {
+        throw new Error(`expected a clipped profile for ${edge.id}`);
+      }
+      expect(clipped.points[0]?.alongMeters).toBe(ROAD_MARKING_JUNCTION_CLEARANCE_METERS);
+      expect(clipped.points.at(-1)?.alongMeters).toBeCloseTo(
+        edge.lengthMeters - ROAD_MARKING_JUNCTION_CLEARANCE_METERS,
+        6,
+      );
+    }
     roads.dispose();
   });
 

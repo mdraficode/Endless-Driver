@@ -102,6 +102,7 @@ interface RankedFacadeBand {
 }
 
 type CityBuildingKind = 'house' | 'townhouse' | 'mansion' | 'shop' | 'casino' | 'infill';
+type CityRoofStyle = 'flat' | 'hipped';
 
 interface CityBuildingSpec {
   readonly kind: CityBuildingKind;
@@ -112,7 +113,13 @@ interface CityBuildingSpec {
   readonly height: number;
   readonly color: number;
   readonly roofColor: number;
+  readonly roofStyle?: CityRoofStyle;
   readonly yaw?: number;
+}
+
+function hasPitchedRoof(building: CityBuildingSpec): boolean {
+  return building.roofStyle === 'hipped' ||
+    (building.roofStyle === undefined && (building.kind === 'house' || building.kind === 'mansion'));
 }
 
 interface BillboardSpec extends TransformSpec {
@@ -133,6 +140,8 @@ interface ArchitecturalLightCandidate {
 interface CityTypologyStats {
   readonly stadiums: number;
   readonly infillBuildings: number;
+  readonly infillHippedRoofs: number;
+  readonly infillFlatRoofs: number;
   readonly casinos: number;
   readonly mansions: number;
   readonly houses: number;
@@ -333,8 +342,8 @@ function buildAoharaInfillBuildingSpecs(count: number): readonly CityBuildingSpe
     (offset) => offset * AOHARA_DISTRICT_CONFIG.gridSpacingMeters,
   );
   // Reuse the city kit's house/townhouse palette so infill does not add unique material batches.
-  const wallPalette = [0x82786b, 0x7b746e, 0x99917e, 0x8a928d] as const;
-  const roofPalette = [0x3b4149, 0x3b4149, 0x263039, 0x263039] as const;
+  const wallPalette = [0x82786b, 0x7b746e, 0x99917e, 0x8a928d, 0x6f7d78, 0x9a7b6a] as const;
+  const roofPalette = [0x3b4149, 0x3b4149, 0x263039, 0x263039, 0x45413a, 0x514747] as const;
   const candidates: { readonly rank: number; readonly building: CityBuildingSpec }[] = [];
 
   blockCenters.forEach((centerZ, rowIndex) => {
@@ -348,9 +357,9 @@ function buildAoharaInfillBuildingSpecs(count: number): readonly CityBuildingSpe
           kind: 'infill',
           x: centerX,
           z: centerZ + outwardSide * 42,
-          width: 13.2 + stableUnit(seed, columnIndex, 839) * 2.2,
-          depth: 10.2 + stableUnit(seed, rowIndex, 853) * 1.8,
-          height: 6.5 + stableUnit(seed, rowIndex + columnIndex, 877) * 1.8,
+          width: 12.8 + stableUnit(seed, columnIndex, 839) * 4,
+          depth: 10 + stableUnit(seed, rowIndex, 853) * 3.4,
+          height: 6.3 + stableUnit(seed, rowIndex + columnIndex, 877) * 4.2,
           color: wallPalette[paletteIndex] ?? wallPalette[0],
           roofColor: roofPalette[paletteIndex] ?? roofPalette[0],
           yaw: stableUnit(rowIndex, columnIndex, 883) < 0.5 ? 0 : Math.PI / 2,
@@ -361,7 +370,11 @@ function buildAoharaInfillBuildingSpecs(count: number): readonly CityBuildingSpe
   candidates.sort((first, second) => first.rank - second.rank);
   return candidates
     .slice(0, Math.max(0, Math.min(count, candidates.length)))
-    .map(({ building }) => building);
+    .map(({ building }, index) => ({
+      ...building,
+      // Each tier deliberately keeps both low-rise roof silhouettes, not only a wider colour set.
+      roofStyle: index % 3 === 0 ? 'hipped' : 'flat',
+    }));
 }
 
 function createBasicMaterial(color: number, name: string): MeshBasicNodeMaterial {
@@ -1348,6 +1361,8 @@ export class UrbanNightWorld implements SceneContent {
       cityBlocks: this.#cityBlockCount,
       highRiseBuildings: this.#towers.length,
       infillBuildings: this.#cityTypologyStats.infillBuildings,
+      infillHippedRoofs: this.#cityTypologyStats.infillHippedRoofs,
+      infillFlatRoofs: this.#cityTypologyStats.infillFlatRoofs,
       streetLightPoles: this.#streetLightPoleCount,
       streetLightPointLights: this.#streetLights.length,
       architecturalPointLights: this.#architecturalLights.length,
@@ -1682,7 +1697,7 @@ export class UrbanNightWorld implements SceneContent {
 
     buildings.forEach((building, index) => {
       const yaw = building.yaw ?? 0;
-      const pitched = building.kind === 'house' || building.kind === 'mansion';
+      const pitched = hasPitchedRoof(building);
       foundationAndRibTransforms.push({
         x: building.x,
         y: WORLD_BASE_Y + 0.2,
@@ -1777,8 +1792,18 @@ export class UrbanNightWorld implements SceneContent {
     const wallGroups = new Map<number, TransformSpec[]>();
     const flatRoofGroups = new Map<number, TransformSpec[]>();
     const pitchedRoofGroups = new Map<number, TransformSpec[]>();
+    let infillHippedRoofs = 0;
+    let infillFlatRoofs = 0;
     for (const building of buildings) {
       const yaw = building.yaw ?? 0;
+      const pitched = hasPitchedRoof(building);
+      if (building.kind === 'infill') {
+        if (pitched) {
+          infillHippedRoofs += 1;
+        } else {
+          infillFlatRoofs += 1;
+        }
+      }
       const wallTransforms = wallGroups.get(building.color) ?? [];
       wallTransforms.push({
         x: building.x,
@@ -1796,7 +1821,6 @@ export class UrbanNightWorld implements SceneContent {
         halfDepth: building.depth / 2,
       });
 
-      const pitched = building.kind === 'house' || building.kind === 'mansion';
       const roofGroups = pitched ? pitchedRoofGroups : flatRoofGroups;
       const roofTransforms = roofGroups.get(building.roofColor) ?? [];
       roofTransforms.push({
@@ -2205,6 +2229,8 @@ export class UrbanNightWorld implements SceneContent {
     return {
       stadiums: 1,
       infillBuildings: buildings.filter((building) => building.kind === 'infill').length,
+      infillHippedRoofs,
+      infillFlatRoofs,
       casinos: buildings.filter((building) => building.kind === 'casino').length,
       mansions: buildings.filter((building) => building.kind === 'mansion').length,
       houses: buildings.filter((building) => building.kind === 'house').length,

@@ -24,6 +24,8 @@ describe('Aohara driving-world integration', () => {
     expect(content.root.getObjectByName('AoharaNightLightingBlock')).not.toBeNull();
     expect(content.getContentStats?.()).toMatchObject({
       cityBlocks: 16,
+      distantMountainRanges: 4,
+      distantMountainVertices: 4 * 73 * 15,
       highRiseBuildings: 32,
       streetLightPoles: 240,
       districtBanners: 48,

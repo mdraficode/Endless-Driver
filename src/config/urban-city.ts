@@ -147,11 +147,11 @@ export interface UrbanActivityTierBudget {
   readonly pedestrians: number;
 }
 
-/** Conservative Aohara baseline budgets; they are configuration counts, not device-FPS measurements. */
+/** Tier-bounded Aohara activity budgets; these counts are not device-FPS measurements. */
 export const URBAN_ACTIVITY_TIER_BUDGET: Readonly<Record<TierId, UrbanActivityTierBudget>> = {
-  C: { infillBuildings: 6, trafficVehicles: 6, pedestrians: 12 },
-  B: { infillBuildings: 9, trafficVehicles: 12, pedestrians: 24 },
-  A: { infillBuildings: 12, trafficVehicles: 18, pedestrians: 36 },
+  C: { infillBuildings: 8, trafficVehicles: 8, pedestrians: 16 },
+  B: { infillBuildings: 12, trafficVehicles: 16, pedestrians: 32 },
+  A: { infillBuildings: 16, trafficVehicles: 24, pedestrians: 48 },
 };
 
 /** Traffic is the only activity budget scaled by the player-facing traffic-intensity setting. */
