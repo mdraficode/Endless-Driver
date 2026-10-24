@@ -39,6 +39,38 @@ function makeLoadingDom() {
   return { root, rootAttributes, progressAttributes, classes, bar, label, percent, retry, dataset };
 }
 
+function stubLoadingWindow() {
+  const frames = new Map<number, FrameRequestCallback>();
+  const hideTimers: Array<() => void> = [];
+  let nextFrameId = 0;
+  vi.stubGlobal('window', {
+    setTimeout: (callback: () => void) => {
+      hideTimers.push(callback);
+      return 1;
+    },
+    clearTimeout: vi.fn(),
+    requestAnimationFrame: (callback: FrameRequestCallback) => {
+      const id = ++nextFrameId;
+      frames.set(id, callback);
+      return id;
+    },
+    cancelAnimationFrame: (id: number) => frames.delete(id),
+    matchMedia: () => ({ matches: false }),
+  } as unknown as Window);
+
+  const advanceFrame = (timestamp: number): void => {
+    const next = frames.keys().next();
+    if (next.done) {
+      throw new Error('No loading animation frame is scheduled');
+    }
+    const callback = frames.get(next.value);
+    frames.delete(next.value);
+    callback?.(timestamp);
+  };
+
+  return { frames, hideTimers, advanceFrame };
+}
+
 describe('startup progress', () => {
   it('clamps progress into a monotonic zero-to-one range', () => {
     expect(normalizeLoadingProgress(-2)).toBe(0);
@@ -48,15 +80,8 @@ describe('startup progress', () => {
     expect(normalizeLoadingProgress(Number.NaN, 0.6)).toBe(0.6);
   });
 
-  it('completes and hides after the first-frame progress reaches 100 percent', () => {
-    const hideTimers: Array<() => void> = [];
-    vi.stubGlobal('window', {
-      setTimeout: (callback: () => void) => {
-        hideTimers.push(callback);
-        return 1;
-      },
-      clearTimeout: vi.fn(),
-    } as unknown as Window);
+  it('keeps moving beyond 94% until the first playable frame is actually ready', () => {
+    const { frames, hideTimers, advanceFrame } = stubLoadingWindow();
 
     try {
       const dom = makeLoadingDom();
@@ -65,20 +90,31 @@ describe('startup progress', () => {
       loading.update(0.94, 'Starting the simulation…');
 
       expect(dom.dataset['progressPhase']).toBe('finalizing');
-      expect(dom.bar.style.width).toBe('99%');
-      expect(dom.percent.textContent).toBe('Almost ready…');
+      expect(dom.percent.textContent).toMatch(/^~/);
       expect(dom.label.textContent).toBe('Finishing the first playable frame…');
       expect(dom.progressAttributes.get('aria-valuenow')).toBe('94');
-      expect(dom.progressAttributes.get('aria-valuetext')).toBe(
-        'Finishing the first playable frame',
-      );
+
+      for (let timestamp = 0; timestamp <= 1_000; timestamp += 100) {
+        advanceFrame(timestamp);
+      }
+      const afterOneSecond = Number.parseFloat(dom.bar.style.width);
+      expect(afterOneSecond).toBeGreaterThan(90);
+      expect(afterOneSecond).toBeLessThan(100);
+      expect(dom.percent.textContent).not.toBe('94%');
+
+      for (let timestamp = 1_100; timestamp <= 10_000 && frames.size > 0; timestamp += 100) {
+        advanceFrame(timestamp);
+      }
+      expect(dom.bar.style.width).toBe('100%');
+      expect(dom.percent.textContent).toBe('Still working…');
+      expect(dom.dataset['progressPhase']).toBe('waiting');
+      expect(dom.progressAttributes.get('aria-valuenow')).toBe('94');
 
       loading.update(1, 'Ready — the drive starts automatically');
 
       expect(dom.root.hidden).toBe(false);
       expect(dom.dataset['state']).toBe('ready');
       expect(dom.dataset['progressPhase']).toBeUndefined();
-      expect(dom.bar.style.width).toBe('100%');
       expect(dom.percent.textContent).toBe('100%');
       expect(dom.progressAttributes.get('aria-valuenow')).toBe('100');
       expect(dom.progressAttributes.has('aria-valuetext')).toBe(false);
@@ -89,6 +125,33 @@ describe('startup progress', () => {
       expect(dom.root.hidden).toBe(true);
       expect(dom.rootAttributes.get('aria-hidden')).toBe('true');
       expect(dom.classes.has('loading-screen-complete')).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('continues the estimated fill when a real startup stage stops reporting progress', () => {
+    const { frames, advanceFrame } = stubLoadingWindow();
+
+    try {
+      const dom = makeLoadingDom();
+      const loading = new LoadingScreen(dom.root);
+      loading.show();
+      loading.update(0.2, 'Loading the sky and reflections…');
+
+      for (let timestamp = 0; timestamp <= 4_000 && frames.size > 0; timestamp += 100) {
+        advanceFrame(timestamp);
+      }
+
+      expect(dom.progressAttributes.get('aria-valuenow')).toBe('20');
+      expect(Number.parseFloat(dom.bar.style.width)).toBeGreaterThan(20);
+      expect(dom.percent.textContent).toMatch(/^~\d+%$/);
+      expect(frames.size).toBeGreaterThan(0);
+
+      loading.fail('renderer did not start');
+      expect(dom.dataset['state']).toBe('error');
+      expect(dom.bar.style.width).toBe('20%');
+      expect(frames.size).toBe(0);
     } finally {
       vi.unstubAllGlobals();
     }
