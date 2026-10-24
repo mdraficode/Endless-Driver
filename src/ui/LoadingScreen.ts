@@ -3,7 +3,7 @@ export interface LoadingProgress {
   readonly label: string;
 }
 
-/** Progress is a completed-startup fraction, clamped and monotonic for an honest stage bar. */
+/** Clamp reported startup progress and keep its completed-work fraction monotonic. */
 export function normalizeLoadingProgress(progress: number, previous = 0): number {
   if (!Number.isFinite(progress)) {
     return Math.min(1, Math.max(0, previous));
@@ -55,13 +55,34 @@ export class LoadingScreen {
     }
     this.#fraction = normalizeLoadingProgress(progress, this.#fraction);
     const percent = Math.round(this.#fraction * 100);
-    this.#bar.style.width = `${percent}%`;
     this.#progress.setAttribute('aria-valuenow', String(percent));
+
+    if (this.#fraction >= 1) {
+      delete this.#root.dataset['progressPhase'];
+      this.#progress.removeAttribute?.('aria-valuetext');
+      this.#bar.style.width = '100%';
+      this.#percent.textContent = '100%';
+      this.#label.textContent = label;
+      this.#finish();
+      return;
+    }
+
+    if (this.#fraction >= 0.94) {
+      // The remaining work ends at the first rendered frame, which can take a variable amount of
+      // time. Show an explicitly approximate crawl rather than leaving a misleading fixed 94%.
+      this.#root.dataset['progressPhase'] = 'finalizing';
+      this.#bar.style.width = '99%';
+      this.#progress.setAttribute('aria-valuetext', 'Finishing the first playable frame');
+      this.#percent.textContent = 'Almost ready…';
+      this.#label.textContent = 'Finishing the first playable frame…';
+      return;
+    }
+
+    delete this.#root.dataset['progressPhase'];
+    this.#progress.removeAttribute?.('aria-valuetext');
+    this.#bar.style.width = `${percent}%`;
     this.#percent.textContent = `${percent}%`;
     this.#label.textContent = label;
-    if (this.#fraction >= 1) {
-      this.#finish();
-    }
   }
 
   /** The overlay only completes after the renderer has submitted its first playable frame. */
@@ -88,6 +109,12 @@ export class LoadingScreen {
       window.clearTimeout(this.#hideTimer);
       this.#hideTimer = null;
     }
+    delete this.#root.dataset['progressPhase'];
+    this.#progress.removeAttribute?.('aria-valuetext');
+    const percent = Math.round(this.#fraction * 100);
+    this.#bar.style.width = `${percent}%`;
+    this.#progress.setAttribute('aria-valuenow', String(percent));
+    this.#percent.textContent = `${percent}%`;
     this.#root.dataset['state'] = 'error';
     this.#label.textContent = `Could not start: ${message}`;
     this.#root.classList.remove('loading-screen-complete');
@@ -101,6 +128,7 @@ export class LoadingScreen {
       window.clearTimeout(this.#hideTimer);
       this.#hideTimer = null;
     }
+    delete this.#root.dataset['progressPhase'];
     this.#root.hidden = true;
     this.#root.setAttribute('aria-hidden', 'true');
     this.#root.classList.remove('loading-screen-complete');

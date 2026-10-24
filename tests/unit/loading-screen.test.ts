@@ -10,6 +10,7 @@ function makeLoadingDom() {
   const bar = { style: { width: '' } } as unknown as HTMLElement;
   const progress = {
     setAttribute: (name: string, value: string) => progressAttributes.set(name, value),
+    removeAttribute: (name: string) => progressAttributes.delete(name),
   } as unknown as HTMLElement;
   const label = { textContent: '' } as unknown as HTMLElement;
   const percent = { textContent: '' } as unknown as HTMLElement;
@@ -61,11 +62,26 @@ describe('startup progress', () => {
       const dom = makeLoadingDom();
       const loading = new LoadingScreen(dom.root);
       loading.show();
+      loading.update(0.94, 'Starting the simulation…');
+
+      expect(dom.dataset['progressPhase']).toBe('finalizing');
+      expect(dom.bar.style.width).toBe('99%');
+      expect(dom.percent.textContent).toBe('Almost ready…');
+      expect(dom.label.textContent).toBe('Finishing the first playable frame…');
+      expect(dom.progressAttributes.get('aria-valuenow')).toBe('94');
+      expect(dom.progressAttributes.get('aria-valuetext')).toBe(
+        'Finishing the first playable frame',
+      );
+
       loading.update(1, 'Ready — the drive starts automatically');
 
       expect(dom.root.hidden).toBe(false);
       expect(dom.dataset['state']).toBe('ready');
+      expect(dom.dataset['progressPhase']).toBeUndefined();
+      expect(dom.bar.style.width).toBe('100%');
       expect(dom.percent.textContent).toBe('100%');
+      expect(dom.progressAttributes.get('aria-valuenow')).toBe('100');
+      expect(dom.progressAttributes.has('aria-valuetext')).toBe(false);
       expect(dom.classes.has('loading-screen-complete')).toBe(true);
       expect(hideTimers).toHaveLength(1);
 

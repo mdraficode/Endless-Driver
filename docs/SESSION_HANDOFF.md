@@ -2395,3 +2395,13 @@ Distant mountain geometry retains the existing four-range vertex budget but repl
 **Push-before-check / validation:** code/docs commit `18f66c0957f2df8d2d4d6c97f60bd6b7f9ced49d` (`Dim gameplay touch controls until pressed`) was pushed to `main`, and the local/remote SHAs matched before checks. Full `npm run check` passed on that SHA: Prettier, ESLint, GLSL guard, both TypeScript checks, **80 test files / 596 tests**, asset verification (20 assets / 47,814,431 bytes), and production build. Existing non-fatal Three.js `BufferGeometry.toNonIndexed()` notices and the Vite large-chunk warning remain. `npm ci` reported two moderate audit findings; no audit fix was run.
 
 **Limitations / next action:** no browser or physical-device review has been performed. This confirms automated checks and preserves input behavior, but not the perceived idle visibility or touch response on an owner device. Please review it during gameplay on a phone/tablet.
+
+## 115. Smooth the final startup-progress phase (2026-10-25)
+
+**Owner report:** the loading screen appears stuck at 94% for a long time and feels uneven. The owner asks that progress fill gradually and smoothly rather than remain parked at a percentage.
+
+**Implementation:** the actual startup fraction remains monotonic and 100% still waits for the first playable frame. At the final `0.94` checkpoint, the display changes from a frozen number to “Almost ready…” / “Finishing the first playable frame…”, and the bar eases toward 99% over 10 seconds with a moving sheen. The progressbar keeps its last reported numeric value and an accessible finalizing description, so the visual estimate does not claim completion. The last step to 100% remains tied to the rendered first frame. The regular progress transition is lengthened to 480 ms; reduced-motion preferences disable the long crawl/shimmer. `tests/unit/loading-screen.test.ts` covers the 94% finalizing state and completion transition.
+
+**Push-before-check status:** validation pending. Per the owner's standing instruction, commit and push the source/docs change and verify the remote SHA before running checks.
+
+**Limitations / next action:** no browser/runtime timing review on an owner device has been performed. The last phase is a presentation estimate, not a claim that the final GPU/render work has a fixed duration; the shimmer indicates that the first frame is still pending.

@@ -204,13 +204,40 @@ body {
 }
 
 .loading-progress-fill {
+  position: relative;
   display: block;
   width: 0;
   height: 100%;
+  overflow: hidden;
   border-radius: inherit;
   background: linear-gradient(90deg, #32b6a5, #a1ead8);
   box-shadow: 0 0 18px rgb(84 224 199 / 55%);
-  transition: width 280ms ease-out;
+  transition: width 480ms ease-out;
+}
+
+.loading-progress-fill::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 38%, rgb(255 255 255 / 52%) 50%, transparent 62%);
+  content: '';
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-110%);
+}
+
+.loading-screen[data-progress-phase='finalizing'] .loading-progress-fill {
+  transition: width 10s linear;
+}
+
+.loading-screen[data-progress-phase='finalizing'] .loading-progress-fill::after {
+  opacity: 1;
+  animation: loading-progress-sheen 1.5s ease-in-out infinite;
+}
+
+@keyframes loading-progress-sheen {
+  to {
+    transform: translateX(110%);
+  }
 }
 
 .loading-footnote {
@@ -249,6 +276,15 @@ body {
   .loading-screen,
   .loading-progress-fill {
     transition-duration: 0.01ms;
+  }
+
+  .loading-screen[data-progress-phase='finalizing'] .loading-progress-fill {
+    transition-duration: 0.01ms;
+  }
+
+  .loading-screen[data-progress-phase='finalizing'] .loading-progress-fill::after {
+    animation: none;
+    opacity: 0;
   }
 }
 
