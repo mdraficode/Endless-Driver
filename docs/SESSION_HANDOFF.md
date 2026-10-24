@@ -2309,6 +2309,18 @@ Distant mountain geometry retains the existing four-range vertex budget but repl
 
 **Implementation:** `src/vehicles/player-headlights.ts` retains exactly two warm, unshadowed player-only spotlights and the existing night gate, but broadens them into overlapping flood beams: 14,000 cd per light (up from 8,500), 86 m range (up from 72), 0.89 rad half-angle, 0.19 rad outboard splay, and 0.82 penumbra. Their axes fan outward rather than converge, filling the road edges while steering still turns the pair together. The calculated geometric envelope is about 124° (2 × [0.89 + 0.19] radians), near the full horizontal chase view; a unit test compares it against the configured maximum-speed FOV at 16:9. This is a cone-geometry target, not a rendered lux/brightness measurement. The light count and shadow cost are unchanged, Aohara's C/B/A city-light caps remain 6/8/12, and hero/fallback lens emission and daytime behavior are unchanged.
 
+**Historical intensity:** the 14,000 cd value recorded here was slightly lowered in §107; the beam fan, range, and night gate remain unchanged.
+
 **Push and verification:** `b2235ac` (`Widen and strengthen player headlights`) was pushed to `main` and its SHA verified before any tests. The focused headlight/player-visual/night-mood/material suites passed (4 files / 17 tests). Full `npm run check` also passed on `b2235ac`: formatting, lint, GLSL guard, both TypeScript checks, 79 test files / 581 tests, asset verification (20 assets / 47,814,431 bytes), and production build. Existing non-fatal Three.js non-indexed-geometry notices and the Vite large-chunk warning remain.
 
 **Limitations / review:** no rendered browser comparison, owner-device review, or beam photometry/performance measurement was performed; headless Chromium previously crashed during environment/KTX2 loading. Therefore the intended wide coverage is unit-tested geometrically, but perceived road brightness, cutoff/aim, glare or washout on buildings, and device cost still need visual review. The separate low-resolution/jagged-road report remains unrelated and unresolved.
+
+## 107. Small Night Mood headlight intensity trim (2026-10-24)
+
+**Owner request:** the widened beam looked a little too bright; reduce its intensity slightly without undoing its broader coverage.
+
+**Implementation:** `PLAYER_HEADLIGHT_CONFIG.intensityCandela` is reduced from 14,000 to **12,500 cd per lamp** (about 10.7% lower). This changes only intensity; the 86 m range, broad 0.89 rad half-angle, 0.19 rad outboard splay, 0.82 penumbra, two-light count, steering response, Night Mood gate, and hero/fallback lens behavior remain as before. Aohara's C/B/A local-light budgets are untouched.
+
+**Push and verification:** code commit `418b2a9` (`Slightly reduce player headlight intensity`) was pushed to `main` and the remote SHA verified before tests. The focused headlight/player-visual/night-mood/material suites passed (4 files / 17 tests). Full `npm run check` passed on `418b2a9`: formatting, lint, GLSL guard, both TypeScript checks, 79 test files / 581 tests, asset verification (20 assets / 47,814,431 bytes), and production build. Existing non-fatal Three.js non-indexed-geometry notices and the Vite large-chunk warning remain.
+
+**Limitations / review:** no rendered browser comparison, owner-device review, or measured road illumination was performed. This is a modest numeric reduction, not a device-calibrated brightness result; visual comfort and beam performance still need gameplay review with Night Mood on. The previously reported low-resolution/jagged-road issue remains unrelated.
