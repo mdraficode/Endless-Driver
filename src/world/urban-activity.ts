@@ -379,7 +379,7 @@ export function constrainTrafficFollowingTravel(
   return Math.min(requestedTravel, availableTravel);
 }
 
-/** Applies one bounded, allocation-free spacing pass to a cyclic traffic route. */
+/** Applies one bounded, in-place spacing pass to a cyclic traffic route. */
 export function constrainTrafficRouteSpacing(
   vehicles: TrafficRouteFollower[],
   routeLengthMeters: number,
