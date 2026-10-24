@@ -191,6 +191,23 @@ describe('input manager', () => {
     expect(manager.actions.handbrake).toBe(false);
   });
 
+  it('holds the N₂O boost request with either Shift key and releases it cleanly', () => {
+    const target = new FakeTarget();
+    const manager = new InputManager({ target });
+    manager.attach();
+
+    target.press('ShiftLeft');
+    manager.update(STEP);
+    expect(manager.actions.boost).toBe(true);
+    target.release('ShiftLeft');
+    manager.update(STEP);
+    expect(manager.actions.boost).toBe(false);
+
+    target.press('ShiftRight');
+    manager.update(STEP);
+    expect(manager.actions.boost).toBe(true);
+  });
+
   it('publishes one-shot reset and camera commands exactly once', () => {
     const target = new FakeTarget();
     const manager = new InputManager({ target });

@@ -51,6 +51,7 @@ export interface KeyBindings {
   readonly steerLeft: readonly string[];
   readonly steerRight: readonly string[];
   readonly handbrake: readonly string[];
+  readonly boost: readonly string[];
   readonly resetCar: readonly string[];
   readonly toggleCamera: readonly string[];
 }
@@ -61,6 +62,7 @@ export const KEY_BINDINGS: KeyBindings = {
   steerLeft: ['KeyA', 'ArrowLeft'],
   steerRight: ['KeyD', 'ArrowRight'],
   handbrake: ['Space'],
+  boost: ['ShiftLeft', 'ShiftRight'],
   resetCar: ['KeyR'],
   toggleCamera: ['KeyC'],
 };

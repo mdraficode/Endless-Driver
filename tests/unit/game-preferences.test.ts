@@ -35,6 +35,8 @@ describe('persistent game preferences', () => {
         carModel: 'kaminari-gt-roadster',
         cameraMode: 'missing-camera',
         steeringSensitivity: 'responsive',
+        touchSteeringMode: 'arrows',
+        touchControlScalePercent: 128,
         nightMood: true,
       }),
     );
@@ -45,6 +47,8 @@ describe('persistent game preferences', () => {
       carModel: 'kaminari-gt-roadster',
       cameraMode: DEFAULT_GAME_PREFERENCES.cameraMode,
       steeringSensitivity: 'responsive',
+      touchSteeringMode: 'arrows',
+      touchControlScalePercent: 130,
       nightMood: true,
     });
   });
@@ -65,6 +69,27 @@ describe('persistent game preferences', () => {
     expect(readGamePreferences(storage).nightMood).toBe(true);
   });
 
+  it('constrains touch-control preferences to supported modes and slider sizes', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      GAME_PREFERENCES_STORAGE_KEY,
+      JSON.stringify({ touchSteeringMode: 'unknown', touchControlScalePercent: 156 }),
+    );
+    expect(readGamePreferences(storage)).toMatchObject({
+      touchSteeringMode: 'wheel',
+      touchControlScalePercent: 140,
+    });
+
+    storage.setItem(
+      GAME_PREFERENCES_STORAGE_KEY,
+      JSON.stringify({ touchSteeringMode: 'arrows', touchControlScalePercent: 67 }),
+    );
+    expect(readGamePreferences(storage)).toMatchObject({
+      touchSteeringMode: 'arrows',
+      touchControlScalePercent: 70,
+    });
+  });
+
   it('ignores malformed JSON and non-object data', () => {
     const storage = new MemoryStorage();
     storage.setItem(GAME_PREFERENCES_STORAGE_KEY, '{broken');
@@ -81,6 +106,8 @@ describe('persistent game preferences', () => {
       carModel: 'kaminari-gt-roadster',
       cameraMode: 'cockpit',
       steeringSensitivity: 'relaxed',
+      touchSteeringMode: 'arrows',
+      touchControlScalePercent: 135,
       nightMood: true,
     } as const;
 

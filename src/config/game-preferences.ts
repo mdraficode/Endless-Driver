@@ -5,6 +5,11 @@ export type GraphicsTierPreference = 'auto' | TierId;
 export type TrafficIntensity = 'off' | 'light' | 'standard' | 'busy';
 export type PlayerCarModel = 'generic-sport-coupe' | 'kaminari-gt-roadster';
 export type SteeringSensitivity = 'relaxed' | 'standard' | 'responsive';
+export type TouchSteeringMode = 'wheel' | 'arrows';
+
+export const TOUCH_CONTROL_SCALE_MIN_PERCENT = 70;
+export const TOUCH_CONTROL_SCALE_MAX_PERCENT = 140;
+export const TOUCH_CONTROL_SCALE_STEP_PERCENT = 5;
 
 export interface GamePreferences {
   readonly graphicsTier: GraphicsTierPreference;
@@ -12,6 +17,10 @@ export interface GamePreferences {
   readonly carModel: PlayerCarModel;
   readonly cameraMode: CameraMode;
   readonly steeringSensitivity: SteeringSensitivity;
+  /** Live touch-only steering layout; desktop keyboard/gamepad inputs are unchanged. */
+  readonly touchSteeringMode: TouchSteeringMode;
+  /** Percentage size for on-screen driving controls, constrained to the menu slider range. */
+  readonly touchControlScalePercent: number;
   /** Persistent live lighting preset; off preserves the daytime default. */
   readonly nightMood: boolean;
 }
@@ -29,6 +38,8 @@ export const DEFAULT_GAME_PREFERENCES: Readonly<GamePreferences> = {
   carModel: 'generic-sport-coupe',
   cameraMode: 'chase',
   steeringSensitivity: 'standard',
+  touchSteeringMode: 'wheel',
+  touchControlScalePercent: 100,
   nightMood: false,
 };
 
@@ -40,6 +51,7 @@ const STEERING_SENSITIVITIES: readonly SteeringSensitivity[] = [
   'standard',
   'responsive',
 ];
+const TOUCH_STEERING_MODES: readonly TouchSteeringMode[] = ['wheel', 'arrows'];
 
 /** User-facing steering scales applied after the input manager's smoothing. */
 export const STEERING_SENSITIVITY_SCALE: Readonly<Record<SteeringSensitivity, number>> = {
@@ -67,6 +79,18 @@ function parseGraphicsTier(value: unknown): GraphicsTierPreference {
   return DEFAULT_GAME_PREFERENCES.graphicsTier;
 }
 
+function parseTouchControlScalePercent(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return DEFAULT_GAME_PREFERENCES.touchControlScalePercent;
+  }
+  const snapped =
+    Math.round(value / TOUCH_CONTROL_SCALE_STEP_PERCENT) * TOUCH_CONTROL_SCALE_STEP_PERCENT;
+  return Math.min(
+    TOUCH_CONTROL_SCALE_MAX_PERCENT,
+    Math.max(TOUCH_CONTROL_SCALE_MIN_PERCENT, snapped),
+  );
+}
+
 /** Reads and validates persisted options; malformed/blocked storage falls back safely. */
 export function readGamePreferences(storage?: PreferenceStorage): GamePreferences {
   const target = resolveStorage(storage);
@@ -92,6 +116,10 @@ export function readGamePreferences(storage?: PreferenceStorage): GamePreference
       steeringSensitivity: isSteeringSensitivity(parsed['steeringSensitivity'])
         ? parsed['steeringSensitivity']
         : DEFAULT_GAME_PREFERENCES.steeringSensitivity,
+      touchSteeringMode: isTouchSteeringMode(parsed['touchSteeringMode'])
+        ? parsed['touchSteeringMode']
+        : DEFAULT_GAME_PREFERENCES.touchSteeringMode,
+      touchControlScalePercent: parseTouchControlScalePercent(parsed['touchControlScalePercent']),
       nightMood:
         typeof parsed['nightMood'] === 'boolean'
           ? parsed['nightMood']
@@ -127,4 +155,8 @@ export function isPlayerCarModel(value: unknown): value is PlayerCarModel {
 
 export function isSteeringSensitivity(value: unknown): value is SteeringSensitivity {
   return STEERING_SENSITIVITIES.includes(value as SteeringSensitivity);
+}
+
+export function isTouchSteeringMode(value: unknown): value is TouchSteeringMode {
+  return TOUCH_STEERING_MODES.includes(value as TouchSteeringMode);
 }

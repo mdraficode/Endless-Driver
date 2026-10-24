@@ -6,10 +6,10 @@ import { clamp } from '../shared/math';
  * the difference between proportional driving and binary keys through a ramp).
  *
  * Mapping (standard layout): left stick X steers, RT (button 7) throttles,
- * LT (button 6) brakes, A (0) or RB (5) is the handbrake, Y (3) resets the
- * car, X (2) cycles the camera. D-pad left/right (14/15) steers digitally as
- * a fallback. Pure and injectable: tests feed fake pads, the browser feeds
- * `navigator.getGamepads()`.
+ * LT (button 6) brakes, A (0) or RB (5) is the handbrake, B (1) is N₂O boost,
+ * Y (3) resets the car, X (2) cycles the camera. D-pad left/right (14/15)
+ * steers digitally as a fallback. Pure and injectable: tests feed fake pads,
+ * the browser feeds `navigator.getGamepads()`.
  */
 export interface GamepadButtonLike {
   readonly pressed: boolean;
@@ -28,6 +28,7 @@ export interface GamepadDriveState {
   readonly throttle: number;
   readonly brake: number;
   readonly handbrake: boolean;
+  readonly boostPressed: boolean;
   readonly resetPressed: boolean;
   readonly cameraPressed: boolean;
 }
@@ -37,6 +38,7 @@ export const NEUTRAL_GAMEPAD: GamepadDriveState = {
   throttle: 0,
   brake: 0,
   handbrake: false,
+  boostPressed: false,
   resetPressed: false,
   cameraPressed: false,
 };
@@ -73,6 +75,7 @@ export function readGamepadState(
     throttle: trigger(pad, 7),
     brake: trigger(pad, 6),
     handbrake: button(pad, 0).pressed || button(pad, 5).pressed,
+    boostPressed: button(pad, 1).pressed,
     resetPressed: button(pad, 3).pressed || button(pad, 9).pressed,
     cameraPressed: button(pad, 2).pressed,
   };

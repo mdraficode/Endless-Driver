@@ -9,6 +9,8 @@ export interface VehicleActions {
   /** -1 (left) .. 1 (right). */
   readonly steer: number;
   readonly handbrake: boolean;
+  /** Boost state consumed by the vehicle after the N₂O tank approves a request. */
+  readonly boost: boolean;
   readonly resetRequested: boolean;
   readonly toggleCameraRequested: boolean;
 }
@@ -18,6 +20,7 @@ export const NEUTRAL_ACTIONS: VehicleActions = {
   brake: 0,
   steer: 0,
   handbrake: false,
+  boost: false,
   resetRequested: false,
   toggleCameraRequested: false,
 };

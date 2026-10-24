@@ -36,9 +36,14 @@ describe('gamepad mapping', () => {
     expect(analog.brake).toBeCloseTo(0.25, 6);
   });
 
-  it('maps handbrake, reset, camera and the D-pad fallback', () => {
-    const state = readGamepadState(pad([0, 0], { 0: 1, 3: 1, 2: 1, 15: 1 }), DEADZONE, EXPONENT);
+  it('maps handbrake, N₂O boost, reset, camera and the D-pad fallback', () => {
+    const state = readGamepadState(
+      pad([0, 0], { 0: 1, 1: 1, 3: 1, 2: 1, 15: 1 }),
+      DEADZONE,
+      EXPONENT,
+    );
     expect(state.handbrake).toBe(true);
+    expect(state.boostPressed).toBe(true);
     expect(state.resetPressed).toBe(true);
     expect(state.cameraPressed).toBe(true);
     expect(state.steer).toBe(1);

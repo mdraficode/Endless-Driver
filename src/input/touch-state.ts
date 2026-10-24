@@ -13,6 +13,7 @@ export interface TouchDriveState {
   readonly throttle: boolean;
   readonly brake: boolean;
   readonly handbrake: boolean;
+  readonly boost: boolean;
 }
 
 export const NEUTRAL_TOUCH_STATE: TouchDriveState = {
@@ -20,6 +21,7 @@ export const NEUTRAL_TOUCH_STATE: TouchDriveState = {
   throttle: false,
   brake: false,
   handbrake: false,
+  boost: false,
 };
 
 function applySteeringDeadzone(value: number, deadzone: number): number {
@@ -160,6 +162,8 @@ export class TouchStateTracker {
 
   readonly #handbrakePointers = new Set<number>();
 
+  readonly #boostPointers = new Set<number>();
+
   /** Registers/updates a steering-wheel pointer with its current steering value. */
   setSteering(pointerId: number, steer: number): void {
     this.#steeringPointers.set(pointerId, clamp(steer, -1, 1));
@@ -170,7 +174,7 @@ export class TouchStateTracker {
   }
 
   setPressed(
-    control: 'throttle' | 'brake' | 'handbrake',
+    control: 'throttle' | 'brake' | 'handbrake' | 'boost',
     pointerId: number,
     pressed: boolean,
   ): void {
@@ -179,7 +183,9 @@ export class TouchStateTracker {
         ? this.#throttlePointers
         : control === 'brake'
           ? this.#brakePointers
-          : this.#handbrakePointers;
+          : control === 'handbrake'
+            ? this.#handbrakePointers
+            : this.#boostPointers;
     if (pressed) {
       pointers.add(pointerId);
     } else {
@@ -193,6 +199,7 @@ export class TouchStateTracker {
     this.#throttlePointers.clear();
     this.#brakePointers.clear();
     this.#handbrakePointers.clear();
+    this.#boostPointers.clear();
   }
 
   snapshot(): TouchDriveState {
@@ -205,6 +212,7 @@ export class TouchStateTracker {
       throttle: this.#throttlePointers.size > 0,
       brake: this.#brakePointers.size > 0,
       handbrake: this.#handbrakePointers.size > 0,
+      boost: this.#boostPointers.size > 0,
     };
   }
 }

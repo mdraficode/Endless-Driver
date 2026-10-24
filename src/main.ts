@@ -32,6 +32,7 @@ import { LoadingScreen } from './ui/LoadingScreen';
 import { FullscreenOnStart } from './ui/FullscreenOnStart';
 import { urlForSpawn } from './ui/StartLocationSelector';
 import { PauseMenu } from './ui/PauseMenu';
+import { BoostGauge } from './ui/BoostGauge';
 import { yawFromQuat } from './shared/vector';
 import { readWeatherPreset } from './environment/SurfaceState';
 import { EnvironmentClock } from './environment/EnvironmentClock';
@@ -203,9 +204,11 @@ const creditsRoot = document.querySelector<HTMLElement>('#credits-root');
 const creditsPanel = creditsRoot === null ? null : new CreditsPanel(creditsRoot);
 if (creditsPanel !== null) void creditsPanel.load();
 const statusElement = document.querySelector<HTMLElement>('#scene-status');
+const boostGaugeRoot = document.querySelector<HTMLElement>('#boost-gauge');
 
 let drivingApplication: Application | null = null;
 let drivingMinimap: Minimap | null = null;
+let drivingBoostGauge: BoostGauge | null = null;
 let drivingPauseMenu: PauseMenu | null = null;
 let driveRestartTask: Promise<void> | null = null;
 
@@ -273,6 +276,8 @@ async function restartDriveInPlace(
       drivingPauseMenu = null;
       drivingMinimap?.dispose();
       drivingMinimap = null;
+      drivingBoostGauge?.dispose();
+      drivingBoostGauge = null;
       const previousApplication = drivingApplication;
       drivingApplication = null;
       previousApplication?.stop();
@@ -330,6 +335,10 @@ async function startDrivingScene(restarting = false): Promise<void> {
     const rapier = await loadRapier();
     loadingScreen?.update(0.14, 'Physics ready — selecting the graphics profile…');
     const preferences = readGamePreferences();
+    let activeTouchSteeringMode = preferences.touchSteeringMode;
+    let activeTouchControlScalePercent = preferences.touchControlScalePercent;
+    drivingBoostGauge?.dispose();
+    drivingBoostGauge = boostGaugeRoot === null ? null : new BoostGauge(boostGaugeRoot);
     const startHour = readTimeRequest(window.location.search);
     const nightMood = startHour === null && preferences.nightMood;
     const menuNightMood =
@@ -361,6 +370,7 @@ async function startDrivingScene(restarting = false): Promise<void> {
       weather: readWeatherPreset(window.location.search),
       cameraMode: preferences.cameraMode,
       steeringSensitivity: preferences.steeringSensitivity,
+      onBoostState: (state) => drivingBoostGauge?.update(state),
     };
 
     const activeApplication = new Application(options);
@@ -372,7 +382,11 @@ async function startDrivingScene(restarting = false): Promise<void> {
     if (touchRoot !== null) {
       const touchParam = new URLSearchParams(window.location.search).get('touch');
       if (touchParam !== '0') {
-        activeApplication.attachTouchControls(touchRoot, { force: touchParam === '1' });
+        activeApplication.attachTouchControls(touchRoot, {
+          force: touchParam === '1',
+          steeringMode: activeTouchSteeringMode,
+          controlScalePercent: activeTouchControlScalePercent,
+        });
       }
     }
     await activeApplication.start();
@@ -426,6 +440,17 @@ async function startDrivingScene(restarting = false): Promise<void> {
         onApplySpawn: applySpawnInPlace,
         onPreferenceChange: (key, value) => {
           const saved = persistPreference(key, value);
+          if (key === 'touchSteeringMode') {
+            activeTouchSteeringMode = value as GamePreferences['touchSteeringMode'];
+          } else if (key === 'touchControlScalePercent') {
+            activeTouchControlScalePercent = value as GamePreferences['touchControlScalePercent'];
+          }
+          if (key === 'touchSteeringMode' || key === 'touchControlScalePercent') {
+            activeApplication.setTouchControlPreferences(
+              activeTouchSteeringMode,
+              activeTouchControlScalePercent,
+            );
+          }
           if (key === 'nightMood' && typeof value === 'boolean') {
             activeApplication.setNightMood(value);
             clearTimeOverrideFromUrl();
@@ -440,6 +465,8 @@ async function startDrivingScene(restarting = false): Promise<void> {
   } catch (error) {
     drivingPauseMenu?.dispose();
     drivingPauseMenu = null;
+    drivingBoostGauge?.dispose();
+    drivingBoostGauge = null;
     minimap?.dispose();
     drivingMinimap = null;
     if (application !== null) {

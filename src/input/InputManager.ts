@@ -77,6 +77,7 @@ export class InputManager {
   #throttle = 0;
   #brake = 0;
   #handbrake = 0;
+  #boostRequested = false;
   #steerRaw = 0;
   #steer = 0;
   #attached = false;
@@ -108,6 +109,7 @@ export class InputManager {
       brake: shapeAxis(this.#brake, brake.curveExponent),
       steer: this.#steer,
       handbrake: this.#handbrake > 0.5,
+      boost: this.#boostRequested,
       resetRequested: this.#resetCommand.remaining > 0,
       toggleCameraRequested: this.#cameraCommand.remaining > 0,
     };
@@ -143,6 +145,7 @@ export class InputManager {
     this.#throttle = 0;
     this.#brake = 0;
     this.#handbrake = 0;
+    this.#boostRequested = false;
     this.#steerRaw = 0;
     this.#steer = 0;
   }
@@ -179,6 +182,8 @@ export class InputManager {
       config.gamepad.steerExponent,
     );
     this.#gamepadLive = pad !== NEUTRAL_GAMEPAD_STATE;
+    this.#boostRequested =
+      this.#isAnyPressed(this.#bindings.boost) || touch?.boost === true || pad.boostPressed;
     if (pad.resetPressed && !this.#padResetHeld) {
       this.#resetCommand.remaining = config.commandLifetimeSeconds;
     }
@@ -314,7 +319,8 @@ export class InputManager {
       bindings.brake.includes(code) ||
       bindings.steerLeft.includes(code) ||
       bindings.steerRight.includes(code) ||
-      bindings.handbrake.includes(code)
+      bindings.handbrake.includes(code) ||
+      bindings.boost.includes(code)
     );
   }
 }

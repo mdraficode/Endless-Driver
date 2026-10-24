@@ -1,9 +1,15 @@
 import type { CameraMode } from '../config/camera';
+import {
+  TOUCH_CONTROL_SCALE_MAX_PERCENT,
+  TOUCH_CONTROL_SCALE_MIN_PERCENT,
+  TOUCH_CONTROL_SCALE_STEP_PERCENT,
+} from '../config/game-preferences';
 import type {
   GamePreferences,
   GraphicsTierPreference,
   PlayerCarModel,
   SteeringSensitivity,
+  TouchSteeringMode,
   TrafficIntensity,
 } from '../config/game-preferences';
 import type { SpawnPoint } from '../config/spawns';
@@ -49,7 +55,7 @@ export interface PauseMenuOptions {
   readonly onFullscreen: (event: Event) => Promise<boolean>;
 }
 
-// Night Mood is excluded: it changes the running scene immediately and never needs Apply & Restart.
+// Night Mood and touch controls apply live; everything below requires Apply & Restart.
 const PREFERENCE_KEYS: readonly (keyof GamePreferences)[] = [
   'graphicsTier',
   'trafficIntensity',
@@ -82,6 +88,11 @@ const STEERING_CHOICES: readonly { value: SteeringSensitivity; label: string }[]
   { value: 'relaxed', label: 'Relaxed — smoother, less sensitive' },
   { value: 'standard', label: 'Standard' },
   { value: 'responsive', label: 'Responsive — quicker steering' },
+];
+
+const TOUCH_STEERING_CHOICES: readonly { value: TouchSteeringMode; label: string }[] = [
+  { value: 'wheel', label: 'Virtual steering wheel' },
+  { value: 'arrows', label: 'Left/right arrow buttons' },
 ];
 
 const CAR_CHOICES: readonly {
@@ -433,7 +444,7 @@ export class PauseMenu {
     calloutTitle.textContent = 'Your options are remembered';
     const calloutText = document.createElement('span');
     calloutText.textContent =
-      'Changes are saved as you make them. Night Mood switches immediately; restart for gameplay, car, traffic or graphics changes.';
+      'Changes are saved as you make them. Touch layout, button size and Night Mood switch immediately; restart for steering response, start camera, car, traffic or graphics changes.';
     callout.append(calloutTitle, calloutText);
     page.append(heading, intro, statusGrid, nightPanel, callout);
   }
@@ -485,12 +496,21 @@ export class PauseMenu {
   #renderGameplay(page: HTMLElement): void {
     page.append(
       this.#sectionHeading('MAKE IT YOURS', 'Gameplay Options'),
-      this.#paragraph('These settings are applied when you restart the drive.'),
+      this.#paragraph(
+        'Traffic, camera and steering response apply after restart. Touch steering layout and control size update immediately.',
+      ),
     );
     page.append(
       this.#preferenceSelect('Traffic intensity', 'trafficIntensity', TRAFFIC_CHOICES),
       this.#preferenceSelect('Camera at start', 'cameraMode', CAMERA_CHOICES),
       this.#preferenceSelect('Steering response', 'steeringSensitivity', STEERING_CHOICES),
+      this.#preferenceSelect(
+        'Touch steering control',
+        'touchSteeringMode',
+        TOUCH_STEERING_CHOICES,
+        'Switches immediately between the virtual wheel and left/right arrows.',
+      ),
+      this.#touchControlSizeField(),
     );
     const trafficHint = this.#paragraph(
       'Traffic Off removes moving Aohara traffic; Light, Standard and Busy scale the city vehicle count. Pedestrians and the road network are unchanged.',
@@ -599,21 +619,23 @@ export class PauseMenu {
       'W / ↑ — accelerate',
       'S / ↓ — brake and reverse',
       'A / D or ← / → — steer',
+      'Hold Shift while accelerating — N₂O boost',
       'Space — handbrake · R — reset car',
       'C — switch camera · P or Esc — pause',
     ]);
     this.#appendHelpCard(grid, 'TOUCH', [
-      'Left stick — steer',
+      'Steer with the wheel or left/right arrows, selected in Gameplay Options',
+      'Adjust touch-control size in Gameplay Options',
       'Right-side pedals — gas and brake',
-      'HB — handbrake',
-      'Camera and reset are in the utility row',
+      'Hold N₂O while accelerating to boost; the top-left tank shows charge',
+      'HB — handbrake · camera and reset are in the utility row',
       'Pause button stays at the upper-right',
     ]);
     this.#appendHelpCard(grid, 'GAMEPAD', [
       'Left stick — steer',
-      'Right trigger — accelerate',
-      'Left trigger — brake',
-      'A / Cross — handbrake · Y / Triangle — reset',
+      'Right trigger — accelerate · left trigger — brake',
+      'Hold B / Circle while accelerating — N₂O boost',
+      'A / Cross or RB — handbrake · Y / Triangle — reset',
       'X / Square — switch camera',
     ]);
     page.append(grid);
@@ -667,8 +689,9 @@ export class PauseMenu {
     labelText: string,
     key: K,
     choices: readonly { readonly value: GamePreferences[K]; readonly label: string }[],
+    hintText = 'Saved automatically; restart to apply.',
   ): HTMLElement {
-    const field = this.#field(labelText, 'Saved automatically; restart to apply.');
+    const field = this.#field(labelText, hintText);
     const select = document.createElement('select');
     select.className = 'pause-menu-select';
     select.setAttribute('aria-label', labelText);
@@ -684,6 +707,37 @@ export class PauseMenu {
       if (selected !== undefined) this.#setPreference(key, selected.value);
     });
     field.append(select);
+    return field;
+  }
+
+  #touchControlSizeField(): HTMLElement {
+    const field = this.#field(
+      'Touch button size',
+      'Resize the wheel or arrow buttons and the driving controls; applies immediately.',
+    );
+    const controlRow = document.createElement('div');
+    controlRow.className = 'pause-menu-range-control';
+    const input = document.createElement('input');
+    input.className = 'pause-menu-range';
+    input.type = 'range';
+    input.min = String(TOUCH_CONTROL_SCALE_MIN_PERCENT);
+    input.max = String(TOUCH_CONTROL_SCALE_MAX_PERCENT);
+    input.step = String(TOUCH_CONTROL_SCALE_STEP_PERCENT);
+    input.value = String(this.#preferences.touchControlScalePercent);
+    input.setAttribute('aria-label', 'Touch button size');
+    const output = document.createElement('output');
+    output.className = 'pause-menu-range-value';
+    output.value = `${input.value}%`;
+    output.textContent = output.value;
+    output.setAttribute('aria-live', 'polite');
+    input.addEventListener('input', () => {
+      const size = Number(input.value);
+      output.value = `${size}%`;
+      output.textContent = output.value;
+      this.#setPreference('touchControlScalePercent', size);
+    });
+    controlRow.append(input, output);
+    field.append(controlRow);
     return field;
   }
 
@@ -755,7 +809,7 @@ export class PauseMenu {
   #trapFocus(event: KeyboardEvent): void {
     const focusable = Array.from(
       this.#dialog.querySelectorAll<HTMLElement>(
-        'button:not([disabled]):not([hidden]), select:not([disabled]):not([hidden]), a[href]',
+        'button:not([disabled]):not([hidden]), select:not([disabled]):not([hidden]), input:not([disabled]):not([hidden]), a[href]',
       ),
     ).filter((element) => element.getClientRects().length > 0);
     if (focusable.length === 0) return;

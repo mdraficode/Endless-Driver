@@ -147,15 +147,46 @@ describe('multi-touch state tracker', () => {
   });
 });
 
+describe('arrow steering and touch boost state', () => {
+  it('holds digital left/right steering and a separate boost pointer together', () => {
+    const tracker = new TouchStateTracker();
+    tracker.setSteering(10, -1);
+    tracker.setPressed('throttle', 11, true);
+    tracker.setPressed('boost', 12, true);
+    expect(tracker.snapshot()).toMatchObject({ steer: -1, throttle: true, boost: true });
+
+    tracker.releaseSteering(10);
+    expect(tracker.snapshot().steer).toBeNull();
+    expect(tracker.snapshot().boost).toBe(true);
+    tracker.setSteering(13, 1);
+    expect(tracker.snapshot().steer).toBe(1);
+
+    tracker.releaseAll();
+    expect(tracker.snapshot()).toEqual(NEUTRAL_TOUCH_STATE);
+  });
+});
+
 describe('input manager touch merge', () => {
   it('drives throttle and analog steering through the shared smoothing', () => {
     const manager = new InputManager({ target: null });
-    manager.setTouchState({ steer: 1, throttle: true, brake: false, handbrake: false });
+    manager.setTouchState({
+      steer: 1,
+      throttle: true,
+      brake: false,
+      handbrake: false,
+      boost: false,
+    });
     advance(manager, 1);
     expect(manager.actions.throttle).toBeGreaterThan(0.9);
     expect(manager.actions.steer).toBeGreaterThan(0.85); // swept by the rate limiter, not snapped
     // Letting go of the wheel returns the steering to centre.
-    manager.setTouchState({ steer: null, throttle: false, brake: false, handbrake: false });
+    manager.setTouchState({
+      steer: null,
+      throttle: false,
+      brake: false,
+      handbrake: false,
+      boost: false,
+    });
     advance(manager, 1);
     expect(manager.actions.steer).toBeCloseTo(0, 1);
     expect(manager.actions.throttle).toBeCloseTo(0, 1);
@@ -171,7 +202,13 @@ describe('input manager touch merge', () => {
 
   it('reset clears a stuck touch state (tab switch with thumbs down)', () => {
     const manager = new InputManager({ target: null });
-    manager.setTouchState({ steer: -1, throttle: true, brake: false, handbrake: true });
+    manager.setTouchState({
+      steer: -1,
+      throttle: true,
+      brake: false,
+      handbrake: true,
+      boost: false,
+    });
     advance(manager, 0.5);
     manager.reset();
     advance(manager, 1);

@@ -1,4 +1,10 @@
 import { TOUCH_CONTROL_CONFIG } from '../config/input';
+import {
+  TOUCH_CONTROL_SCALE_MAX_PERCENT,
+  TOUCH_CONTROL_SCALE_MIN_PERCENT,
+  TOUCH_CONTROL_SCALE_STEP_PERCENT,
+} from '../config/game-preferences';
+import type { TouchSteeringMode } from '../config/game-preferences';
 import { requestFullscreenBestEffort } from '../ui/FullscreenOnStart';
 import { SteeringWheelGesture, TouchStateTracker, type TouchDriveState } from './touch-state';
 
@@ -14,6 +20,10 @@ export interface TouchControlsOptions {
    * Normally the surface only appears on coarse-pointer/touch devices.
    */
   readonly force?: boolean;
+  /** Live-selectable left-side steering control. */
+  readonly steeringMode?: TouchSteeringMode;
+  /** Percentage scale applied to the on-screen controls (70–140%). */
+  readonly controlScalePercent?: number;
 }
 
 interface SteeringWheelPointer {
@@ -24,12 +34,11 @@ interface SteeringWheelPointer {
 /**
  * The on-screen driving surface for phones and tablets.
  *
- * Layout is landscape-first racing-game standard: a one-finger rotary steering wheel under the
- * left thumb, BRAKE/GAS pedals under the right, handbrake above the brake, and small
- * diagnostics/camera/reset/fullscreen buttons top-right. Every control tracks its own pointer ids
- * (multi-touch is the whole point: steer and accelerate at the same time), all state
- * funnels through `TouchStateTracker`, and the surface publishes into the same
- * `InputManager` seam the keyboard uses — the car cannot tell thumbs from keys.
+ * Layout is landscape-first: a selectable one-finger rotary wheel or left/right steering buttons
+ * under the left thumb, BRAKE/GAS pedals, handbrake and N₂O boost under the right, and small
+ * diagnostics/camera/reset/fullscreen buttons top-right. Each control tracks pointer ids so the
+ * player can steer, accelerate and boost simultaneously. State funnels through `TouchStateTracker`
+ * into the same `InputManager` seam as keyboard/gamepad input.
  *
  * Visibility: rendered only when the device reports a coarse pointer (or `force`).
  * Portrait layout is handled by the in-page landscape fallback. Fullscreen is attempted
@@ -46,6 +55,12 @@ export class TouchControls {
 
   #steeringPointer: SteeringWheelPointer | null = null;
 
+  readonly #arrowPointers = new Map<number, HTMLButtonElement>();
+
+  #steeringMode: TouchSteeringMode;
+
+  #controlScalePercent: number;
+
   #orientationAttempted = false;
 
   #disposed = false;
@@ -55,6 +70,10 @@ export class TouchControls {
   constructor(root: HTMLElement, options: TouchControlsOptions) {
     this.#root = root;
     this.#options = options;
+    this.#steeringMode = options.steeringMode ?? 'wheel';
+    this.#controlScalePercent = TouchControls.#normalizeControlScale(
+      options.controlScalePercent ?? 100,
+    );
     if (!options.force && !TouchControls.#deviceWantsTouch()) {
       root.hidden = true;
       return;
@@ -63,6 +82,55 @@ export class TouchControls {
     root.classList.add('touch-controls');
     document.body.classList.add('touch-enabled');
     this.#build();
+    this.#applyPreferences();
+  }
+
+  setPreferences(steeringMode: TouchSteeringMode, controlScalePercent: number): void {
+    const modeChanged = this.#steeringMode !== steeringMode;
+    this.#steeringMode = steeringMode;
+    this.#controlScalePercent = TouchControls.#normalizeControlScale(controlScalePercent);
+    if (modeChanged) this.#releaseSteeringControls();
+    this.#applyPreferences();
+  }
+
+  static #normalizeControlScale(value: number): number {
+    if (!Number.isFinite(value)) return 100;
+    const snapped =
+      Math.round(value / TOUCH_CONTROL_SCALE_STEP_PERCENT) * TOUCH_CONTROL_SCALE_STEP_PERCENT;
+    return Math.max(
+      TOUCH_CONTROL_SCALE_MIN_PERCENT,
+      Math.min(TOUCH_CONTROL_SCALE_MAX_PERCENT, snapped),
+    );
+  }
+
+  #applyPreferences(): void {
+    this.#root.dataset['steeringMode'] = this.#steeringMode;
+    this.#root.style.setProperty('--touch-control-scale', String(this.#controlScalePercent / 100));
+    const wheel = this.#root.querySelector<HTMLButtonElement>('.touch-steering-wheel');
+    const arrows = this.#root.querySelector<HTMLElement>('.touch-steering-arrows');
+    if (wheel !== null) wheel.hidden = this.#steeringMode !== 'wheel';
+    if (arrows !== null) arrows.hidden = this.#steeringMode !== 'arrows';
+  }
+
+  #releaseSteeringControls(): void {
+    const wheelPointer = this.#steeringPointer;
+    this.#steeringPointer = null;
+    if (wheelPointer !== null) {
+      this.#tracker.releaseSteering(wheelPointer.id);
+      const wheel = this.#root.querySelector<HTMLButtonElement>('.touch-steering-wheel');
+      if (wheel?.hasPointerCapture(wheelPointer.id)) wheel.releasePointerCapture(wheelPointer.id);
+    }
+    const arrowPointers = [...this.#arrowPointers.entries()];
+    this.#arrowPointers.clear();
+    for (const [pointerId, button] of arrowPointers) {
+      this.#tracker.releaseSteering(pointerId);
+      button.classList.remove('is-active');
+      if (button.hasPointerCapture(pointerId)) button.releasePointerCapture(pointerId);
+    }
+    this.#root.querySelector('.touch-steering-wheel')?.classList.remove('is-active');
+    const artwork = this.#root.querySelector<SVGSVGElement>('.touch-steering-wheel-svg');
+    if (artwork !== null) artwork.style.transform = 'rotate(0deg)';
+    this.#emit();
   }
 
   static #deviceWantsTouch(): boolean {
@@ -98,8 +166,11 @@ export class TouchControls {
     }
     this.#windowListeners.length = 0;
     this.#tracker.releaseAll();
+    this.#arrowPointers.clear();
     this.#emit();
     this.#root.replaceChildren();
+    this.#root.style.removeProperty('--touch-control-scale');
+    delete this.#root.dataset['steeringMode'];
     this.#root.classList.remove('touch-controls');
     document.body.classList.remove('touch-enabled');
   }
@@ -211,11 +282,48 @@ export class TouchControls {
     steeringWheel.addEventListener('pointercancel', releaseWheel);
     steeringWheel.addEventListener('lostpointercapture', releaseWheel);
 
+    // --- Left/right steering arrows (shown only when selected in Gameplay Options) ---
+    const arrowControls = document.createElement('div');
+    arrowControls.className = 'touch-steering-arrows';
+    arrowControls.setAttribute('role', 'group');
+    arrowControls.setAttribute('aria-label', 'Touch steering arrows');
+    const releaseArrowPointer = (pointerId: number, emit = true): void => {
+      const button = this.#arrowPointers.get(pointerId);
+      if (button === undefined) return;
+      this.#arrowPointers.delete(pointerId);
+      this.#tracker.releaseSteering(pointerId);
+      button.classList.toggle('is-active', [...this.#arrowPointers.values()].includes(button));
+      if (emit) this.#emit();
+    };
+    const steeringArrow = (glyph: string, steer: -1 | 1, ariaLabel: string): HTMLButtonElement => {
+      const button = make('touch-steering-arrow', glyph, ariaLabel);
+      button.addEventListener('pointerdown', (event) => {
+        event.preventDefault();
+        if (this.#arrowPointers.has(event.pointerId)) return;
+        button.setPointerCapture?.(event.pointerId);
+        this.#arrowPointers.set(event.pointerId, button);
+        button.classList.add('is-active');
+        this.#tracker.setSteering(event.pointerId, steer);
+        this.#emit();
+      });
+      const release = (event: PointerEvent): void => {
+        if (event.type === 'pointerup') this.#maybeLockLandscape(event);
+        releaseArrowPointer(event.pointerId);
+      };
+      button.addEventListener('pointerup', release);
+      button.addEventListener('pointercancel', release);
+      button.addEventListener('lostpointercapture', release);
+      return button;
+    };
+    const arrowLeft = steeringArrow('←', -1, 'Steer left');
+    const arrowRight = steeringArrow('→', 1, 'Steer right');
+    arrowControls.append(arrowLeft, arrowRight);
+
     // --- Pedals (right thumb / index) ---
     const pedal = (
       className: string,
       label: string,
-      control: 'throttle' | 'brake' | 'handbrake',
+      control: 'throttle' | 'brake' | 'handbrake' | 'boost',
     ): HTMLButtonElement => {
       const element = make(className, label, label);
       element.addEventListener('pointerdown', (event) => {
@@ -245,6 +353,9 @@ export class TouchControls {
     const gas = pedal('touch-pedal touch-pedal-gas', 'GAS', 'throttle');
     pedals.append(brake, gas);
     const handbrake = pedal('touch-handbrake', 'HB', 'handbrake');
+    const nitro = pedal('touch-boost', 'N₂O', 'boost');
+    nitro.setAttribute('aria-label', 'Hold N2O boost while accelerating');
+    nitro.title = 'Hold while accelerating to use N₂O boost.';
 
     // --- Utility buttons (top-right) ---
     const utilities = document.createElement('div');
@@ -271,7 +382,7 @@ export class TouchControls {
     });
     utilities.append(diagnosticsButton, cameraButton, resetButton, fullscreenButton);
 
-    this.#root.append(steeringWheel, handbrake, pedals, utilities);
+    this.#root.append(steeringWheel, arrowControls, handbrake, nitro, pedals, utilities);
 
     // Release safety net: if an element ever misses its pointerup (capture quirks,
     // browser gesture interruptions), the window still hears the thumb lift and no
@@ -280,16 +391,30 @@ export class TouchControls {
       this.#tracker.setPressed('throttle', event.pointerId, false);
       this.#tracker.setPressed('brake', event.pointerId, false);
       this.#tracker.setPressed('handbrake', event.pointerId, false);
+      this.#tracker.setPressed('boost', event.pointerId, false);
       this.#tracker.releaseSteering(event.pointerId);
+      releaseArrowPointer(event.pointerId, false);
       if (this.#steeringPointer?.id === event.pointerId) {
         this.#steeringPointer = null;
         resetWheelArtwork();
       }
       const state = this.#tracker.snapshot();
-      steeringWheel.classList.toggle('is-active', state.steer !== null);
+      steeringWheel.classList.toggle(
+        'is-active',
+        this.#steeringPointer !== null || this.#arrowPointers.size > 0,
+      );
+      arrowLeft.classList.toggle(
+        'is-active',
+        [...this.#arrowPointers.values()].includes(arrowLeft),
+      );
+      arrowRight.classList.toggle(
+        'is-active',
+        [...this.#arrowPointers.values()].includes(arrowRight),
+      );
       gas.classList.toggle('is-active', state.throttle);
       brake.classList.toggle('is-active', state.brake);
       handbrake.classList.toggle('is-active', state.handbrake);
+      nitro.classList.toggle('is-active', state.boost);
       this.#emit();
     };
     window.addEventListener('pointerup', releasePointer);
@@ -302,12 +427,16 @@ export class TouchControls {
     const releaseWhenHidden = (): void => {
       if (document.hidden) {
         this.#steeringPointer = null;
+        this.#arrowPointers.clear();
         this.#tracker.releaseAll();
         resetWheelArtwork();
         steeringWheel.classList.remove('is-active');
+        arrowLeft.classList.remove('is-active');
+        arrowRight.classList.remove('is-active');
         gas.classList.remove('is-active');
         brake.classList.remove('is-active');
         handbrake.classList.remove('is-active');
+        nitro.classList.remove('is-active');
         this.#emit();
       }
     };

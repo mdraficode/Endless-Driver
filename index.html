@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#0d1520" />
     <meta
       name="description"
-      content="Endless Driver — a WebGPU-first open-world driving game you play right in the browser. Keyboard on desktop, on-screen joystick and pedals on mobile (landscape)."
+      content="Endless Driver — a WebGPU-first open-world driving game you play right in the browser. Keyboard on desktop, configurable touch steering and pedals on mobile (landscape)."
     />
     <title>Endless Driver</title>
   </head>
@@ -18,6 +18,7 @@
         aria-label="Endless Driver 3D viewport"
       ></canvas>
       <div id="diagnostics-overlay" class="pointer-events-none absolute inset-0"></div>
+      <div id="boost-gauge" class="nitro-gauge" hidden></div>
       <div id="touch-controls" class="pointer-events-none absolute inset-0" hidden></div>
       <section id="loading-screen" class="loading-screen" aria-hidden="true" hidden>
         <div class="loading-screen-grid" aria-hidden="true"></div>

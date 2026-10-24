@@ -1487,6 +1487,7 @@ body {
    portrait uses the in-page landscape fallback. */
 .touch-controls {
   z-index: 30;
+  --touch-control-scale: 1;
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
@@ -1509,7 +1510,15 @@ body {
   cursor: grab;
   pointer-events: auto;
   touch-action: none;
+  transform: scale(var(--touch-control-scale));
+  transform-origin: left bottom;
+  transition: transform 140ms ease;
   -webkit-tap-highlight-color: transparent;
+}
+
+.touch-steering-wheel[hidden],
+.touch-steering-arrows[hidden] {
+  display: none !important;
 }
 
 .touch-steering-wheel:focus-visible {
@@ -1571,6 +1580,55 @@ body {
   stroke-width: 2;
 }
 
+.touch-steering-arrows {
+  position: absolute;
+  left: max(1.1rem, env(safe-area-inset-left));
+  bottom: max(1.1rem, env(safe-area-inset-bottom));
+  display: flex;
+  align-items: flex-end;
+  gap: 0.65rem;
+  pointer-events: none;
+  transform: scale(var(--touch-control-scale));
+  transform-origin: left bottom;
+  transition: transform 140ms ease;
+}
+
+.touch-steering-arrow {
+  display: grid;
+  width: 4.4rem;
+  height: 5.1rem;
+  place-items: center;
+  border: 2px solid rgb(226 232 240 / 42%);
+  border-radius: 1.05rem;
+  background: linear-gradient(145deg, rgb(31 50 67 / 82%), rgb(9 18 30 / 84%));
+  color: #ecfeff;
+  font:
+    700 2rem/1 system-ui,
+    sans-serif;
+  text-shadow: 0 1px 6px rgb(0 0 0 / 60%);
+  box-shadow:
+    0 4px 14px rgb(0 0 0 / 28%),
+    inset 0 1px rgb(255 255 255 / 12%);
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.touch-steering-arrow.is-active {
+  border-color: rgb(103 232 249 / 88%);
+  background: linear-gradient(145deg, rgb(8 145 178 / 84%), rgb(14 55 80 / 92%));
+  box-shadow:
+    0 0 1.1rem rgb(34 211 238 / 32%),
+    inset 0 0 0.75rem rgb(103 232 249 / 22%);
+  transform: translateY(-2px);
+}
+
+.touch-steering-arrow:focus-visible,
+.touch-boost:focus-visible {
+  outline: 2px solid rgb(125 211 252 / 95%);
+  outline-offset: 3px;
+}
+
 .touch-pedals {
   position: absolute;
   right: max(1.1rem, env(safe-area-inset-right));
@@ -1579,6 +1637,9 @@ body {
   align-items: flex-end;
   gap: 0.8rem;
   pointer-events: none;
+  transform: scale(var(--touch-control-scale));
+  transform-origin: right bottom;
+  transition: transform 140ms ease;
 }
 
 .touch-pedal {
@@ -1622,11 +1683,46 @@ body {
   font-size: 0.8rem;
   pointer-events: auto;
   touch-action: none;
+  transform: scale(var(--touch-control-scale));
+  transform-origin: right bottom;
+  transition: transform 140ms ease;
 }
 
 .touch-handbrake.is-active {
   filter: brightness(1.6);
   border-color: rgb(255 255 255 / 80%);
+}
+
+.touch-boost {
+  position: absolute;
+  right: calc(max(1.1rem, env(safe-area-inset-right)) + 12.2rem);
+  bottom: max(1.1rem, env(safe-area-inset-bottom));
+  width: 3.7rem;
+  height: 3.7rem;
+  border: 2px solid rgb(103 232 249 / 50%);
+  border-radius: 1rem;
+  background: linear-gradient(145deg, rgb(8 75 103 / 82%), rgb(10 24 38 / 86%));
+  color: #cffafe;
+  font:
+    800 0.75rem/1 system-ui,
+    sans-serif;
+  letter-spacing: 0.02em;
+  pointer-events: auto;
+  touch-action: none;
+  transform: scale(var(--touch-control-scale));
+  transform-origin: right bottom;
+  transition:
+    transform 140ms ease,
+    filter 120ms ease,
+    border-color 120ms ease;
+}
+
+.touch-boost.is-active {
+  border-color: rgb(255 255 255 / 88%);
+  background: linear-gradient(145deg, rgb(6 182 212 / 94%), rgb(8 71 105 / 94%));
+  color: #f0fdff;
+  filter: brightness(1.35);
+  box-shadow: 0 0 1rem rgb(34 211 238 / 45%);
 }
 
 .touch-utilities {
@@ -1636,6 +1732,9 @@ body {
   display: flex;
   gap: 0.5rem;
   pointer-events: none;
+  transform: scale(var(--touch-control-scale));
+  transform-origin: right top;
+  transition: transform 140ms ease;
 }
 
 .touch-utility {
@@ -1653,4 +1752,129 @@ body {
 
 .touch-utility:active {
   filter: brightness(1.7);
+}
+
+/* Compact top-corner status: the N₂O canister shows the exact charge without covering the road. */
+.nitro-gauge {
+  position: absolute;
+  z-index: 20;
+  top: max(0.8rem, env(safe-area-inset-top));
+  left: max(0.8rem, env(safe-area-inset-left));
+  display: flex;
+  min-width: 7.8rem;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.65rem 0.4rem 0.45rem;
+  border: 1px solid rgb(103 232 249 / 29%);
+  border-radius: 0.8rem;
+  background: linear-gradient(145deg, rgb(7 20 32 / 78%), rgb(8 14 24 / 64%));
+  box-shadow:
+    0 5px 18px rgb(0 0 0 / 22%),
+    inset 0 1px rgb(255 255 255 / 6%);
+  color: #ecfeff;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.nitro-gauge[hidden] {
+  display: none !important;
+}
+
+.nitro-gauge-tank {
+  width: 2rem;
+  height: 3rem;
+  flex: 0 0 auto;
+  overflow: visible;
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 38%));
+}
+
+.nitro-gauge-track {
+  fill: rgb(4 11 18 / 92%);
+}
+
+.nitro-gauge-fill {
+  fill: #22d3ee;
+}
+
+.nitro-gauge-shell {
+  fill: rgb(28 54 68 / 40%);
+  stroke: rgb(186 230 253 / 88%);
+  stroke-width: 2;
+}
+
+.nitro-gauge-cap {
+  fill: #a5f3fc;
+  stroke: rgb(224 242 254 / 82%);
+  stroke-width: 1.2;
+}
+
+.nitro-gauge-shine {
+  fill: none;
+  stroke: rgb(224 242 254 / 50%);
+  stroke-linecap: round;
+  stroke-width: 1.5;
+}
+
+.nitro-gauge-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.08rem;
+  line-height: 1.1;
+}
+
+.nitro-gauge-title {
+  color: #bdf7ff;
+  font-size: 0.57rem;
+  font-weight: 850;
+  letter-spacing: 0.15em;
+}
+
+.nitro-gauge-status {
+  color: #e0f2fe;
+  font-size: 0.62rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+}
+
+.nitro-gauge-percent {
+  color: #8ba8b9;
+  font-size: 0.57rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+}
+
+.nitro-gauge[data-boost-active='true'] {
+  border-color: rgb(34 211 238 / 74%);
+  box-shadow:
+    0 0 1.15rem rgb(34 211 238 / 22%),
+    inset 0 0 0.8rem rgb(34 211 238 / 9%);
+}
+
+.nitro-gauge[data-boost-active='true'] .nitro-gauge-fill {
+  fill: #67e8f9;
+}
+
+.pause-menu-range-control {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.pause-menu-range {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.25rem;
+  flex: 1 1 auto;
+  accent-color: #2dd4bf;
+  cursor: pointer;
+}
+
+.pause-menu-range-value {
+  min-width: 3.5rem;
+  color: #99f6e4;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+  text-align: right;
 }

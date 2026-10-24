@@ -8,6 +8,7 @@ import {
   STEERING_SENSITIVITY_SCALE,
   type PlayerCarModel,
   type SteeringSensitivity,
+  type TouchSteeringMode,
   type TrafficIntensity,
 } from '../config/game-preferences';
 import { RENDER_CONFIG, type RenderConfig } from '../config/render';
@@ -28,6 +29,7 @@ import { DiagnosticsOverlay, type DiagnosticsSnapshot } from '../ui/DiagnosticsO
 import type { LoadingProgress } from '../ui/LoadingScreen';
 import { Car } from '../vehicles/Car';
 import { CarEffects } from '../vehicles/CarEffects';
+import { NitroBoost, type NitroBoostState } from '../vehicles/NitroBoost';
 import { PlayerCarVisual } from '../vehicles/PlayerCarVisual';
 import { resolveHighSpeedMotionBlurIntensity } from '../vehicles/vehicle-effects';
 import type { VehiclePose, VehicleTelemetry } from '../vehicles/types';
@@ -96,6 +98,8 @@ export interface ApplicationOptions {
   readonly cameraMode?: CameraMode;
   /** Applied to normalized steering input after smoothing. */
   readonly steeringSensitivity?: SteeringSensitivity;
+  /** Receives the live N₂O tank level for the on-screen boost gauge. */
+  readonly onBoostState?: (state: NitroBoostState) => void;
 }
 
 type StatusTone = 'info' | 'error';
@@ -139,6 +143,8 @@ export class Application {
 
   #touchControls: TouchControls | null = null;
   #orbitGesture: OrbitGesture | null = null;
+  readonly #boostTank = new NitroBoost();
+  readonly #onBoostState: ((state: NitroBoostState) => void) | null;
 
   #touchActive = false;
   readonly #chaseCamera: ChaseCamera;
@@ -189,6 +195,7 @@ export class Application {
     this.#worldConfig = options.worldConfig ?? WORLD_CONFIG;
     this.#cameraMode = options.cameraMode ?? 'chase';
     this.#steeringSensitivity = options.steeringSensitivity ?? 'standard';
+    this.#onBoostState = options.onBoostState ?? null;
     this.#surfaceState = resolveSurfaceState(options.weather ?? 'clear');
 
     // One terrain sampler feeds the visual chunks (via SceneManager's content) and the
@@ -459,14 +466,15 @@ export class Application {
     if (!this.#firstFrameRendered) {
       this.#setStatus(
         this.#touchActive
-          ? 'Touch controls ready — turn the left steering wheel; GAS/BRAKE are on the right.'
-          : 'Drive with W A S D, Space handbrake, R reset, C camera.',
+          ? 'Touch controls ready — steer with the selected wheel or arrows; hold N₂O while accelerating for boost.'
+          : 'Drive with W A S D; hold Shift while accelerating for N₂O boost. Space handbrake, R reset, C camera.',
       );
     }
   }
 
   stop(): void {
     this.#input.reset();
+    this.#onBoostState?.(this.#boostTank.deactivate());
     this.#driveInputActive = false;
     this.#engine.stop();
   }
@@ -530,10 +538,21 @@ export class Application {
    * captures); portrait rotation is handled by the in-page fallback. Desktop sessions
    * are untouched.
    */
-  attachTouchControls(root: HTMLElement, options: { force?: boolean } = {}): void {
+  attachTouchControls(
+    root: HTMLElement,
+    options: {
+      force?: boolean;
+      steeringMode?: TouchSteeringMode;
+      controlScalePercent?: number;
+    } = {},
+  ): void {
     this.#touchControls?.dispose();
     this.#touchControls = new TouchControls(root, {
       force: options.force ?? false,
+      ...(options.steeringMode === undefined ? {} : { steeringMode: options.steeringMode }),
+      ...(options.controlScalePercent === undefined
+        ? {}
+        : { controlScalePercent: options.controlScalePercent }),
       onState: (state) => {
         this.#input.setTouchState(state);
       },
@@ -548,6 +567,11 @@ export class Application {
       },
     });
     this.#touchActive = !root.hidden;
+  }
+
+  /** Applies touch layout and scale edits immediately while the pause menu is open. */
+  setTouchControlPreferences(steeringMode: TouchSteeringMode, controlScalePercent: number): void {
+    this.#touchControls?.setPreferences(steeringMode, controlScalePercent);
   }
 
   /**
@@ -715,8 +739,15 @@ export class Application {
     // 1. Input becomes intent. Smoothing runs on frame time; the vehicle consumes it per step.
     this.#input.update(delta);
     const actions = this.#input.actions;
+    const boostState = this.#boostTank.update(
+      delta,
+      actions.boost && this.#car.telemetry.gear > 0,
+      actions.throttle,
+    );
+    this.#onBoostState?.(boostState);
     this.#car.setActions({
       ...actions,
+      boost: boostState.active,
       steer: Math.max(
         -1,
         Math.min(1, actions.steer * STEERING_SENSITIVITY_SCALE[this.#steeringSensitivity]),

@@ -22,6 +22,7 @@ import {
   type Vec3,
 } from '../shared/vector';
 import { Drivetrain } from './Drivetrain';
+import { NITRO_BOOST_CONFIG } from './NitroBoost';
 import {
   effectiveFriction,
   frictionCircleScale,
@@ -598,7 +599,12 @@ export class Car {
     const drivenWheelIndices: readonly number[] = allWheelDrive
       ? [WHEEL_INDEX.frontLeft, WHEEL_INDEX.frontRight, WHEEL_INDEX.rearLeft, WHEEL_INDEX.rearRight]
       : [WHEEL_INDEX.rearLeft, WHEEL_INDEX.rearRight];
-    const driveForcePerWheel = drivetrainState.driveForce / drivenWheelIndices.length;
+    const boostMultiplier =
+      actions.boost && !reversing && actions.throttle >= NITRO_BOOST_CONFIG.minimumThrottle
+        ? NITRO_BOOST_CONFIG.driveForceMultiplier
+        : 1;
+    const driveForcePerWheel =
+      (drivetrainState.driveForce * boostMultiplier) / drivenWheelIndices.length;
 
     // Pass 2 — tire forces and impulse application.
     for (const definition of this.#wheelDefinitions) {

@@ -104,6 +104,20 @@ describe('vehicle physics (headless Rapier)', () => {
     expect(Math.abs(rig.car.position.x)).toBeLessThan(0.2);
   });
 
+  it('increases higher-speed acceleration while the N₂O boost is active', () => {
+    const standard = createRig();
+    const boosted = createRig();
+    drive(standard, 1, NEUTRAL_ACTIONS);
+    drive(boosted, 1, NEUTRAL_ACTIONS);
+    drive(standard, 20, actions({ throttle: 1 }));
+    drive(boosted, 20, actions({ throttle: 1 }));
+
+    drive(standard, 1.5, actions({ throttle: 1 }));
+    drive(boosted, 1.5, actions({ throttle: 1, boost: true }));
+
+    expect(boosted.car.telemetry.speedKph).toBeGreaterThan(standard.car.telemetry.speedKph);
+  });
+
   it('reaches a plausible top speed limited by drag and gearing', () => {
     const rig = createRig();
     drive(rig, 1, NEUTRAL_ACTIONS);
