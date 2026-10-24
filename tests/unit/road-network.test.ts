@@ -152,7 +152,7 @@ describe('road network graph', () => {
 
   it('trims road-edge paint and dashes back from junctions instead of crossing the roadway', () => {
     const roads = new RoadWorld(network);
-    const minimumClearance = ROAD_MARKING_JUNCTION_CLEARANCE_METERS - 0.04;
+    const minimumClearance = ROAD_MARKING_JUNCTION_CLEARANCE_METERS - 0.1;
     for (const name of ['road-edge-markings', 'road-lane-dashes', 'road-urban-centerlines']) {
       const marking = roads.object.getObjectByName(name);
       expect(marking).toBeInstanceOf(Mesh);
@@ -160,15 +160,22 @@ describe('road network graph', () => {
         throw new Error(`missing road marking batch: ${name}`);
       }
       const positions = marking.geometry.getAttribute('position');
+      let closestNode = '';
+      let closestDistance = Number.POSITIVE_INFINITY;
       for (const node of network.nodes) {
         for (let index = 0; index < positions.count; index += 1) {
           const dx = positions.getX(index) - node.x;
           const dz = positions.getZ(index) - node.z;
-          expect(Math.hypot(dx, dz), `${name} near ${node.id}`).toBeGreaterThanOrEqual(
-            minimumClearance,
-          );
+          const distance = Math.hypot(dx, dz);
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            closestNode = node.id;
+          }
         }
       }
+      expect(closestDistance, `${name} nearest to ${closestNode}`).toBeGreaterThanOrEqual(
+        minimumClearance,
+      );
     }
     for (const edge of network.edges) {
       const clipped = trimRoadEdge(

@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import { RENDER_CONFIG } from '../../src/config/render';
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
+import { URBAN_ACTIVITY_TIER_BUDGET } from '../../src/config/urban-city';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
 import { WORLD_CONFIG } from '../../src/config/world';
 import { PhysicsWorld } from '../../src/physics/PhysicsWorld';
@@ -43,7 +44,7 @@ describe('physics-backed Aohara traffic', () => {
     const activityRoot = content.root.getObjectByName('aohara-urban-street-activity');
 
     expect(content.getContentStats?.()).toMatchObject({
-      urbanTrafficPhysicsBodies: 6,
+      urbanTrafficPhysicsBodies: URBAN_ACTIVITY_TIER_BUDGET.C.trafficVehicles,
       urbanTrafficImpactFeedbacks: 0,
     });
     expect(activityRoot).not.toBeUndefined();
@@ -58,7 +59,7 @@ describe('physics-backed Aohara traffic', () => {
         trafficBodies.push(body);
       }
     });
-    expect(trafficBodies).toHaveLength(6);
+    expect(trafficBodies).toHaveLength(URBAN_ACTIVITY_TIER_BUDGET.C.trafficVehicles);
 
     // Let the route motor build speed, then place a player-sized collider in one traffic car's path.
     for (let step = 0; step < 12; step += 1) {
