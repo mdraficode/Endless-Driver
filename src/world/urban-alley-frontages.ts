@@ -17,13 +17,13 @@ import { collideCarWithStaticBoxes, type StaticBuildingBox } from './static-buil
 import type { TownCarProbe, TownHit } from './town';
 
 // The frontage line stays beyond the narrow clutter strip while remaining one car-width off the alley.
-const FACADE_WALL_GAP_METERS = 2.5;
+const FACADE_WALL_GAP_METERS = 2.75;
 const FACADE_WALL_THICKNESS_METERS = 0.18;
 const FACADE_COLLISION_SEGMENT_METERS = 2;
 const FACADE_BUILDING_DEPTH_METERS = 6.8;
 const FACADE_ACCESS_SETBACK_METERS = 16.5;
-const FACADE_HUB_SETBACK_METERS = 1.25;
-const FACADE_SPOKE_HUB_SETBACK_METERS = 6.5;
+const FACADE_HUB_SETBACK_METERS = 14;
+const FACADE_COURTYARD_SETBACK_METERS = 1.25;
 const FACADE_BASE_Y = -0.55;
 const FACADE_WALL_HEIGHT_METERS = 8.6;
 const FACADE_MODULE_LENGTH_METERS: Readonly<Record<TierId, number>> = {
@@ -116,14 +116,17 @@ function roadFrameAt(edge: RoadEdge, distanceMeters: number): RoadFrame {
 }
 
 function facadeRunFor(edge: RoadEdge): { readonly start: number; readonly end: number } {
+  const isCourtyardLink = edge.from.endsWith('-hub') || edge.to.endsWith('-yard');
   const start = edge.from.startsWith('aohara-access-')
     ? FACADE_ACCESS_SETBACK_METERS
-    : FACADE_HUB_SETBACK_METERS;
+    : isCourtyardLink
+      ? FACADE_COURTYARD_SETBACK_METERS
+      : FACADE_HUB_SETBACK_METERS;
   const end = edge.to.startsWith('aohara-access-')
     ? FACADE_ACCESS_SETBACK_METERS
     : edge.to.endsWith('-hub')
-      ? FACADE_SPOKE_HUB_SETBACK_METERS
-      : FACADE_HUB_SETBACK_METERS;
+      ? FACADE_HUB_SETBACK_METERS
+      : FACADE_COURTYARD_SETBACK_METERS;
   return {
     start: Math.min(start, Math.max(0, edge.lengthMeters / 2 - 0.5)),
     end: Math.min(end, Math.max(0, edge.lengthMeters / 2 - 0.5)),

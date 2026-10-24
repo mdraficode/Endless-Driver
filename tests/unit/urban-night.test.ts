@@ -886,7 +886,7 @@ describe('Aohara city night-lighting rules', () => {
       const startsAtStreetMouth = edge.from.startsWith('aohara-access-');
       const endsAtStreetMouth = edge.to.startsWith('aohara-access-');
       const startInset = startsAtStreetMouth ? 16.5 : 1.25;
-      const endInset = endsAtStreetMouth ? 16.5 : edge.to.endsWith('-hub') ? 6.5 : 1.25;
+      const endInset = endsAtStreetMouth ? 16.5 : edge.to.endsWith('-hub') ? 14 : 1.25;
       expect(edgeRows.length).toBeGreaterThan(0);
 
       for (const side of [-1, 1] as const) {
