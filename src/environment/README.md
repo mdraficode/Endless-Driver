@@ -1,6 +1,6 @@
 # Environment state
 
-**Status (2026-10-24):** Phase 3 delivered the time-of-day clock (`EnvironmentClock.ts`, `solar.ts`). Phase 7 is authorized; `SurfaceState.ts` applies the deterministic clear/rain tire response, and diagnostics expose preset wetness plus mean contact-wheel grip/rolling resistance. Shared wetness also raises the existing Aohara urban-asphalt sheen, while preserving its day/night baseline. This adds no precipitation, puddles, spray or tier-budget work; rendered/device review remains open.
+**Status (2026-10-24):** Phase 3 delivered the time-of-day clock (`EnvironmentClock.ts`, `solar.ts`). Phase 7 is authorized; `SurfaceState.ts` applies the deterministic clear/rain tire response, and diagnostics expose preset wetness plus mean contact-wheel grip/rolling resistance. Shared wetness also raises the existing Aohara urban-asphalt sheen, while preserving its day/night baseline. A fixed-site physics regression now uses the generated Aohara road/terrain sampler and confirms matched clear/rain tire telemetry at the central junction; full automated checks pass at `a27846c` (77 test files / 572 tests). This remains simulation coverage only—no precipitation, puddles, spray or tier-budget increase, and no rendered/device acceptance.
 
 ## Responsibility
 
