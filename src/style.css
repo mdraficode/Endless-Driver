@@ -246,6 +246,10 @@ body {
   animation: loading-progress-sheen 1.05s ease-in-out infinite;
 }
 
+.loading-screen[data-progress-phase='complete'] .loading-progress-fill {
+  transition: none;
+}
+
 @keyframes loading-progress-sheen {
   to {
     transform: translateX(110%);

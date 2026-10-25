@@ -9,6 +9,7 @@ export interface LoadingProgress {
 const MIN_VISUAL_PROGRESS_PER_SECOND = 0.04;
 const MAX_VISUAL_PROGRESS_PER_SECOND = 0.085;
 const PROGRESS_FOLLOW_GAIN = 0.5;
+const FIRST_FRAME_COMPLETION_RATE_PER_SECOND = 0.45;
 const MAX_FRAME_DELTA_MS = 100;
 
 /** Clamp reported startup progress and keep its completed-work fraction monotonic. */
@@ -31,6 +32,8 @@ export class LoadingScreen {
   #displayFraction = 0;
   #lastFrameTimestamp: number | null = null;
   #progressFrame: number | null = null;
+  #completionPending = false;
+  #completionLabel = 'Ready — the drive starts automatically';
   #finished = false;
   #hideTimer: number | null = null;
 
@@ -51,6 +54,8 @@ export class LoadingScreen {
       this.#hideTimer = null;
     }
     this.#finished = false;
+    this.#completionPending = false;
+    this.#completionLabel = 'Ready — the drive starts automatically';
     this.#fraction = 0;
     this.#displayFraction = 0;
     this.#root.hidden = false;
@@ -64,7 +69,7 @@ export class LoadingScreen {
   }
 
   update(progress: number, label: string): void {
-    if (this.#finished) {
+    if (this.#finished || this.#completionPending) {
       return;
     }
     this.#fraction = normalizeLoadingProgress(progress, this.#fraction);
@@ -73,13 +78,22 @@ export class LoadingScreen {
 
     if (this.#fraction >= 1) {
       this.#stopProgressAnimation();
-      this.#displayFraction = 1;
-      delete this.#root.dataset['progressPhase'];
-      this.#progress.removeAttribute?.('aria-valuetext');
-      this.#bar.style.width = '100%';
-      this.#percent.textContent = '100%';
-      this.#label.textContent = label;
-      this.#finish();
+      this.#completionPending = true;
+      this.#completionLabel = label;
+      this.#progress.setAttribute(
+        'aria-valuetext',
+        'The first playable frame has rendered; the loading bar is finishing before the screen fades.',
+      );
+
+      if (this.#displayFraction >= 1) {
+        this.#completeVisibleReadyState();
+        return;
+      }
+
+      this.#root.dataset['progressPhase'] = 'finalizing';
+      this.#label.textContent = 'First playable frame ready — finishing up…';
+      this.#percent.textContent = `Est. ${Math.max(0, Math.min(99, Math.floor(this.#displayFraction * 100)))}%`;
+      this.#scheduleProgressFrame();
       return;
     }
 
@@ -114,6 +128,21 @@ export class LoadingScreen {
         ? 0
         : Math.min(MAX_FRAME_DELTA_MS, Math.max(0, timestamp - this.#lastFrameTimestamp));
     this.#lastFrameTimestamp = timestamp;
+
+    if (this.#completionPending) {
+      const elapsedSeconds = elapsedMs / 1000;
+      this.#displayFraction = Math.min(
+        1,
+        this.#displayFraction + FIRST_FRAME_COMPLETION_RATE_PER_SECOND * elapsedSeconds,
+      );
+      if (this.#displayFraction >= 1) {
+        this.#completeVisibleReadyState();
+        return;
+      }
+      this.#paintCompletionProgress();
+      this.#scheduleProgressFrame();
+      return;
+    }
 
     const elapsedSeconds = elapsedMs / 1000;
     const gapToReportedProgress = Math.max(0, this.#fraction - this.#displayFraction);
@@ -152,6 +181,30 @@ export class LoadingScreen {
     }
   }
 
+  #paintCompletionProgress(): void {
+    this.#root.dataset['progressPhase'] = 'finalizing';
+    this.#bar.style.width = `${(this.#displayFraction * 100).toFixed(2)}%`;
+    const estimatedPercent = Math.max(0, Math.min(99, Math.floor(this.#displayFraction * 100)));
+    this.#percent.textContent = `Est. ${estimatedPercent}%`;
+    this.#label.textContent = 'First playable frame ready — finishing up…';
+    this.#progress.setAttribute(
+      'aria-valuetext',
+      'The first playable frame is ready; completing the progress display before showing the game.',
+    );
+  }
+
+  #completeVisibleReadyState(): void {
+    this.#completionPending = false;
+    this.#displayFraction = 1;
+    delete this.#root.dataset['progressPhase'];
+    this.#progress.removeAttribute?.('aria-valuetext');
+    this.#progress.setAttribute('aria-valuenow', '100');
+    this.#bar.style.width = '100%';
+    this.#percent.textContent = '100%';
+    this.#label.textContent = this.#completionLabel;
+    this.#finish();
+  }
+
   #scheduleProgressFrame(): void {
     if (!this.#finished && this.#displayFraction < 1 && this.#progressFrame === null) {
       this.#progressFrame = window.requestAnimationFrame(this.#advanceProgress);
@@ -171,7 +224,8 @@ export class LoadingScreen {
       return;
     }
     this.#finished = true;
-    delete this.#root.dataset['progressPhase'];
+    this.#completionPending = false;
+    this.#root.dataset['progressPhase'] = 'complete';
     this.#root.dataset['state'] = 'ready';
     this.#root.classList.add('loading-screen-complete');
     this.#hideTimer = window.setTimeout(() => this.hide(), 520);
@@ -179,6 +233,7 @@ export class LoadingScreen {
 
   fail(message: string): void {
     this.#finished = true;
+    this.#completionPending = false;
     this.#stopProgressAnimation();
     if (this.#hideTimer !== null) {
       window.clearTimeout(this.#hideTimer);

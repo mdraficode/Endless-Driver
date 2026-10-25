@@ -122,7 +122,7 @@ describe('startup progress', () => {
 
       expect(dom.root.hidden).toBe(false);
       expect(dom.dataset['state']).toBe('ready');
-      expect(dom.dataset['progressPhase']).toBeUndefined();
+      expect(dom.dataset['progressPhase']).toBe('complete');
       expect(dom.percent.textContent).toBe('100%');
       expect(dom.progressAttributes.get('aria-valuenow')).toBe('100');
       expect(dom.progressAttributes.has('aria-valuetext')).toBe(false);
@@ -133,6 +133,53 @@ describe('startup progress', () => {
       expect(dom.root.hidden).toBe(true);
       expect(dom.rootAttributes.get('aria-hidden')).toBe('true');
       expect(dom.classes.has('loading-screen-complete')).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('finishes the visible bar before fading after the first playable frame arrives', () => {
+    const { frames, hideTimers, advanceFrame } = stubLoadingWindow();
+
+    try {
+      const dom = makeLoadingDom();
+      const loading = new LoadingScreen(dom.root);
+      loading.show();
+      loading.update(0.94, 'Starting the simulation…');
+
+      for (let timestamp = 0; timestamp <= 5_000; timestamp += 100) {
+        advanceFrame(timestamp);
+      }
+      const beforeFirstFrame = Number.parseFloat(dom.bar.style.width);
+      expect(beforeFirstFrame).toBeGreaterThan(40);
+      expect(beforeFirstFrame).toBeLessThan(45);
+
+      loading.update(1, 'Ready — the drive starts automatically');
+
+      expect(dom.root.hidden).toBe(false);
+      expect(dom.dataset['state']).toBe('loading');
+      expect(dom.classes.has('loading-screen-complete')).toBe(false);
+      expect(dom.bar.style.width).not.toBe('100%');
+      expect(dom.progressAttributes.get('aria-valuenow')).toBe('100');
+      expect(dom.label.textContent).toBe('First playable frame ready — finishing up…');
+      expect(dom.percent.textContent).toMatch(/^Est\. \d+%$/);
+      expect(hideTimers).toHaveLength(0);
+
+      for (let timestamp = 5_100; timestamp <= 10_000 && frames.size > 0; timestamp += 100) {
+        advanceFrame(timestamp);
+      }
+
+      expect(dom.bar.style.width).toBe('100%');
+      expect(dom.percent.textContent).toBe('100%');
+      expect(dom.label.textContent).toBe('Ready — the drive starts automatically');
+      expect(dom.dataset['state']).toBe('ready');
+      expect(dom.dataset['progressPhase']).toBe('complete');
+      expect(dom.classes.has('loading-screen-complete')).toBe(true);
+      expect(dom.progressAttributes.has('aria-valuetext')).toBe(false);
+      expect(hideTimers).toHaveLength(1);
+
+      hideTimers[0]?.();
+      expect(dom.root.hidden).toBe(true);
     } finally {
       vi.unstubAllGlobals();
     }
