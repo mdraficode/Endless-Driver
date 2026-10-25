@@ -98,15 +98,21 @@ describe('startup progress', () => {
   });
 
   it('mirrors the fill width into the glow layer custom property on every width change', () => {
-    const dom = makeLoadingDom();
-    const loading = new LoadingScreen(dom.root);
-    loading.show();
-    expect(dom.rootStyle.get('--loading-fill-width')).toBe(dom.bar.style.width);
-    loading.update(0.4, 'Loading the physics engine…');
-    expect(dom.rootStyle.get('--loading-fill-width')).toBe(dom.bar.style.width);
-    loading.fail('renderer did not start');
-    expect(dom.bar.style.width).toBe('40%');
-    expect(dom.rootStyle.get('--loading-fill-width')).toBe('40%');
+    stubLoadingWindow();
+
+    try {
+      const dom = makeLoadingDom();
+      const loading = new LoadingScreen(dom.root);
+      loading.show();
+      expect(dom.rootStyle.get('--loading-fill-width')).toBe(dom.bar.style.width);
+      loading.update(0.4, 'Loading the physics engine…');
+      expect(dom.rootStyle.get('--loading-fill-width')).toBe(dom.bar.style.width);
+      loading.fail('renderer did not start');
+      expect(dom.bar.style.width).toBe('40%');
+      expect(dom.rootStyle.get('--loading-fill-width')).toBe('40%');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('advances gradually toward reported progress and completes only on the first playable frame', () => {
