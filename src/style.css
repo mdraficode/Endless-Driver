@@ -245,6 +245,7 @@ body {
 .loading-screen[data-progress-phase='finalizing'] .loading-progress-fill,
 .loading-screen[data-progress-phase='waiting'] .loading-progress-fill {
   transition: none;
+  animation: loading-progress-breathe 3.8s ease-in-out infinite;
 }
 
 .loading-screen[data-progress-phase='animating'] .loading-progress-fill::after {
@@ -269,6 +270,19 @@ body {
 @keyframes loading-progress-sheen {
   to {
     transform: translateX(110%);
+  }
+}
+
+@keyframes loading-progress-breathe {
+  0%,
+  100% {
+    opacity: 0.78;
+    box-shadow: 0 0 12px rgb(84 224 199 / 36%);
+  }
+
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 20px rgb(84 224 199 / 68%);
   }
 }
 
@@ -330,6 +344,8 @@ body {
   .loading-screen[data-progress-phase='finalizing'] .loading-progress-fill,
   .loading-screen[data-progress-phase='waiting'] .loading-progress-fill {
     transition-duration: 0.01ms;
+    animation: none;
+    opacity: 1;
   }
 
   .loading-screen[data-progress-phase='animating'] .loading-progress-fill::after,
