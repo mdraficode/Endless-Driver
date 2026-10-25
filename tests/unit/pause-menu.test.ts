@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  PAUSE_MENU_ITEMS,
-  RESTART_REQUIRED_PREFERENCE_KEYS,
-} from '../../src/ui/PauseMenu';
+import { PAUSE_MENU_ITEMS, RESTART_REQUIRED_PREFERENCE_KEYS } from '../../src/ui/PauseMenu';
 
 describe('pause menu navigation model', () => {
   it('keeps resume/restart first, all requested customization pages together, and credits last', () => {

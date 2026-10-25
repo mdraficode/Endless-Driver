@@ -451,7 +451,10 @@ async function startDrivingScene(restarting = false): Promise<void> {
             void activeApplication
               .setPlayerCarModel(value as GamePreferences['carModel'])
               .catch((error: unknown) => {
-                console.error('Unable to apply the selected car model; keeping the current view.', error);
+                console.error(
+                  'Unable to apply the selected car model; keeping the current view.',
+                  error,
+                );
               });
           }
           if (key === 'touchSteeringMode' || key === 'touchControlScalePercent') {

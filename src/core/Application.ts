@@ -1049,11 +1049,7 @@ export class Application {
   }
 
   #loadCarModel(visual: PlayerCarVisual): Promise<boolean> {
-    if (
-      this.#disposed ||
-      visual !== this.#carVisual ||
-      visual.model !== 'generic-sport-coupe'
-    ) {
+    if (this.#disposed || visual !== this.#carVisual || visual.model !== 'generic-sport-coupe') {
       return Promise.resolve(false);
     }
     if (visual.isHeroModelLoaded) return Promise.resolve(true);
