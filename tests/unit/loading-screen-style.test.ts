@@ -52,14 +52,14 @@ describe('loading progress breathing style', () => {
         ? ''
         : css.slice(reducedFillBreatheStart, glowStart);
     const reducedGlowKeyframes =
-      reducedGlowStart < 0 || footnoteStart < 0
-        ? ''
-        : css.slice(reducedGlowStart, footnoteStart);
+      reducedGlowStart < 0 || footnoteStart < 0 ? '' : css.slice(reducedGlowStart, footnoteStart);
 
     expect(activeTrackRule).toMatch(
       /animation:\s*loading-progress-track-breathe\s+3\.2s\s+ease-in-out\s+infinite;/,
     );
-    expect(trackBreatheKeyframes).toMatch(/50%\s*\{[^}]*border-color:\s*rgb\(84 224 199 \/ 100%\);/);
+    expect(trackBreatheKeyframes).toMatch(
+      /50%\s*\{[^}]*border-color:\s*rgb\(84 224 199 \/ 100%\);/,
+    );
     expect(activeFillRule).toMatch(
       /animation:\s*loading-progress-breathe\s+3\.2s\s+ease-in-out\s+infinite;/,
     );
