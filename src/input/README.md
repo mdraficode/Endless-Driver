@@ -28,6 +28,6 @@ mutates vehicle transforms.
 - Input only ever produces intent: `Application` copies the actions onto the vehicle before the next
   fixed step, and the vehicle never queries the keyboard.
 - An `InputTarget` interface keeps the manager instantiable in Node tests without a DOM.
-- Gameplay touch buttons are faint at rest and fully visible while pressed or keyboard-focused. The HB handbrake face is slightly larger (3.8 rem); its pointer tracking is unchanged, and menu/settings buttons are not affected.
+- Gameplay touch buttons are faint at rest and fully visible while pressed or keyboard-focused. The HB handbrake face is now 4.5 rem; its transparent hit zone also extends 1.25 rem upward and 0.9 rem to each side without moving the control or changing pointer tracking. Menu/settings buttons and other touch-control sizes are not affected.
 
 See [the project plan](../../PROJECT_PLAN.md) and [architecture](../../docs/ARCHITECTURE.md).

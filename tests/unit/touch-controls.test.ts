@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
 import { InputManager } from '../../src/input/InputManager';
@@ -215,5 +216,18 @@ describe('input manager touch merge', () => {
     expect(manager.actions.throttle).toBeCloseTo(0, 1);
     expect(manager.actions.handbrake).toBe(false);
     expect(manager.actions.steer).toBeCloseTo(0, 1);
+  });
+});
+
+describe('handbrake touch-target styling', () => {
+  it('keeps a larger visible face and extends the transparent hit area upward and sideways', async () => {
+    const css = await readFile(new URL('../../src/style.css', import.meta.url), 'utf8');
+    const faceRule = css.match(/\.touch-handbrake\s*\{([\s\S]*?)\}/)?.[1] ?? '';
+    const hitRule = css.match(/\.touch-handbrake::before\s*\{([\s\S]*?)\}/)?.[1] ?? '';
+
+    expect(faceRule).toMatch(/width:\s*4\.5rem;/);
+    expect(faceRule).toMatch(/height:\s*4\.5rem;/);
+    expect(hitRule).toMatch(/inset:\s*-1\.25rem\s+-0\.9rem\s+0;/);
+    expect(hitRule).toMatch(/pointer-events:\s*auto;/);
   });
 });

@@ -1802,14 +1802,15 @@ body {
   position: absolute;
   right: calc(max(1.1rem, env(safe-area-inset-right)) + 6.8rem);
   bottom: calc(max(1.1rem, env(safe-area-inset-bottom)) + 8.6rem);
-  width: 3.8rem;
-  height: 3.8rem;
+  isolation: isolate;
+  width: 4.5rem;
+  height: 4.5rem;
   border-radius: 9999px;
   border: 2px solid rgb(226 232 240 / 35%);
   background: rgb(120 53 15 / 55%);
   color: #e2e8f0;
   font-weight: 700;
-  font-size: 0.86rem;
+  font-size: 0.92rem;
   pointer-events: auto;
   touch-action: none;
   transform: scale(var(--touch-control-scale));
@@ -1817,6 +1818,17 @@ body {
   transition:
     transform 140ms ease,
     opacity 120ms ease;
+}
+
+/* Keep the visible HB face compact while extending its invisible hit zone upward and sideways. */
+.touch-handbrake::before {
+  position: absolute;
+  z-index: 1;
+  inset: -1.25rem -0.9rem 0;
+  border-radius: 9999px;
+  content: '';
+  pointer-events: auto;
+  touch-action: none;
 }
 
 .touch-handbrake.is-active {
