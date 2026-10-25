@@ -170,8 +170,7 @@ export class TerrainWorld implements SceneContent {
     this.#sampler = sampler;
     this.#config = sampler.config;
     this.#enableParallaxOcclusion = options.enableParallaxOcclusion ?? true;
-    this.#initialReadyRing =
-      options.initialReadyRing ?? INITIAL_TERRAIN_READY_RING;
+    this.#initialReadyRing = options.initialReadyRing ?? INITIAL_TERRAIN_READY_RING;
     // Generation runs in a worker pool when the platform allows it and falls back to
     // this same sampler on the main thread otherwise; either way chunks are
     // bit-identical (one height function, two hosts).
