@@ -2,6 +2,7 @@ import {
   AdditiveBlending,
   BoxGeometry,
   Color,
+  DataTexture,
   ConeGeometry,
   CylinderGeometry,
   Group,
@@ -22,7 +23,20 @@ import {
   type Node,
   type UniformNode,
 } from 'three/webgpu';
-import { abs, exp, float, mix, texture, uniform, uv, vec2, vec3, vec4 } from 'three/tsl';
+import {
+  abs,
+  exp,
+  float,
+  mix,
+  mrt,
+  positionWorld,
+  texture,
+  uniform,
+  uv,
+  vec2,
+  vec3,
+  vec4,
+} from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import {
@@ -48,6 +62,7 @@ import type { DaylightState } from '../environment/EnvironmentClock';
 import { collideCarWithStaticBoxes, type StaticBuildingBox } from './static-building-collision';
 import { createArchitecturalMaterial } from './architectural-materials';
 import { bindScannedPbrMaps } from './scanned-pbr';
+import { createRoadWetPatchMaskTexture, createRoadWetnessNode } from './road-wet-patches';
 import { UrbanStreetFurniture } from './urban-furniture';
 import { UrbanAlleyFrontages } from './urban-alley-frontages';
 import { UrbanBackstreetProps } from './urban-backstreets';
@@ -1242,6 +1257,8 @@ export interface UrbanNightWorldOptions {
   readonly networkIntegrated?: boolean;
   /** Shared static-world map owner; omitted for a standalone city look-dev scene. */
   readonly surfaceTextures?: SurfaceTextureLibrary;
+  /** Emit the custom wet-road MRT channel only when the configured post chain will consume it. */
+  readonly wetRoadMaskOutput?: boolean;
   /** Player-selectable traffic amount for the integrated driving city. */
   readonly trafficIntensity?: import('../config/game-preferences').TrafficIntensity;
 }
@@ -1254,9 +1271,12 @@ export interface UrbanNightWorldOptions {
 export class UrbanNightWorld implements SceneContent {
   readonly root = new Group();
   readonly kind = 'aohara-city-night';
+  readonly wetRoadSurface = true;
   readonly #tier: TierId;
   readonly #nightGain = uniform(0);
   readonly #wetness = uniform(URBAN_CITY_CONFIG.wetRoad.wetnessDay);
+  #wetPatchMaskTexture: DataTexture | null = null;
+  #wetRoadMaskNode: Node<'float'> | null = null;
   readonly #streetLightGain = uniform(1);
   readonly #architecturalLightGain = uniform(1);
   readonly #streetLights: PointLight[] = [];
@@ -1286,6 +1306,7 @@ export class UrbanNightWorld implements SceneContent {
   readonly #surfaceTextures: SurfaceTextureLibrary;
   readonly #ownsSurfaceTextures: boolean;
   readonly #networkIntegrated: boolean;
+  readonly #wetRoadMaskOutput: boolean;
   readonly #towers: readonly TowerSpec[];
   readonly #cityBlockCount: number;
   readonly #streetLightPoleCount: number;
@@ -1305,6 +1326,7 @@ export class UrbanNightWorld implements SceneContent {
     this.#surfaceTextures = options.surfaceTextures ?? new SurfaceTextureLibrary();
     this.#ownsSurfaceTextures = options.surfaceTextures === undefined;
     this.#networkIntegrated = options.networkIntegrated ?? false;
+    this.#wetRoadMaskOutput = options.wetRoadMaskOutput ?? true;
     const [originX, originY, originZ] = options.position ?? [0, 0, 0];
     this.#cityOriginX = originX;
     this.#cityOriginZ = originZ;
@@ -1521,19 +1543,28 @@ export class UrbanNightWorld implements SceneContent {
           {
             repeat: binding.repeat,
             normalStrength: 0.65,
-            albedoTint: vec4(0.72, 0.77, 0.83, 1),
+            albedoTint: vec4(...URBAN_CITY_CONFIG.wetRoad.dryAlbedoTint, 1),
           },
         );
-        if (asphalt.arm !== null) {
-          const asphaltUv = uv().mul(vec2(binding.repeat[0], binding.repeat[1]));
-          for (const material of asphaltMaterials) {
-            material.roughnessNode = mix(
-              texture(asphalt.arm, asphaltUv).g,
-              float(URBAN_CITY_CONFIG.wetRoad.wetRoughness),
-              this.#wetness,
-            );
-            material.needsUpdate = true;
+        const wetRoadMask = this.#wetRoadMaskNode;
+        const asphaltUv = uv().mul(vec2(binding.repeat[0], binding.repeat[1]));
+        for (const material of asphaltMaterials) {
+          if (wetRoadMask !== null) {
+            const scannedAlbedo = material.colorNode as Node<'vec4'> | null;
+            if (scannedAlbedo !== null) {
+              material.colorNode = scannedAlbedo.mul(
+                mix(float(1), float(URBAN_CITY_CONFIG.wetRoad.wetAlbedoMultiplier), wetRoadMask),
+              );
+            }
+            if (asphalt.arm !== null) {
+              material.roughnessNode = mix(
+                texture(asphalt.arm, asphaltUv).g,
+                float(URBAN_CITY_CONFIG.wetRoad.wetRoughness),
+                wetRoadMask,
+              );
+            }
           }
+          material.needsUpdate = true;
         }
       }
     }
@@ -1736,6 +1767,7 @@ export class UrbanNightWorld implements SceneContent {
     this.#streetFurniture.dispose();
     this.#backstreetFrontages?.dispose();
     this.#backstreetProps?.dispose();
+    this.#wetPatchMaskTexture?.dispose();
     if (this.#ownsSurfaceTextures) {
       this.#surfaceTextures.dispose();
     }
@@ -1760,26 +1792,34 @@ export class UrbanNightWorld implements SceneContent {
     );
 
     if (!this.#networkIntegrated) {
+      const wetPatchMaskTexture = createRoadWetPatchMaskTexture();
+      this.#wetPatchMaskTexture = wetPatchMaskTexture;
+      const wetRoadMask = createRoadWetnessNode(wetPatchMaskTexture, this.#wetness, positionWorld);
+      this.#wetRoadMaskNode = wetRoadMask;
       const createWetLookAsphalt = (name: string): MeshPhysicalNodeMaterial => {
         const asphalt = new MeshPhysicalNodeMaterial();
-        asphalt.color.setHex(0x1d252e);
+        asphalt.color.setHex(0x34383b);
         asphalt.roughness = URBAN_CITY_CONFIG.wetRoad.dryRoughness;
         asphalt.metalness = 0.025;
         asphalt.roughnessNode = mix(
           float(URBAN_CITY_CONFIG.wetRoad.dryRoughness),
           float(URBAN_CITY_CONFIG.wetRoad.wetRoughness),
-          this.#wetness,
+          wetRoadMask,
         );
         asphalt.clearcoatNode = mix(
           float(URBAN_CITY_CONFIG.wetRoad.dryClearcoat),
           float(URBAN_CITY_CONFIG.wetRoad.wetClearcoat),
-          this.#wetness,
+          wetRoadMask,
         );
         asphalt.clearcoatRoughnessNode = mix(
           float(URBAN_CITY_CONFIG.wetRoad.dryClearcoatRoughness),
           float(URBAN_CITY_CONFIG.wetRoad.wetClearcoatRoughness),
-          this.#wetness,
+          wetRoadMask,
         );
+        asphalt.colorNode = vec4(asphalt.color.r, asphalt.color.g, asphalt.color.b, 1).mul(
+          mix(float(1), float(URBAN_CITY_CONFIG.wetRoad.wetAlbedoMultiplier), wetRoadMask),
+        );
+        asphalt.mrtNode = this.#wetRoadMaskOutput ? mrt({ wetRoadMask }) : null;
         asphalt.name = name;
         return asphalt;
       };
@@ -2991,5 +3031,8 @@ export class UrbanNightWorld implements SceneContent {
 export function createUrbanNightWorld(context: SceneContentContext): UrbanNightWorld {
   const tier: TierId =
     context.qualityTier === 'A' || context.qualityTier === 'B' ? context.qualityTier : 'C';
-  return new UrbanNightWorld(tier);
+  return new UrbanNightWorld(tier, {
+    wetRoadMaskOutput:
+      context.config.postProcessing.enabled && context.config.postProcessing.ssr.enabled,
+  });
 }

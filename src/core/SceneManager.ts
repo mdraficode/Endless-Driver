@@ -227,6 +227,7 @@ export class SceneManager {
         ? { trafficIntensity: options.trafficIntensity }
         : {}),
     });
+    this.scene.userData['wetRoadSurface'] = this.#content.wetRoadSurface ?? false;
 
     this.scene.add(this.#sky, this.#moon, ambient, this.#sun, this.#sun.target, this.#content.root);
     if (this.#godraysLight !== null) {
@@ -560,6 +561,7 @@ export class SceneManager {
     const previous = this.#content;
     this.scene.remove(previous.root);
     this.#content = content;
+    this.scene.userData['wetRoadSurface'] = content.wetRoadSurface ?? false;
     this.scene.add(content.root);
     content.root.position.set(-this.#worldOffsetX, 0, -this.#worldOffsetZ);
     if (this.#daylight !== null) {

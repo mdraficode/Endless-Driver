@@ -128,6 +128,11 @@ describe('applying a tier', () => {
     expect(b.postProcessing.temporalAntiAliasing.enabled).toBe(false);
     expect(c.postProcessing.motionBlur.enabled).toBe(false);
     expect(b.postProcessing.motionBlur.enabled).toBe(false);
+    expect(c.postProcessing.ssr.enabled).toBe(true);
+    expect(b.postProcessing.ssr.enabled).toBe(true);
+    expect(a.postProcessing.ssr.enabled).toBe(true);
+    expect(c.postProcessing.ssr.resolutionScale).toBeLessThan(b.postProcessing.ssr.resolutionScale);
+    expect(b.postProcessing.ssr.resolutionScale).toBeLessThan(a.postProcessing.ssr.resolutionScale);
     expect(c.postProcessing.temporalAntiAliasing.dynamicResolution).toBe(true);
     expect(c.postProcessing.temporalAntiAliasing.renderScale).toBe(0.9);
     expect(c.postProcessing.temporalAntiAliasing.minScale).toBe(0.6);

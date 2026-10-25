@@ -26,6 +26,7 @@ describe('Aohara driving-world integration', () => {
     });
 
     expect(content.kind).toBe('driving');
+    expect(content.wetRoadSurface).toBe(true);
     expect(content.root.getObjectByName('AoharaNightLightingBlock')).not.toBeNull();
     expect(content.getContentStats?.()).toMatchObject({
       cityBlocks: 16,

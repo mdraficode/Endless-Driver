@@ -218,6 +218,7 @@ describe('road network graph', () => {
     const asphaltMaterial = urbanAsphalt.material as MeshPhysicalNodeMaterial;
     expect(asphaltMaterial.clearcoatNode).not.toBeNull();
     expect(asphaltMaterial.clearcoatRoughnessNode).not.toBeNull();
+    expect(asphaltMaterial.mrtNode).not.toBeNull();
     expect(roads.getStats().urbanWetLook).toBe(URBAN_CITY_CONFIG.wetRoad.wetnessDay);
     roads.setSurfaceWetness(0.85);
     expect(roads.getStats().urbanWetLook).toBe(0.85);

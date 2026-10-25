@@ -513,6 +513,8 @@ describe('Aohara city night-lighting rules', () => {
     const asphalt = avenue.material as MeshPhysicalNodeMaterial;
     expect(asphalt.clearcoatNode).not.toBeNull();
     expect(asphalt.clearcoatRoughnessNode).not.toBeNull();
+    expect(asphalt.mrtNode).not.toBeNull();
+    expect(cityC.wetRoadSurface).toBe(true);
     expect(cityC.kind).toBe('aohara-city-night');
     expect(lowStats.highRiseBuildings).toBe(8);
     expect(lowStats.infillBuildings).toBe(0);
@@ -650,6 +652,17 @@ describe('Aohara city night-lighting rules', () => {
 
     cityC.dispose();
     cityA.dispose();
+  });
+
+  it('leaves the city road on its normal single-output material when SSR is disabled', () => {
+    const city = new UrbanNightWorld('C', { wetRoadMaskOutput: false });
+    const avenue = city.root.getObjectByName('aohara-main-avenue');
+    if (!(avenue instanceof Mesh)) {
+      city.dispose();
+      throw new Error('standalone night view should include its roadway');
+    }
+    expect((avenue.material as MeshPhysicalNodeMaterial).mrtNode).toBeNull();
+    city.dispose();
   });
 
   it('moves the tier-bounded point lights with the driver and fades them beyond Aohara', () => {

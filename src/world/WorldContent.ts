@@ -27,6 +27,8 @@ export interface SceneContent {
   readonly root: Object3D;
   /** Label for diagnostics: what kind of content this is. */
   readonly kind: string;
+  /** Requests the localized wet-road reflection pass for scenes that contain a wet-road mask output. */
+  readonly wetRoadSurface?: boolean;
   /** Resolved clock/sun state for content-owned effects such as leaf backlighting. */
   setDaylight?(state: DaylightState): void;
   /** Optional content-owned simulation/update hook, driven with the engine's clamped frame delta. */

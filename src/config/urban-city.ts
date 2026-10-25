@@ -43,13 +43,31 @@ export const URBAN_CITY_CONFIG = {
     /** Aohara day/night wet-look baseline; surface wetness can raise it, but it is not standing water or traction. */
     wetnessDay: 0.12,
     wetnessNight: 0.9,
-    dryRoughness: 0.58,
+    /** Dry asphalt stays neutral grey; localized water darkens only the generated patch mask. */
+    dryAlbedoTint: [0.82, 0.8, 0.76] as const,
+    wetAlbedoMultiplier: 0.78,
+    dryRoughness: 0.78,
     wetRoughness: 0.17,
-    dryClearcoat: 0.16,
-    wetClearcoat: 0.78,
-    dryClearcoatRoughness: 0.28,
+    dryClearcoat: 0.05,
+    wetClearcoat: 0.66,
+    dryClearcoatRoughness: 0.58,
     wetClearcoatRoughness: 0.075,
+    patches: {
+      /** Periodic texture domain in metres; world anchoring keeps patches from following the car. */
+      tileSizeMeters: 192,
+      textureResolution: 512,
+      cellSizeMeters: 13,
+      spawnProbability: 0.62,
+      minRadiusXMeters: 2.8,
+      maxRadiusXMeters: 6.2,
+      minRadiusZMeters: 1.7,
+      maxRadiusZMeters: 4.6,
+      edgeFeatherMeters: 0.55,
+      boundaryWaviness: 0.17,
+      seed: 0x0a0a4a,
+    },
   },
+
   optics: {
     gaussianHaloStrength: 0.16,
     broadHaloStrength: 0.022,

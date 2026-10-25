@@ -17,6 +17,7 @@ import type {
   AmbientOcclusionConfig,
   ContactShadowsConfig,
   SsgiConfig,
+  ScreenSpaceReflectionsConfig,
   MotionBlurConfig,
   AtmosphereConfig,
   BloomConfig,
@@ -72,12 +73,14 @@ export interface TierRenderOverrides {
       | 'godrays'
       | 'contactShadows'
       | 'ssgi'
+      | 'ssr'
     >
   > & {
     readonly bloom?: Partial<BloomConfig>;
     readonly godrays?: Partial<GodraysConfig>;
     readonly contactShadows?: Partial<ContactShadowsConfig>;
     readonly ssgi?: Partial<SsgiConfig>;
+    readonly ssr?: Partial<ScreenSpaceReflectionsConfig>;
     readonly motionBlur?: Partial<MotionBlurConfig>;
     readonly temporalAntiAliasing?: Partial<TemporalAntiAliasingConfig>;
     readonly ambientOcclusion?: Partial<AmbientOcclusionConfig>;
@@ -152,6 +155,15 @@ const TIER_C: TierDefinition = {
       // buys resolution. The velocity attachment is not even requested, so the cost of the pair on this
       // tier is exactly zero — not "small".
       motionBlur: { enabled: false },
+      // Low-resolution, short-reach SSR is only assembled for driving/city scenes with a wet-road mask.
+      ssr: {
+        enabled: true,
+        resolutionScale: 0.33,
+        quality: 0.14,
+        maxDistanceMeters: 22,
+        thicknessMeters: 0.18,
+        intensity: 0.58,
+      },
       temporalAntiAliasing: {
         enabled: false,
         dynamicResolution: true,
@@ -219,6 +231,14 @@ const TIER_B: TierDefinition = {
       // SMAA leaves motion vectors and temporal history out of the whole scene pass.
       antiAliasing: 'smaa',
       motionBlur: { enabled: false },
+      ssr: {
+        enabled: true,
+        resolutionScale: 0.5,
+        quality: 0.22,
+        maxDistanceMeters: 36,
+        thicknessMeters: 0.14,
+        intensity: 0.68,
+      },
       temporalAntiAliasing: {
         enabled: false,
         dynamicResolution: true,
@@ -237,7 +257,7 @@ const TIER_B: TierDefinition = {
       filmGrain: { enabled: false },
     },
   },
-  pending: ['SSR half-res', '3 terrain layers', 'LOD1-2 vegetation'],
+  pending: ['reflection probes', '3 terrain layers', 'LOD1-2 vegetation'],
 };
 
 /**
@@ -281,6 +301,14 @@ const TIER_A: TierDefinition = {
       // defaulted on, so a frame can always name what it paid for them.
       contactShadows: { enabled: true, steps: 16 },
       ssgi: { enabled: true },
+      ssr: {
+        enabled: true,
+        resolutionScale: 0.7,
+        quality: 0.34,
+        maxDistanceMeters: 54,
+        thicknessMeters: 0.1,
+        intensity: 0.74,
+      },
       // Stronger high-speed shutter than B, still zero below the same gameplay speed threshold.
       motionBlur: { enabled: true, intensity: 0.36 },
       // A higher floor than the performance-first profiles. This remains an explicit, unmeasured opt-in;
@@ -291,12 +319,7 @@ const TIER_A: TierDefinition = {
       filmGrain: { enabled: true, intensity: 0.05 },
     },
   },
-  pending: [
-    'SSR + reflection probes',
-    '4 terrain layers + POM',
-    'LOD0 vegetation',
-    'volumetric clouds',
-  ],
+  pending: ['reflection probes', '4 terrain layers + POM', 'LOD0 vegetation', 'volumetric clouds'],
 };
 
 export const TIER_DEFINITIONS: Readonly<Record<TierId, TierDefinition>> = {

@@ -104,6 +104,7 @@ export function applyTier(base: RenderConfig, tier: TierId): RenderConfig {
     motionBlur: motionBlurOverride,
     temporalAntiAliasing: temporalAntiAliasingOverride,
     godrays: godraysOverride,
+    ssr: ssrOverride,
     ...postOverride
   } = overrides.postProcessing ?? {};
 
@@ -122,6 +123,7 @@ export function applyTier(base: RenderConfig, tier: TierId): RenderConfig {
       ...postOverride?.contactShadows,
     },
     ssgi: { ...base.postProcessing.ssgi, ...postOverride?.ssgi },
+    ssr: { ...base.postProcessing.ssr, ...ssrOverride },
     temporalAntiAliasing: {
       ...base.postProcessing.temporalAntiAliasing,
       ...temporalAntiAliasingOverride,

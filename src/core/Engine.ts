@@ -606,6 +606,7 @@ export class Engine {
         scene,
         camera,
         config: this.#config,
+        wetRoadSurface: scene.userData['wetRoadSurface'] === true,
         godraysLight: this.#godraysLight,
       });
       if (this.#motionBlurIntensity !== null) {

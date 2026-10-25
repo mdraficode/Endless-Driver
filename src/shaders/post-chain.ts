@@ -40,6 +40,7 @@ import { taau } from 'three/addons/tsl/display/TAAUNode.js';
 import { motionBlur as motionBlurNode } from 'three/addons/tsl/display/MotionBlur.js';
 import { godrays } from 'three/addons/tsl/display/GodraysNode.js';
 import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
+import { ssr as screenSpaceReflections } from 'three/addons/tsl/display/SSRNode.js';
 import { createLookTexture } from './lut-identity';
 import { createContactShadowNode, type ContactShadowHandles } from './contact-shadows';
 import type { RenderConfig } from '../config/render';
@@ -73,6 +74,7 @@ export type PostEffectName =
   | 'ao'
   | 'ssgi'
   | 'contactShadows'
+  | 'ssr'
   | 'taa'
   | 'grade'
   | 'bloom'
@@ -126,6 +128,7 @@ const EFFECT_ORDER: readonly PostEffectName[] = [
   'ao',
   'ssgi',
   'contactShadows',
+  'ssr',
   'taa',
   'motionBlur',
   'godrays',
@@ -142,7 +145,10 @@ const EFFECT_ORDER: readonly PostEffectName[] = [
 ];
 
 /** Every effect the configuration switches on, in the order the chain applies them. */
-export function resolvePostEffects(config: RenderConfig): PostEffectName[] {
+export function resolvePostEffects(
+  config: RenderConfig,
+  context: { readonly wetRoadSurface?: boolean } = {},
+): PostEffectName[] {
   const { postProcessing } = config;
   if (!postProcessing.enabled) {
     return [];
@@ -157,6 +163,7 @@ export function resolvePostEffects(config: RenderConfig): PostEffectName[] {
     enabled.add('ao');
   }
   if (postProcessing.contactShadows.enabled) enabled.add('contactShadows');
+  if (postProcessing.ssr.enabled && context.wetRoadSurface === true) enabled.add('ssr');
   if (postProcessing.grade.enabled) enabled.add('grade');
   if (postProcessing.bloom.enabled) enabled.add('bloom');
   if (postProcessing.depthOfField.enabled) enabled.add('dof');
@@ -189,14 +196,19 @@ export function resolvePostEffects(config: RenderConfig): PostEffectName[] {
 }
 
 /**
- * True when any effect needs the scene rendered with a normals attachment (AO does).
+ * True when any effect needs the scene rendered with a normals attachment (AO, SSGI, and SSR do).
  *
  * A normals attachment costs a second colour target for the whole scene, so it is requested only when an
  * effect in the chain actually reads it — which is also why the MRT dictionary is assembled rather than
  * written out.
  */
 export function requiresSceneNormals(effects: readonly PostEffectName[]): boolean {
-  return effects.includes('ao') || effects.includes('ssgi');
+  return effects.includes('ao') || effects.includes('ssgi') || effects.includes('ssr');
+}
+
+/** True only when localized SSR needs the material-authored wet-road reflection mask attachment. */
+export function requiresSceneWetRoadMask(effects: readonly PostEffectName[]): boolean {
+  return effects.includes('ssr');
 }
 
 /**
@@ -217,8 +229,8 @@ export function requiresSceneDiffuse(effects: readonly PostEffectName[]): boolea
  * Motion vectors are the single shared cost of the two effects this version adds, and the reason they were
  * built in one slice: the velocity attachment is written once per frame by the scene pass whether one
  * effect reads it or three, and both `taa` and `motionBlur` read *the same buffer*. One attachment, two
- * effects — and the same buffer is what a future screen-space reflection or denoiser pass would reproject
- * with.
+ * effects — and the same buffer could feed a future temporal reflection denoiser. This SSR path is a
+ * spatial, current-frame pass and does not request motion vectors.
  *
  * The attachment is only requested when something reads it, because writing velocity is not free: it makes
  * every material in the scene emit a second output, and it switches the renderer into keeping
@@ -321,6 +333,8 @@ export interface PostChainOptions {
   readonly scene: Scene;
   readonly camera: Camera;
   readonly config: RenderConfig;
+  /** Build wet-road SSR only for content that supplies the authored mask MRT output. */
+  readonly wetRoadSurface?: boolean;
   /**
    * The shadow-only light the god-ray march samples, owned by the scene. Without one the effect
    * cannot be built — the node raymarches a shadow map, and a chain built without the light
@@ -340,11 +354,12 @@ export interface PostChainOptions {
  */
 export function buildPostChain(options: PostChainOptions): PostChain {
   const { renderer, scene, camera, config } = options;
-  const effects = resolvePostEffects(config);
+  const effects = resolvePostEffects(config, { wetRoadSurface: options.wetRoadSurface ?? false });
   const scenePass = pass(scene, camera);
 
   const wantsNormals = requiresSceneNormals(effects);
   const wantsVelocity = requiresSceneVelocity(effects);
+  const wantsWetRoadMask = requiresSceneWetRoadMask(effects);
 
   /**
    * One scene render, as many attachments as the chain actually reads.
@@ -356,7 +371,7 @@ export function buildPostChain(options: PostChainOptions): PostChain {
    * time, so the attachments follow the chain exactly.
    */
   const wantsDiffuse = requiresSceneDiffuse(effects);
-  if (wantsNormals || wantsVelocity || wantsDiffuse) {
+  if (wantsNormals || wantsVelocity || wantsDiffuse || wantsWetRoadMask) {
     const attachments: Record<string, Node> = { output };
     if (wantsNormals) {
       attachments.normal = normalView;
@@ -366,6 +381,11 @@ export function buildPostChain(options: PostChainOptions): PostChain {
     }
     if (wantsDiffuse) {
       attachments.diffuseColor = diffuseColor;
+    }
+    if (wantsWetRoadMask) {
+      // Zero is the fallback emitted by every non-road material; Aohara's asphalt material
+      // merges in its local puddle mask, so SSR rays only start on actual wet patches.
+      attachments.wetRoadMask = float(0);
     }
     scenePass.setMRT(mrt(attachments));
   }
@@ -461,7 +481,39 @@ export function buildPostChain(options: PostChainOptions): PostChain {
     color = contact.node;
   }
 
-  // The two scene-stage effects above produce *expressions*; several downstream effects
+  // --- localized screen-space reflections: trace only material-authored wet-road pixels ---------
+  if (effects.includes('ssr')) {
+    const ssrConfig = config.postProcessing.ssr;
+    const ssrInput = asColor(convertToTexture(color));
+    const wetRoadMask = scenePass.getTextureNode('wetRoadMask').sample(screenUV).r;
+    // PassNode exposes every MRT attachment as an RGBA texture; SSR reads its RGB normal channels.
+    const ssrNormal = scenePass.getTextureNode('normal') as unknown as Node<'vec3'>;
+    const reflection = screenSpaceReflections(
+      ssrInput,
+      scenePass.getTextureNode('depth'),
+      ssrNormal,
+      {
+        camera,
+        reflectNonMetals: false,
+        // SSRNode's non-metal early-out uses this scalar as its trace gate and reflection weight.
+        // This is a screen-space reflection weight, not road metalness: keep the water dielectric-like
+        // while letting the authored puddles read more strongly than the rough asphalt around them.
+        metalnessNode: wetRoadMask.mul(float(0.24)),
+        roughnessNode: mix(float(0.98), float(0.12), wetRoadMask),
+      },
+    );
+    reflection.resolutionScale = ssrConfig.resolutionScale;
+    reflection.quality.value = ssrConfig.quality;
+    reflection.maxDistance.value = ssrConfig.maxDistanceMeters;
+    reflection.thickness.value = ssrConfig.thicknessMeters;
+    reflection.intensity.value = ssrConfig.intensity;
+    rememberDisposable(reflection);
+    color = asColor(
+      vec4(ssrInput.rgb.add(reflection.getTextureNode().sample(screenUV).rgb), ssrInput.a),
+    );
+  }
+
+  // The scene-stage effects above produce *expressions*; several downstream effects
   // (the motion blur above all) sample their input as a texture and fail — silently, in
   // three's console — when handed one. Normalize back to a texture here, once, so every
   // later stage can rely on the contract the temporal resolve used to guarantee by

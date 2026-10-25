@@ -25,6 +25,8 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
   }
   const qualityTier: TierId =
     context.qualityTier === 'A' || context.qualityTier === 'B' ? context.qualityTier : 'C';
+  const wetRoadMaskOutput =
+    context.config.postProcessing.enabled && context.config.postProcessing.ssr.enabled;
   const root = new Group();
   root.name = 'driving-world';
   const surfaceTextures = new SurfaceTextureLibrary();
@@ -38,7 +40,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
   // mesh-less samplers used by unit fixtures simply stay roadless.
   const roads =
     terrainSampler.roadNetwork !== undefined
-      ? new RoadWorld(terrainSampler.roadNetwork, surfaceTextures)
+      ? new RoadWorld(terrainSampler.roadNetwork, surfaceTextures, wetRoadMaskOutput)
       : null;
   roads?.setSurfaceWetness(context.surfaceState?.wetness ?? 0);
   if (roads !== null) {
@@ -86,6 +88,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
             : { trafficIntensity: context.trafficIntensity }),
           networkIntegrated: true,
           surfaceTextures,
+          wetRoadMaskOutput,
         });
   if (aohara !== null) {
     root.add(aohara.root);
@@ -94,6 +97,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
   return {
     root,
     kind: 'driving',
+    wetRoadSurface: roads !== null,
     setDaylight: (state) => {
       vegetation.setDaylight(state);
       roads?.setDaylight(state);

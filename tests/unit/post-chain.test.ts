@@ -6,6 +6,7 @@ import {
   requiresSceneDiffuse,
   requiresSceneNormals,
   requiresSceneVelocity,
+  requiresSceneWetRoadMask,
   resolvePostEffects,
   type PostEffectName,
 } from '../../src/shaders/post-chain';
@@ -559,5 +560,30 @@ describe('contact shadows and SSGI', () => {
     );
     expect(resolvePostEffects(applyRenderSwitches(tierB, '?ssgi=1'))).toContain('ssgi');
     expect(resolvePostEffects(applyRenderSwitches(tierB, '?ssgi=1'))).not.toContain('ao');
+  });
+});
+
+describe('localized wet-road SSR', () => {
+  it('is activated only when the scene provides a wet-road mask surface', () => {
+    const tierC = applyTier(RENDER_CONFIG, 'C');
+    expect(tierC.postProcessing.ssr.enabled).toBe(true);
+    expect(resolvePostEffects(tierC)).not.toContain('ssr');
+
+    const effects = resolvePostEffects(tierC, { wetRoadSurface: true });
+    expect(effects).toContain('ssr');
+    expect(requiresSceneWetRoadMask(effects)).toBe(true);
+    expect(requiresSceneNormals(effects)).toBe(true);
+    expect(requiresSceneDiffuse(effects)).toBe(false);
+  });
+
+  it('runs before temporal accumulation and can be switched off for A/B comparison', () => {
+    const tierA = applyTier(RENDER_CONFIG, 'A');
+    const effects = resolvePostEffects(tierA, { wetRoadSurface: true });
+    expect(effects.indexOf('ssr')).toBeLessThan(effects.indexOf('taa'));
+
+    const disabled = applyRenderSwitches(tierA, '?ssr=0');
+    expect(resolvePostEffects(disabled, { wetRoadSurface: true })).not.toContain('ssr');
+    const enabled = applyRenderSwitches(RENDER_CONFIG, '?ssr=1');
+    expect(resolvePostEffects(enabled, { wetRoadSurface: true })).toContain('ssr');
   });
 });

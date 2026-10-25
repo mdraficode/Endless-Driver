@@ -124,9 +124,10 @@ describe('HDR background, SSAO, and subtle bloom comparisons', () => {
 });
 
 describe('contact shadows and SSGI configuration', () => {
-  it('ships both off in the baseline: a tier buys them, the defaults do not', () => {
+  it('keeps high-cost screen-space effects off in the baseline until a tier or comparison selects them', () => {
     expect(RENDER_CONFIG.postProcessing.contactShadows.enabled).toBe(false);
     expect(RENDER_CONFIG.postProcessing.ssgi.enabled).toBe(false);
+    expect(RENDER_CONFIG.postProcessing.ssr.enabled).toBe(false);
   });
 
   it('keeps the contact march at contact scale with a sane tap count', () => {
@@ -157,6 +158,28 @@ describe('contact shadows and SSGI configuration', () => {
     expect(applyRenderSwitches(RENDER_CONFIG, '').postProcessing.contactShadows.enabled).toBe(
       false,
     );
+  });
+});
+
+describe('localized screen-space reflection configuration', () => {
+  it('bounds the SSR controls to documented node ranges and tier budgets', () => {
+    const { ssr } = applyTier(RENDER_CONFIG, 'C').postProcessing;
+    expect(ssr.enabled).toBe(true);
+    expect(ssr.resolutionScale).toBeGreaterThan(0);
+    expect(ssr.resolutionScale).toBeLessThanOrEqual(1);
+    expect(ssr.quality).toBeGreaterThanOrEqual(0);
+    expect(ssr.quality).toBeLessThanOrEqual(1);
+    expect(ssr.maxDistanceMeters).toBeGreaterThan(0);
+    expect(ssr.thicknessMeters).toBeGreaterThan(0);
+    expect(ssr.intensity).toBeGreaterThan(0);
+    expect(ssr.intensity).toBeLessThanOrEqual(1);
+  });
+
+  it('supports an independent on/off comparison switch', () => {
+    const tierB = applyTier(RENDER_CONFIG, 'B');
+    expect(applyRenderSwitches(tierB, '?ssr=0').postProcessing.ssr.enabled).toBe(false);
+    expect(applyRenderSwitches(tierB, '?ssr=1').postProcessing.ssr.enabled).toBe(true);
+    expect(applyRenderSwitches(RENDER_CONFIG, '').postProcessing.ssr.enabled).toBe(false);
   });
 });
 

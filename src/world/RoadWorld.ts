@@ -1,6 +1,7 @@
 import {
   BoxGeometry,
   CircleGeometry,
+  DataTexture,
   Group,
   InstancedMesh,
   Mesh,
@@ -8,12 +9,13 @@ import {
   type BufferGeometry,
 } from 'three';
 import { MeshPhysicalNodeMaterial, MeshStandardNodeMaterial, type Node } from 'three/webgpu';
-import { float, mix, positionLocal, sin, texture, uniform, uv, vec2, vec4 } from 'three/tsl';
+import { float, mix, mrt, positionLocal, sin, texture, uniform, uv, vec2, vec4 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { configureTiledSurface, SurfaceTextureLibrary } from '../assets/SurfaceTextureLibrary';
 import { createArchitecturalMaterial } from './architectural-materials';
 import { bindScannedPbrMaps } from './scanned-pbr';
+import { createRoadWetPatchMaskTexture, createRoadWetnessNode } from './road-wet-patches';
 import { resolveUrbanWetness, URBAN_CITY_CONFIG } from '../config/urban-city';
 import { clamp } from '../shared/math';
 import type { DaylightState } from '../environment/EnvironmentClock';
@@ -208,7 +210,11 @@ export class RoadWorld {
 
   readonly #ownsSurfaceTextures: boolean;
 
+  readonly #wetPatchMaskTexture: DataTexture;
+
   readonly #urbanWetness = uniform(URBAN_CITY_CONFIG.wetRoad.wetnessDay);
+
+  readonly #urbanWetPatchMask: Node<'float'>;
 
   #baseUrbanWetness: number = URBAN_CITY_CONFIG.wetRoad.wetnessDay;
 
@@ -224,10 +230,16 @@ export class RoadWorld {
 
   #disposed = false;
 
-  constructor(network: RoadNetwork, surfaceTextures?: SurfaceTextureLibrary) {
+  constructor(
+    network: RoadNetwork,
+    surfaceTextures?: SurfaceTextureLibrary,
+    wetRoadMaskOutput = true,
+  ) {
     this.#network = network;
     this.#surfaceTextures = surfaceTextures ?? new SurfaceTextureLibrary();
     this.#ownsSurfaceTextures = surfaceTextures === undefined;
+    this.#wetPatchMaskTexture = createRoadWetPatchMaskTexture();
+    this.#urbanWetPatchMask = createRoadWetnessNode(this.#wetPatchMaskTexture, this.#urbanWetness);
 
     this.#asphaltMaterial = new MeshStandardNodeMaterial();
     this.#asphaltMaterial.color.set(0x35383d);
@@ -239,28 +251,39 @@ export class RoadWorld {
     this.#shoulderMaterial.roughness = 1;
     this.#shoulderMaterial.metalness = 0;
 
-    // Aohara's bounded PBR wet-look blends the existing night art direction with the selected
-    // surface wetness. Clearcoat and roughness reveal local HDRI/streetlight glints; this adds no
-    // standing puddles, precipitation, SSR, or traction change.
+    // Aohara's scanned asphalt stays neutral and rough between deterministically distributed
+    // rain patches. Each puddle mask alone darkens the albedo, lowers roughness, and contributes
+    // a wet-road MRT channel for the tier-bounded, mask-gated SSR pass.
     this.#urbanAsphaltMaterial = new MeshPhysicalNodeMaterial();
-    this.#urbanAsphaltMaterial.color.set(0x222a32);
+    this.#urbanAsphaltMaterial.color.set(0x34383b);
     this.#urbanAsphaltMaterial.roughness = URBAN_CITY_CONFIG.wetRoad.dryRoughness;
     this.#urbanAsphaltMaterial.metalness = 0.025;
     this.#urbanAsphaltMaterial.roughnessNode = mix(
       float(URBAN_CITY_CONFIG.wetRoad.dryRoughness),
       float(URBAN_CITY_CONFIG.wetRoad.wetRoughness),
-      this.#urbanWetness,
+      this.#urbanWetPatchMask,
     );
     this.#urbanAsphaltMaterial.clearcoatNode = mix(
       float(URBAN_CITY_CONFIG.wetRoad.dryClearcoat),
       float(URBAN_CITY_CONFIG.wetRoad.wetClearcoat),
-      this.#urbanWetness,
+      this.#urbanWetPatchMask,
     );
     this.#urbanAsphaltMaterial.clearcoatRoughnessNode = mix(
       float(URBAN_CITY_CONFIG.wetRoad.dryClearcoatRoughness),
       float(URBAN_CITY_CONFIG.wetRoad.wetClearcoatRoughness),
-      this.#urbanWetness,
+      this.#urbanWetPatchMask,
     );
+    this.#urbanAsphaltMaterial.colorNode = vec4(
+      this.#urbanAsphaltMaterial.color.r,
+      this.#urbanAsphaltMaterial.color.g,
+      this.#urbanAsphaltMaterial.color.b,
+      1,
+    ).mul(
+      mix(float(1), float(URBAN_CITY_CONFIG.wetRoad.wetAlbedoMultiplier), this.#urbanWetPatchMask),
+    );
+    this.#urbanAsphaltMaterial.mrtNode = wetRoadMaskOutput
+      ? mrt({ wetRoadMask: this.#urbanWetPatchMask })
+      : null;
     this.#urbanAsphaltMaterial.name = 'aohara-urban-asphalt-wet-look-clearcoat';
 
     const markingMaterial = new MeshStandardNodeMaterial();
@@ -510,17 +533,27 @@ export class RoadWorld {
         normalStrength: 0.72,
       });
 
-      // Reuse the CC0 asphalt maps for Aohara's existing wet-look surface. The weather uniform
-      // only affects this city's roughness/clearcoat response; it adds no traction or draw pass.
+      // The same CC0 maps carry hard-asphalt microdetail across both dry and wet parts. Only the
+      // irregular patch mask darkens the albedo or blends the packed roughness toward standing water.
       bindScannedPbrMaps(this.#urbanAsphaltMaterial, asphalt, roadUv, {
-        albedoTint: vec4(0.72, 0.77, 0.83, 1).mul(macroTint),
+        albedoTint: vec4(...URBAN_CITY_CONFIG.wetRoad.dryAlbedoTint, 1).mul(macroTint),
         normalStrength: 0.65,
       });
+      const scannedAlbedo = this.#urbanAsphaltMaterial.colorNode as Node<'vec4'> | null;
+      if (scannedAlbedo !== null) {
+        this.#urbanAsphaltMaterial.colorNode = scannedAlbedo.mul(
+          mix(
+            float(1),
+            float(URBAN_CITY_CONFIG.wetRoad.wetAlbedoMultiplier),
+            this.#urbanWetPatchMask,
+          ),
+        );
+      }
       if (asphalt.arm !== null) {
         this.#urbanAsphaltMaterial.roughnessNode = mix(
           texture(asphalt.arm, roadUv).g,
           float(URBAN_CITY_CONFIG.wetRoad.wetRoughness),
-          this.#urbanWetness,
+          this.#urbanWetPatchMask,
         );
       }
       this.#urbanAsphaltMaterial.needsUpdate = true;
@@ -566,6 +599,7 @@ export class RoadWorld {
     for (const material of materials) {
       material.dispose();
     }
+    this.#wetPatchMaskTexture.dispose();
     if (this.#ownsSurfaceTextures) {
       this.#surfaceTextures.dispose();
     }

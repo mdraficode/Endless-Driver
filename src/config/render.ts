@@ -494,6 +494,24 @@ export interface SsgiConfig {
   readonly thicknessMeters: number;
 }
 
+/**
+ * Screen-space reflections for explicitly authored wet-road mask pixels. The SSR pass is only
+ * assembled for a scene that advertises a wet road surface and its renderer is tier-bounded.
+ */
+export interface ScreenSpaceReflectionsConfig {
+  readonly enabled: boolean;
+  /** Fraction of the drawing buffer used by the reflection raymarch; the rest of the scene is untouched. */
+  readonly resolutionScale: number;
+  /** 0–1 budget multiplier on the depth raymarch steps. */
+  readonly quality: number;
+  /** Maximum screen-space reflection reach, in metres. */
+  readonly maxDistanceMeters: number;
+  /** Depth-crossing tolerance, in metres. */
+  readonly thicknessMeters: number;
+  /** Strength of the local screen-space reflection contribution. */
+  readonly intensity: number;
+}
+
 export interface PostProcessingConfig {
   readonly enabled: boolean;
   readonly antiAliasing: AntiAliasingMode;
@@ -505,6 +523,7 @@ export interface PostProcessingConfig {
   readonly godrays: GodraysConfig;
   readonly contactShadows: ContactShadowsConfig;
   readonly ssgi: SsgiConfig;
+  readonly ssr: ScreenSpaceReflectionsConfig;
   readonly bloom: BloomConfig;
   readonly ambientOcclusion: AmbientOcclusionConfig;
   readonly chromaticAberration: ChromaticAberrationConfig;
@@ -712,6 +731,16 @@ export const RENDER_CONFIG: RenderConfig = {
       radiusMeters: 4,
       thicknessMeters: 0.5,
     },
+    // Tier overrides enable this only for explicit wet-road surfaces; the raymarch mask discards
+    // every dry/material pixel before tracing and never reflects the whole environment uniformly.
+    ssr: {
+      enabled: false,
+      resolutionScale: 0.35,
+      quality: 0.16,
+      maxDistanceMeters: 28,
+      thicknessMeters: 0.16,
+      intensity: 0.68,
+    },
     bloom: {
       // OFF in gameplay, at every tier. Root cause of the 'camera fog' reports:
       // the HDR sky sits above any practical threshold, so bloom's wide kernel
@@ -806,6 +835,7 @@ export function applyRenderSwitches(config: RenderConfig, search: string): Rende
   const godrays = params.get('godrays');
   const contact = params.get('contact');
   const ssgiSwitch = params.get('ssgi');
+  const ssrSwitch = parseBooleanSwitch(params.get('ssr'));
   const tonemap = params.get('tonemap');
   const grain = params.get('grain');
   const clouds = params.get('clouds');
@@ -897,6 +927,10 @@ export function applyRenderSwitches(config: RenderConfig, search: string): Rende
       ? {}
       : { enabled: ssgiSwitch !== '0' && ssgiSwitch !== 'false' }),
   };
+  const ssr = {
+    ...config.postProcessing.ssr,
+    ...(ssrSwitch === null ? {} : { enabled: ssrSwitch }),
+  };
 
   const bloom = {
     ...config.postProcessing.bloom,
@@ -957,6 +991,7 @@ export function applyRenderSwitches(config: RenderConfig, search: string): Rende
       godrays: godraysConfig,
       contactShadows,
       ssgi,
+      ssr,
       bloom,
       ambientOcclusion,
       // A switch of its own because grain is per-frame random: any A/B measurement between two
