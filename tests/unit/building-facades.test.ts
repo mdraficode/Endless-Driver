@@ -1,4 +1,4 @@
-import { InstancedMesh, type Object3D } from 'three';
+import { InstancedMesh, Object3D } from 'three';
 import { describe, expect, it } from 'vitest';
 
 import { URBAN_FACADE_KIT_TIER_BUDGET } from '../../src/config/urban-city';
