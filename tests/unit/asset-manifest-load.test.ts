@@ -46,10 +46,10 @@ describe('startup surface loading', () => {
       } as Response),
     );
 
-    const resolveTextures: Array<(texture: Texture) => void> = [];
+    const resolveTextures: Array<(texture: Texture<HTMLImageElement>) => void> = [];
     const loadTexture = vi.spyOn(TextureLoader.prototype, 'loadAsync').mockImplementation(
       () =>
-        new Promise<Texture>((resolve) => {
+        new Promise<Texture<HTMLImageElement>>((resolve) => {
           resolveTextures.push(resolve);
         }),
     );
