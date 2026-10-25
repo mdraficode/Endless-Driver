@@ -134,7 +134,7 @@ describe('full-screen diagnostics report', () => {
     expect(panel.getAttribute('aria-label')).toBe('Live diagnostics report');
     expect(panel.getAttribute('aria-hidden')).toBe('false');
     expect(grid.className).toBe('diagnostics-grid');
-    expect(grid.children).toHaveLength(30);
+    expect(grid.children).toHaveLength(31);
     expect(grid.children.every((metric) => metric.children.length === 2)).toBe(true);
 
     const labels = grid.children.map((metric) => metric.children[0]?.textContent);
@@ -155,6 +155,7 @@ describe('full-screen diagnostics report', () => {
     expect(report.get('Resolution')).toBe('fxaa @ 90%');
     expect(report.get('Weather')).toBe('clear · dry');
     expect(report.get('Surface')).toBe('grip 1.00× · RR 0.0150');
+    expect(report.get('Frame errors')).toBe('none');
     expect([...report.values()].every((value) => value !== '—')).toBe(true);
 
     overlay.update({
@@ -172,6 +173,17 @@ describe('full-screen diagnostics report', () => {
     );
     expect(rainReport.get('Weather')).toBe('rain · 85% wet');
     expect(rainReport.get('Surface')).toBe('grip 0.81× · RR 0.0184');
+
+    // A frame-handler exception is surfaced on its own row so a returning device report
+    // shows exactly what failed without guessing.
+    overlay.update({ ...SNAPSHOT, frameErrors: { count: 2, last: 'boom' } });
+    const errorReport = new Map(
+      grid.children.map((metric) => [
+        metric.children[0]?.textContent,
+        metric.children[1]?.textContent,
+      ]),
+    );
+    expect(errorReport.get('Frame errors')).toBe('2 · boom');
 
     overlay.dispose();
     expect(panel.removed).toBe(true);
