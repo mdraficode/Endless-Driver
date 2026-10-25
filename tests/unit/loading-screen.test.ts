@@ -26,9 +26,14 @@ function makeLoadingDom() {
     ['#loading-retry', retry],
   ]);
   const dataset: Record<string, string> = {};
+  const rootStyle = new Map<string, string>();
   const root = {
     hidden: true,
     dataset,
+    style: {
+      // The fill-width mirror for the glow layer (see `LoadingScreen.#setBarWidth`).
+      setProperty: (name: string, value: string) => rootStyle.set(name, value),
+    },
     querySelector: (selector: string) => nodes.get(selector) ?? null,
     setAttribute: (name: string, value: string) => rootAttributes.set(name, value),
     classList: {
@@ -36,7 +41,18 @@ function makeLoadingDom() {
       remove: (name: string) => classes.delete(name),
     },
   } as unknown as HTMLElement;
-  return { root, rootAttributes, progressAttributes, classes, bar, label, percent, retry, dataset };
+  return {
+    root,
+    rootAttributes,
+    progressAttributes,
+    classes,
+    bar,
+    label,
+    percent,
+    retry,
+    dataset,
+    rootStyle,
+  };
 }
 
 function stubLoadingWindow(prefersReducedMotion = false) {
@@ -79,6 +95,18 @@ describe('startup progress', () => {
     expect(normalizeLoadingProgress(0.1, 0.42)).toBe(0.42);
     expect(normalizeLoadingProgress(4)).toBe(1);
     expect(normalizeLoadingProgress(Number.NaN, 0.6)).toBe(0.6);
+  });
+
+  it('mirrors the fill width into the glow layer custom property on every width change', () => {
+    const dom = makeLoadingDom();
+    const loading = new LoadingScreen(dom.root);
+    loading.show();
+    expect(dom.rootStyle.get('--loading-fill-width')).toBe(dom.bar.style.width);
+    loading.update(0.4, 'Loading the physics engine…');
+    expect(dom.rootStyle.get('--loading-fill-width')).toBe(dom.bar.style.width);
+    loading.fail('renderer did not start');
+    expect(dom.bar.style.width).toBe('40%');
+    expect(dom.rootStyle.get('--loading-fill-width')).toBe('40%');
   });
 
   it('advances gradually toward reported progress and completes only on the first playable frame', () => {

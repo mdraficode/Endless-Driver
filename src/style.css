@@ -222,7 +222,33 @@ body {
   content: '';
   opacity: 0.2;
   pointer-events: none;
+  will-change: opacity;
   animation: loading-progress-glow 3.2s ease-in-out infinite;
+}
+
+/*
+ * The glow around the filled part of the bar. It is a separate layer whose *width* mirrors the
+ * fill (the JS sets `--loading-fill-width` wherever it sets the fill width) so the glow follows
+ * the progress. The shadow is static paint and only the opacity animates — a compositor-only
+ * animation on a pre-painted glow. That is deliberate: the owner reported the bar losing its glow
+ * right after the auto-fullscreen transition on Android, where animated box-shadow/filter layers
+ * get dropped when the compositor re-rasterises for the immersive viewport. Static paint plus an
+ * opacity modulator cannot be dropped mid-frame, so the bar can never end up unglowed — even if
+ * the animation restarts from its trough, the fill's own static shadow keeps the bar glowing.
+ */
+.loading-progress-track::after {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--loading-fill-width, 0%);
+  border-radius: inherit;
+  box-shadow: 0 0 34px 4px rgb(84 224 199 / 90%);
+  content: '';
+  opacity: 0.35;
+  pointer-events: none;
+  will-change: opacity;
 }
 
 .loading-progress-fill {
@@ -233,7 +259,7 @@ body {
   overflow: hidden;
   border-radius: inherit;
   background: linear-gradient(90deg, #32b6a5, #a1ead8);
-  box-shadow: 0 0 18px rgb(84 224 199 / 55%);
+  box-shadow: 0 0 24px rgb(84 224 199 / 70%);
   transition: width 480ms ease-out;
 }
 
@@ -245,6 +271,12 @@ body {
   opacity: 0;
   pointer-events: none;
   transform: translateX(-110%);
+}
+
+.loading-screen[data-progress-phase='animating'] .loading-progress-track::after,
+.loading-screen[data-progress-phase='finalizing'] .loading-progress-track::after,
+.loading-screen[data-progress-phase='waiting'] .loading-progress-track::after {
+  animation: loading-progress-fill-glow 3.2s ease-in-out infinite;
 }
 
 .loading-screen[data-progress-phase='animating'] .loading-progress-fill,
@@ -309,33 +341,55 @@ body {
   }
 }
 
+/*
+ * Opacity only, on purpose: the fill's glow is its static box-shadow (always painted), so the
+ * animation only needs to modulate brightness. Opacity animations run on the compositor, survive
+ * main-thread stalls, and cannot drop the glow the way animated box-shadow/filter layers can
+ * after a fullscreen transition. The floor stays well above invisible, so a restart from the
+ * trough can never read as "the bar lost its glow".
+ */
 @keyframes loading-progress-breathe {
   0%,
   100% {
-    opacity: 0.16;
-    filter: brightness(0.55) saturate(0.75);
-    box-shadow: 0 0 2px rgb(84 224 199 / 8%);
+    opacity: 0.55;
   }
 
   50% {
     opacity: 1;
-    filter: brightness(1.8) saturate(1.45);
-    box-shadow: 0 0 32px rgb(84 224 199 / 100%);
   }
 }
 
 @keyframes loading-progress-breathe-reduced {
   0%,
   100% {
-    opacity: 0.36;
-    filter: brightness(0.75) saturate(0.85);
-    box-shadow: 0 0 4px rgb(84 224 199 / 20%);
+    opacity: 0.7;
   }
 
   50% {
     opacity: 1;
-    filter: brightness(1.55) saturate(1.2);
-    box-shadow: 0 0 30px rgb(84 224 199 / 90%);
+  }
+}
+
+/* Modulates the width-mirrored glow layer (`::after` on the track); its shadow is static. */
+@keyframes loading-progress-fill-glow {
+  0%,
+  100% {
+    opacity: 0.12;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes loading-progress-fill-glow-reduced {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 0.85;
   }
 }
 
@@ -385,6 +439,11 @@ body {
 
 .loading-screen[data-state='error'] .loading-progress-fill {
   background: #f87171;
+  box-shadow: 0 0 24px rgb(248 113 113 / 70%);
+}
+
+.loading-screen[data-state='error'] .loading-progress-track::after {
+  box-shadow: 0 0 34px 4px rgb(248 113 113 / 90%);
 }
 
 .loading-screen-complete {
@@ -402,6 +461,10 @@ body {
   .loading-progress-track::before {
     animation: loading-progress-glow-reduced 5.4s ease-in-out infinite;
     opacity: 0.24;
+  }
+
+  .loading-progress-track::after {
+    animation: loading-progress-fill-glow-reduced 5.4s ease-in-out infinite;
   }
 
   .loading-screen[data-progress-phase='animating'] .loading-progress-track,

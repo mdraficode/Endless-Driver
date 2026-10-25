@@ -176,10 +176,20 @@ export class LoadingScreen {
     }
   }
 
+  /**
+   * Sets the fill width and mirrors it into `--loading-fill-width` on the root, which the glow
+   * layer (the track's `::after`) uses for its own width. The two must always move together, so
+   * every width change goes through here.
+   */
+  #setBarWidth(width: string): void {
+    this.#bar.style.width = width;
+    this.#root.style.setProperty('--loading-fill-width', width);
+  }
+
   #paintProgress(): void {
     if (this.#displayFraction >= PRE_READY_PROGRESS_CAP) {
       this.#root.dataset['progressPhase'] = 'waiting';
-      this.#bar.style.width = '99%';
+      this.#setBarWidth('99%');
       this.#percent.textContent = '99%';
       this.#label.textContent = 'Still working…';
       this.#progress.setAttribute(
@@ -191,7 +201,7 @@ export class LoadingScreen {
 
     this.#root.dataset['progressPhase'] =
       this.#fraction >= 0.94 || this.#displayFraction >= 0.94 ? 'finalizing' : 'animating';
-    this.#bar.style.width = `${(this.#displayFraction * 100).toFixed(2)}%`;
+    this.#setBarWidth(`${(this.#displayFraction * 100).toFixed(2)}%`);
     const visiblePercent = Math.max(0, Math.min(99, Math.floor(this.#displayFraction * 100)));
     this.#percent.textContent = `${visiblePercent}%`;
     if (this.#fraction >= 0.94) {
@@ -201,7 +211,7 @@ export class LoadingScreen {
 
   #paintCompletionProgress(): void {
     this.#root.dataset['progressPhase'] = 'finalizing';
-    this.#bar.style.width = `${(this.#displayFraction * 100).toFixed(2)}%`;
+    this.#setBarWidth(`${(this.#displayFraction * 100).toFixed(2)}%`);
     const visiblePercent = Math.max(0, Math.min(99, Math.floor(this.#displayFraction * 100)));
     this.#percent.textContent = `${visiblePercent}%`;
     this.#label.textContent = 'First playable frame ready — finishing up…';
@@ -217,7 +227,7 @@ export class LoadingScreen {
     delete this.#root.dataset['progressPhase'];
     this.#progress.removeAttribute?.('aria-valuetext');
     this.#progress.setAttribute('aria-valuenow', '100');
-    this.#bar.style.width = '100%';
+    this.#setBarWidth('100%');
     this.#percent.textContent = '100%';
     this.#label.textContent = this.#completionLabel;
     this.#finish();
@@ -272,7 +282,7 @@ export class LoadingScreen {
     this.#progress.removeAttribute?.('aria-valuetext');
     this.#displayFraction = this.#fraction;
     const percent = Math.round(this.#fraction * 100);
-    this.#bar.style.width = `${percent}%`;
+    this.#setBarWidth(`${percent}%`);
     this.#progress.setAttribute('aria-valuenow', String(percent));
     this.#percent.textContent = `${percent}%`;
     this.#label.textContent = `Could not start: ${message}`;
