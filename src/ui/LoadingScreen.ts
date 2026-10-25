@@ -6,10 +6,11 @@ export interface LoadingProgress {
 /**
  * Fraction rates: a minimum crawl during stalls, with bounded catch-up toward reported progress.
  */
-const MIN_VISUAL_PROGRESS_PER_SECOND = 0.12;
-const MAX_VISUAL_PROGRESS_PER_SECOND = 0.16;
+const MIN_VISUAL_PROGRESS_PER_SECOND = 0.06;
+const MAX_VISUAL_PROGRESS_PER_SECOND = 0.08;
 const PROGRESS_FOLLOW_GAIN = 0.5;
 const FIRST_FRAME_COMPLETION_RATE_PER_SECOND = 0.12;
+const PRE_READY_PROGRESS_CAP = 0.99;
 const PROGRESS_TICK_INTERVAL_MS = 50;
 const PROGRESS_INTEGRATION_STEP_SECONDS = 0.1;
 const MAX_PROGRESS_CATCH_UP_SECONDS = 60;
@@ -149,7 +150,7 @@ export class LoadingScreen {
 
     this.#advanceEstimatedProgress(elapsedMs / 1000);
     this.#paintProgress();
-    if (this.#displayFraction >= 1) {
+    if (this.#displayFraction >= PRE_READY_PROGRESS_CAP) {
       this.#stopProgressAnimation();
       return;
     }
@@ -165,23 +166,23 @@ export class LoadingScreen {
         MAX_VISUAL_PROGRESS_PER_SECOND,
         MIN_VISUAL_PROGRESS_PER_SECOND + gapToReportedProgress * PROGRESS_FOLLOW_GAIN,
       );
-      this.#displayFraction = Math.min(1, this.#displayFraction + visualRate * stepSeconds);
+      this.#displayFraction = Math.min(
+        PRE_READY_PROGRESS_CAP,
+        this.#displayFraction + visualRate * stepSeconds,
+      );
       remainingSeconds -= stepSeconds;
     }
   }
 
   #paintProgress(): void {
-    if (this.#displayFraction >= 1) {
+    if (this.#displayFraction >= PRE_READY_PROGRESS_CAP) {
       this.#root.dataset['progressPhase'] = 'waiting';
-      this.#bar.style.width = '100%';
-      this.#percent.textContent = 'Still working…';
-      this.#label.textContent =
-        this.#fraction >= 0.94
-          ? 'Finishing the first playable frame…'
-          : 'Still preparing the starting scene…';
+      this.#bar.style.width = '99%';
+      this.#percent.textContent = '99%';
+      this.#label.textContent = 'Still working…';
       this.#progress.setAttribute(
         'aria-valuetext',
-        'The visual bar is full; actual startup is still in progress.',
+        'The visual bar is held at 99% until the first playable frame is ready.',
       );
       return;
     }
@@ -221,7 +222,11 @@ export class LoadingScreen {
   }
 
   #scheduleProgressTimer(): void {
-    if (!this.#finished && this.#displayFraction < 1 && this.#progressTimer === null) {
+    if (
+      !this.#finished &&
+      (this.#completionPending || this.#displayFraction < PRE_READY_PROGRESS_CAP) &&
+      this.#progressTimer === null
+    ) {
       this.#lastProgressTimestamp = window.performance.now();
       this.#progressTimer = window.setInterval(this.#advanceProgress, PROGRESS_TICK_INTERVAL_MS);
     }

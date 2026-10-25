@@ -69,7 +69,7 @@ function stubLoadingWindow(prefersReducedMotion = false) {
     callback();
   };
 
-  return { ticks, hideTimers, advanceTime };
+  return { ticks, hideTimers, advanceTime, getNow: () => now };
 }
 
 describe('startup progress', () => {
@@ -82,7 +82,7 @@ describe('startup progress', () => {
   });
 
   it('advances gradually toward reported progress and completes only on the first playable frame', () => {
-    const { ticks, hideTimers, advanceTime } = stubLoadingWindow();
+    const { ticks, hideTimers, advanceTime, getNow } = stubLoadingWindow();
 
     try {
       const dom = makeLoadingDom();
@@ -99,8 +99,8 @@ describe('startup progress', () => {
         advanceTime(timestamp);
       }
       const afterOneSecond = Number.parseFloat(dom.bar.style.width);
-      expect(afterOneSecond).toBeGreaterThan(14);
-      expect(afterOneSecond).toBeLessThan(18);
+      expect(afterOneSecond).toBeGreaterThan(7);
+      expect(afterOneSecond).toBeLessThan(9);
       expect(dom.percent.textContent).toMatch(/^\d+%$/);
       expect(dom.percent.textContent).not.toContain('-');
 
@@ -108,24 +108,43 @@ describe('startup progress', () => {
         advanceTime(timestamp);
       }
       const afterFiveSeconds = Number.parseFloat(dom.bar.style.width);
-      expect(afterFiveSeconds).toBeGreaterThan(78);
-      expect(afterFiveSeconds).toBeLessThan(82);
+      expect(afterFiveSeconds).toBeGreaterThan(38);
+      expect(afterFiveSeconds).toBeLessThan(42);
 
       for (let timestamp = 5_100; timestamp <= 20_000 && ticks.size > 0; timestamp += 100) {
         advanceTime(timestamp);
       }
-      expect(dom.bar.style.width).toBe('100%');
-      expect(dom.percent.textContent).toBe('Still working…');
+      expect(dom.bar.style.width).toBe('99%');
+      expect(dom.percent.textContent).toBe('99%');
       expect(dom.dataset['progressPhase']).toBe('waiting');
+      expect(dom.label.textContent).toBe('Still working…');
       expect(dom.progressAttributes.get('aria-valuenow')).toBe('94');
+      expect(ticks.size).toBe(0);
 
       loading.update(1, 'Ready — the drive starts automatically');
 
       expect(dom.root.hidden).toBe(false);
+      expect(dom.dataset['state']).toBe('loading');
+      expect(dom.dataset['progressPhase']).toBe('finalizing');
+      expect(dom.bar.style.width).toBe('99%');
+      expect(dom.percent.textContent).toBe('99%');
+      expect(dom.progressAttributes.get('aria-valuenow')).toBe('100');
+      expect(dom.label.textContent).toBe('First playable frame ready — finishing up…');
+      expect(dom.progressAttributes.has('aria-valuetext')).toBe(true);
+      expect(dom.classes.has('loading-screen-complete')).toBe(false);
+      expect(hideTimers).toHaveLength(0);
+
+      const completionStart = getNow();
+      advanceTime(completionStart + 50);
+      expect(dom.bar.style.width).toBe('99.60%');
+      expect(dom.percent.textContent).toBe('99%');
+      expect(hideTimers).toHaveLength(0);
+
+      advanceTime(completionStart + 100);
+      expect(dom.bar.style.width).toBe('100%');
       expect(dom.dataset['state']).toBe('ready');
       expect(dom.dataset['progressPhase']).toBe('complete');
       expect(dom.percent.textContent).toBe('100%');
-      expect(dom.progressAttributes.get('aria-valuenow')).toBe('100');
       expect(dom.progressAttributes.has('aria-valuetext')).toBe(false);
       expect(dom.classes.has('loading-screen-complete')).toBe(true);
       expect(hideTimers).toHaveLength(1);
@@ -152,8 +171,8 @@ describe('startup progress', () => {
       advanceTime(5_000);
 
       const afterThrottledFrames = Number.parseFloat(dom.bar.style.width);
-      expect(afterThrottledFrames).toBeGreaterThan(68);
-      expect(afterThrottledFrames).toBeLessThan(73);
+      expect(afterThrottledFrames).toBeGreaterThan(38);
+      expect(afterThrottledFrames).toBeLessThan(42);
       expect(dom.percent.textContent).toMatch(/^\d+%$/);
       expect(ticks.size).toBeGreaterThan(0);
     } finally {
@@ -170,28 +189,29 @@ describe('startup progress', () => {
       loading.show();
       loading.update(0.62, 'Applying the visual look…');
 
-      for (let timestamp = 0; timestamp <= 5_500; timestamp += 100) {
+      for (let timestamp = 0; timestamp <= 10_000; timestamp += 100) {
         advanceTime(timestamp);
       }
       const nearStagePercent = Number.parseFloat(dom.bar.style.width);
-      expect(nearStagePercent).toBeGreaterThan(78);
-      expect(nearStagePercent).toBeLessThan(83);
+      expect(nearStagePercent).toBeGreaterThan(73);
+      expect(nearStagePercent).toBeLessThan(77);
 
-      for (let timestamp = 5_600; timestamp <= 6_500; timestamp += 100) {
+      for (let timestamp = 10_100; timestamp <= 11_000; timestamp += 100) {
         advanceTime(timestamp);
       }
       const afterStall = Number.parseFloat(dom.bar.style.width);
-      expect(afterStall).toBeGreaterThan(90);
-      expect(afterStall).toBeLessThan(95);
+      expect(afterStall).toBeGreaterThan(79);
+      expect(afterStall).toBeLessThan(83);
       expect(dom.percent.textContent).toMatch(/^\d+%$/);
       expect(ticks.size).toBeGreaterThan(0);
 
-      for (let timestamp = 6_600; timestamp <= 9_000 && ticks.size > 0; timestamp += 100) {
+      for (let timestamp = 11_100; timestamp <= 15_000 && ticks.size > 0; timestamp += 100) {
         advanceTime(timestamp);
       }
-      expect(dom.bar.style.width).toBe('100%');
-      expect(dom.percent.textContent).toBe('Still working…');
+      expect(dom.bar.style.width).toBe('99%');
+      expect(dom.percent.textContent).toBe('99%');
       expect(dom.dataset['progressPhase']).toBe('waiting');
+      expect(dom.label.textContent).toBe('Still working…');
       expect(ticks.size).toBe(0);
     } finally {
       vi.unstubAllGlobals();
@@ -211,8 +231,8 @@ describe('startup progress', () => {
         advanceTime(timestamp);
       }
       const beforeFirstFrame = Number.parseFloat(dom.bar.style.width);
-      expect(beforeFirstFrame).toBeGreaterThan(78);
-      expect(beforeFirstFrame).toBeLessThan(82);
+      expect(beforeFirstFrame).toBeGreaterThan(38);
+      expect(beforeFirstFrame).toBeLessThan(42);
 
       loading.update(1, 'Ready — the drive starts automatically');
 
@@ -258,8 +278,8 @@ describe('startup progress', () => {
         advanceTime(timestamp);
       }
       const afterOneSecond = Number.parseFloat(dom.bar.style.width);
-      expect(afterOneSecond).toBeGreaterThan(14);
-      expect(afterOneSecond).toBeLessThan(18);
+      expect(afterOneSecond).toBeGreaterThan(7);
+      expect(afterOneSecond).toBeLessThan(9);
       expect(dom.progressAttributes.get('aria-valuenow')).toBe('88');
       expect(dom.percent.textContent).not.toContain('-');
       expect(dom.dataset['progressPhase']).toBe('animating');
@@ -267,8 +287,8 @@ describe('startup progress', () => {
       for (let timestamp = 1_100; timestamp <= 6_000 && ticks.size > 0; timestamp += 100) {
         advanceTime(timestamp);
       }
-      expect(Number.parseFloat(dom.bar.style.width)).toBeGreaterThan(90);
-      expect(Number.parseFloat(dom.bar.style.width)).toBeLessThan(95);
+      expect(Number.parseFloat(dom.bar.style.width)).toBeGreaterThan(46);
+      expect(Number.parseFloat(dom.bar.style.width)).toBeLessThan(50);
       expect(dom.progressAttributes.get('aria-valuenow')).toBe('88');
       expect(ticks.size).toBeGreaterThan(0);
 
