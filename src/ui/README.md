@@ -20,7 +20,7 @@ DOM UI for diagnostics, pause/home navigation, saved gameplay/display preference
 ## Preferences with gameplay effects
 
 - `game-preferences.ts` validates and persists graphics tier, city traffic intensity, player-car model, startup camera, and steering response. Invalid or blocked storage safely falls back to defaults.
-- Graphics tiers resolve at startup; traffic intensity changes Aohara's moving-vehicle budget; the selected car model chooses the imported Generic Sport Coupé or project-authored Kaminari GT Roadster; camera and steering options feed the runtime. These options display an Apply & Restart action rather than pretending to change the active simulation immediately.
+- Graphics tiers resolve at startup; traffic intensity changes Aohara's moving-vehicle budget; the selected car model swaps the imported Generic Sport Coupé or project-authored Kaminari GT Roadster in place without rebuilding the renderer; camera, traffic and steering options still use Apply & Restart.
 - Credits remain the last menu item and retain the existing required CC BY 4.0 attribution.
 
 ## Still out of scope

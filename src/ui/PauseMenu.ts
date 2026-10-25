@@ -55,11 +55,10 @@ export interface PauseMenuOptions {
   readonly onFullscreen: (event: Event) => Promise<boolean>;
 }
 
-// Night Mood and touch controls apply live; everything below requires Apply & Restart.
-const PREFERENCE_KEYS: readonly (keyof GamePreferences)[] = [
+// Night Mood, touch controls, and the selected car apply live; these remaining options need a restart.
+export const RESTART_REQUIRED_PREFERENCE_KEYS: readonly (keyof GamePreferences)[] = [
   'graphicsTier',
   'trafficIntensity',
-  'carModel',
   'cameraMode',
   'steeringSensitivity',
 ];
@@ -444,7 +443,7 @@ export class PauseMenu {
     calloutTitle.textContent = 'Your options are remembered';
     const calloutText = document.createElement('span');
     calloutText.textContent =
-      'Changes are saved as you make them. Touch layout, button size and Night Mood switch immediately; restart for steering response, start camera, car, traffic or graphics changes.';
+      'Changes are saved as you make them. Touch layout, button size, Night Mood and car model apply immediately; restart for steering response, start camera, traffic or graphics changes.';
     callout.append(calloutTitle, calloutText);
     page.append(heading, intro, statusGrid, nightPanel, callout);
   }
@@ -567,7 +566,7 @@ export class PauseMenu {
   #renderVehicle(page: HTMLElement): void {
     page.append(
       this.#sectionHeading('CHOOSE YOUR CAR', 'Car Model'),
-      this.#paragraph('Your chosen model loads the next time you restart the drive.'),
+      this.#paragraph('Car changes apply in place without restarting the renderer.'),
     );
     const cards = document.createElement('div');
     cards.className = 'pause-menu-car-cards';
@@ -602,7 +601,7 @@ export class PauseMenu {
       cards.append(card);
     }
     const note = this.#paragraph(
-      'If the imported model cannot be loaded, the project-authored roadster is used as a fail-soft visual fallback.',
+      'The Generic Sport Coupé loads in the background; the authored roadster stays visible until it is ready or if loading fails.',
     );
     note.classList.add('pause-menu-subtle-copy');
     page.append(cards, note);
@@ -764,7 +763,9 @@ export class PauseMenu {
   }
 
   #isDirty(): boolean {
-    return PREFERENCE_KEYS.some((key) => this.#preferences[key] !== this.#initialPreferences[key]);
+    return RESTART_REQUIRED_PREFERENCE_KEYS.some(
+      (key) => this.#preferences[key] !== this.#initialPreferences[key],
+    );
   }
 
   #graphicsSelectionChanged(): boolean {

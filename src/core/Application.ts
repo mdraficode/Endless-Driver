@@ -155,7 +155,8 @@ export class Application {
   readonly #car: Car;
 
   readonly #terrainSampler: TerrainSampler;
-  readonly #carVisual: PlayerCarVisual;
+  #carVisual: PlayerCarVisual;
+  #carModelLoadTask: Promise<boolean> | null = null;
   readonly #carEffects: CarEffects;
   readonly #input: InputManager;
 
@@ -434,6 +435,31 @@ export class Application {
     this.#applyDaylight();
   }
 
+  /** Swaps only the player presentation; car selection must not rebuild physics or the renderer. */
+  async setPlayerCarModel(model: PlayerCarModel): Promise<boolean> {
+    if (this.#disposed) return false;
+    if (this.#carVisual.model === model) {
+      return model === 'generic-sport-coupe' ? this.#loadCarModel(this.#carVisual) : true;
+    }
+
+    const pose = this.#car.getInterpolatedPose(this.#physics.interpolationAlpha);
+    const previous = this.#carVisual;
+    const next = new PlayerCarVisual(model);
+    next.setHeadlightsEnabled(this.#daylight?.isNight ?? false);
+    next.sync(pose);
+    this.#scene.addObject(next.root);
+    this.#carVisual = next;
+    this.#scene.removeObject(previous.root);
+    previous.dispose();
+
+    if (this.#cameraMode === 'cockpit') {
+      this.#cockpitCamera.setEyeAnchor(next.cockpitEyeAnchor);
+      this.#cockpitCamera.snapTo(pose, this.#car.telemetry);
+    }
+
+    return model === 'generic-sport-coupe' ? this.#loadCarModel(next) : true;
+  }
+
   get isRunning(): boolean {
     return this.#engine.isRunning;
   }
@@ -462,7 +488,7 @@ export class Application {
     schedule(0, () => {
       void this.#loadEnvironment();
       void this.#loadLook();
-      void this.#carVisual.load(this.#engine.renderer);
+      void this.#loadCarModel(this.#carVisual);
     });
     schedule(1_200, () => {
       void this.#scene.loadContentSurfaces().catch((error: unknown) => {
@@ -1020,6 +1046,33 @@ export class Application {
     // call are the same code path. Player headlights consume this same resolved night gate.
     this.#daylight = this.#daylightController.update(0, this.#scene, this.#engine);
     this.#carVisual.setHeadlightsEnabled(this.#daylight.isNight);
+  }
+
+  #loadCarModel(visual: PlayerCarVisual): Promise<boolean> {
+    if (
+      this.#disposed ||
+      visual !== this.#carVisual ||
+      visual.model !== 'generic-sport-coupe'
+    ) {
+      return Promise.resolve(false);
+    }
+    if (visual.isHeroModelLoaded) return Promise.resolve(true);
+
+    const pending = this.#carModelLoadTask;
+    if (pending !== null) {
+      return pending.then(
+        () => this.#loadCarModel(visual),
+        () => this.#loadCarModel(visual),
+      );
+    }
+
+    const task = visual.load(this.#engine.renderer);
+    this.#carModelLoadTask = task;
+    const clearTask = (): void => {
+      if (this.#carModelLoadTask === task) this.#carModelLoadTask = null;
+    };
+    void task.then(clearTask, clearTask);
+    return task;
   }
 
   /**
