@@ -206,8 +206,9 @@ const buildTagMatch = document
   .querySelector<HTMLScriptElement>('script[type="module"][src]')
   ?.getAttribute('src')
   ?.match(/index-([A-Za-z0-9_-]+)\.js/);
-if (buildTagElement !== null && buildTagMatch !== null) {
-  buildTagElement.textContent = `build ${buildTagMatch[1]}`;
+const buildTagId = buildTagMatch === null || buildTagMatch === undefined ? null : buildTagMatch[1];
+if (buildTagElement !== null && buildTagId !== null) {
+  buildTagElement.textContent = `build ${buildTagId}`;
 }
 const fullscreenOnStart = new FullscreenOnStart();
 const landscapeFallback = appRoot === null ? null : new LandscapeFallback(appRoot);
