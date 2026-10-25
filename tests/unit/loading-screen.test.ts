@@ -40,35 +40,36 @@ function makeLoadingDom() {
 }
 
 function stubLoadingWindow(prefersReducedMotion = false) {
-  const frames = new Map<number, FrameRequestCallback>();
+  const ticks = new Map<number, () => void>();
   const hideTimers: Array<() => void> = [];
-  let nextFrameId = 0;
+  let nextIntervalId = 0;
+  let now = 0;
   vi.stubGlobal('window', {
     setTimeout: (callback: () => void) => {
       hideTimers.push(callback);
       return 1;
     },
     clearTimeout: vi.fn(),
-    requestAnimationFrame: (callback: FrameRequestCallback) => {
-      const id = ++nextFrameId;
-      frames.set(id, callback);
+    setInterval: (callback: () => void) => {
+      const id = ++nextIntervalId;
+      ticks.set(id, callback);
       return id;
     },
-    cancelAnimationFrame: (id: number) => frames.delete(id),
+    clearInterval: (id: number) => ticks.delete(id),
+    performance: { now: () => now },
     matchMedia: () => ({ matches: prefersReducedMotion }),
   } as unknown as Window);
 
-  const advanceFrame = (timestamp: number): void => {
-    const next = frames.keys().next();
-    if (next.done) {
-      throw new Error('No loading animation frame is scheduled');
+  const advanceTime = (timestamp: number): void => {
+    const callback = ticks.values().next().value;
+    if (callback === undefined) {
+      throw new Error('No loading progress timer is scheduled');
     }
-    const callback = frames.get(next.value);
-    frames.delete(next.value);
-    callback?.(timestamp);
+    now = timestamp;
+    callback();
   };
 
-  return { frames, hideTimers, advanceFrame };
+  return { ticks, hideTimers, advanceTime };
 }
 
 describe('startup progress', () => {
@@ -81,7 +82,7 @@ describe('startup progress', () => {
   });
 
   it('advances gradually toward reported progress and completes only on the first playable frame', () => {
-    const { frames, hideTimers, advanceFrame } = stubLoadingWindow();
+    const { ticks, hideTimers, advanceTime } = stubLoadingWindow();
 
     try {
       const dom = makeLoadingDom();
@@ -95,23 +96,23 @@ describe('startup progress', () => {
       expect(dom.progressAttributes.get('aria-valuenow')).toBe('94');
 
       for (let timestamp = 0; timestamp <= 1_000; timestamp += 100) {
-        advanceFrame(timestamp);
+        advanceTime(timestamp);
       }
       const afterOneSecond = Number.parseFloat(dom.bar.style.width);
-      expect(afterOneSecond).toBeGreaterThan(10);
-      expect(afterOneSecond).toBeLessThan(14);
+      expect(afterOneSecond).toBeGreaterThan(14);
+      expect(afterOneSecond).toBeLessThan(18);
       expect(dom.percent.textContent).toMatch(/^\d+%$/);
       expect(dom.percent.textContent).not.toContain('-');
 
-      for (let timestamp = 1_100; timestamp <= 5_000 && frames.size > 0; timestamp += 100) {
-        advanceFrame(timestamp);
+      for (let timestamp = 1_100; timestamp <= 5_000 && ticks.size > 0; timestamp += 100) {
+        advanceTime(timestamp);
       }
       const afterFiveSeconds = Number.parseFloat(dom.bar.style.width);
-      expect(afterFiveSeconds).toBeGreaterThan(58);
-      expect(afterFiveSeconds).toBeLessThan(62);
+      expect(afterFiveSeconds).toBeGreaterThan(78);
+      expect(afterFiveSeconds).toBeLessThan(82);
 
-      for (let timestamp = 5_100; timestamp <= 20_000 && frames.size > 0; timestamp += 100) {
-        advanceFrame(timestamp);
+      for (let timestamp = 5_100; timestamp <= 20_000 && ticks.size > 0; timestamp += 100) {
+        advanceTime(timestamp);
       }
       expect(dom.bar.style.width).toBe('100%');
       expect(dom.percent.textContent).toBe('Still working…');
@@ -138,8 +139,8 @@ describe('startup progress', () => {
     }
   });
 
-  it('accounts for real elapsed time when animation frames are throttled', () => {
-    const { frames, advanceFrame } = stubLoadingWindow();
+  it('accounts for real elapsed time when progress ticks are delayed', () => {
+    const { ticks, advanceTime } = stubLoadingWindow();
 
     try {
       const dom = makeLoadingDom();
@@ -147,21 +148,21 @@ describe('startup progress', () => {
       loading.show();
       loading.update(0.48, 'Warming the road materials…');
 
-      advanceFrame(0);
-      advanceFrame(5_000);
+      advanceTime(0);
+      advanceTime(5_000);
 
       const afterThrottledFrames = Number.parseFloat(dom.bar.style.width);
-      expect(afterThrottledFrames).toBeGreaterThan(50);
-      expect(afterThrottledFrames).toBeLessThan(60);
+      expect(afterThrottledFrames).toBeGreaterThan(68);
+      expect(afterThrottledFrames).toBeLessThan(73);
       expect(dom.percent.textContent).toMatch(/^\d+%$/);
-      expect(frames.size).toBeGreaterThan(0);
+      expect(ticks.size).toBeGreaterThan(0);
     } finally {
       vi.unstubAllGlobals();
     }
   });
 
   it('continues progressing beyond a stalled 62% stage', () => {
-    const { frames, advanceFrame } = stubLoadingWindow();
+    const { ticks, advanceTime } = stubLoadingWindow();
 
     try {
       const dom = makeLoadingDom();
@@ -170,27 +171,35 @@ describe('startup progress', () => {
       loading.update(0.62, 'Applying the visual look…');
 
       for (let timestamp = 0; timestamp <= 5_000; timestamp += 100) {
-        advanceFrame(timestamp);
+        advanceTime(timestamp);
       }
       const nearStagePercent = Number.parseFloat(dom.bar.style.width);
-      expect(nearStagePercent).toBeGreaterThan(58);
-      expect(nearStagePercent).toBeLessThan(62);
+      expect(nearStagePercent).toBeGreaterThan(64);
+      expect(nearStagePercent).toBeLessThan(68);
 
       for (let timestamp = 5_100; timestamp <= 6_000; timestamp += 100) {
-        advanceFrame(timestamp);
+        advanceTime(timestamp);
       }
       const afterStall = Number.parseFloat(dom.bar.style.width);
-      expect(afterStall).toBeGreaterThan(66);
-      expect(afterStall).toBeLessThan(70);
+      expect(afterStall).toBeGreaterThan(77);
+      expect(afterStall).toBeLessThan(80);
       expect(dom.percent.textContent).toMatch(/^\d+%$/);
-      expect(frames.size).toBeGreaterThan(0);
+      expect(ticks.size).toBeGreaterThan(0);
+
+      for (let timestamp = 6_100; timestamp <= 9_000 && ticks.size > 0; timestamp += 100) {
+        advanceTime(timestamp);
+      }
+      expect(dom.bar.style.width).toBe('100%');
+      expect(dom.percent.textContent).toBe('Still working…');
+      expect(dom.dataset['progressPhase']).toBe('waiting');
+      expect(ticks.size).toBe(0);
     } finally {
       vi.unstubAllGlobals();
     }
   });
 
   it('finishes the visible bar before fading after the first playable frame arrives', () => {
-    const { frames, hideTimers, advanceFrame } = stubLoadingWindow();
+    const { ticks, hideTimers, advanceTime } = stubLoadingWindow();
 
     try {
       const dom = makeLoadingDom();
@@ -199,11 +208,11 @@ describe('startup progress', () => {
       loading.update(0.94, 'Starting the simulation…');
 
       for (let timestamp = 0; timestamp <= 5_000; timestamp += 100) {
-        advanceFrame(timestamp);
+        advanceTime(timestamp);
       }
       const beforeFirstFrame = Number.parseFloat(dom.bar.style.width);
-      expect(beforeFirstFrame).toBeGreaterThan(58);
-      expect(beforeFirstFrame).toBeLessThan(62);
+      expect(beforeFirstFrame).toBeGreaterThan(78);
+      expect(beforeFirstFrame).toBeLessThan(82);
 
       loading.update(1, 'Ready — the drive starts automatically');
 
@@ -216,8 +225,8 @@ describe('startup progress', () => {
       expect(dom.percent.textContent).toMatch(/^\d+%$/);
       expect(hideTimers).toHaveLength(0);
 
-      for (let timestamp = 5_100; timestamp <= 12_000 && frames.size > 0; timestamp += 100) {
-        advanceFrame(timestamp);
+      for (let timestamp = 5_100; timestamp <= 12_000 && ticks.size > 0; timestamp += 100) {
+        advanceTime(timestamp);
       }
 
       expect(dom.bar.style.width).toBe('100%');
@@ -237,7 +246,7 @@ describe('startup progress', () => {
   });
 
   it('does not jump to 88% or pause there when that reported stage stalls, even with reduced motion', () => {
-    const { frames, advanceFrame } = stubLoadingWindow(true);
+    const { ticks, advanceTime } = stubLoadingWindow(true);
 
     try {
       const dom = makeLoadingDom();
@@ -246,34 +255,34 @@ describe('startup progress', () => {
       loading.update(0.88, 'Preparing the starting roads, terrain and trees…');
 
       for (let timestamp = 0; timestamp <= 1_000; timestamp += 100) {
-        advanceFrame(timestamp);
+        advanceTime(timestamp);
       }
       const afterOneSecond = Number.parseFloat(dom.bar.style.width);
-      expect(afterOneSecond).toBeGreaterThan(10);
-      expect(afterOneSecond).toBeLessThan(14);
+      expect(afterOneSecond).toBeGreaterThan(14);
+      expect(afterOneSecond).toBeLessThan(18);
       expect(dom.progressAttributes.get('aria-valuenow')).toBe('88');
       expect(dom.percent.textContent).not.toContain('-');
       expect(dom.dataset['progressPhase']).toBe('animating');
 
-      for (let timestamp = 1_100; timestamp <= 6_000 && frames.size > 0; timestamp += 100) {
-        advanceFrame(timestamp);
+      for (let timestamp = 1_100; timestamp <= 6_000 && ticks.size > 0; timestamp += 100) {
+        advanceTime(timestamp);
       }
-      expect(Number.parseFloat(dom.bar.style.width)).toBeGreaterThan(70);
-      expect(Number.parseFloat(dom.bar.style.width)).toBeLessThan(74);
+      expect(Number.parseFloat(dom.bar.style.width)).toBeGreaterThan(90);
+      expect(Number.parseFloat(dom.bar.style.width)).toBeLessThan(95);
       expect(dom.progressAttributes.get('aria-valuenow')).toBe('88');
-      expect(frames.size).toBeGreaterThan(0);
+      expect(ticks.size).toBeGreaterThan(0);
 
       loading.fail('renderer did not start');
       expect(dom.dataset['state']).toBe('error');
       expect(dom.bar.style.width).toBe('88%');
-      expect(frames.size).toBe(0);
+      expect(ticks.size).toBe(0);
     } finally {
       vi.unstubAllGlobals();
     }
   });
 
   it('continues the estimated fill when a real startup stage stops reporting progress', () => {
-    const { frames, advanceFrame } = stubLoadingWindow();
+    const { ticks, advanceTime } = stubLoadingWindow();
 
     try {
       const dom = makeLoadingDom();
@@ -281,20 +290,20 @@ describe('startup progress', () => {
       loading.show();
       loading.update(0.2, 'Loading the sky and reflections…');
 
-      for (let timestamp = 0; timestamp <= 4_000 && frames.size > 0; timestamp += 100) {
-        advanceFrame(timestamp);
+      for (let timestamp = 0; timestamp <= 4_000 && ticks.size > 0; timestamp += 100) {
+        advanceTime(timestamp);
       }
 
       expect(dom.progressAttributes.get('aria-valuenow')).toBe('20');
       expect(Number.parseFloat(dom.bar.style.width)).toBeGreaterThan(20);
       expect(dom.percent.textContent).toMatch(/^\d+%$/);
       expect(dom.percent.textContent).not.toContain('-');
-      expect(frames.size).toBeGreaterThan(0);
+      expect(ticks.size).toBeGreaterThan(0);
 
       loading.fail('renderer did not start');
       expect(dom.dataset['state']).toBe('error');
       expect(dom.bar.style.width).toBe('20%');
-      expect(frames.size).toBe(0);
+      expect(ticks.size).toBe(0);
     } finally {
       vi.unstubAllGlobals();
     }

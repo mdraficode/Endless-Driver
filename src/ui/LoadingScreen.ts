@@ -6,10 +6,11 @@ export interface LoadingProgress {
 /**
  * Fraction rates: a minimum crawl during stalls, with bounded catch-up toward reported progress.
  */
-const MIN_VISUAL_PROGRESS_PER_SECOND = 0.08;
-const MAX_VISUAL_PROGRESS_PER_SECOND = 0.12;
+const MIN_VISUAL_PROGRESS_PER_SECOND = 0.12;
+const MAX_VISUAL_PROGRESS_PER_SECOND = 0.16;
 const PROGRESS_FOLLOW_GAIN = 0.5;
-const FIRST_FRAME_COMPLETION_RATE_PER_SECOND = 0.08;
+const FIRST_FRAME_COMPLETION_RATE_PER_SECOND = 0.12;
+const PROGRESS_TICK_INTERVAL_MS = 50;
 const PROGRESS_INTEGRATION_STEP_SECONDS = 0.1;
 const MAX_PROGRESS_CATCH_UP_SECONDS = 60;
 
@@ -31,8 +32,8 @@ export class LoadingScreen {
   readonly #retryButton: HTMLButtonElement | null;
   #fraction = 0;
   #displayFraction = 0;
-  #lastFrameTimestamp: number | null = null;
-  #progressFrame: number | null = null;
+  #lastProgressTimestamp: number | null = null;
+  #progressTimer: number | null = null;
   #completionPending = false;
   #completionLabel = 'Ready — the drive starts automatically';
   #finished = false;
@@ -94,7 +95,7 @@ export class LoadingScreen {
       this.#root.dataset['progressPhase'] = 'finalizing';
       this.#label.textContent = 'First playable frame ready — finishing up…';
       this.#percent.textContent = `${Math.max(0, Math.min(99, Math.floor(this.#displayFraction * 100)))}%`;
-      this.#scheduleProgressFrame();
+      this.#scheduleProgressTimer();
       return;
     }
 
@@ -107,7 +108,7 @@ export class LoadingScreen {
       'The displayed progress is an estimate; startup is still in progress.',
     );
     this.#paintProgress();
-    this.#scheduleProgressFrame();
+    this.#scheduleProgressTimer();
   }
 
   /** The overlay only completes after the renderer has submitted its first playable frame. */
@@ -118,15 +119,18 @@ export class LoadingScreen {
     this.update(1, 'Ready — the drive starts automatically');
   }
 
-  #advanceProgress = (timestamp: number): void => {
-    this.#progressFrame = null;
+  #advanceProgress = (): void => {
     if (this.#finished) {
+      this.#stopProgressAnimation();
       return;
     }
 
+    const timestamp = window.performance.now();
     const elapsedMs =
-      this.#lastFrameTimestamp === null ? 0 : Math.max(0, timestamp - this.#lastFrameTimestamp);
-    this.#lastFrameTimestamp = timestamp;
+      this.#lastProgressTimestamp === null
+        ? 0
+        : Math.max(0, timestamp - this.#lastProgressTimestamp);
+    this.#lastProgressTimestamp = timestamp;
 
     if (this.#completionPending) {
       const elapsedSeconds = Math.min(MAX_PROGRESS_CATCH_UP_SECONDS, elapsedMs / 1000);
@@ -139,13 +143,17 @@ export class LoadingScreen {
         return;
       }
       this.#paintCompletionProgress();
-      this.#scheduleProgressFrame();
+      this.#scheduleProgressTimer();
       return;
     }
 
     this.#advanceEstimatedProgress(elapsedMs / 1000);
     this.#paintProgress();
-    this.#scheduleProgressFrame();
+    if (this.#displayFraction >= 1) {
+      this.#stopProgressAnimation();
+      return;
+    }
+    this.#scheduleProgressTimer();
   };
 
   #advanceEstimatedProgress(elapsedSeconds: number): void {
@@ -212,24 +220,26 @@ export class LoadingScreen {
     this.#finish();
   }
 
-  #scheduleProgressFrame(): void {
-    if (!this.#finished && this.#displayFraction < 1 && this.#progressFrame === null) {
-      this.#progressFrame = window.requestAnimationFrame(this.#advanceProgress);
+  #scheduleProgressTimer(): void {
+    if (!this.#finished && this.#displayFraction < 1 && this.#progressTimer === null) {
+      this.#lastProgressTimestamp = window.performance.now();
+      this.#progressTimer = window.setInterval(this.#advanceProgress, PROGRESS_TICK_INTERVAL_MS);
     }
   }
 
   #stopProgressAnimation(): void {
-    if (this.#progressFrame !== null) {
-      window.cancelAnimationFrame(this.#progressFrame);
-      this.#progressFrame = null;
+    if (this.#progressTimer !== null) {
+      window.clearInterval(this.#progressTimer);
+      this.#progressTimer = null;
     }
-    this.#lastFrameTimestamp = null;
+    this.#lastProgressTimestamp = null;
   }
 
   #finish(): void {
     if (this.#finished) {
       return;
     }
+    this.#stopProgressAnimation();
     this.#finished = true;
     this.#completionPending = false;
     this.#root.dataset['progressPhase'] = 'complete';
