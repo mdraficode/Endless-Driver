@@ -362,6 +362,7 @@ async function startDrivingScene(restarting = false): Promise<void> {
       overlayRoot,
       statusElement,
       onLoadingProgress: ({ progress, label }) => loadingScreen?.update(progress, label),
+      onLoadingError: (message) => reportStartupFailure(message),
       config,
       worldConfig: WORLD_CONFIG,
       tier,

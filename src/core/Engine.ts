@@ -95,10 +95,15 @@ export type ContextHandler = () => void;
  * - a resize path that keeps the camera aspect and drawing buffer in sync while capping
  *   devicePixelRatio for mobile GPUs;
  * - a delta-time loop that clamps long frames and survives tab switches, WebGL context loss/restore
- *   and WebGPU device loss.
+ *   and WebGPU device loss;
+ * - a frame loop that also survives a frame handler throwing: the error is recorded
+ *   (`frameErrorCount` / `lastFrameError`) and reported through `onFrameError`, and the loop keeps
+ *   ticking instead of dying silently (a dead loop is how the loading screen used to hang at 99%
+ *   over a black canvas).
  *
  * The engine never imports scene systems: callers register handlers and call `render(scene, camera)`
- * from a frame handler, which keeps ownership explicit.
+ * from a frame handler, which keeps ownership explicit. `render` returns whether the frame was
+ * actually submitted, so a caller can tell a real first frame from a silent no-op.
  */
 /** Reads the renderer's counters into the shape the HUD and the tests use. */
 function readStatistics(info: {
@@ -143,6 +148,9 @@ export class Engine {
   #frameCount = 0;
   #wantsRunning = false;
   #contextLost = false;
+  readonly #frameErrorHandlers = new Set<(error: unknown) => void>();
+  #lastFrameError: unknown = null;
+  #frameErrorCount = 0;
   #disposed = false;
   #initialized = false;
   #backend: RendererBackendName | null = null;
@@ -482,6 +490,28 @@ export class Engine {
     };
   }
 
+  /**
+   * Registers a handler for frame-handler exceptions. The frame loop keeps ticking after an
+   * error; the handler is how the application surfaces it (status bar, diagnostics, loading
+   * screen failure). Returns the same unsubscribe function as the other event APIs.
+   */
+  onFrameError(handler: (error: unknown) => void): () => void {
+    this.#frameErrorHandlers.add(handler);
+    return () => {
+      this.#frameErrorHandlers.delete(handler);
+    };
+  }
+
+  /** Total frame-handler exceptions since startup; the loop survives each one. */
+  get frameErrorCount(): number {
+    return this.#frameErrorCount;
+  }
+
+  /** The most recent frame-handler exception, or `null` before the first one. */
+  get lastFrameError(): unknown {
+    return this.#lastFrameError;
+  }
+
   start(): void {
     if (this.#disposed || this.#contextLost) {
       return;
@@ -533,16 +563,22 @@ export class Engine {
    * Renders one frame. When post-processing is configured the frame goes through the pipeline's
    * output chain (scene pass → bloom → tone mapping → colour space); otherwise the renderer draws
    * the scene directly.
+   *
+   * Returns `true` only when the frame was actually submitted to the renderer. A lost context or
+   * an uninitialised renderer makes this a silent no-op otherwise, and callers must not treat a
+   * no-op as a rendered frame — that is how the loading screen used to complete and fade to a
+   * black canvas.
    */
-  render(scene: Scene, camera: Camera): void {
+  render(scene: Scene, camera: Camera): boolean {
     if (this.#disposed || this.#contextLost || !this.#initialized) {
-      return;
+      return false;
     }
     if (this.#updatePipeline(scene, camera)) {
       this.#chain?.pipeline.render();
-      return;
+      return true;
     }
     this.#renderer.render(scene, camera);
+    return true;
   }
 
   /**
@@ -750,12 +786,37 @@ export class Engine {
 
     const frame: FrameState = { delta, elapsed: this.#elapsed, frame: this.#frameCount };
     for (const handler of [...this.#frameHandlers]) {
-      handler(frame);
+      this.#runFrameHandler(handler, frame);
     }
 
     this.#statistics = readStatistics(this.#renderer.info);
     this.#scheduleFrame();
   };
+
+  /**
+   * Runs one frame handler without letting it kill the loop.
+   *
+   * A throw inside physics or scene work used to escape the requestAnimationFrame callback and
+   * silently stop the whole loop. On the loading screen that meant "stuck at 99% over a black
+   * canvas" with no error anywhere, and mid-drive it meant a permanent freeze. The loop must
+   * survive: record the error, notify the registered handlers, and keep ticking.
+   */
+  #runFrameHandler(handler: FrameHandler, frame: FrameState): void {
+    try {
+      handler(frame);
+    } catch (error) {
+      this.#frameErrorCount += 1;
+      this.#lastFrameError = error;
+      console.error('Endless Driver frame handler failed; the loop will keep ticking:', error);
+      for (const onError of [...this.#frameErrorHandlers]) {
+        try {
+          onError(error);
+        } catch (handlerError) {
+          console.error('frame error handler failed:', handlerError);
+        }
+      }
+    }
+  }
 
   #handleViewportChange = (): void => {
     this.#scheduleResize();

@@ -263,6 +263,11 @@ export class LoadingScreen {
       window.clearTimeout(this.#hideTimer);
       this.#hideTimer = null;
     }
+    // A failure reported after the overlay was hidden would otherwise be invisible; make the
+    // error state visible no matter which way the race went.
+    this.#root.hidden = false;
+    this.#root.setAttribute('aria-hidden', 'false');
+    this.#root.dataset['state'] = 'error';
     delete this.#root.dataset['progressPhase'];
     this.#progress.removeAttribute?.('aria-valuetext');
     this.#displayFraction = this.#fraction;
@@ -270,7 +275,6 @@ export class LoadingScreen {
     this.#bar.style.width = `${percent}%`;
     this.#progress.setAttribute('aria-valuenow', String(percent));
     this.#percent.textContent = `${percent}%`;
-    this.#root.dataset['state'] = 'error';
     this.#label.textContent = `Could not start: ${message}`;
     this.#root.classList.remove('loading-screen-complete');
     if (this.#retryButton !== null) {

@@ -76,6 +76,13 @@ export interface ApplicationOptions {
   /** Reports completed startup stages and first-frame readiness to the splash UI. */
   readonly onLoadingProgress?: (progress: LoadingProgress) => void;
   /**
+   * Reports a fatal loading-stage problem (first frame never renders, context lost before the
+   * first frame, a frame handler fails during startup). The entrypoint should fail the loading
+   * screen with a retry so a stalled or lost GPU never leaves the player at 99% over a black
+   * canvas forever.
+   */
+  readonly onLoadingError?: (message: string) => void;
+  /**
    * Resolved quality tier. Resolved at the entrypoint (it needs device probes) and reported here so
    * every diagnostics snapshot and performance statement can name the tier it was taken under.
    */
@@ -127,6 +134,14 @@ type StatusTone = 'info' | 'error';
  * narrow framing the retune exists to remove.
  */
 const CAMERA_VIEW_STORAGE_KEY = 'endless-driver:camera-view:v2';
+
+/**
+ * How long the application will wait for the first rendered frame after the loop starts before
+ * it fails the loading screen with a retry. Generous on purpose: the first frame pays for shader
+ * compilation of every material, and on a weak mobile GPU that can take many seconds. Short
+ * enough that a truly stalled or lost pipeline is reported instead of hanging forever.
+ */
+const FIRST_FRAME_WATCHDOG_TIMEOUT_MS = 30_000;
 
 function scheduleWhenIdle(callback: () => void, timeoutMs: number): void {
   if (typeof window === 'undefined') {
@@ -181,6 +196,7 @@ export class Application {
   };
   readonly #statusElement: HTMLElement | null;
   readonly #onLoadingProgress: ((progress: LoadingProgress) => void) | null;
+  readonly #onLoadingError: ((message: string) => void) | null;
   readonly #tier: TierResolution;
   readonly #steeringSensitivity: SteeringSensitivity;
   readonly #surfaceState: SurfaceState;
@@ -193,6 +209,13 @@ export class Application {
 
   #hudTimer = 0;
   #firstFrameRendered = false;
+  // Guards the "first frame never renders" failure mode: if the loop starts but the first
+  // rendered frame does not arrive in time (stalled pipeline, lost context, a throwing frame
+  // handler), fail the loading screen with a retry instead of sitting at 99% over a black
+  // canvas forever.
+  #firstFrameWatchdogTimer: number | null = null;
+  #firstFrameWatchdogDeadline: number | null = null;
+  #loadingErrorReported = false;
   #environmentLoaded = false;
   #deferredAssetsStarted = false;
   #shadowCamera: PerspectiveCamera | null = null;
@@ -318,6 +341,7 @@ export class Application {
       : null;
     this.#statusElement = options.statusElement ?? null;
     this.#onLoadingProgress = options.onLoadingProgress ?? null;
+    this.#onLoadingError = options.onLoadingError ?? null;
     this.#carEffects = new CarEffects(this.#tier.id);
     this.#scene.addObject(this.#carEffects.root);
     this.#clock = new EnvironmentClock(options.clock);
@@ -383,10 +407,37 @@ export class Application {
         this.#renderFrame(frame);
       }),
       this.#engine.onContextLost(() => {
-        this.#setStatus('WebGL context lost — waiting for the browser to restore it.', 'error');
+        // Before the first frame a lost context can never be "restored later" from the player's
+        // point of view — the loop is stopped and the loading bar would sit at 99% over a black
+        // canvas forever. Fail the loading screen instead; after the first frame the old
+        // behaviour (wait for the browser's restore) still applies.
+        if (!this.#firstFrameRendered) {
+          this.#reportLoadingError(
+            'The graphics context was lost before the first frame could render. Retry reloads the game.',
+          );
+          return;
+        }
+        this.#setStatus(
+          'Graphics context lost — waiting for the browser to restore it. If the view stays black, reload the page.',
+          'error',
+        );
       }),
       this.#engine.onContextRestored(() => {
         this.#setStatus('WebGL context restored.', 'info');
+      }),
+      this.#engine.onFrameError((error) => {
+        // The engine's loop survives frame-handler exceptions, but during loading the player has
+        // no other signal that something went wrong. Surface it on the loading screen (retry)
+        // before the first frame, and on the status bar plus diagnostics afterwards.
+        const message = error instanceof Error ? error.message : String(error);
+        if (!this.#firstFrameRendered) {
+          this.#reportLoadingError(
+            `A frame failed before the first frame rendered (${message}). Retry reloads the game.`,
+          );
+          return;
+        }
+        this.#setStatus(`Frame error: ${message}`, 'error');
+        this.#overlay?.update(this.getDiagnostics());
       }),
     ];
 
@@ -558,6 +609,16 @@ export class Application {
       );
       // Hero preload continues in the background; do not await it here.
       void heroPreload?.catch(() => undefined);
+      this.#reportLoadingProgress(0.9, 'Warming up the graphics pipeline…');
+      // Pre-compile the scene's materials while the loading screen is still up. The first frame
+      // used to pay this cost live; on slow mobile GPUs a long first-frame compile could trip the
+      // GPU watchdog and lose the context (the black-screen failure). `compile` is asynchronous
+      // in the WebGPU renderer, so it yields to the loading UI instead of stalling it.
+      void this.#engine.renderer
+        .compile(this.#scene.scene, this.#activeCamera())
+        .catch((error: unknown) => {
+          console.warn('graphics warm-up skipped; the first frame will compile on demand:', error);
+        });
       this.#reportLoadingProgress(0.94, 'Starting the simulation…');
     }
 
@@ -565,6 +626,7 @@ export class Application {
     this.#input.reset();
     this.#driveInputActive = false;
     this.#engine.start();
+    this.#armFirstFrameWatchdog();
 
     if (!this.#firstFrameRendered) {
       this.#setStatus(
@@ -736,6 +798,15 @@ export class Application {
       sunElevationDegrees: this.#daylight?.sunElevationDegrees ?? 0,
       isNight: this.#daylight?.isNight ?? false,
       rendererBackend: this.#engine.backend ?? 'pending',
+      frameErrors: {
+        count: this.#engine.frameErrorCount,
+        last:
+          this.#engine.lastFrameError === null
+            ? null
+            : this.#engine.lastFrameError instanceof Error
+              ? this.#engine.lastFrameError.message
+              : String(this.#engine.lastFrameError),
+      },
       particleSimulation: this.#carEffects.simulationMode,
       postProcessing: this.#engine.isPostProcessingEnabled,
       antialiasing: this.#config.postProcessing.antiAliasing,
@@ -814,6 +885,7 @@ export class Application {
       return;
     }
     this.#disposed = true;
+    this.#disarmFirstFrameWatchdog();
     for (const unsubscribe of this.#unsubscribers) {
       unsubscribe();
     }
@@ -1021,11 +1093,15 @@ export class Application {
     );
     this.#syncShadowCamera(activeCamera);
     this.#scene.followCamera(activeCamera.position);
-    this.#engine.render(this.#scene.scene, activeCamera);
+    // Only a frame that was actually submitted counts as the first frame: when the context is
+    // lost the render is a silent no-op, and completing the loading screen over a black canvas
+    // is exactly the "loading screen turns black" report.
+    const rendered = this.#engine.render(this.#scene.scene, activeCamera);
     this.#monitor.record(delta);
 
-    if (!this.#firstFrameRendered) {
+    if (rendered && !this.#firstFrameRendered) {
       this.#firstFrameRendered = true;
+      this.#disarmFirstFrameWatchdog();
       this.#reportLoadingProgress(1, 'Ready — the drive starts automatically');
       this.#setStatus(null);
     }
@@ -1216,6 +1292,57 @@ export class Application {
 
   #reportLoadingProgress(progress: number, label: string): void {
     this.#onLoadingProgress?.({ progress, label });
+  }
+
+  /**
+   * Fails the loading screen with a recoverable error (the retry button reloads the game) instead
+   * of leaving the player at 99% over a black canvas. Only the first report wins: a stalled
+   * pipeline may keep firing errors, and one visible failure is all the player needs.
+   */
+  #reportLoadingError(message: string): void {
+    if (this.#loadingErrorReported || this.#disposed) {
+      return;
+    }
+    this.#loadingErrorReported = true;
+    this.#disarmFirstFrameWatchdog();
+    this.#setStatus(message, 'error');
+    console.error('Endless Driver loading failed:', message);
+    this.#onLoadingError?.(message);
+  }
+
+  /**
+   * Fails the loading screen if the first rendered frame has not arrived within the timeout.
+   *
+   * `engine.start()` only schedules requestAnimationFrame callbacks; a stalled or lost pipeline
+   * (GPU watchdog timeout, context loss before the first draw, a frame handler that throws
+   * before the render) means the first frame may never come. Without this guard the loading bar
+   * would sit at 99% forever — the "loading screen gets stuck randomly" report.
+   */
+  #armFirstFrameWatchdog(): void {
+    if (this.#firstFrameWatchdogTimer !== null || this.#disposed || this.#firstFrameRendered) {
+      return;
+    }
+    this.#firstFrameWatchdogDeadline = performance.now() + FIRST_FRAME_WATCHDOG_TIMEOUT_MS;
+    this.#firstFrameWatchdogTimer = window.setInterval(() => {
+      if (this.#disposed || this.#firstFrameRendered || this.#loadingErrorReported) {
+        this.#disarmFirstFrameWatchdog();
+        return;
+      }
+      const deadline = this.#firstFrameWatchdogDeadline;
+      if (deadline !== null && performance.now() >= deadline) {
+        this.#reportLoadingError(
+          'The first frame has not rendered yet — the graphics pipeline may have stalled. Retry reloads the game.',
+        );
+      }
+    }, 1000);
+  }
+
+  #disarmFirstFrameWatchdog(): void {
+    if (this.#firstFrameWatchdogTimer !== null) {
+      window.clearInterval(this.#firstFrameWatchdogTimer);
+      this.#firstFrameWatchdogTimer = null;
+    }
+    this.#firstFrameWatchdogDeadline = null;
   }
 
   #setStatus(message: string | null, tone: StatusTone = 'info'): void {

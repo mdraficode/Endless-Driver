@@ -52,6 +52,7 @@ describe('core module API surface', () => {
       'onResize',
       'onContextLost',
       'onContextRestored',
+      'onFrameError',
       'getRenderStatistics',
     ]) {
       expect(methods).toContain(method);

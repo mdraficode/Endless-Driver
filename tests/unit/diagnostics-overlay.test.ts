@@ -53,6 +53,7 @@ const SNAPSHOT = {
   sunElevationDegrees: 45,
   isNight: false,
   rendererBackend: 'webgl2',
+  frameErrors: { count: 0, last: null },
   particleSimulation: 'webgl2-disabled',
   postProcessing: true,
   antialiasing: 'fxaa',

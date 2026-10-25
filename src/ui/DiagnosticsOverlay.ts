@@ -37,6 +37,12 @@ export interface DiagnosticsSnapshot {
    * `webgl2` when the renderer fell back, `pending` before initialisation resolves.
    */
   readonly rendererBackend: RendererBackendName | 'pending';
+  /**
+   * Frame-handler exceptions the engine has survived. `count` is total since startup; `last` is
+   * the most recent message, or `null` before the first one. Anything above zero is a real
+   * problem worth sending back with a device report.
+   */
+  readonly frameErrors: { readonly count: number; readonly last: string | null };
   /** Vehicle particle path: compute on WebGPU, intentionally disabled on WebGL2. */
   readonly particleSimulation: 'pending' | 'webgpu-compute' | 'webgl2-disabled';
   /** Whether frames go through the `RenderPipeline` output chain (grade, bloom, tone mapping). */
@@ -289,6 +295,13 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
       `${snapshot.cameraView}${snapshot.cameraMode === 'chase' ? orbitSuffix(snapshot) : ''} · ${snapshot.cameraFov.toFixed(1)}° fov · ${snapshot.cameraPosition.x.toFixed(0)}, ${snapshot.cameraPosition.y.toFixed(0)}, ${snapshot.cameraPosition.z.toFixed(0)}`,
   },
   { label: 'Frames', format: (snapshot) => snapshot.totalFrames.toLocaleString('en-US') },
+  {
+    label: 'Frame errors',
+    format: (snapshot) =>
+      snapshot.frameErrors.count === 0
+        ? 'none'
+        : `${snapshot.frameErrors.count} · ${snapshot.frameErrors.last ?? 'unknown'}`,
+  },
 ];
 
 /**
