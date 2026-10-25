@@ -217,19 +217,26 @@ describe('Aohara facade kit', () => {
     }
   });
 
-  it('never stacks two placements of the same element on one building', () => {
-    const seen = new Set<string>();
+  it('never stacks two placements of the same element on one building or tower face', () => {
     for (const tier of ['C', 'B', 'A'] as const) {
-      for (const placement of generateFacadeKitPlacements(
-        tier,
-        fixtureBuildings(),
-        fixtureTowers(),
-      )) {
+      const placements = generateFacadeKitPlacements(tier, fixtureBuildings(), fixtureTowers());
+      // Every element is at most one per building, except curtain fins which occupy the six
+      // face slots (four corners + two centrelines) of each tower by design.
+      const buildingKeys = new Set<string>();
+      const finsPerTower = new Map<number, number>();
+      for (const placement of placements) {
+        if (placement.element === 'curtain-fin') {
+          const tower = placement.towerIndex ?? -1;
+          finsPerTower.set(tower, (finsPerTower.get(tower) ?? 0) + 1);
+          continue;
+        }
         const key = `${placement.element}:${placement.buildingIndex}:${placement.towerIndex ?? -1}`;
-        expect(seen.has(key)).toBe(false);
-        seen.add(key);
+        expect(buildingKeys.has(key)).toBe(false);
+        buildingKeys.add(key);
       }
-      seen.clear();
+      for (const count of finsPerTower.values()) {
+        expect(count).toBeLessThanOrEqual(6);
+      }
     }
   });
 

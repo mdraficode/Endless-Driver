@@ -237,27 +237,38 @@ export function generateFacadeKitPlacements(
   });
 
   towers.forEach((tower, towerIndex) => {
-    // Curtain-wall fins wrap the corners and the front/back centrelines of every high-rise.
-    const finFaces: { readonly x: number; readonly z: number; readonly yaw: number }[] = [
-      { x: tower.x - tower.width / 2, z: tower.z - tower.depth / 2, yaw: 0 },
-      { x: tower.x + tower.width / 2, z: tower.z - tower.depth / 2, yaw: 0 },
-      { x: tower.x - tower.width / 2, z: tower.z + tower.depth / 2, yaw: 0 },
-      { x: tower.x + tower.width / 2, z: tower.z + tower.depth / 2, yaw: 0 },
-      { x: tower.x, z: tower.z - tower.depth / 2 - 0.06, yaw: 0 },
-      { x: tower.x, z: tower.z + tower.depth / 2 + 0.06, yaw: 0 },
+    // Curtain-wall fins wrap the four corners and the front/back centrelines of every
+    // high-rise. Corner fins sit on the face line; centre fins stand 0.05 m proud along the
+    // face normal so the 0.22 m section reads as a mullion against the glass.
+    const finFaces: {
+      readonly dx: number;
+      readonly dz: number;
+      readonly normalX: number;
+      readonly normalZ: number;
+    }[] = [
+      { dx: -tower.width / 2, dz: -tower.depth / 2, normalX: 0, normalZ: 0 },
+      { dx: tower.width / 2, dz: -tower.depth / 2, normalX: 0, normalZ: 0 },
+      { dx: -tower.width / 2, dz: tower.depth / 2, normalX: 0, normalZ: 0 },
+      { dx: tower.width / 2, dz: tower.depth / 2, normalX: 0, normalZ: 0 },
+      { dx: 0, dz: -tower.depth / 2, normalX: 0, normalZ: -1 },
+      { dx: 0, dz: tower.depth / 2, normalX: 0, normalZ: 1 },
     ];
     for (const face of finFaces) {
-      const onXFace = Math.abs(Math.abs(face.x - tower.x) - tower.width / 2) < 0.01;
+      const offset = face.normalX !== 0 || face.normalZ !== 0 ? 0.05 : 0;
       candidates['curtain-fin'].push({
-        rank: stableUnit(towerIndex * 17 + Math.round(face.x * 10), Math.round(face.z * 10), 1031),
+        rank: stableUnit(
+          towerIndex * 17 + Math.round((tower.x + face.dx) * 10),
+          Math.round((tower.z + face.dz) * 10),
+          1031,
+        ),
         placement: {
           element: 'curtain-fin',
           buildingIndex: -1,
           towerIndex,
-          x: face.x + (onXFace ? Math.sign(face.x - tower.x || 1) * 0.04 : 0),
+          x: tower.x + face.dx + face.normalX * offset,
           y: FACADE_KIT_BASE_Y + tower.height / 2,
-          z: face.z + (onXFace ? 0 : Math.sign(face.z - tower.z || 1) * 0.04),
-          yaw: onXFace ? Math.PI / 2 : face.yaw,
+          z: tower.z + face.dz + face.normalZ * offset,
+          yaw: 0,
           scale: [1, tower.height, 1],
         },
       });
