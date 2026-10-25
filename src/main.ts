@@ -376,6 +376,12 @@ async function startDrivingScene(restarting = false): Promise<void> {
       statusElement,
       onLoadingProgress: ({ progress, label }) => loadingScreen?.update(progress, label),
       onLoadingError: (message) => reportStartupFailure(message),
+      onGraphicsLost: (message) => {
+        // Mid-play context loss: the loop is stopped over a frozen last frame. Re-show the
+        // overlay in its error state so the player gets a visible retry (reload).
+        setStatus(message, 'error');
+        loadingScreen?.fail(message, 'Graphics lost');
+      },
       config,
       worldConfig: WORLD_CONFIG,
       tier,

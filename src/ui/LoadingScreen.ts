@@ -303,7 +303,7 @@ export class LoadingScreen {
     this.#hideTimer = window.setTimeout(() => this.hide(), 520);
   }
 
-  fail(message: string): void {
+  fail(message: string, heading = 'Could not start'): void {
     this.#finished = true;
     this.#completionPending = false;
     this.#stopProgressAnimation();
@@ -324,7 +324,7 @@ export class LoadingScreen {
     this.#setBarWidth(`${percent}%`);
     this.#progress.setAttribute('aria-valuenow', String(percent));
     this.#percent.textContent = `${percent}%`;
-    this.#label.textContent = `Could not start: ${message}`;
+    this.#label.textContent = `${heading}: ${message}`;
     this.#root.classList.remove('loading-screen-complete');
     if (this.#retryButton !== null) {
       this.#retryButton.hidden = false;

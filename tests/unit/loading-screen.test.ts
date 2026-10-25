@@ -134,6 +134,25 @@ describe('startup progress', () => {
     }
   });
 
+  it('supports a custom heading for mid-play failures such as a lost graphics context', () => {
+    stubLoadingWindow();
+
+    try {
+      const dom = makeLoadingDom();
+      const loading = new LoadingScreen(dom.root);
+      loading.show();
+      loading.update(0.5, 'Preparing the playable area…');
+      loading.fail('The game stopped because the graphics context was lost.', 'Graphics lost');
+      expect(dom.dataset['state']).toBe('error');
+      expect(dom.retry.hidden).toBe(false);
+      expect(dom.label.textContent).toBe(
+        'Graphics lost: The game stopped because the graphics context was lost.',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('does not fire the backstop once the first playable frame has completed loading', () => {
     const { ticks, hideTimers, advanceTime } = stubLoadingWindow();
 

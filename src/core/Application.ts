@@ -83,6 +83,12 @@ export interface ApplicationOptions {
    */
   readonly onLoadingError?: (message: string) => void;
   /**
+   * Reports a graphics-context loss *after* the first frame: the loop is stopped over a frozen
+   * last frame (the "totally frozen" report), so the entrypoint should re-show the overlay in
+   * its error state with a retry (reload) instead of leaving a silent freeze.
+   */
+  readonly onGraphicsLost?: (message: string) => void;
+  /**
    * Resolved quality tier. Resolved at the entrypoint (it needs device probes) and reported here so
    * every diagnostics snapshot and performance statement can name the tier it was taken under.
    */
@@ -143,6 +149,20 @@ const CAMERA_VIEW_STORAGE_KEY = 'endless-driver:camera-view:v2';
  */
 const FIRST_FRAME_WATCHDOG_TIMEOUT_MS = 30_000;
 
+/**
+ * How long the loading phase will wait for the material pre-compile before starting the frame
+ * loop. The wait is bounded: after the timeout the compile keeps finishing in the background
+ * and the first frame picks up whatever is ready.
+ */
+const GRAPHICS_WARMUP_TIMEOUT_MS = 20_000;
+
+/**
+ * After the first frame, a WebGL2 context loss usually restores within a second or two. If the
+ * browser never does, this grace period turns the silent freeze into a recoverable retry screen.
+ * (A WebGPU device loss has no restore event at all and is surfaced immediately.)
+ */
+const GRAPHICS_LOST_GRACE_MS = 10_000;
+
 function scheduleWhenIdle(callback: () => void, timeoutMs: number): void {
   if (typeof window === 'undefined') {
     setTimeout(callback, 0);
@@ -197,6 +217,7 @@ export class Application {
   readonly #statusElement: HTMLElement | null;
   readonly #onLoadingProgress: ((progress: LoadingProgress) => void) | null;
   readonly #onLoadingError: ((message: string) => void) | null;
+  readonly #onGraphicsLost: ((message: string) => void) | null;
   readonly #tier: TierResolution;
   readonly #steeringSensitivity: SteeringSensitivity;
   readonly #surfaceState: SurfaceState;
@@ -216,6 +237,8 @@ export class Application {
   #firstFrameWatchdogTimer: number | null = null;
   #firstFrameWatchdogDeadline: number | null = null;
   #loadingErrorReported = false;
+  /** Grace timer for a post-first-frame WebGL2 context loss that never restores. */
+  #contextLostGraceTimer: number | null = null;
   #environmentLoaded = false;
   #deferredAssetsStarted = false;
   #shadowCamera: PerspectiveCamera | null = null;
@@ -342,6 +365,7 @@ export class Application {
     this.#statusElement = options.statusElement ?? null;
     this.#onLoadingProgress = options.onLoadingProgress ?? null;
     this.#onLoadingError = options.onLoadingError ?? null;
+    this.#onGraphicsLost = options.onGraphicsLost ?? null;
     this.#carEffects = new CarEffects(this.#tier.id);
     this.#scene.addObject(this.#carEffects.root);
     this.#clock = new EnvironmentClock(options.clock);
@@ -409,21 +433,39 @@ export class Application {
       this.#engine.onContextLost(() => {
         // Before the first frame a lost context can never be "restored later" from the player's
         // point of view — the loop is stopped and the loading bar would sit at 99% over a black
-        // canvas forever. Fail the loading screen instead; after the first frame the old
-        // behaviour (wait for the browser's restore) still applies.
+        // canvas forever. Fail the loading screen instead.
         if (!this.#firstFrameRendered) {
           this.#reportLoadingError(
             'The graphics context was lost before the first frame could render. Retry reloads the game.',
           );
           return;
         }
-        this.#setStatus(
-          'Graphics context lost — waiting for the browser to restore it. If the view stays black, reload the page.',
-          'error',
-        );
+        // After the first frame the loop is stopped over a frozen last frame — the "totally
+        // frozen after the game starts" report. A WebGPU device loss has no restore event at
+        // all, so surface it immediately; a WebGL2 context loss usually restores, but if the
+        // browser never does, the grace timer turns the silent freeze into a retry screen.
+        if (this.#engine.backend === 'webgpu') {
+          this.#surfaceGraphicsLost();
+          return;
+        }
+        this.#setStatus('Graphics context lost — waiting for the browser to restore it…', 'error');
+        if (this.#contextLostGraceTimer !== null) {
+          window.clearTimeout(this.#contextLostGraceTimer);
+        }
+        this.#contextLostGraceTimer = window.setTimeout(() => {
+          this.#contextLostGraceTimer = null;
+          if (this.#disposed || !this.#engine.isContextLost) {
+            return;
+          }
+          this.#surfaceGraphicsLost();
+        }, GRAPHICS_LOST_GRACE_MS);
       }),
       this.#engine.onContextRestored(() => {
-        this.#setStatus('WebGL context restored.', 'info');
+        if (this.#contextLostGraceTimer !== null) {
+          window.clearTimeout(this.#contextLostGraceTimer);
+          this.#contextLostGraceTimer = null;
+        }
+        this.#setStatus('Graphics context restored.', 'info');
       }),
       this.#engine.onFrameError((error) => {
         // The engine's loop survives frame-handler exceptions, but during loading the player has
@@ -610,15 +652,12 @@ export class Application {
       // Hero preload continues in the background; do not await it here.
       void heroPreload?.catch(() => undefined);
       this.#reportLoadingProgress(0.9, 'Warming up the graphics pipeline…');
-      // Pre-compile the scene's materials while the loading screen is still up. The first frame
-      // used to pay this cost live; on slow mobile GPUs a long first-frame compile could trip the
-      // GPU watchdog and lose the context (the black-screen failure). `compile` is asynchronous
-      // in the WebGPU renderer, so it yields to the loading UI instead of stalling it.
-      void this.#engine.renderer
-        .compile(this.#scene.scene, this.#activeCamera())
-        .catch((error: unknown) => {
-          console.warn('graphics warm-up skipped; the first frame will compile on demand:', error);
-        });
+      // Pre-compile the scene's materials while the loading screen is still up, and *wait* for
+      // it (bounded). The first frames after start used to pay live shader-compile cost; on a
+      // weak mobile GPU that long in-frame GPU work trips the watchdog and loses the context —
+      // the "totally frozen after the game starts" report. `compile` is asynchronous in the
+      // WebGPU renderer, so it yields to the loading UI instead of stalling it.
+      await this.#warmupGraphics();
       this.#reportLoadingProgress(0.94, 'Starting the simulation…');
     }
 
@@ -798,6 +837,7 @@ export class Application {
       sunElevationDegrees: this.#daylight?.sunElevationDegrees ?? 0,
       isNight: this.#daylight?.isNight ?? false,
       rendererBackend: this.#engine.backend ?? 'pending',
+      graphicsLost: this.#engine.isContextLost,
       frameErrors: {
         count: this.#engine.frameErrorCount,
         last:
@@ -886,6 +926,10 @@ export class Application {
     }
     this.#disposed = true;
     this.#disarmFirstFrameWatchdog();
+    if (this.#contextLostGraceTimer !== null) {
+      window.clearTimeout(this.#contextLostGraceTimer);
+      this.#contextLostGraceTimer = null;
+    }
     for (const unsubscribe of this.#unsubscribers) {
       unsubscribe();
     }
@@ -1308,6 +1352,52 @@ export class Application {
     this.#setStatus(message, 'error');
     console.error('Endless Driver loading failed:', message);
     this.#onLoadingError?.(message);
+  }
+
+  /**
+   * The loop is stopped and the last frame is frozen on screen — the "totally frozen" report.
+   * Re-show the loading overlay in its error state (the entrypoint wires it up) so the player
+   * gets a visible, actionable retry (reload) instead of a silent freeze with a status pill.
+   */
+  #surfaceGraphicsLost(): void {
+    this.#setStatus(
+      'Graphics context lost — the game cannot continue. Use retry to reload.',
+      'error',
+    );
+    console.error(
+      'Endless Driver: graphics context lost after the first frame; the frame loop is stopped.',
+    );
+    this.#onGraphicsLost?.(
+      'The game stopped because the graphics context was lost. Retry reloads the page.',
+    );
+  }
+
+  /**
+   * Pre-compiles the scene's materials during the loading phase, bounded by a timeout.
+   *
+   * The first frames after start used to pay live shader-compile cost; on a weak mobile GPU
+   * that long in-frame GPU work is what trips the watchdog and loses the context (the freeze
+   * report). `renderer.compile` is asynchronous in the WebGPU renderer, so it yields to the
+   * loading UI; the timeout only stops *waiting* — the compile keeps finishing in the
+   * background and the first frame picks up whatever is ready. On the WebGL2 fallback the
+   * work is chunked with yields, so the loading bar keeps living through it.
+   */
+  async #warmupGraphics(timeoutMs = GRAPHICS_WARMUP_TIMEOUT_MS): Promise<void> {
+    try {
+      const compile = this.#engine.renderer
+        .compile(this.#scene.scene, this.#activeCamera())
+        .catch((error: unknown) => {
+          console.warn('graphics warm-up failed; the first frame will compile on demand:', error);
+        });
+      await Promise.race([
+        compile,
+        new Promise<void>((resolve) => {
+          window.setTimeout(resolve, timeoutMs);
+        }),
+      ]);
+    } catch (error) {
+      console.warn('graphics warm-up interrupted; the first frame will compile on demand:', error);
+    }
   }
 
   /**

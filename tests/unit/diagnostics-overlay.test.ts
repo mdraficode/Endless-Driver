@@ -53,6 +53,7 @@ const SNAPSHOT = {
   sunElevationDegrees: 45,
   isNight: false,
   rendererBackend: 'webgl2',
+  graphicsLost: false,
   frameErrors: { count: 0, last: null },
   particleSimulation: 'webgl2-disabled',
   postProcessing: true,
@@ -134,7 +135,7 @@ describe('full-screen diagnostics report', () => {
     expect(panel.getAttribute('aria-label')).toBe('Live diagnostics report');
     expect(panel.getAttribute('aria-hidden')).toBe('false');
     expect(grid.className).toBe('diagnostics-grid');
-    expect(grid.children).toHaveLength(31);
+    expect(grid.children).toHaveLength(32);
     expect(grid.children.every((metric) => metric.children.length === 2)).toBe(true);
 
     const labels = grid.children.map((metric) => metric.children[0]?.textContent);
@@ -155,6 +156,7 @@ describe('full-screen diagnostics report', () => {
     expect(report.get('Resolution')).toBe('fxaa @ 90%');
     expect(report.get('Weather')).toBe('clear · dry');
     expect(report.get('Surface')).toBe('grip 1.00× · RR 0.0150');
+    expect(report.get('Graphics')).toBe('ok');
     expect(report.get('Frame errors')).toBe('none');
     expect([...report.values()].every((value) => value !== '—')).toBe(true);
 
@@ -184,6 +186,17 @@ describe('full-screen diagnostics report', () => {
       ]),
     );
     expect(errorReport.get('Frame errors')).toBe('2 · boom');
+
+    // A lost graphics context (loop stopped over a frozen frame) is called out so a returning
+    // device report proves the freeze cause.
+    overlay.update({ ...SNAPSHOT, graphicsLost: true });
+    const lostReport = new Map(
+      grid.children.map((metric) => [
+        metric.children[0]?.textContent,
+        metric.children[1]?.textContent,
+      ]),
+    );
+    expect(lostReport.get('Graphics')).toBe('LOST — reload');
 
     overlay.dispose();
     expect(panel.removed).toBe(true);
