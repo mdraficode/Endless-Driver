@@ -139,11 +139,7 @@ export class TreeCollisionField {
    * `maxNewChunksPerCall` lets the application spread the initial nine-chunk window over frames;
    * the center chunk is always generated first so collision at the car never waits on the ring.
    */
-  sync(
-    focusX: number,
-    focusZ: number,
-    maxNewChunksPerCall = Number.POSITIVE_INFINITY,
-  ): void {
+  sync(focusX: number, focusZ: number, maxNewChunksPerCall = Number.POSITIVE_INFINITY): void {
     const size = this.#sampler.config.chunkSizeMeters;
     const cx = Math.floor(focusX / size);
     const cz = Math.floor(focusZ / size);
