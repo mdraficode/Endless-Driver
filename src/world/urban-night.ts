@@ -61,6 +61,7 @@ import type { MaterialTextureSet } from '../assets/AssetManifest';
 import type { DaylightState } from '../environment/EnvironmentClock';
 import { collideCarWithStaticBoxes, type StaticBuildingBox } from './static-building-collision';
 import { createArchitecturalMaterial } from './architectural-materials';
+import { FacadeKitWorld } from './building-facades';
 import { bindScannedPbrMaps } from './scanned-pbr';
 import { createRoadWetPatchMaskTexture, createRoadWetnessNode } from './road-wet-patches';
 import { UrbanStreetFurniture } from './urban-furniture';
@@ -1300,6 +1301,7 @@ export class UrbanNightWorld implements SceneContent {
   readonly #buildingColliders: StaticBuildingBox[] = [];
   readonly #cityTypologyStats: CityTypologyStats;
   readonly #activity: UrbanStreetActivity | null;
+  readonly #facadeKit: FacadeKitWorld;
   readonly #streetFurniture: UrbanStreetFurniture;
   readonly #backstreetFrontages: UrbanAlleyFrontages | null;
   readonly #backstreetProps: UrbanBackstreetProps | null;
@@ -1417,6 +1419,12 @@ export class UrbanNightWorld implements SceneContent {
       : [];
     const additionalBuildings = [...existingBuildings, ...frontageBuildings, ...infillBuildings];
     const typologyCounts = this.#buildCityTypologies(additionalBuildings);
+    this.#facadeKit = new FacadeKitWorld(tier, additionalBuildings, this.#towers, [
+      originX,
+      originY,
+      originZ,
+    ]);
+    this.root.add(this.#facadeKit.root);
     this.#backstreetFrontages =
       this.#networkIntegrated && options.roadNetwork !== undefined
         ? new UrbanAlleyFrontages(tier, options.roadNetwork, [originX, originY, originZ])
@@ -1725,6 +1733,7 @@ export class UrbanNightWorld implements SceneContent {
         urbanAlleyFacadeBatches: 0,
       }),
       ...this.#streetFurniture.getContentStats(),
+      ...this.#facadeKit.getContentStats(),
       qualityTierCode: this.#tier === 'C' ? 0 : this.#tier === 'B' ? 1 : 2,
     };
   }
@@ -1764,6 +1773,7 @@ export class UrbanNightWorld implements SceneContent {
     // activity owns its dynamic buffers, so release those here before its root is detached.
     this.#disposed = true;
     this.#activity?.dispose();
+    this.#facadeKit.dispose();
     this.#streetFurniture.dispose();
     this.#backstreetFrontages?.dispose();
     this.#backstreetProps?.dispose();

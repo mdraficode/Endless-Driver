@@ -174,6 +174,57 @@ export const URBAN_ACTIVITY_TIER_BUDGET: Readonly<Record<TierId, UrbanActivityTi
   A: { infillBuildings: 16, trafficVehicles: 36, pedestrians: 48, alleyProps: 192 },
 };
 
+export interface UrbanFacadeKitTierBudget {
+  /** Second/third-floor balcony slabs on residential shells. */
+  readonly balconies: number;
+  /** Ground-floor veranda porches for mansions and houses. */
+  readonly verandas: number;
+  /** Brick chimneys on pitched roofs. */
+  readonly chimneys: number;
+  /** Vintage door-hood/shutter kits on small pitched houses. */
+  readonly eaveTrims: number;
+  /** Vertical curtain-wall fins on high-rises (six face slots per tower). */
+  readonly curtainFins: number;
+  /** Crown glass bands at the curtain-wall head of high-rises. */
+  readonly glassBands: number;
+  /** Shopfront awning + sign kits on shops and perimeter frontages. */
+  readonly awnings: number;
+}
+
+/**
+ * Phase 8.1 facade-kit caps. These bound instanced detail batches, not measured FPS; the counts
+ * stay ordered C <= B <= A and each element type renders as a single InstancedMesh.
+ */
+export const URBAN_FACADE_KIT_TIER_BUDGET: Readonly<Record<TierId, UrbanFacadeKitTierBudget>> = {
+  C: {
+    balconies: 14,
+    verandas: 5,
+    chimneys: 10,
+    eaveTrims: 6,
+    curtainFins: 24,
+    glassBands: 6,
+    awnings: 10,
+  },
+  B: {
+    balconies: 24,
+    verandas: 8,
+    chimneys: 14,
+    eaveTrims: 10,
+    curtainFins: 40,
+    glassBands: 10,
+    awnings: 18,
+  },
+  A: {
+    balconies: 34,
+    verandas: 12,
+    chimneys: 18,
+    eaveTrims: 14,
+    curtainFins: 56,
+    glassBands: 14,
+    awnings: 26,
+  },
+};
+
 /** Traffic is the only activity budget scaled by the player-facing traffic-intensity setting. */
 export function trafficVehicleCountFor(
   tier: TierId,
