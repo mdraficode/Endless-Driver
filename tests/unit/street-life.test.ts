@@ -1,4 +1,4 @@
-import { Matrix4 } from 'three';
+import { InstancedMesh, Matrix4 } from 'three';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -8,6 +8,19 @@ import {
 import { UrbanStreetActivity } from '../../src/world/urban-activity';
 
 const SAMPLE = new Matrix4();
+
+function streetLifeMesh(activity: UrbanStreetActivity, name: string): InstancedMesh {
+  const mesh = activity.root.getObjectByName(name);
+  if (!(mesh instanceof InstancedMesh)) {
+    throw new Error(`missing street-life mesh ${name}`);
+  }
+  return mesh;
+}
+
+function meshPosition(mesh: InstancedMesh, index: number): [number, number, number] {
+  mesh.getMatrixAt(index, SAMPLE);
+  return [SAMPLE.elements[12]!, SAMPLE.elements[13]!, SAMPLE.elements[14]!];
+}
 
 /**
  * Phase 8.2 street-life contract: sidewalk cyclists, static cart vendors and fast motorbike
@@ -78,20 +91,14 @@ describe('Aohara street life', () => {
       'aohara-cart-vendor-carts',
       'aohara-motorbike-frames',
     ]) {
-      const meshA = a.root.getObjectByName(name);
-      const meshB = b.root.getObjectByName(name);
-      if (meshA === undefined || meshB === undefined) {
-        throw new Error(`missing street-life mesh ${name}`);
-      }
+      const meshA = streetLifeMesh(a, name);
+      const meshB = streetLifeMesh(b, name);
       for (let index = 0; index < meshA.count; index += 1) {
-        meshA.getMatrixAt(index, SAMPLE);
-        const ax = SAMPLE.elements[12]!;
-        const ay = SAMPLE.elements[13]!;
-        const az = SAMPLE.elements[14]!;
-        meshB.getMatrixAt(index, SAMPLE);
-        expect(SAMPLE.elements[12]).toBeCloseTo(ax, 9);
-        expect(SAMPLE.elements[13]).toBeCloseTo(ay, 9);
-        expect(SAMPLE.elements[14]).toBeCloseTo(az, 9);
+        const [ax, ay, az] = meshPosition(meshA, index);
+        const [bx, by, bz] = meshPosition(meshB, index);
+        expect(bx).toBeCloseTo(ax, 9);
+        expect(by).toBeCloseTo(ay, 9);
+        expect(bz).toBeCloseTo(az, 9);
       }
     }
     a.dispose();
@@ -100,10 +107,7 @@ describe('Aohara street life', () => {
 
   it('keeps every street-life matrix finite over a long drive and vendors stay planted', () => {
     const activity = new UrbanStreetActivity('A');
-    const before = activity.root
-      .getObjectByName('aohara-cart-vendor-carts')!
-      .getMatrixAt(0, new Matrix4())
-      .clone();
+    const before = meshPosition(streetLifeMesh(activity, 'aohara-cart-vendor-carts'), 0);
     for (let frame = 0; frame < 3000; frame += 1) {
       activity.update(1 / 60, frame % 260 < 100 ? 'green' : 'red');
     }
@@ -115,9 +119,7 @@ describe('Aohara street life', () => {
       'aohara-motorbike-frames',
       'aohara-motorbike-rider-heads',
     ]) {
-      const mesh = activity.root.getObjectByName(name);
-      expect(mesh).toBeDefined();
-      if (mesh === undefined) continue;
+      const mesh = streetLifeMesh(activity, name);
       for (let index = 0; index < mesh.count; index += 1) {
         mesh.getMatrixAt(index, SAMPLE);
         for (const value of SAMPLE.elements) {
@@ -125,13 +127,10 @@ describe('Aohara street life', () => {
         }
       }
     }
-    const after = activity.root
-      .getObjectByName('aohara-cart-vendor-carts')!
-      .getMatrixAt(0, new Matrix4())
-      .clone();
-    expect(after.elements[12]).toBeCloseTo(before.elements[12]!, 9);
-    expect(after.elements[13]).toBeCloseTo(before.elements[13]!, 9);
-    expect(after.elements[14]).toBeCloseTo(before.elements[14]!, 9);
+    const after = meshPosition(streetLifeMesh(activity, 'aohara-cart-vendor-carts'), 0);
+    expect(after[0]).toBeCloseTo(before[0], 9);
+    expect(after[1]).toBeCloseTo(before[1], 9);
+    expect(after[2]).toBeCloseTo(before[2], 9);
     activity.dispose();
   });
 
@@ -160,32 +159,22 @@ describe('Aohara street life', () => {
     for (let frame = 0; frame < 120; frame += 1) {
       green.update(1 / 60, 'green');
     }
-    const afterGreen = green.root
-      .getObjectByName('aohara-motorbike-frames')!
-      .getMatrixAt(0, new Matrix4())
-      .clone();
+    const afterGreen = meshPosition(streetLifeMesh(green, 'aohara-motorbike-frames'), 0);
     // 150 s of red covers the worst-case maniac's full loop reach at 11 m/s.
     for (let frame = 0; frame < 9000; frame += 1) {
       green.update(1 / 60, 'red');
     }
-    const settledA = green.root
-      .getObjectByName('aohara-motorbike-frames')!
-      .getMatrixAt(0, new Matrix4())
-      .clone();
+    const settledA = meshPosition(streetLifeMesh(green, 'aohara-motorbike-frames'), 0);
     green.update(1 / 60, 'red');
-    const settledB = green.root
-      .getObjectByName('aohara-motorbike-frames')!
-      .getMatrixAt(0, new Matrix4())
-      .clone();
+    const settledB = meshPosition(streetLifeMesh(green, 'aohara-motorbike-frames'), 0);
     // The maniac moved on green...
     const movedOnGreen =
-      Math.abs(afterGreen.elements[12]! - settledA.elements[12]!) +
-      Math.abs(afterGreen.elements[14]! - settledA.elements[14]!);
+      Math.abs(afterGreen[0] - settledA[0]) + Math.abs(afterGreen[2] - settledA[2]);
     expect(movedOnGreen).toBeGreaterThan(0.5);
-    // ...and is fully settled after the long red: no further route progress.
-    expect(settledB.elements[12]).toBeCloseTo(settledA.elements[12]!, 9);
-    expect(settledB.elements[13]).toBeCloseTo(settledA.elements[13]!, 9);
-    expect(settledB.elements[14]).toBeCloseTo(settledA.elements[14]!, 9);
+    // ...and is fully settled after the long red: no further route progress and no weaving.
+    expect(settledB[0]).toBeCloseTo(settledA[0], 9);
+    expect(settledB[1]).toBeCloseTo(settledA[1], 9);
+    expect(settledB[2]).toBeCloseTo(settledA[2], 9);
     green.dispose();
   });
 });
