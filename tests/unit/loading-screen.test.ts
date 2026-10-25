@@ -98,8 +98,8 @@ describe('startup progress', () => {
         advanceFrame(timestamp);
       }
       const afterOneSecond = Number.parseFloat(dom.bar.style.width);
-      expect(afterOneSecond).toBeGreaterThan(7);
-      expect(afterOneSecond).toBeLessThan(9);
+      expect(afterOneSecond).toBeGreaterThan(10);
+      expect(afterOneSecond).toBeLessThan(14);
       expect(dom.percent.textContent).toMatch(/^\d+%$/);
       expect(dom.percent.textContent).not.toContain('-');
 
@@ -107,8 +107,8 @@ describe('startup progress', () => {
         advanceFrame(timestamp);
       }
       const afterFiveSeconds = Number.parseFloat(dom.bar.style.width);
-      expect(afterFiveSeconds).toBeGreaterThan(40);
-      expect(afterFiveSeconds).toBeLessThan(45);
+      expect(afterFiveSeconds).toBeGreaterThan(58);
+      expect(afterFiveSeconds).toBeLessThan(62);
 
       for (let timestamp = 5_100; timestamp <= 20_000 && frames.size > 0; timestamp += 100) {
         advanceFrame(timestamp);
@@ -151,9 +151,38 @@ describe('startup progress', () => {
       advanceFrame(5_000);
 
       const afterThrottledFrames = Number.parseFloat(dom.bar.style.width);
-      expect(afterThrottledFrames).toBeGreaterThan(40);
-      expect(afterThrottledFrames).toBeLessThan(45);
-      expect(dom.percent.textContent).toBe('42%');
+      expect(afterThrottledFrames).toBeGreaterThan(50);
+      expect(afterThrottledFrames).toBeLessThan(60);
+      expect(dom.percent.textContent).toMatch(/^\d+%$/);
+      expect(frames.size).toBeGreaterThan(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('continues progressing beyond a stalled 62% stage', () => {
+    const { frames, advanceFrame } = stubLoadingWindow();
+
+    try {
+      const dom = makeLoadingDom();
+      const loading = new LoadingScreen(dom.root);
+      loading.show();
+      loading.update(0.62, 'Applying the visual look…');
+
+      for (let timestamp = 0; timestamp <= 5_000; timestamp += 100) {
+        advanceFrame(timestamp);
+      }
+      const nearStagePercent = Number.parseFloat(dom.bar.style.width);
+      expect(nearStagePercent).toBeGreaterThan(58);
+      expect(nearStagePercent).toBeLessThan(62);
+
+      for (let timestamp = 5_100; timestamp <= 6_000; timestamp += 100) {
+        advanceFrame(timestamp);
+      }
+      const afterStall = Number.parseFloat(dom.bar.style.width);
+      expect(afterStall).toBeGreaterThan(66);
+      expect(afterStall).toBeLessThan(70);
+      expect(dom.percent.textContent).toMatch(/^\d+%$/);
       expect(frames.size).toBeGreaterThan(0);
     } finally {
       vi.unstubAllGlobals();
@@ -173,8 +202,8 @@ describe('startup progress', () => {
         advanceFrame(timestamp);
       }
       const beforeFirstFrame = Number.parseFloat(dom.bar.style.width);
-      expect(beforeFirstFrame).toBeGreaterThan(40);
-      expect(beforeFirstFrame).toBeLessThan(45);
+      expect(beforeFirstFrame).toBeGreaterThan(58);
+      expect(beforeFirstFrame).toBeLessThan(62);
 
       loading.update(1, 'Ready — the drive starts automatically');
 
@@ -187,7 +216,7 @@ describe('startup progress', () => {
       expect(dom.percent.textContent).toMatch(/^\d+%$/);
       expect(hideTimers).toHaveLength(0);
 
-      for (let timestamp = 5_100; timestamp <= 10_000 && frames.size > 0; timestamp += 100) {
+      for (let timestamp = 5_100; timestamp <= 12_000 && frames.size > 0; timestamp += 100) {
         advanceFrame(timestamp);
       }
 
@@ -220,8 +249,8 @@ describe('startup progress', () => {
         advanceFrame(timestamp);
       }
       const afterOneSecond = Number.parseFloat(dom.bar.style.width);
-      expect(afterOneSecond).toBeGreaterThan(7);
-      expect(afterOneSecond).toBeLessThan(9);
+      expect(afterOneSecond).toBeGreaterThan(10);
+      expect(afterOneSecond).toBeLessThan(14);
       expect(dom.progressAttributes.get('aria-valuenow')).toBe('88');
       expect(dom.percent.textContent).not.toContain('-');
       expect(dom.dataset['progressPhase']).toBe('animating');
@@ -229,8 +258,8 @@ describe('startup progress', () => {
       for (let timestamp = 1_100; timestamp <= 6_000 && frames.size > 0; timestamp += 100) {
         advanceFrame(timestamp);
       }
-      expect(Number.parseFloat(dom.bar.style.width)).toBeGreaterThan(49);
-      expect(Number.parseFloat(dom.bar.style.width)).toBeLessThan(53);
+      expect(Number.parseFloat(dom.bar.style.width)).toBeGreaterThan(70);
+      expect(Number.parseFloat(dom.bar.style.width)).toBeLessThan(74);
       expect(dom.progressAttributes.get('aria-valuenow')).toBe('88');
       expect(frames.size).toBeGreaterThan(0);
 

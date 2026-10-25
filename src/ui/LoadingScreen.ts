@@ -6,10 +6,10 @@ export interface LoadingProgress {
 /**
  * Fraction rates: a minimum crawl during stalls, with bounded catch-up toward reported progress.
  */
-const MIN_VISUAL_PROGRESS_PER_SECOND = 0.04;
-const MAX_VISUAL_PROGRESS_PER_SECOND = 0.085;
+const MIN_VISUAL_PROGRESS_PER_SECOND = 0.08;
+const MAX_VISUAL_PROGRESS_PER_SECOND = 0.12;
 const PROGRESS_FOLLOW_GAIN = 0.5;
-const FIRST_FRAME_COMPLETION_RATE_PER_SECOND = 0.45;
+const FIRST_FRAME_COMPLETION_RATE_PER_SECOND = 0.08;
 const PROGRESS_INTEGRATION_STEP_SECONDS = 0.1;
 const MAX_PROGRESS_CATCH_UP_SECONDS = 60;
 
