@@ -1,6 +1,7 @@
 import {
   BoxGeometry,
   Color,
+  CylinderGeometry,
   DynamicDrawUsage,
   Group,
   InstancedMesh,
@@ -8,13 +9,20 @@ import {
   type Material,
   type BufferGeometry,
 } from 'three';
-import { MeshPhysicalNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
+import {
+  MeshBasicNodeMaterial,
+  MeshPhysicalNodeMaterial,
+  MeshStandardNodeMaterial,
+  type UniformNode,
+} from 'three/webgpu';
+import { float, vec3, vec4 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import {
   trafficVehicleCountFor,
   URBAN_ACTIVITY_TIER_BUDGET,
   URBAN_CITY_CONFIG,
+  URBAN_STREET_LIFE_TIER_BUDGET,
   type TrafficSignalAspect,
 } from '../config/urban-city';
 import type { TrafficIntensity } from '../config/game-preferences';
@@ -101,6 +109,46 @@ interface Pedestrian {
   readonly speedMetersPerSecond: number;
   phase: number;
   distance: number;
+}
+
+/** Phase 8.2: cyclist route follower on the sidewalk loops (no right-of-way, like pedestrians). */
+interface Cyclist {
+  readonly index: number;
+  readonly routeIndex: number;
+  readonly speedMetersPerSecond: number;
+  phase: number;
+  distance: number;
+}
+
+/** Phase 8.2: static cart vendor with a warm lantern; only the sway phase advances. */
+interface CartVendor {
+  readonly index: number;
+  readonly routeIndex: number;
+  readonly distance: number;
+  swayPhase: number;
+}
+
+/**
+ * Phase 8.2: fast weaving motorbike maniac on a traffic loop. Route progress uses the same
+ * signal-aware advance as traffic; lateral weave is a bounded visual offset, and a Rapier body
+ * (when physics is present) retains collision authority against the player and traffic.
+ */
+interface Motorbike {
+  readonly index: number;
+  readonly routeIndex: number;
+  readonly speedMetersPerSecond: number;
+  readonly lengthMeters: number;
+  readonly weavePhase: number;
+  readonly weaveFrequency: number;
+  distance: number;
+  proposedTravelMeters: number;
+  collisionHoldSeconds: number;
+  recoveryPending: boolean;
+  /** Smoothed 0..1 gate so a stopped maniac eases back to the lane centre instead of weaving. */
+  weaveGain: number;
+  readonly impact: VehicleImpactState;
+  body: RapierRigidBody | null;
+  unregisterOriginAware: (() => void) | null;
 }
 
 interface TrafficQueueEntry {
@@ -329,6 +377,90 @@ function createPedestrianBodyGeometry(): BufferGeometry {
   );
 }
 
+/** Phase 8.2: upright city bike; local -Z is the riding direction, ground at y = 0. */
+function createCyclistBikeGeometry(): BufferGeometry {
+  const wheel = (z: number): BufferGeometry => {
+    const geometry = new CylinderGeometry(0.32, 0.32, 0.07, 10);
+    geometry.rotateZ(Math.PI / 2);
+    geometry.translate(0, 0.32, z);
+    return geometry;
+  };
+  const parts: BufferGeometry[] = [
+    wheel(-0.78),
+    wheel(0.78),
+    new BoxGeometry(0.08, 0.08, 1.1).translate(0, 0.55, -0.1),
+    new BoxGeometry(0.08, 0.35, 0.1).translate(0, 0.35, -0.62),
+    new BoxGeometry(0.08, 0.08, 0.8).translate(0, 0.3, 0.45),
+    new BoxGeometry(0.06, 0.25, 0.06).translate(0, 0.62, 0.62),
+    new BoxGeometry(0.22, 0.06, 0.3).translate(0, 0.75, 0.62),
+    new BoxGeometry(0.05, 0.25, 0.05).translate(0, 0.72, -0.72),
+    new BoxGeometry(0.4, 0.05, 0.06).translate(0, 0.86, -0.72),
+  ];
+  return mergeActivityParts(parts, 'aohara-cyclist-bike');
+}
+
+/** Phase 8.2: sporty motorbike; local -Z is the riding direction, ground at y = 0. */
+function createMotorbikeGeometry(): BufferGeometry {
+  const wheel = (z: number): BufferGeometry => {
+    const geometry = new CylinderGeometry(0.3, 0.3, 0.1, 10);
+    geometry.rotateZ(Math.PI / 2);
+    geometry.translate(0, 0.3, z);
+    return geometry;
+  };
+  const parts: BufferGeometry[] = [
+    wheel(-0.66),
+    wheel(0.66),
+    new BoxGeometry(0.08, 0.5, 0.1).translate(0, 0.42, -0.62),
+    new BoxGeometry(0.34, 0.3, 0.35).translate(0, 0.38, 0.05),
+    new BoxGeometry(0.3, 0.25, 0.5).translate(0, 0.62, -0.25),
+    new BoxGeometry(0.26, 0.12, 0.6).translate(0, 0.56, 0.35),
+    new BoxGeometry(0.2, 0.14, 0.35).translate(0, 0.68, 0.68),
+    new BoxGeometry(0.36, 0.3, 0.25).translate(0, 0.6, -0.62),
+    new BoxGeometry(0.5, 0.05, 0.08).translate(0, 0.85, -0.68),
+  ];
+  return mergeActivityParts(parts, 'aohara-motorbike-frame');
+}
+
+/** Phase 8.2: hand-pushed street vendor cart with handlebar; ground at y = 0. */
+function createCartGeometry(): BufferGeometry {
+  const wheel = (x: number, z: number): BufferGeometry => {
+    const geometry = new CylinderGeometry(0.14, 0.14, 0.05, 8);
+    geometry.rotateZ(Math.PI / 2);
+    geometry.translate(x, 0.14, z);
+    return geometry;
+  };
+  const parts: BufferGeometry[] = [
+    new BoxGeometry(1.1, 0.08, 0.7).translate(0, 0.45, 0.1),
+    new BoxGeometry(1.0, 0.06, 0.6).translate(0, 0.25, 0.1),
+    new BoxGeometry(0.05, 0.45, 0.05).translate(-0.48, 0.24, 0.4),
+    new BoxGeometry(0.05, 0.45, 0.05).translate(0.48, 0.24, 0.4),
+    new BoxGeometry(0.05, 0.45, 0.05).translate(-0.48, 0.24, -0.2),
+    new BoxGeometry(0.05, 0.45, 0.05).translate(0.48, 0.24, -0.2),
+    wheel(-0.48, 0.4),
+    wheel(0.48, 0.4),
+    wheel(-0.48, -0.2),
+    wheel(0.48, -0.2),
+    new BoxGeometry(0.04, 0.75, 0.04).translate(-0.4, 0.85, -0.45),
+    new BoxGeometry(0.04, 0.75, 0.04).translate(0.4, 0.85, -0.45),
+    new BoxGeometry(0.84, 0.05, 0.05).translate(0, 1.2, -0.45),
+    new BoxGeometry(0.4, 0.25, 0.35).translate(-0.25, 0.65, 0.15),
+    new BoxGeometry(0.35, 0.2, 0.3).translate(0.28, 0.63, 0.05),
+  ];
+  return mergeActivityParts(parts, 'aohara-cart-vendor-cart');
+}
+
+function mergeActivityParts(parts: BufferGeometry[], name: string): BufferGeometry {
+  const merged = mergeGeometries(parts, false);
+  for (const part of parts) part.dispose();
+  if (merged === null) {
+    throw new Error(`Aohara street-life geometry could not be merged: ${name}`);
+  }
+  merged.name = name;
+  merged.computeBoundingBox();
+  merged.computeBoundingSphere();
+  return merged;
+}
+
 function createActivityMaterial(name: string, roughness = 0.78): MeshStandardNodeMaterial {
   const material = new MeshStandardNodeMaterial();
   material.color.setHex(0xffffff);
@@ -486,6 +618,11 @@ export interface UrbanStreetActivityOptions {
   readonly trafficIntensity?: TrafficIntensity;
   /** World-space position of the activity's parent city root. */
   readonly origin?: readonly [number, number, number];
+  /**
+   * Phase 8.2: the city's day/night gain drives the warm vendor lanterns so they read at night
+   * and stay faint by day. Omitted in the standalone look-dev composition.
+   */
+  readonly nightGain?: UniformNode<'float', number>;
 }
 
 /**
@@ -514,6 +651,22 @@ export class UrbanStreetActivity {
   readonly #pedestrians: Pedestrian[];
   readonly #pedestrianBodyMesh: InstancedMesh;
   readonly #pedestrianHeadMesh: InstancedMesh;
+  // Phase 8.2 street-life actors: sidewalk cyclists, static cart vendors, and road maniacs.
+  readonly #cyclists: Cyclist[];
+  readonly #cartVendors: CartVendor[];
+  readonly #motorbikes: Motorbike[];
+  readonly #cyclistBikeMesh: InstancedMesh | null;
+  readonly #cyclistRiderBodyMesh: InstancedMesh | null;
+  readonly #cyclistRiderHeadMesh: InstancedMesh | null;
+  readonly #cartMesh: InstancedMesh | null;
+  readonly #cartLanternMesh: InstancedMesh | null;
+  readonly #cartVendorBodyMesh: InstancedMesh | null;
+  readonly #cartVendorHeadMesh: InstancedMesh | null;
+  readonly #motorbikeMesh: InstancedMesh | null;
+  readonly #motorbikeRiderBodyMesh: InstancedMesh | null;
+  readonly #motorbikeRiderHeadMesh: InstancedMesh | null;
+  readonly #motorbikeByCollider = new Map<number, Motorbike>();
+  #weaveTime = 0;
   readonly #meshes: InstancedMesh[] = [];
   readonly #materials: Material[] = [];
   readonly #pose: RoutePose = { x: 0, z: 0, yaw: 0 };
@@ -533,7 +686,12 @@ export class UrbanStreetActivity {
       vehicles.map((vehicle) => ({ vehicleIndex: vehicle.index, distanceToSignal: 0 })),
     );
     this.#pedestrians = this.#createPedestrians(budget.pedestrians);
+    const streetLife = URBAN_STREET_LIFE_TIER_BUDGET[tier];
+    this.#cyclists = this.#createCyclists(streetLife.cyclists);
+    this.#cartVendors = this.#createCartVendors(streetLife.cartVendors);
+    this.#motorbikes = this.#createMotorbikes(streetLife.motorbikes);
     this.#createTrafficBodies();
+    this.#createMotorbikeBodies();
     if (this.#physics !== null) {
       this.#physicsUnsubscribers.push(
         this.#physics.addPreStepHandler(this.#driveTrafficBodies),
@@ -588,18 +746,122 @@ export class UrbanStreetActivity {
         ),
       );
     }
+    const pedestrianBodyGeometry = createPedestrianBodyGeometry();
+    const headGeometry = new BoxGeometry(0.22, 0.22, 0.22);
     this.#pedestrianBodyMesh = this.#createMesh(
-      createPedestrianBodyGeometry(),
+      pedestrianBodyGeometry,
       pedestrianBodyMaterial,
       budget.pedestrians,
       'aohara-sidewalk-pedestrian-bodies',
     );
     this.#pedestrianHeadMesh = this.#createMesh(
-      new BoxGeometry(0.22, 0.22, 0.22),
+      headGeometry,
       pedestrianHeadMaterial,
       budget.pedestrians,
       'aohara-sidewalk-pedestrian-heads',
     );
+
+    const cyclistCount = this.#cyclists.length;
+    if (cyclistCount > 0) {
+      const bikeMaterial = createActivityMaterial('aohara-cyclist-bike-steel', 0.5);
+      bikeMaterial.color.setHex(0x2f3a42);
+      bikeMaterial.metalness = 0.55;
+      this.#materials.push(bikeMaterial);
+      this.#cyclistBikeMesh = this.#createMesh(
+        createCyclistBikeGeometry(),
+        bikeMaterial,
+        cyclistCount,
+        'aohara-cyclist-bikes',
+      );
+      this.#cyclistRiderBodyMesh = this.#createMesh(
+        pedestrianBodyGeometry,
+        pedestrianBodyMaterial,
+        cyclistCount,
+        'aohara-cyclist-rider-bodies',
+      );
+      this.#cyclistRiderHeadMesh = this.#createMesh(
+        headGeometry,
+        pedestrianHeadMaterial,
+        cyclistCount,
+        'aohara-cyclist-rider-heads',
+      );
+    } else {
+      this.#cyclistBikeMesh = null;
+      this.#cyclistRiderBodyMesh = null;
+      this.#cyclistRiderHeadMesh = null;
+    }
+
+    const vendorCount = this.#cartVendors.length;
+    if (vendorCount > 0) {
+      const cartMaterial = createActivityMaterial('aohara-cart-vendor-wood', 0.85);
+      cartMaterial.color.setHex(0x6b5638);
+      this.#materials.push(cartMaterial);
+      this.#cartMesh = this.#createMesh(
+        createCartGeometry(),
+        cartMaterial,
+        vendorCount,
+        'aohara-cart-vendor-carts',
+      );
+      const lanternMaterial = new MeshBasicNodeMaterial();
+      lanternMaterial.name = 'aohara-cart-vendor-lantern-glow';
+      lanternMaterial.toneMapped = false;
+      const nightGain = options.nightGain ?? float(0.35);
+      lanternMaterial.colorNode = vec4(vec3(1.0, 0.55, 0.22).mul(nightGain), 1);
+      this.#materials.push(lanternMaterial);
+      this.#cartLanternMesh = this.#createMesh(
+        new BoxGeometry(0.16, 0.24, 0.16),
+        lanternMaterial,
+        vendorCount,
+        'aohara-cart-vendor-lanterns',
+      );
+      this.#cartVendorBodyMesh = this.#createMesh(
+        pedestrianBodyGeometry,
+        pedestrianBodyMaterial,
+        vendorCount,
+        'aohara-cart-vendor-bodies',
+      );
+      this.#cartVendorHeadMesh = this.#createMesh(
+        headGeometry,
+        pedestrianHeadMaterial,
+        vendorCount,
+        'aohara-cart-vendor-heads',
+      );
+    } else {
+      this.#cartMesh = null;
+      this.#cartLanternMesh = null;
+      this.#cartVendorBodyMesh = null;
+      this.#cartVendorHeadMesh = null;
+    }
+
+    const motorbikeCount = this.#motorbikes.length;
+    if (motorbikeCount > 0) {
+      const motorbikeMaterial = createActivityMaterial('aohara-motorbike-paint', 0.42);
+      motorbikeMaterial.color.setHex(0x7e2a2a);
+      motorbikeMaterial.metalness = 0.4;
+      this.#materials.push(motorbikeMaterial);
+      this.#motorbikeMesh = this.#createMesh(
+        createMotorbikeGeometry(),
+        motorbikeMaterial,
+        motorbikeCount,
+        'aohara-motorbike-frames',
+      );
+      this.#motorbikeRiderBodyMesh = this.#createMesh(
+        pedestrianBodyGeometry,
+        pedestrianBodyMaterial,
+        motorbikeCount,
+        'aohara-motorbike-rider-bodies',
+      );
+      this.#motorbikeRiderHeadMesh = this.#createMesh(
+        headGeometry,
+        pedestrianHeadMaterial,
+        motorbikeCount,
+        'aohara-motorbike-rider-heads',
+      );
+    } else {
+      this.#motorbikeMesh = null;
+      this.#motorbikeRiderBodyMesh = null;
+      this.#motorbikeRiderHeadMesh = null;
+    }
 
     for (const pedestrian of this.#pedestrians) {
       this.#pedestrianBodyMesh.setColorAt(
@@ -611,7 +873,46 @@ export class UrbanStreetActivity {
         new Color(SKIN_COLORS[pedestrian.index % SKIN_COLORS.length]!),
       );
     }
-    for (const mesh of [this.#pedestrianBodyMesh, this.#pedestrianHeadMesh]) {
+    const colorStreetLifeActor = (
+      bodyMesh: InstancedMesh,
+      headMesh: InstancedMesh,
+      index: number,
+    ): void => {
+      bodyMesh.setColorAt(index, new Color(PEDESTRIAN_COLORS[index % PEDESTRIAN_COLORS.length]!));
+      headMesh.setColorAt(index, new Color(SKIN_COLORS[index % SKIN_COLORS.length]!));
+    };
+    for (const cyclist of this.#cyclists) {
+      if (this.#cyclistRiderBodyMesh !== null && this.#cyclistRiderHeadMesh !== null) {
+        colorStreetLifeActor(this.#cyclistRiderBodyMesh, this.#cyclistRiderHeadMesh, cyclist.index);
+      }
+    }
+    for (const vendor of this.#cartVendors) {
+      if (this.#cartVendorBodyMesh !== null && this.#cartVendorHeadMesh !== null) {
+        colorStreetLifeActor(this.#cartVendorBodyMesh, this.#cartVendorHeadMesh, vendor.index);
+      }
+    }
+    for (const motorbike of this.#motorbikes) {
+      if (this.#motorbikeRiderBodyMesh !== null && this.#motorbikeRiderHeadMesh !== null) {
+        colorStreetLifeActor(
+          this.#motorbikeRiderBodyMesh,
+          this.#motorbikeRiderHeadMesh,
+          motorbike.index,
+        );
+      }
+    }
+    for (const mesh of [
+      this.#pedestrianBodyMesh,
+      this.#pedestrianHeadMesh,
+      this.#cyclistRiderBodyMesh,
+      this.#cyclistRiderHeadMesh,
+      this.#cartVendorBodyMesh,
+      this.#cartVendorHeadMesh,
+      this.#motorbikeRiderBodyMesh,
+      this.#motorbikeRiderHeadMesh,
+    ]) {
+      if (mesh === null) {
+        continue;
+      }
       if (mesh.instanceColor !== null) {
         mesh.instanceColor.needsUpdate = true;
       }
@@ -619,6 +920,7 @@ export class UrbanStreetActivity {
 
     this.#writeTrafficMatrices();
     this.#writePedestrianMatrices();
+    this.#writeStreetLifeMatrices();
   }
 
   update(deltaSeconds: number, aspect: TrafficSignalAspect): void {
@@ -631,7 +933,9 @@ export class UrbanStreetActivity {
     // retains the original frame-time route motion. Pedestrian phase is always render-time.
     if (this.#physics === null) {
       this.#advanceTraffic(delta, aspect);
+      this.#advanceMotorbikes(delta, aspect);
     }
+    this.#weaveTime += delta;
     for (const pedestrian of this.#pedestrians) {
       const route = this.#sidewalkRoutes[pedestrian.routeIndex]!;
       pedestrian.distance = wrapDistance(
@@ -640,8 +944,31 @@ export class UrbanStreetActivity {
       );
       pedestrian.phase += delta * pedestrian.speedMetersPerSecond * 2.2;
     }
+    for (const cyclist of this.#cyclists) {
+      const route = this.#sidewalkRoutes[cyclist.routeIndex]!;
+      cyclist.distance = wrapDistance(
+        cyclist.distance + cyclist.speedMetersPerSecond * delta,
+        route.length,
+      );
+      cyclist.phase += delta * cyclist.speedMetersPerSecond * 1.8;
+    }
+    for (const vendor of this.#cartVendors) {
+      vendor.swayPhase += delta * 0.7;
+    }
     this.#writeTrafficMatrices(delta);
     this.#writePedestrianMatrices();
+    this.#writeStreetLifeMatrices(delta);
+  }
+
+  /**
+   * Read-only maniac stop-line margins (metres ahead of the stop line) for diagnostics and
+   * tests. A settled maniac parks in its own queue slot, so the margin equals its half-length.
+   */
+  getMotorbikeStopLineMargins(): readonly number[] {
+    return this.#motorbikes.map((bike) => {
+      const route = this.#trafficRoutes[bike.routeIndex]!;
+      return wrapDistance(route.stopDistance - bike.distance, route.length);
+    });
   }
 
   getContentStats(): Readonly<Record<string, number>> {
@@ -657,6 +984,10 @@ export class UrbanStreetActivity {
       urbanTrafficImpactFeedbacks: this.#trafficImpactCount,
       urbanTrafficRouteRejoins: this.#trafficRouteRejoinCount,
       urbanPedestrians: this.#pedestrians.length,
+      urbanCyclists: this.#cyclists.length,
+      urbanCartVendors: this.#cartVendors.length,
+      urbanMotorbikes: this.#motorbikes.length,
+      urbanMotorbikePhysicsBodies: this.#motorbikes.filter((bike) => bike.body !== null).length,
       urbanActivityBatches: this.#meshes.length,
     };
   }
@@ -677,7 +1008,15 @@ export class UrbanStreetActivity {
         vehicle.body = null;
       }
     }
+    for (const bike of this.#motorbikes) {
+      if (bike.body !== null) {
+        bike.unregisterOriginAware?.();
+        this.#physics?.removeBody(bike.body);
+        bike.body = null;
+      }
+    }
     this.#vehicleByCollider.clear();
+    this.#motorbikeByCollider.clear();
     for (const mesh of this.#meshes) {
       mesh.geometry.dispose();
       mesh.dispose();
@@ -826,6 +1165,180 @@ export class UrbanStreetActivity {
     return pedestrians;
   }
 
+  #createCyclists(count: number): Cyclist[] {
+    const counts = spreadCount(count, this.#sidewalkRoutes.length);
+    const cyclists: Cyclist[] = [];
+    let index = 0;
+    this.#sidewalkRoutes.forEach((route, routeIndex) => {
+      for (let localIndex = 0; localIndex < counts[routeIndex]!; localIndex += 1) {
+        cyclists.push({
+          index,
+          routeIndex,
+          distance: ((localIndex + 0.5) / counts[routeIndex]!) * route.length,
+          speedMetersPerSecond: 3.1 + deterministicUnit(index, routeIndex + 61) * 0.7,
+          phase: deterministicUnit(index, routeIndex + 73) * Math.PI * 2,
+        });
+        index += 1;
+      }
+    });
+    return cyclists;
+  }
+
+  /** Static vendors keep a deterministic inset so they sit mid-block, never on a crossing corner. */
+  #createCartVendors(count: number): CartVendor[] {
+    const vendors: CartVendor[] = [];
+    for (let index = 0; index < count; index += 1) {
+      const routeIndex = index % this.#sidewalkRoutes.length;
+      const route = this.#sidewalkRoutes[routeIndex]!;
+      const inset = 0.18 + deterministicUnit(index, 91) * 0.64;
+      vendors.push({
+        index,
+        routeIndex,
+        distance: inset * route.length,
+        swayPhase: deterministicUnit(index, 103) * Math.PI * 2,
+      });
+    }
+    return vendors;
+  }
+
+  #createMotorbikes(count: number): Motorbike[] {
+    const counts = spreadCount(count, this.#trafficRoutes.length);
+    const bikes: Motorbike[] = [];
+    let index = 0;
+    this.#trafficRoutes.forEach((route, routeIndex) => {
+      for (let localIndex = 0; localIndex < counts[routeIndex]!; localIndex += 1) {
+        bikes.push({
+          index,
+          routeIndex,
+          speedMetersPerSecond: 11 + deterministicUnit(index, routeIndex + 131) * 3,
+          lengthMeters: 2.1,
+          weavePhase: deterministicUnit(index, routeIndex + 137) * Math.PI * 2,
+          weaveFrequency: 0.5 + deterministicUnit(index, routeIndex + 139) * 0.5,
+          distance: ((localIndex + 0.5) / counts[routeIndex]!) * route.length,
+          proposedTravelMeters: 0,
+          collisionHoldSeconds: 0,
+          recoveryPending: false,
+          weaveGain: 1,
+          impact: createVehicleImpactState(),
+          body: null,
+          unregisterOriginAware: null,
+        });
+        index += 1;
+      }
+    });
+    return bikes;
+  }
+
+  /**
+   * Signal-aware route advance for maniacs. They ride their own queue slot (no traffic following
+   * gap), weave laterally for the maniac read, and stop before the stop line on red/amber.
+   */
+  #advanceMotorbikes(deltaSeconds: number, aspect: TrafficSignalAspect): void {
+    const delta = Math.min(MAX_UPDATE_DELTA_SECONDS, deltaSeconds);
+    if (delta <= 0) {
+      return;
+    }
+    for (const bike of this.#motorbikes) {
+      const route = this.#trafficRoutes[bike.routeIndex]!;
+      if (bike.recoveryPending && bike.collisionHoldSeconds <= 0) {
+        this.#rejoinMotorbike(bike, route);
+      }
+      bike.collisionHoldSeconds = Math.max(0, bike.collisionHoldSeconds - delta);
+      const nextDistance = advanceTrafficWithSignal(
+        bike.distance,
+        route.length,
+        route.stopDistance,
+        bike.collisionHoldSeconds > 0 ? 0 : bike.speedMetersPerSecond * delta,
+        aspect,
+        0,
+        bike.lengthMeters / 2,
+      );
+      bike.proposedTravelMeters = wrapDistance(nextDistance - bike.distance, route.length);
+      bike.distance = nextDistance;
+      const moving = bike.collisionHoldSeconds <= 0 && bike.proposedTravelMeters > 1e-4;
+      bike.weaveGain += ((moving ? 1 : 0) - bike.weaveGain) * Math.min(1, delta * 6);
+    }
+  }
+
+  /** Samples the maniac's route pose plus its bounded lateral weave (1.5 m either side). */
+  #sampleMotorbikePose(bike: Motorbike): void {
+    const route = this.#trafficRoutes[bike.routeIndex]!;
+    sampleRoute(route, bike.distance, this.#pose);
+    const weave =
+      Math.sin(this.#weaveTime * bike.weaveFrequency + bike.weavePhase) * 1.5 * bike.weaveGain;
+    // Route forward is (-sin yaw, -cos yaw); its left normal is (cos yaw, -sin yaw).
+    this.#pose.x += Math.cos(this.#pose.yaw) * weave;
+    this.#pose.z += -Math.sin(this.#pose.yaw) * weave;
+  }
+
+  #rejoinMotorbike(bike: Motorbike, route: UrbanRoute): void {
+    bike.recoveryPending = false;
+    const body = bike.body;
+    const physics = this.#physics;
+    if (body === null || physics === null) {
+      return;
+    }
+    const position = body.translation();
+    const originOffset = physics.originOffset;
+    const localX = position.x + originOffset.x - this.#worldOrigin[0];
+    const localZ = position.z + originOffset.z - this.#worldOrigin[2];
+    const projection = projectTrafficRoutePosition(route.segments, localX, localZ);
+    if (
+      projection === null ||
+      projection.distanceSquared > MAX_TRAFFIC_ROUTE_REJOIN_DISTANCE_METERS ** 2
+    ) {
+      return;
+    }
+    bike.distance = wrapDistance(projection.distanceMeters, route.length);
+  }
+
+  #createMotorbikeBodies(): void {
+    const physics = this.#physics;
+    if (physics === null || this.#motorbikes.length === 0) {
+      return;
+    }
+    const rapier = physics.rapier;
+    const originOffset = physics.originOffset;
+    for (const bike of this.#motorbikes) {
+      const route = this.#trafficRoutes[bike.routeIndex]!;
+      sampleRoute(route, bike.distance, this.#pose);
+      const body = physics.createDynamicBody(
+        rapier.RigidBodyDesc.dynamic()
+          .setTranslation(
+            this.#worldOrigin[0] + this.#pose.x - originOffset.x,
+            this.#worldOrigin[1] + ROAD_Y + 0.55,
+            this.#worldOrigin[2] + this.#pose.z - originOffset.z,
+          )
+          .setRotation({
+            x: 0,
+            y: Math.sin(this.#pose.yaw / 2),
+            z: 0,
+            w: Math.cos(this.#pose.yaw / 2),
+          })
+          .setGravityScale(0)
+          .setLinearDamping(0.55)
+          .setAngularDamping(1.6)
+          .setUserData({
+            kind: 'aohara-motorbike',
+            index: bike.index,
+          })
+          .enabledTranslations(true, false, true)
+          .enabledRotations(false, true, false),
+      );
+      const collider = physics.attachCollider(
+        rapier.ColliderDesc.cuboid(0.28, 0.5, 1.05)
+          .setDensity(178)
+          .setFriction(0.5)
+          .setRestitution(0.03)
+          .setActiveEvents(rapier.ActiveEvents.COLLISION_EVENTS),
+        body,
+      );
+      bike.body = body;
+      bike.unregisterOriginAware = physics.registerOriginAwareBody(body);
+      this.#motorbikeByCollider.set(collider.handle, bike);
+    }
+  }
+
   #createMesh(
     geometry: BufferGeometry,
     material: Material | Material[],
@@ -940,8 +1453,58 @@ export class UrbanStreetActivity {
       return;
     }
     this.#advanceTraffic(deltaSeconds, this.#signalAspect);
+    this.#advanceMotorbikes(deltaSeconds, this.#signalAspect);
     const originOffset = physics.originOffset;
     const blend = clamp(deltaSeconds * 4, 0, 1);
+    for (const bike of this.#motorbikes) {
+      const body = bike.body;
+      if (body === null) {
+        continue;
+      }
+      this.#sampleMotorbikePose(bike);
+      const position = body.translation();
+      const velocity = body.linvel();
+      const targetX = this.#worldOrigin[0] + this.#pose.x - originOffset.x;
+      const targetZ = this.#worldOrigin[2] + this.#pose.z - originOffset.z;
+      const speed = bike.collisionHoldSeconds > 0 ? 0 : bike.speedMetersPerSecond;
+      const targetVelocityX = -Math.sin(this.#pose.yaw) * speed + (targetX - position.x) * 0.7;
+      const targetVelocityZ = -Math.cos(this.#pose.yaw) * speed + (targetZ - position.z) * 0.7;
+      const maximumSpeed = bike.speedMetersPerSecond + 3;
+      const targetSpeed = Math.hypot(targetVelocityX, targetVelocityZ);
+      if (targetSpeed > maximumSpeed) {
+        const scale = maximumSpeed / targetSpeed;
+        body.setLinvel(
+          {
+            x: velocity.x + (targetVelocityX * scale - velocity.x) * blend,
+            y: 0,
+            z: velocity.z + (targetVelocityZ * scale - velocity.z) * blend,
+          },
+          true,
+        );
+      } else {
+        body.setLinvel(
+          {
+            x: velocity.x + (targetVelocityX - velocity.x) * blend,
+            y: 0,
+            z: velocity.z + (targetVelocityZ - velocity.z) * blend,
+          },
+          true,
+        );
+      }
+      const rotation = body.rotation();
+      const yaw = yawFromQuat(rotation);
+      const yawError = wrapAngle(this.#pose.yaw - yaw);
+      const angularVelocity = body.angvel();
+      const targetYawRate = clamp(yawError * 2.6 - angularVelocity.y * 1.6, -1.8, 1.8);
+      body.setAngvel(
+        {
+          x: 0,
+          y: angularVelocity.y + (targetYawRate - angularVelocity.y) * blend,
+          z: 0,
+        },
+        true,
+      );
+    }
     for (const vehicle of this.#vehicles) {
       const body = vehicle.body;
       if (body === null) {
@@ -993,10 +1556,12 @@ export class UrbanStreetActivity {
     }
     const vehicleA = this.#vehicleByCollider.get(event.colliderA.handle) ?? null;
     const vehicleB = this.#vehicleByCollider.get(event.colliderB.handle) ?? null;
+    const bikeA = this.#motorbikeByCollider.get(event.colliderA.handle) ?? null;
+    const bikeB = this.#motorbikeByCollider.get(event.colliderB.handle) ?? null;
     const bodyA = event.bodyA;
     const bodyB = event.bodyB;
     if (
-      (vehicleA === null && vehicleB === null) ||
+      (vehicleA === null && vehicleB === null && bikeA === null && bikeB === null) ||
       bodyA === null ||
       bodyB === null ||
       !bodyA.isDynamic() ||
@@ -1010,7 +1575,9 @@ export class UrbanStreetActivity {
     if (relativeSpeed < 1.25) {
       return;
     }
-    this.#trafficImpactCount += 1;
+    if (vehicleA !== null || vehicleB !== null) {
+      this.#trafficImpactCount += 1;
+    }
     const holdSeconds = clamp(0.22 + relativeSpeed * 0.045, 0.25, 1.2);
     const applyToVehicle = (vehicle: TrafficVehicle | null): void => {
       if (vehicle === null || vehicle.body === null) {
@@ -1027,8 +1594,25 @@ export class UrbanStreetActivity {
       vehicle.collisionHoldSeconds = Math.max(vehicle.collisionHoldSeconds, holdSeconds);
       vehicle.recoveryPending = true;
     };
+    const applyToBike = (bike: Motorbike | null): void => {
+      if (bike === null || bike.body === null) {
+        return;
+      }
+      const otherBody = bodyA.handle === bike.body.handle ? bodyB : bodyA;
+      const position = bike.body.translation();
+      const otherPosition = otherBody.translation();
+      const yaw = yawFromQuat(bike.body.rotation());
+      const side =
+        (otherPosition.x - position.x) * Math.cos(yaw) -
+        (otherPosition.z - position.z) * Math.sin(yaw);
+      triggerVehicleImpact(bike.impact, relativeSpeed, side);
+      bike.collisionHoldSeconds = Math.max(bike.collisionHoldSeconds, holdSeconds);
+      bike.recoveryPending = true;
+    };
     applyToVehicle(vehicleA);
     applyToVehicle(vehicleB);
+    applyToBike(bikeA);
+    applyToBike(bikeB);
   };
 
   #writePedestrianMatrices(): void {
@@ -1048,5 +1632,108 @@ export class UrbanStreetActivity {
     }
     this.#pedestrianBodyMesh.instanceMatrix.needsUpdate = true;
     this.#pedestrianHeadMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  #writeStreetLifeMatrices(deltaSeconds = 0): void {
+    const originOffset = this.#physics?.originOffset ?? { x: 0, z: 0 };
+    const sidewalkY = ROAD_Y + SIDEWALK_LIFT;
+    const setPose = (x: number, y: number, z: number, yaw: number): void => {
+      this.#transform.position.set(x, y, z);
+      this.#transform.rotation.set(0, yaw, 0);
+      this.#transform.scale.set(1, 1, 1);
+      this.#transform.updateMatrix();
+    };
+    const offsetLocal = (localX: number, localZ: number, yaw: number): void => {
+      const cos = Math.cos(yaw);
+      const sin = Math.sin(yaw);
+      this.#transform.position.x += cos * localX + sin * localZ;
+      this.#transform.position.z += -sin * localX + cos * localZ;
+      this.#transform.updateMatrix();
+    };
+
+    for (const cyclist of this.#cyclists) {
+      const route = this.#sidewalkRoutes[cyclist.routeIndex]!;
+      sampleRoute(route, cyclist.distance, this.#pose);
+      const bob = Math.abs(Math.sin(cyclist.phase)) * 0.03;
+      setPose(this.#pose.x, sidewalkY + bob, this.#pose.z, this.#pose.yaw);
+      this.#cyclistBikeMesh?.setMatrixAt(cyclist.index, this.#transform.matrix);
+      // The rider reuses the upright pedestrian body, sunk slightly so it reads as seated.
+      this.#transform.position.y -= 0.16;
+      this.#transform.updateMatrix();
+      this.#cyclistRiderBodyMesh?.setMatrixAt(cyclist.index, this.#transform.matrix);
+      this.#transform.position.y += 1.08;
+      this.#transform.updateMatrix();
+      this.#cyclistRiderHeadMesh?.setMatrixAt(cyclist.index, this.#transform.matrix);
+    }
+
+    for (const vendor of this.#cartVendors) {
+      const route = this.#sidewalkRoutes[vendor.routeIndex]!;
+      sampleRoute(route, vendor.distance, this.#pose);
+      const yaw = this.#pose.yaw + Math.sin(vendor.swayPhase) * 0.05;
+      setPose(this.#pose.x, sidewalkY, this.#pose.z, yaw);
+      this.#cartMesh?.setMatrixAt(vendor.index, this.#transform.matrix);
+      // The vendor stands beside the handlebar, offset to one side of the cart.
+      setPose(this.#pose.x, sidewalkY, this.#pose.z, yaw);
+      offsetLocal(0.45, -0.8, yaw);
+      this.#cartVendorBodyMesh?.setMatrixAt(vendor.index, this.#transform.matrix);
+      this.#transform.position.y += 1.08;
+      this.#transform.updateMatrix();
+      this.#cartVendorHeadMesh?.setMatrixAt(vendor.index, this.#transform.matrix);
+      // The warm lantern hangs over the cart's front corner.
+      setPose(this.#pose.x, sidewalkY, this.#pose.z, yaw);
+      offsetLocal(0.55, 0.35, yaw);
+      this.#transform.position.y += 0.95;
+      this.#transform.updateMatrix();
+      this.#cartLanternMesh?.setMatrixAt(vendor.index, this.#transform.matrix);
+    }
+
+    for (const bike of this.#motorbikes) {
+      let x: number;
+      let y: number;
+      let z: number;
+      let yaw: number;
+      if (bike.body !== null && this.#physics !== null) {
+        const position = bike.body.translation();
+        const rotation = bike.body.rotation();
+        x = position.x + originOffset.x - this.#worldOrigin[0];
+        y = position.y - this.#worldOrigin[1] - 0.55;
+        z = position.z + originOffset.z - this.#worldOrigin[2];
+        yaw = yawFromQuat(rotation);
+      } else {
+        this.#sampleMotorbikePose(bike);
+        x = this.#pose.x;
+        y = ROAD_Y;
+        z = this.#pose.z;
+        yaw = this.#pose.yaw;
+      }
+      const impact = advanceVehicleImpact(bike.impact, deltaSeconds);
+      setPose(x, y + impact.bounceMeters, z, yaw);
+      this.#transform.rotation.set(impact.pitchRadians, yaw, impact.rollRadians);
+      this.#transform.updateMatrix();
+      this.#motorbikeMesh?.setMatrixAt(bike.index, this.#transform.matrix);
+      this.#transform.position.y -= 0.22;
+      this.#transform.updateMatrix();
+      this.#motorbikeRiderBodyMesh?.setMatrixAt(bike.index, this.#transform.matrix);
+      this.#transform.position.y += 1.08;
+      this.#transform.updateMatrix();
+      this.#motorbikeRiderHeadMesh?.setMatrixAt(bike.index, this.#transform.matrix);
+    }
+
+    for (const mesh of [
+      this.#cyclistBikeMesh,
+      this.#cyclistRiderBodyMesh,
+      this.#cyclistRiderHeadMesh,
+      this.#cartMesh,
+      this.#cartLanternMesh,
+      this.#cartVendorBodyMesh,
+      this.#cartVendorHeadMesh,
+      this.#motorbikeMesh,
+      this.#motorbikeRiderBodyMesh,
+      this.#motorbikeRiderHeadMesh,
+    ]) {
+      if (mesh !== null) {
+        mesh.instanceMatrix.needsUpdate = true;
+      }
+    }
   }
 }

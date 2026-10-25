@@ -17,6 +17,7 @@ import {
   URBAN_NIGHT_TIER_BUDGET,
   URBAN_STREET_FURNITURE_CONFIG,
   URBAN_STREET_FURNITURE_TIER_BUDGET,
+  URBAN_STREET_LIFE_TIER_BUDGET,
 } from '../../src/config/urban-city';
 import { GROUND_COVER_CONFIG } from '../../src/config/ground-cover';
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
@@ -374,6 +375,14 @@ describe('Aohara city night-lighting rules', () => {
     for (const tier of ['C', 'B', 'A'] as const) {
       const activity = new UrbanStreetActivity(tier);
       const stats = activity.getContentStats();
+      const streetLife = URBAN_STREET_LIFE_TIER_BUDGET[tier];
+      // 5 traffic batches + 2 pedestrian batches, plus the street-life batches for whichever
+      // kinds the tier budgets (motorbikes are absent on tier C).
+      const expectedBatches =
+        7 +
+        (streetLife.cyclists > 0 ? 3 : 0) +
+        (streetLife.cartVendors > 0 ? 4 : 0) +
+        (streetLife.motorbikes > 0 ? 3 : 0);
       expect(stats).toMatchObject({
         urbanTrafficVehicles: URBAN_ACTIVITY_TIER_BUDGET[tier].trafficVehicles,
         urbanTrafficPassengerCars: expectedByTier[tier].passengerCars,
@@ -383,7 +392,10 @@ describe('Aohara city night-lighting rules', () => {
         urbanTrafficFarmTractors: expectedByTier[tier].farmTractors,
         urbanTrafficBatches: 5,
         urbanPedestrians: URBAN_ACTIVITY_TIER_BUDGET[tier].pedestrians,
-        urbanActivityBatches: 7,
+        urbanCyclists: streetLife.cyclists,
+        urbanCartVendors: streetLife.cartVendors,
+        urbanMotorbikes: streetLife.motorbikes,
+        urbanActivityBatches: expectedBatches,
       });
       const trafficMeshes = activity.root.children.filter(
         (child) => child instanceof InstancedMesh && child.name.startsWith('aohara-traffic-'),
@@ -743,7 +755,14 @@ describe('Aohara city night-lighting rules', () => {
       urbanTrafficFarmTractors: 4,
       urbanTrafficBatches: 5,
       urbanPedestrians: URBAN_ACTIVITY_TIER_BUDGET.B.pedestrians,
-      urbanActivityBatches: 7,
+      urbanCyclists: URBAN_STREET_LIFE_TIER_BUDGET.B.cyclists,
+      urbanCartVendors: URBAN_STREET_LIFE_TIER_BUDGET.B.cartVendors,
+      urbanMotorbikes: URBAN_STREET_LIFE_TIER_BUDGET.B.motorbikes,
+      urbanActivityBatches:
+        7 +
+        (URBAN_STREET_LIFE_TIER_BUDGET.B.cyclists > 0 ? 3 : 0) +
+        (URBAN_STREET_LIFE_TIER_BUDGET.B.cartVendors > 0 ? 4 : 0) +
+        (URBAN_STREET_LIFE_TIER_BUDGET.B.motorbikes > 0 ? 3 : 0),
       stadiums: 1,
       casinos: 2,
       mansions: 4,

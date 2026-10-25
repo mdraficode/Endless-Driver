@@ -1504,6 +1504,7 @@ export class UrbanNightWorld implements SceneContent {
             ? {}
             : { trafficIntensity: options.trafficIntensity }),
           origin: [originX, originY, originZ],
+          nightGain: this.#nightGain,
         })
       : null;
     if (this.#activity !== null) {

@@ -225,6 +225,33 @@ export const URBAN_FACADE_KIT_TIER_BUDGET: Readonly<Record<TierId, UrbanFacadeKi
   },
 };
 
+export interface UrbanStreetLifeTierBudget {
+  /** Cyclists riding the sidewalk loops (visual route followers, no right-of-way). */
+  readonly cyclists: number;
+  /** Static cart vendors with a warm lantern on the sidewalks. */
+  readonly cartVendors: number;
+  /** Fast weaving motorbike maniacs on the traffic loops (Rapier bodies when physics is present). */
+  readonly motorbikes: number;
+  /** People sitting in the narrow backstreet alleys (static, two-frame idle). */
+  readonly alleySitters: number;
+  /** House door anchors with enter/exit cycles and a swinging door. */
+  readonly homeDoors: number;
+  /** Deterministic easter eggs (cat, tanuki, vending machine, shrine fox). */
+  readonly easterEggs: number;
+}
+
+/**
+ * Phase 8.2 street-life caps — the "living city" actors on top of the baseline activity budget.
+ * These bound instanced visual batches and (for motorbikes) small Rapier bodies, not measured FPS;
+ * counts stay ordered C <= B <= A. Tier C keeps motorbikes at zero so the C-tier physics contract
+ * is untouched.
+ */
+export const URBAN_STREET_LIFE_TIER_BUDGET: Readonly<Record<TierId, UrbanStreetLifeTierBudget>> = {
+  C: { cyclists: 2, cartVendors: 1, motorbikes: 0, alleySitters: 1, homeDoors: 4, easterEggs: 2 },
+  B: { cyclists: 4, cartVendors: 2, motorbikes: 1, alleySitters: 2, homeDoors: 8, easterEggs: 3 },
+  A: { cyclists: 6, cartVendors: 3, motorbikes: 2, alleySitters: 3, homeDoors: 12, easterEggs: 4 },
+};
+
 /** Traffic is the only activity budget scaled by the player-facing traffic-intensity setting. */
 export function trafficVehicleCountFor(
   tier: TierId,
