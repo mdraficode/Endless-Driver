@@ -78,9 +78,10 @@ export function requestFullscreenBestEffort(
 
 /**
  * Attempts fullscreen when a game session starts, then retries on activation-capable page input if
- * the browser rejected startup. Touch and pen prefer pointerup; clicks provide a fallback when a
- * browser suppresses part of the pointer sequence. Successful entry also requests landscape
- * orientation where native screen-orientation locking is supported.
+ * the browser rejected startup. Mouse input uses click rather than pointerdown so the request is
+ * made on the completed activation; touch and pen prefer pointerup, with click as a fallback.
+ * Successful entry also requests landscape orientation where native screen-orientation locking is
+ * supported.
  */
 export class FullscreenOnStart {
   readonly #document: Document;
@@ -90,12 +91,6 @@ export class FullscreenOnStart {
 
   readonly #handleGesture = (event: Event): void => {
     void this.request(event);
-  };
-
-  readonly #handlePointerDown = (event: Event): void => {
-    if ((event as PointerEvent).pointerType === 'mouse') {
-      this.#handleGesture(event);
-    }
   };
 
   readonly #handlePointerUp = (event: Event): void => {
@@ -147,19 +142,11 @@ export class FullscreenOnStart {
     }
     this.#listenersAttached = true;
     if (this.#hasPointerEvents) {
-      this.#document.addEventListener('pointerdown', this.#handlePointerDown, {
-        capture: true,
-        passive: true,
-      });
       this.#document.addEventListener('pointerup', this.#handlePointerUp, {
         capture: true,
         passive: true,
       });
     } else {
-      this.#document.addEventListener('mousedown', this.#handleGesture, {
-        capture: true,
-        passive: true,
-      });
       this.#document.addEventListener('touchend', this.#handleGesture, {
         capture: true,
         passive: true,
@@ -175,10 +162,8 @@ export class FullscreenOnStart {
     }
     this.#listenersAttached = false;
     if (this.#hasPointerEvents) {
-      this.#document.removeEventListener('pointerdown', this.#handlePointerDown, true);
       this.#document.removeEventListener('pointerup', this.#handlePointerUp, true);
     } else {
-      this.#document.removeEventListener('mousedown', this.#handleGesture, true);
       this.#document.removeEventListener('touchend', this.#handleGesture, true);
     }
     this.#document.removeEventListener('click', this.#handleClick, true);

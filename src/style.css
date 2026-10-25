@@ -205,6 +205,12 @@ body {
   background: rgb(255 255 255 / 8%);
 }
 
+.loading-screen[data-progress-phase='animating'] .loading-progress-track,
+.loading-screen[data-progress-phase='finalizing'] .loading-progress-track,
+.loading-screen[data-progress-phase='waiting'] .loading-progress-track {
+  animation: loading-progress-track-breathe 3.2s ease-in-out infinite;
+}
+
 .loading-progress-track::before {
   position: absolute;
   z-index: 0;
@@ -216,7 +222,7 @@ body {
   content: '';
   opacity: 0.24;
   pointer-events: none;
-  animation: loading-progress-glow 3.4s ease-in-out infinite;
+  animation: loading-progress-glow 3.2s ease-in-out infinite;
 }
 
 .loading-progress-fill {
@@ -273,29 +279,63 @@ body {
   }
 }
 
+@keyframes loading-progress-track-breathe {
+  0%,
+  100% {
+    border-color: rgb(190 220 224 / 13%);
+    background-color: rgb(255 255 255 / 8%);
+    box-shadow: 0 0 2px rgb(84 224 199 / 12%);
+  }
+
+  50% {
+    border-color: rgb(84 224 199 / 90%);
+    background-color: rgb(84 224 199 / 18%);
+    box-shadow: 0 0 16px 3px rgb(84 224 199 / 72%);
+  }
+}
+
+@keyframes loading-progress-track-breathe-reduced {
+  0%,
+  100% {
+    border-color: rgb(190 220 224 / 30%);
+    background-color: rgb(255 255 255 / 8%);
+    box-shadow: 0 0 4px rgb(84 224 199 / 22%);
+  }
+
+  50% {
+    border-color: rgb(84 224 199 / 72%);
+    background-color: rgb(84 224 199 / 14%);
+    box-shadow: 0 0 10px 2px rgb(84 224 199 / 48%);
+  }
+}
+
 @keyframes loading-progress-breathe {
   0%,
   100% {
-    opacity: 0.36;
-    box-shadow: 0 0 7px rgb(84 224 199 / 22%);
+    opacity: 0.22;
+    filter: brightness(0.7) saturate(0.85);
+    box-shadow: 0 0 3px rgb(84 224 199 / 16%);
   }
 
   50% {
     opacity: 1;
-    box-shadow: 0 0 22px rgb(84 224 199 / 78%);
+    filter: brightness(1.55) saturate(1.3);
+    box-shadow: 0 0 25px rgb(84 224 199 / 88%);
   }
 }
 
 @keyframes loading-progress-breathe-reduced {
   0%,
   100% {
-    opacity: 0.62;
-    box-shadow: 0 0 10px rgb(84 224 199 / 30%);
+    opacity: 0.52;
+    filter: brightness(0.9) saturate(0.95);
+    box-shadow: 0 0 8px rgb(84 224 199 / 32%);
   }
 
   50% {
-    opacity: 0.92;
-    box-shadow: 0 0 18px rgb(84 224 199 / 58%);
+    opacity: 0.98;
+    filter: brightness(1.25) saturate(1.1);
+    box-shadow: 0 0 20px rgb(84 224 199 / 70%);
   }
 }
 
@@ -351,6 +391,12 @@ body {
   .loading-progress-track::before {
     animation: none;
     opacity: 0.4;
+  }
+
+  .loading-screen[data-progress-phase='animating'] .loading-progress-track,
+  .loading-screen[data-progress-phase='finalizing'] .loading-progress-track,
+  .loading-screen[data-progress-phase='waiting'] .loading-progress-track {
+    animation: loading-progress-track-breathe-reduced 5.4s ease-in-out infinite;
   }
 
   .loading-screen[data-progress-phase='animating'] .loading-progress-fill,

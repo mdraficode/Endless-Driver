@@ -80,25 +80,7 @@ describe('fullscreen on game start', () => {
     fullscreen.dispose();
   });
 
-  it('retries fullscreen on a regular page click after the startup request is denied', async () => {
-    let enterFullscreen = (): void => undefined;
-    const requestFullscreen = vi.fn(async () => enterFullscreen());
-    const fixture = createFullscreenDocument(requestFullscreen);
-    enterFullscreen = fixture.enterFullscreen;
-    requestFullscreen.mockRejectedValueOnce(new Error('a user gesture is required'));
-
-    const fullscreen = new FullscreenOnStart(fixture.document);
-    expect(await fullscreen.request()).toBe(false);
-
-    fixture.dispatch('click', undefined, 1);
-    await flushEvents();
-
-    expect(requestFullscreen).toHaveBeenCalledTimes(2);
-    expect(fixture.isFullscreen()).toBe(true);
-    fullscreen.dispose();
-  });
-
-  it('continues to retry on mouse pointerdown', async () => {
+  it('waits for a regular mouse click instead of requesting before the click activation', async () => {
     let enterFullscreen = (): void => undefined;
     const requestFullscreen = vi.fn(async () => enterFullscreen());
     const fixture = createFullscreenDocument(requestFullscreen);
@@ -109,6 +91,28 @@ describe('fullscreen on game start', () => {
     expect(await fullscreen.request()).toBe(false);
 
     fixture.dispatch('pointerdown', 'mouse');
+    await flushEvents();
+    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+
+    fixture.dispatch('click', undefined, 1);
+    await flushEvents();
+
+    expect(requestFullscreen).toHaveBeenCalledTimes(2);
+    expect(fixture.isFullscreen()).toBe(true);
+    fullscreen.dispose();
+  });
+
+  it('retries fullscreen on keyboard interaction after the startup request is denied', async () => {
+    let enterFullscreen = (): void => undefined;
+    const requestFullscreen = vi.fn(async () => enterFullscreen());
+    const fixture = createFullscreenDocument(requestFullscreen);
+    enterFullscreen = fixture.enterFullscreen;
+    requestFullscreen.mockRejectedValueOnce(new Error('a user gesture is required'));
+
+    const fullscreen = new FullscreenOnStart(fixture.document);
+    expect(await fullscreen.request()).toBe(false);
+
+    fixture.dispatch('keydown');
     await flushEvents();
 
     expect(requestFullscreen).toHaveBeenCalledTimes(2);
