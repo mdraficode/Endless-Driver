@@ -258,7 +258,7 @@ parity claim is made without measurements on named hardware.
 **Open questions for the owner (blocking only at the phase noted):** car asset route and brand
 policy (Phase 6), region (Phase 4), audio scope (Phase 7), photo mode (Phase 8).
 
-**Next action:** ask the owner to verify the pushed build on Android Chrome, switching from the saved Roadster to Generic and confirming the game remains live and the choice persists after refresh. If any correction is needed, push it before rerunning checks. The handbrake rendered/device hit-zone review and separate loading-progress hard-refresh check also remain open. SSR is not a full-scene reflection system. Preserve push-before-test discipline.
+**Next action:** owner sign-off on the re-plan and those answers; only then is Phase 3 authorized.
 
 ## 10. Free-and-open asset strategy and the Japan region (2026-10-14)
 
@@ -308,7 +308,7 @@ The existing code-authored, unbadged Kaminari GT and traffic remain unchanged; t
 only. Runtime visual/device acceptance and manual-driving evidence remain outstanding.
 
 **Validation:** Documentation commit `489ce06b31836a9f47c04749c7056fa7d36884fa` was pushed before the full `npm run check` as required by the repository workflow. The check passed formatting, ESLint, GLSL guard, both TypeScript checks, 61/61 test files and 509/509 tests, 19 assets / 44,913,263 bytes, and the production build. GitHub Validate #181 succeeded; Pages Deploy #171 was still running when checked. The test run emitted existing non-fatal Three.js `BufferGeometry.toNonIndexed()` diagnostics and Vite's >500 kB chunk warning. This follow-up handoff entry changes documentation only.
-**Next action:** ask the owner to verify the pushed build on Android Chrome, switching from the saved Roadster to Generic and confirming the game remains live and the choice persists after refresh. If any correction is needed, push it before rerunning checks. The handbrake rendered/device hit-zone review and separate loading-progress hard-refresh check also remain open. SSR is not a full-scene reflection system. Preserve push-before-test discipline.
+**Next action:** owner authorizes Phase 3 (renderer migration, lighting, post stack, asset/material pipeline);
 only then does implementation start.
 
 ## 11. Phase 3 in progress (2026-10-14)
@@ -2025,7 +2025,7 @@ This is a narrow continuation of the appearance-only review authorized with the 
 
 **Verification and deployment:** the code/test commit was pushed before running checks. Full `npm run check` passed: Prettier, ESLint, GLSL guard, both TypeScript checks, 70 test files / 537 tests, `assets:verify` (20 assets / 47,814,431 bytes), and production build. GitHub Validate [#237](https://github.com/mdraficode/Endless-Driver/actions/runs/39989226518) and Pages Deploy [#226](https://github.com/mdraficode/Endless-Driver/actions/runs/39989226362) succeeded. The deployed page and JS bundle return HTTP 200; the current bundle `assets/index-Dj7jnbEU.js` includes the new mesh-pool diagnostic. No real browser/device reproduction or owner-device retest was performed.
 
-**Next action:** ask the owner to verify the pushed build on Android Chrome, switching from the saved Roadster to Generic and confirming the game remains live and the choice persists after refresh. If any correction is needed, push it before rerunning checks. The handbrake rendered/device hit-zone review and separate loading-progress hard-refresh check also remain open. SSR is not a full-scene reflection system. Preserve push-before-test discipline.
+**Next action:** ask the owner to hard-refresh the deployed default URL and confirm startup succeeds. If it still fails, request the exact URL, device/browser, screenshot, and console stack. Preserve the earlier auto-start/loading and page-level landscape fixes; no OS-level orientation claim, Phase 7 work, unrelated Phase 8 scope, visual acceptance, or FPS claim is made.
 
 ## 80. Best-effort automatic fullscreen on game start (2026-10-23)
 
@@ -2492,7 +2492,7 @@ Distant mountain geometry retains the existing four-range vertex budget but repl
 
 **Push-before-check / validation:** the follow-up source and regression test were committed and pushed as `8f9d654` before checks; status documentation was pushed in `93b6a7b`, then Prettier-aligned Markdown in `a5f330a`. `413d029` contains the earlier missing TSL `mix` import correction. Full `npm run check` passed at `a5f330a`: formatting, lint, GLSL guard, both TypeScript checks, 83 test files / 613 tests, 20 verified assets / 47,814,431 bytes, and production build. Existing non-fatal Three.js already-non-indexed-geometry notices and the Vite large-chunk warning remain. If a code fix is needed, push it before rerunning.
 
-**Next action:** ask the owner to verify the pushed build on Android Chrome, switching from the saved Roadster to Generic and confirming the game remains live and the choice persists after refresh. If any correction is needed, push it before rerunning checks. The handbrake rendered/device hit-zone review and separate loading-progress hard-refresh check also remain open. SSR is not a full-scene reflection system. Preserve push-before-test discipline.
+**Next action:** review the face and activation zone in a real browser and on touch devices. The added CSS-contract test verifies source declarations only; no rendered/browser touch hit test, device acceptance, or performance measurement is claimed.
 
 ## 124. Apply car-model changes without restarting the renderer (2026-10-25)
 
@@ -2504,4 +2504,4 @@ Distant mountain geometry retains the existing four-range vertex budget but repl
 
 **Push-before-check:** the code and regression were pushed as `3530b24`, followed by formatting and status documentation before validation. Full `npm run check` passed at `0b8487c`: Prettier, ESLint, GLSL guard, both TypeScript checks, 83 test files / 614 tests, 20 verified assets / 47,814,431 bytes, and production build. The newly reported Android failure still requires a real-device check.
 
-**Next action:** ask the owner to verify the pushed build on Android Chrome, switching from the saved Roadster to Generic and confirming the game remains live and the choice persists after refresh. If any correction is needed, push it before rerunning checks. The handbrake rendered/device hit-zone review and separate loading-progress hard-refresh check also remain open. SSR is not a full-scene reflection system. Preserve push-before-test discipline.
+**Next action:** have the owner verify on Android Chrome that Generic can be selected without a black screen and remains selected after refresh. If a correction is needed, push it before rerunning checks; until then, do not claim Android acceptance.
