@@ -188,10 +188,12 @@ const HERO_WARMUP_TIMEOUT_MS = 10_000;
  * How long the loading phase waits for the selected hero car model before the first frame.
  * The authored fallback is the roadster, so an unbounded background fetch (the old behaviour)
  * showed the wrong car for the first seconds of the drive. The download overlaps terrain
- * preparation and the main compile pass; if the budget expires anyway the classic fail-soft
- * swap still happens after the first frame.
+ * preparation and the main compile pass, so on a normal connection it finishes well inside the
+ * window and adds no time; 20 s covers a slow mobile connection for the 2.9 MB model (the
+ * earlier 8 s budget expired on the owner's device and the car still swapped mid-drive).
+ * If the budget expires anyway, the classic fail-soft swap still happens after the first frame.
  */
-const HERO_CAR_READY_TIMEOUT_MS = 8_000;
+const HERO_CAR_READY_TIMEOUT_MS = 20_000;
 
 /**
  * After the first frame, a WebGL2 context loss usually restores within a second or two. If the
@@ -721,14 +723,14 @@ export class Application {
           heroGate,
           HERO_CAR_READY_TIMEOUT_MS + 1_000, // the gate itself resolves at HERO_CAR_READY_TIMEOUT_MS
           0.85,
-          0.87,
+          0.88,
           'Loading your car model…',
         );
       }
       this.#warmupComplete = await this.#awaitWarmupProgress(
         worldCompile,
         WORLD_WARMUP_TIMEOUT_MS,
-        0.87,
+        0.88,
         0.97,
         'Warming up the graphics pipeline (first run is slower)…',
       );

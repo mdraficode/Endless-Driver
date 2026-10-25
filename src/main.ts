@@ -211,6 +211,17 @@ if (buildTagElement !== null && buildTagId !== null) {
   buildTagElement.textContent = `build ${buildTagId}`;
 }
 const fullscreenOnStart = new FullscreenOnStart();
+// Telemetry for the "black screen after automatic fullscreen on the loading screen" report:
+// all in-page fullscreen activity is now gated behind the first frame, so fullscreen entered
+// *during* the loading screen can only come from the browser UI (or a driver-level transition).
+// Recording it makes the next device report able to name the source instead of guessing.
+let fullscreenEnteredDuringLoading = false;
+let fullscreenAtSceneStart = false;
+const handleLoadingFullscreenChange = (): void => {
+  fullscreenEnteredDuringLoading = !fullscreenAtSceneStart && document.fullscreenElement !== null;
+};
+document.addEventListener('fullscreenchange', handleLoadingFullscreenChange);
+document.addEventListener('webkitfullscreenchange', handleLoadingFullscreenChange);
 const landscapeFallback = appRoot === null ? null : new LandscapeFallback(appRoot);
 const overlayRoot = document.querySelector<HTMLElement>('#diagnostics-overlay');
 const studioPanelRoot = document.querySelector<HTMLElement>('#studio-panel');
@@ -328,7 +339,10 @@ function isDebugEnabled(): boolean {
 }
 
 async function startDrivingScene(restarting = false): Promise<void> {
-  void fullscreenOnStart.request();
+  // No in-page fullscreen activity is allowed while the loading screen is up (the display
+  // surface must not swap during the shader pre-compile); see the onFirstFrame callback.
+  fullscreenAtSceneStart = document.fullscreenElement !== null;
+  fullscreenEnteredDuringLoading = false;
   if (!canvas) {
     reportStartupFailure(new Error('missing #viewport-canvas element'));
     return;
@@ -387,6 +401,18 @@ async function startDrivingScene(restarting = false): Promise<void> {
         // Until then a passive retry would enter fullscreen over the loading screen, while the
         // mobile GPU is at peak load — the "black screen after automatic fullscreen" report.
         fullscreenOnStart.armPassiveRetries();
+        // The silent startup attempt is made here (not at page load) so no in-page code can
+        // swap the display surface while the loading screen is up. Usually rejected without a
+        // user gesture; the armed passive retry below picks up the first drive input.
+        void fullscreenOnStart.request();
+        // If the browser (or a driver-level transition) entered fullscreen while the loading
+        // screen was still up, name it now: a surface swap mid-compile is the black-screen
+        // suspect, and this log lets the next device report confirm it.
+        if (fullscreenEnteredDuringLoading) {
+          console.info(
+            'Endless Driver: fullscreen was entered while the loading screen was up (outside in-page control); the display surface changed during the shader pre-compile.',
+          );
+        }
       },
       config,
       worldConfig: WORLD_CONFIG,
