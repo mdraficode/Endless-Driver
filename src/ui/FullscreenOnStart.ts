@@ -88,14 +88,36 @@ export function requestFullscreenBestEffort(
  * Successful entry also requests landscape orientation where native screen-orientation locking is
  * supported. Gesture listeners stay dormant while fullscreen is active and re-arm after an exit, so
  * the exit gesture itself is not intercepted but a later page interaction can retry.
+ *
+ * Passive gesture retries are *dormant until `armPassiveRetries()` is called* (the entrypoint does
+ * this once the first frame has been submitted): entering fullscreen swaps the display surface, and
+ * on a mobile GPU that swap in the middle of the startup shader pre-compile — peak GPU load, while
+ * the loading screen is still up — can black-screen the page. Explicit requests (the startup
+ * attempt, the pause-menu button) are unaffected.
  */
 export class FullscreenOnStart {
   readonly #document: Document;
   readonly #hasPointerEvents: boolean;
   #listenersAttached = false;
+  #passiveRetriesArmed = false;
   #disposed = false;
 
+  /**
+   * Arms the passive gesture retries. Called by the entrypoint when the first frame has been
+   * submitted, i.e. after the startup shader pre-compile — from here a fullscreen surface swap
+   * no longer races the GPU's heaviest startup work. Explicit `request()` calls are unaffected.
+   */
+  armPassiveRetries(): void {
+    if (this.#disposed) {
+      return;
+    }
+    this.#passiveRetriesArmed = true;
+  }
+
   readonly #handleGesture = (event: Event): void => {
+    if (!this.#passiveRetriesArmed) {
+      return;
+    }
     void this.request(event);
   };
 

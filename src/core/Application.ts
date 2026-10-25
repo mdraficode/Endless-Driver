@@ -90,6 +90,13 @@ export interface ApplicationOptions {
    */
   readonly onGraphicsLost?: (message: string) => void;
   /**
+   * Fires once the first frame has actually been submitted. The entrypoint uses it to arm the
+   * passive fullscreen gesture retries: entering fullscreen swaps the display surface, and on
+   * mobile GPUs that swap in the middle of the startup shader pre-compile (peak GPU load) can
+   * black-screen the page.
+   */
+  readonly onFirstFrame?: () => void;
+  /**
    * Resolved quality tier. Resolved at the entrypoint (it needs device probes) and reported here so
    * every diagnostics snapshot and performance statement can name the tier it was taken under.
    */
@@ -250,6 +257,7 @@ export class Application {
   readonly #onLoadingProgress: ((progress: LoadingProgress) => void) | null;
   readonly #onLoadingError: ((message: string) => void) | null;
   readonly #onGraphicsLost: ((message: string) => void) | null;
+  readonly #onFirstFrame: (() => void) | null;
   readonly #tier: TierResolution;
   readonly #steeringSensitivity: SteeringSensitivity;
   readonly #surfaceState: SurfaceState;
@@ -398,6 +406,7 @@ export class Application {
     this.#onLoadingProgress = options.onLoadingProgress ?? null;
     this.#onLoadingError = options.onLoadingError ?? null;
     this.#onGraphicsLost = options.onGraphicsLost ?? null;
+    this.#onFirstFrame = options.onFirstFrame ?? null;
     this.#carEffects = new CarEffects(this.#tier.id);
     this.#scene.addObject(this.#carEffects.root);
     this.#clock = new EnvironmentClock(options.clock);
@@ -1222,6 +1231,9 @@ export class Application {
       this.#disarmFirstFrameWatchdog();
       this.#reportLoadingProgress(1, 'Ready — the drive starts automatically');
       this.#setStatus(null);
+      // The GPU is no longer in its startup shader pre-compile; from here a fullscreen
+      // surface swap is safe, so the entrypoint may arm passive fullscreen retries.
+      this.#onFirstFrame?.();
     }
 
     // The car is the subject, so the car is what the lens focuses on: the focus plane sits at the

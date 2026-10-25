@@ -382,6 +382,12 @@ async function startDrivingScene(restarting = false): Promise<void> {
         setStatus(message, 'error');
         loadingScreen?.fail(message, 'Graphics lost');
       },
+      onFirstFrame: () => {
+        // Only now is a fullscreen surface swap safe: the startup shader pre-compile is done.
+        // Until then a passive retry would enter fullscreen over the loading screen, while the
+        // mobile GPU is at peak load — the "black screen after automatic fullscreen" report.
+        fullscreenOnStart.armPassiveRetries();
+      },
       config,
       worldConfig: WORLD_CONFIG,
       tier,
