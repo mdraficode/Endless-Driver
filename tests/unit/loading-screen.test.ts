@@ -90,7 +90,7 @@ describe('startup progress', () => {
       loading.update(0.94, 'Starting the simulation…');
 
       expect(dom.dataset['progressPhase']).toBe('finalizing');
-      expect(dom.percent.textContent).toBe('Est. 0%');
+      expect(dom.percent.textContent).toBe('0%');
       expect(dom.label.textContent).toBe('Finishing the first playable frame…');
       expect(dom.progressAttributes.get('aria-valuenow')).toBe('94');
 
@@ -100,7 +100,7 @@ describe('startup progress', () => {
       const afterOneSecond = Number.parseFloat(dom.bar.style.width);
       expect(afterOneSecond).toBeGreaterThan(7);
       expect(afterOneSecond).toBeLessThan(9);
-      expect(dom.percent.textContent).toMatch(/^Est\. \d+%$/);
+      expect(dom.percent.textContent).toMatch(/^\d+%$/);
       expect(dom.percent.textContent).not.toContain('-');
 
       for (let timestamp = 1_100; timestamp <= 5_000 && frames.size > 0; timestamp += 100) {
@@ -138,6 +138,28 @@ describe('startup progress', () => {
     }
   });
 
+  it('accounts for real elapsed time when animation frames are throttled', () => {
+    const { frames, advanceFrame } = stubLoadingWindow();
+
+    try {
+      const dom = makeLoadingDom();
+      const loading = new LoadingScreen(dom.root);
+      loading.show();
+      loading.update(0.48, 'Warming the road materials…');
+
+      advanceFrame(0);
+      advanceFrame(5_000);
+
+      const afterThrottledFrames = Number.parseFloat(dom.bar.style.width);
+      expect(afterThrottledFrames).toBeGreaterThan(40);
+      expect(afterThrottledFrames).toBeLessThan(45);
+      expect(dom.percent.textContent).toBe('42%');
+      expect(frames.size).toBeGreaterThan(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('finishes the visible bar before fading after the first playable frame arrives', () => {
     const { frames, hideTimers, advanceFrame } = stubLoadingWindow();
 
@@ -162,7 +184,7 @@ describe('startup progress', () => {
       expect(dom.bar.style.width).not.toBe('100%');
       expect(dom.progressAttributes.get('aria-valuenow')).toBe('100');
       expect(dom.label.textContent).toBe('First playable frame ready — finishing up…');
-      expect(dom.percent.textContent).toMatch(/^Est\. \d+%$/);
+      expect(dom.percent.textContent).toMatch(/^\d+%$/);
       expect(hideTimers).toHaveLength(0);
 
       for (let timestamp = 5_100; timestamp <= 10_000 && frames.size > 0; timestamp += 100) {
@@ -236,7 +258,7 @@ describe('startup progress', () => {
 
       expect(dom.progressAttributes.get('aria-valuenow')).toBe('20');
       expect(Number.parseFloat(dom.bar.style.width)).toBeGreaterThan(20);
-      expect(dom.percent.textContent).toMatch(/^Est\. \d+%$/);
+      expect(dom.percent.textContent).toMatch(/^\d+%$/);
       expect(dom.percent.textContent).not.toContain('-');
       expect(frames.size).toBeGreaterThan(0);
 

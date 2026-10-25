@@ -10,7 +10,8 @@ const MIN_VISUAL_PROGRESS_PER_SECOND = 0.04;
 const MAX_VISUAL_PROGRESS_PER_SECOND = 0.085;
 const PROGRESS_FOLLOW_GAIN = 0.5;
 const FIRST_FRAME_COMPLETION_RATE_PER_SECOND = 0.45;
-const MAX_FRAME_DELTA_MS = 100;
+const PROGRESS_INTEGRATION_STEP_SECONDS = 0.1;
+const MAX_PROGRESS_CATCH_UP_SECONDS = 60;
 
 /** Clamp reported startup progress and keep its completed-work fraction monotonic. */
 export function normalizeLoadingProgress(progress: number, previous = 0): number {
@@ -92,7 +93,7 @@ export class LoadingScreen {
 
       this.#root.dataset['progressPhase'] = 'finalizing';
       this.#label.textContent = 'First playable frame ready — finishing up…';
-      this.#percent.textContent = `Est. ${Math.max(0, Math.min(99, Math.floor(this.#displayFraction * 100)))}%`;
+      this.#percent.textContent = `${Math.max(0, Math.min(99, Math.floor(this.#displayFraction * 100)))}%`;
       this.#scheduleProgressFrame();
       return;
     }
@@ -124,13 +125,11 @@ export class LoadingScreen {
     }
 
     const elapsedMs =
-      this.#lastFrameTimestamp === null
-        ? 0
-        : Math.min(MAX_FRAME_DELTA_MS, Math.max(0, timestamp - this.#lastFrameTimestamp));
+      this.#lastFrameTimestamp === null ? 0 : Math.max(0, timestamp - this.#lastFrameTimestamp);
     this.#lastFrameTimestamp = timestamp;
 
     if (this.#completionPending) {
-      const elapsedSeconds = elapsedMs / 1000;
+      const elapsedSeconds = Math.min(MAX_PROGRESS_CATCH_UP_SECONDS, elapsedMs / 1000);
       this.#displayFraction = Math.min(
         1,
         this.#displayFraction + FIRST_FRAME_COMPLETION_RATE_PER_SECOND * elapsedSeconds,
@@ -144,16 +143,24 @@ export class LoadingScreen {
       return;
     }
 
-    const elapsedSeconds = elapsedMs / 1000;
-    const gapToReportedProgress = Math.max(0, this.#fraction - this.#displayFraction);
-    const visualRate = Math.min(
-      MAX_VISUAL_PROGRESS_PER_SECOND,
-      MIN_VISUAL_PROGRESS_PER_SECOND + gapToReportedProgress * PROGRESS_FOLLOW_GAIN,
-    );
-    this.#displayFraction = Math.min(1, this.#displayFraction + visualRate * elapsedSeconds);
+    this.#advanceEstimatedProgress(elapsedMs / 1000);
     this.#paintProgress();
     this.#scheduleProgressFrame();
   };
+
+  #advanceEstimatedProgress(elapsedSeconds: number): void {
+    let remainingSeconds = Math.min(MAX_PROGRESS_CATCH_UP_SECONDS, Math.max(0, elapsedSeconds));
+    while (remainingSeconds > 0 && this.#displayFraction < 1) {
+      const stepSeconds = Math.min(PROGRESS_INTEGRATION_STEP_SECONDS, remainingSeconds);
+      const gapToReportedProgress = Math.max(0, this.#fraction - this.#displayFraction);
+      const visualRate = Math.min(
+        MAX_VISUAL_PROGRESS_PER_SECOND,
+        MIN_VISUAL_PROGRESS_PER_SECOND + gapToReportedProgress * PROGRESS_FOLLOW_GAIN,
+      );
+      this.#displayFraction = Math.min(1, this.#displayFraction + visualRate * stepSeconds);
+      remainingSeconds -= stepSeconds;
+    }
+  }
 
   #paintProgress(): void {
     if (this.#displayFraction >= 1) {
@@ -174,8 +181,8 @@ export class LoadingScreen {
     this.#root.dataset['progressPhase'] =
       this.#fraction >= 0.94 || this.#displayFraction >= 0.94 ? 'finalizing' : 'animating';
     this.#bar.style.width = `${(this.#displayFraction * 100).toFixed(2)}%`;
-    const estimatedPercent = Math.max(0, Math.min(99, Math.floor(this.#displayFraction * 100)));
-    this.#percent.textContent = `Est. ${estimatedPercent}%`;
+    const visiblePercent = Math.max(0, Math.min(99, Math.floor(this.#displayFraction * 100)));
+    this.#percent.textContent = `${visiblePercent}%`;
     if (this.#fraction >= 0.94) {
       this.#label.textContent = 'Finishing the first playable frame…';
     }
@@ -184,8 +191,8 @@ export class LoadingScreen {
   #paintCompletionProgress(): void {
     this.#root.dataset['progressPhase'] = 'finalizing';
     this.#bar.style.width = `${(this.#displayFraction * 100).toFixed(2)}%`;
-    const estimatedPercent = Math.max(0, Math.min(99, Math.floor(this.#displayFraction * 100)));
-    this.#percent.textContent = `Est. ${estimatedPercent}%`;
+    const visiblePercent = Math.max(0, Math.min(99, Math.floor(this.#displayFraction * 100)));
+    this.#percent.textContent = `${visiblePercent}%`;
     this.#label.textContent = 'First playable frame ready — finishing up…';
     this.#progress.setAttribute(
       'aria-valuetext',
