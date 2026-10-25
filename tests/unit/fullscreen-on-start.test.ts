@@ -39,6 +39,11 @@ function createFullscreenDocument(
     },
     enterFullscreen(): void {
       active = true;
+      eventTarget.dispatchEvent(new Event('fullscreenchange'));
+    },
+    exitFullscreen(): void {
+      active = false;
+      eventTarget.dispatchEvent(new Event('fullscreenchange'));
     },
     isFullscreen(): boolean {
       return active;
@@ -73,10 +78,53 @@ describe('fullscreen on game start', () => {
     expect(requestFullscreen).toHaveBeenCalledTimes(2);
     expect(fixture.isFullscreen()).toBe(true);
 
-    // Once entered, the controller disarms so it will not fight a deliberate fullscreen exit.
+    // While fullscreen is active the controller disarms and does not interfere with the exit key.
     fixture.dispatch('keydown');
     await flushEvents();
     expect(requestFullscreen).toHaveBeenCalledTimes(2);
+    fullscreen.dispose();
+  });
+
+  it('re-arms for a later page interaction after fullscreen exits', async () => {
+    let enterFullscreen = (): void => undefined;
+    const requestFullscreen = vi.fn(async () => enterFullscreen());
+    const fixture = createFullscreenDocument(requestFullscreen);
+    enterFullscreen = fixture.enterFullscreen;
+
+    const fullscreen = new FullscreenOnStart(fixture.document);
+    expect(await fullscreen.request()).toBe(true);
+    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+
+    fixture.exitFullscreen();
+    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+
+    fixture.dispatch('keydown');
+    await flushEvents();
+
+    expect(requestFullscreen).toHaveBeenCalledTimes(2);
+    expect(fixture.isFullscreen()).toBe(true);
+    fullscreen.dispose();
+  });
+
+  it('keeps automatic retries armed if a resolved request did not enter fullscreen', async () => {
+    let enterFullscreen = (): void => undefined;
+    let attempts = 0;
+    const requestFullscreen = vi.fn(async () => {
+      attempts += 1;
+      if (attempts > 1) enterFullscreen();
+    });
+    const fixture = createFullscreenDocument(requestFullscreen);
+    enterFullscreen = fixture.enterFullscreen;
+
+    const fullscreen = new FullscreenOnStart(fixture.document);
+    expect(await fullscreen.request()).toBe(false);
+    expect(fixture.isFullscreen()).toBe(false);
+
+    fixture.dispatch('click', undefined, 1);
+    await flushEvents();
+
+    expect(requestFullscreen).toHaveBeenCalledTimes(2);
+    expect(fixture.isFullscreen()).toBe(true);
     fullscreen.dispose();
   });
 

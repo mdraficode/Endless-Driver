@@ -24,15 +24,17 @@ function requestLandscapeLockBestEffort(documentRef: Document): void {
   }
 }
 
+function getActiveFullscreenElement(documentRef: Document): Element | null {
+  const legacyDocument = documentRef as LegacyFullscreenDocument;
+  return documentRef.fullscreenElement ?? legacyDocument.webkitFullscreenElement ?? null;
+}
+
 /** Best-effort fullscreen request plus a native landscape-lock attempt where supported. */
 export function requestFullscreenBestEffort(
   documentRef: Document = document,
   gestureEvent?: Event,
 ): Promise<boolean> {
-  const legacyDocument = documentRef as LegacyFullscreenDocument;
-  const activeElement =
-    documentRef.fullscreenElement ?? legacyDocument.webkitFullscreenElement ?? null;
-  if (activeElement !== null) {
+  if (getActiveFullscreenElement(documentRef) !== null) {
     requestLandscapeLockBestEffort(documentRef);
     return Promise.resolve(true);
   }
@@ -60,6 +62,9 @@ export function requestFullscreenBestEffort(
 
   const attempt = Promise.resolve(request)
     .then(() => {
+      // Do not disarm gesture retries merely because a legacy or browser-specific API resolved;
+      // confirm that the browser actually exposed an active fullscreen element first.
+      if (getActiveFullscreenElement(documentRef) === null) return false;
       requestLandscapeLockBestEffort(documentRef);
       return true;
     })
@@ -81,7 +86,8 @@ export function requestFullscreenBestEffort(
  * the browser rejected startup. Mouse input uses click rather than pointerdown so the request is
  * made on the completed activation; touch and pen prefer pointerup, with click as a fallback.
  * Successful entry also requests landscape orientation where native screen-orientation locking is
- * supported.
+ * supported. Gesture listeners stay dormant while fullscreen is active and re-arm after an exit, so
+ * the exit gesture itself is not intercepted but a later page interaction can retry.
  */
 export class FullscreenOnStart {
   readonly #document: Document;
@@ -104,10 +110,19 @@ export class FullscreenOnStart {
     this.#handleGesture(event);
   };
 
+  readonly #handleFullscreenChange = (): void => {
+    if (getActiveFullscreenElement(this.#document) === null) {
+      // Keep the next real page interaction eligible after a browser or user exits fullscreen.
+      this.#attachListeners();
+    }
+  };
+
   constructor(documentRef: Document = document) {
     this.#document = documentRef;
     const view = documentRef.defaultView;
     this.#hasPointerEvents = view !== null && 'PointerEvent' in view;
+    this.#document.addEventListener('fullscreenchange', this.#handleFullscreenChange);
+    this.#document.addEventListener('webkitfullscreenchange', this.#handleFullscreenChange);
     this.#attachListeners();
   }
 
@@ -133,6 +148,8 @@ export class FullscreenOnStart {
       return;
     }
     this.#disposed = true;
+    this.#document.removeEventListener('fullscreenchange', this.#handleFullscreenChange);
+    this.#document.removeEventListener('webkitfullscreenchange', this.#handleFullscreenChange);
     this.#removeListeners();
   }
 
