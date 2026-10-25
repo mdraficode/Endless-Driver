@@ -170,23 +170,23 @@ describe('startup progress', () => {
       loading.show();
       loading.update(0.62, 'Applying the visual look…');
 
-      for (let timestamp = 0; timestamp <= 5_000; timestamp += 100) {
+      for (let timestamp = 0; timestamp <= 5_500; timestamp += 100) {
         advanceTime(timestamp);
       }
       const nearStagePercent = Number.parseFloat(dom.bar.style.width);
-      expect(nearStagePercent).toBeGreaterThan(64);
-      expect(nearStagePercent).toBeLessThan(68);
+      expect(nearStagePercent).toBeGreaterThan(78);
+      expect(nearStagePercent).toBeLessThan(83);
 
-      for (let timestamp = 5_100; timestamp <= 6_000; timestamp += 100) {
+      for (let timestamp = 5_600; timestamp <= 6_500; timestamp += 100) {
         advanceTime(timestamp);
       }
       const afterStall = Number.parseFloat(dom.bar.style.width);
-      expect(afterStall).toBeGreaterThan(77);
-      expect(afterStall).toBeLessThan(80);
+      expect(afterStall).toBeGreaterThan(90);
+      expect(afterStall).toBeLessThan(95);
       expect(dom.percent.textContent).toMatch(/^\d+%$/);
       expect(ticks.size).toBeGreaterThan(0);
 
-      for (let timestamp = 6_100; timestamp <= 9_000 && ticks.size > 0; timestamp += 100) {
+      for (let timestamp = 6_600; timestamp <= 9_000 && ticks.size > 0; timestamp += 100) {
         advanceTime(timestamp);
       }
       expect(dom.bar.style.width).toBe('100%');
