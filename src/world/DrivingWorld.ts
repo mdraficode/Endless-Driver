@@ -30,8 +30,10 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
   const root = new Group();
   root.name = 'driving-world';
   const surfaceTextures = new SurfaceTextureLibrary();
+  const terrainInitialRing = qualityTier === 'C' ? 0 : 1;
   const terrain = new TerrainWorld(terrainSampler, {
     enableParallaxOcclusion: qualityTier === 'A',
+    initialReadyRing: terrainInitialRing,
   });
   root.add(terrain.root);
   const distantMountains = new DistantMountainWorld(terrainSampler);

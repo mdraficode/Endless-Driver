@@ -118,6 +118,7 @@ export class Engine {
   readonly #config: RenderConfig;
   readonly #renderer: WebGPURenderer;
   readonly #timer = new Timer();
+  #stabilityMode: 'normal' | 'degraded' = 'normal';
   readonly #frameHandlers = new Set<FrameHandler>();
   readonly #resizeHandlers = new Set<ResizeHandler>();
   readonly #contextLostHandlers = new Set<ContextHandler>();

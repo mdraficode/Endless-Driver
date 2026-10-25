@@ -157,6 +157,8 @@ export class Application {
   readonly #terrainSampler: TerrainSampler;
   #carVisual: PlayerCarVisual;
   #carModelLoadTask: Promise<boolean> | null = null;
+  #carModelLoadVisual: PlayerCarVisual | null = null;
+  #heroPreloadStarted = false;
   readonly #carEffects: CarEffects;
   readonly #input: InputManager;
 
@@ -449,6 +451,11 @@ export class Application {
     next.sync(pose);
     this.#scene.addObject(next.root);
     this.#carVisual = next;
+    // A pending hero load for the previous visual must not block the new one.
+    if (this.#carModelLoadVisual === previous) {
+      this.#carModelLoadTask = null;
+      this.#carModelLoadVisual = null;
+    }
     this.#scene.removeObject(previous.root);
     previous.dispose();
 
@@ -527,6 +534,12 @@ export class Application {
       };
       this.#setStatus('Preparing the nearby road and terrain…');
       this.#reportLoadingProgress(0.55, 'Preparing the playable area…');
+      // Kick the hero model fetch early so it downloads while terrain builds, but do not block the first frame on it.
+      let heroPreload: Promise<boolean> | null = null;
+      if (!this.#heroPreloadStarted && this.#carVisual.model === 'generic-sport-coupe') {
+        this.#heroPreloadStarted = true;
+        heroPreload = this.#loadCarModel(this.#carVisual).catch(() => false);
+      }
       await this.#scene.prepareInitialContent(
         worldFocus,
         {
@@ -543,6 +556,8 @@ export class Application {
           );
         },
       );
+      // Hero preload continues in the background; do not await it here.
+      void heroPreload?.catch(() => undefined);
       this.#reportLoadingProgress(0.94, 'Starting the simulation…');
     }
 
@@ -1055,19 +1070,36 @@ export class Application {
     if (visual.isHeroModelLoaded) return Promise.resolve(true);
 
     const pending = this.#carModelLoadTask;
-    if (pending !== null) {
-      return pending.then(
-        () => this.#loadCarModel(visual),
-        () => this.#loadCarModel(visual),
-      );
+    const pendingVisual = this.#carModelLoadVisual;
+    if (pending !== null && pendingVisual === visual) {
+      return pending;
+    }
+    // If a previous visual's load is still pending, abandon its tracking and start fresh for the current visual.
+    if (pending !== null && pendingVisual !== null && pendingVisual !== visual) {
+      // Do not chain on the stale task; it will clear itself when it settles.
+      this.#carModelLoadTask = null;
+      this.#carModelLoadVisual = null;
     }
 
-    const task = visual.load(this.#engine.renderer);
+    let task: Promise<boolean>;
+    try {
+      task = visual.load(this.#engine.renderer);
+    } catch (error) {
+      console.warn('hero model load could not start:', error);
+      return Promise.resolve(false);
+    }
     this.#carModelLoadTask = task;
+    this.#carModelLoadVisual = visual;
     const clearTask = (): void => {
-      if (this.#carModelLoadTask === task) this.#carModelLoadTask = null;
+      if (this.#carModelLoadTask === task) {
+        this.#carModelLoadTask = null;
+        this.#carModelLoadVisual = null;
+      }
     };
     void task.then(clearTask, clearTask);
+    void task.catch((error: unknown) => {
+      console.warn('hero model failed; keeping the authored fallback:', error);
+    });
     return task;
   }
 

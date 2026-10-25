@@ -50,6 +50,8 @@ interface LoadedChunk {
 export interface TerrainWorldOptions {
   /** Enable the costly near-ring displacement march; reserved for an explicitly selected high tier. */
   readonly enableParallaxOcclusion?: boolean;
+  /** Override the number of rings that must be ready before the first frame (default 1 → 9 chunks). */
+  readonly initialReadyRing?: number;
 }
 
 /*
@@ -87,6 +89,18 @@ const ROCK_UV = 0.45; // rock_face_03: ~2.2 m face
  */
 /** The first-frame ground guarantee: prepare the center and its immediate eight neighbors. */
 const INITIAL_TERRAIN_READY_RING = 1;
+const INITIAL_TERRAIN_READY_RING_BY_TIER: Readonly<Record<string, number>> = {
+  C: 0,
+  B: 1,
+  A: 1,
+};
+
+export function resolveInitialTerrainReadyRing(qualityTier?: string): number {
+  if (qualityTier !== undefined && qualityTier in INITIAL_TERRAIN_READY_RING_BY_TIER) {
+    return INITIAL_TERRAIN_READY_RING_BY_TIER[qualityTier]!;
+  }
+  return INITIAL_TERRAIN_READY_RING;
+}
 const INITIAL_TERRAIN_PREPARATION_TIMEOUT_MS = 12_000;
 const INITIAL_TERRAIN_POLL_INTERVAL_MS = 16;
 
@@ -150,10 +164,14 @@ export class TerrainWorld implements SceneContent {
   #triangles = 0;
   #disposed = false;
 
+  #initialReadyRing: number;
+
   constructor(sampler: TerrainSampler, options: TerrainWorldOptions = {}) {
     this.#sampler = sampler;
     this.#config = sampler.config;
     this.#enableParallaxOcclusion = options.enableParallaxOcclusion ?? true;
+    this.#initialReadyRing =
+      options.initialReadyRing ?? INITIAL_TERRAIN_READY_RING;
     // Generation runs in a worker pool when the platform allows it and falls back to
     // this same sampler on the main thread otherwise; either way chunks are
     // bit-identical (one height function, two hosts).
@@ -521,7 +539,7 @@ export class TerrainWorld implements SceneContent {
     }
     const deadline = Date.now() + INITIAL_TERRAIN_PREPARATION_TIMEOUT_MS;
     this.updateStreaming(focus, velocity);
-    const startupChunks = this.#plan.filter((chunk) => chunk.ring <= INITIAL_TERRAIN_READY_RING);
+    const startupChunks = this.#plan.filter((chunk) => chunk.ring <= this.#initialReadyRing);
     const countStartupChunksLoaded = (): number =>
       startupChunks.reduce((count, chunk) => {
         const loaded = this.#chunks.get(chunkKey(chunk.cx, chunk.cz));

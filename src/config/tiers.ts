@@ -147,22 +147,15 @@ const TIER_C: TierDefinition = {
       useAsBackground: false,
     },
     postProcessing: {
-      // No MSAA on this tier; the edges are handled by FXAA, which is the tier's contract.
       antiAliasing: 'fxaa',
-      // Neither of the effects that need motion vectors is here, and for the same reason: both of them are
-      // paid for by the whole scene pass (a second attachment, previous-frame matrices per object, a
-      // full-screen resolve with a history buffer), and on the hardware this tier exists for that budget
-      // buys resolution. The velocity attachment is not even requested, so the cost of the pair on this
-      // tier is exactly zero — not "small".
       motionBlur: { enabled: false },
-      // Low-resolution, short-reach SSR is only assembled for driving/city scenes with a wet-road mask.
       ssr: {
         enabled: true,
-        resolutionScale: 0.33,
-        quality: 0.14,
-        maxDistanceMeters: 22,
-        thicknessMeters: 0.18,
-        intensity: 0.58,
+        resolutionScale: 0.35,
+        quality: 0.16,
+        maxDistanceMeters: 24,
+        thicknessMeters: 0.17,
+        intensity: 0.6,
       },
       temporalAntiAliasing: {
         enabled: false,
@@ -249,7 +242,7 @@ const TIER_B: TierDefinition = {
         adjustmentIntervalSeconds: 0.5,
         smoothing: 0.1,
       },
-      bloom: { strength: 0.16, radius: 0.4 },
+      bloom: { strength: 0.18, radius: 0.42 },
       // Retained only as a dormant look-dev value; depth of field stays off during gameplay.
       depthOfField: { bokehScale: 13 },
       ambientOcclusion: { enabled: true, resolutionScale: 0.5 },
