@@ -24,6 +24,7 @@ import { OriginManager } from '../world/origin';
 import { applyCollisionResponse, TreeCollisionField } from '../world/tree-collision';
 import { createWorldTerrainSampler } from '../world/world-terrain';
 import type { RapierModule } from '../physics/RapierModule';
+import { waitForWithinBudget } from '../shared/budget';
 import { yawFromQuat, type Vec3 } from '../shared/vector';
 import { DiagnosticsOverlay, type DiagnosticsSnapshot } from '../ui/DiagnosticsOverlay';
 import type { LoadingProgress } from '../ui/LoadingScreen';
@@ -151,10 +152,21 @@ const FIRST_FRAME_WATCHDOG_TIMEOUT_MS = 30_000;
 
 /**
  * How long the loading phase will wait for the material pre-compile before starting the frame
- * loop. The wait is bounded: after the timeout the compile keeps finishing in the background
- * and the first frame picks up whatever is ready.
+ * loop. The budget stays deliberately modest: fast GPUs finish in a few seconds, and on weak
+ * GPUs a partial warm-up plus the existing lost-context recovery is better than holding the
+ * loading bar still (the "stuck, then suddenly 100%" report). After the timeout the compile
+ * keeps finishing in the background and the first frame picks up whatever is ready.
  */
-const GRAPHICS_WARMUP_TIMEOUT_MS = 20_000;
+const GRAPHICS_WARMUP_TIMEOUT_MS = 8_000;
+
+/**
+ * How long the loading phase waits for the selected hero car model before the first frame.
+ * The authored fallback is the roadster, so an unbounded background fetch (the old behaviour)
+ * showed the wrong car for the first seconds of the drive. The download overlaps terrain
+ * preparation above; if the budget expires anyway the classic fail-soft swap still happens
+ * after the first frame.
+ */
+const HERO_CAR_READY_TIMEOUT_MS = 8_000;
 
 /**
  * After the first frame, a WebGL2 context loss usually restores within a second or two. If the
@@ -606,8 +618,10 @@ export class Application {
    * Starts the renderer and the frame loop.
    *
    * Async because `WebGPURenderer` builds its device, backend, and node systems asynchronously.
-   * Only the spawn-adjacent ground and foliage block the first frame. HDRI, LUT, surface maps,
-   * scanned trees and the detailed hero model load in idle slices after the loading overlay clears.
+   * Only the spawn-adjacent ground and foliage block the first frame, plus the selected hero car
+   * model within HERO_CAR_READY_TIMEOUT_MS (so the first frame shows the chosen car, not the
+   * authored roadster fallback). HDRI, LUT, surface maps and scanned trees load in idle slices
+   * after the loading overlay clears.
    */
   async start(): Promise<void> {
     if (!this.#engine.isInitialized) {
@@ -627,7 +641,8 @@ export class Application {
       };
       this.#setStatus('Preparing the nearby road and terrain…');
       this.#reportLoadingProgress(0.55, 'Preparing the playable area…');
-      // Kick the hero model fetch early so it downloads while terrain builds, but do not block the first frame on it.
+      // Kick the hero model fetch early so it downloads while terrain builds; the first frame
+      // then waits for it within HERO_CAR_READY_TIMEOUT_MS (see the gate below).
       let heroPreload: Promise<boolean> | null = null;
       if (!this.#heroPreloadStarted && this.#carVisual.model === 'generic-sport-coupe') {
         this.#heroPreloadStarted = true;
@@ -644,14 +659,27 @@ export class Application {
             ? Math.min(1, Math.max(0, fraction))
             : 0;
           this.#reportLoadingProgress(
-            0.55 + boundedFraction * 0.39,
+            0.55 + boundedFraction * 0.3,
             'Preparing the nearby road, terrain and trees…',
           );
         },
       );
-      // Hero preload continues in the background; do not await it here.
-      void heroPreload?.catch(() => undefined);
-      this.#reportLoadingProgress(0.9, 'Warming up the graphics pipeline…');
+      // Gate the first frame on the selected hero car (bounded). The authored fallback is a
+      // roadster, so starting while the 2.9 MB coupé is still downloading made the visible car
+      // change a few seconds into the drive — the "Roadster, then Generic Sports Car" report.
+      // In the common case the download already finished during terrain prep, so this adds no
+      // time; on a very slow connection the budget expires and the fail-soft swap happens
+      // after the first frame instead of blocking the bar unboundedly.
+      if (heroPreload !== null) {
+        this.#reportLoadingProgress(0.85, 'Loading your car model…');
+        const heroReady = await waitForWithinBudget(heroPreload, HERO_CAR_READY_TIMEOUT_MS);
+        if (heroReady === null) {
+          console.info(
+            'Endless Driver: the hero car was still downloading when the drive started; it will swap in as soon as it arrives.',
+          );
+        }
+      }
+      this.#reportLoadingProgress(0.88, 'Warming up the graphics pipeline…');
       // Pre-compile the scene's materials while the loading screen is still up, and *wait* for
       // it (bounded). The first frames after start used to pay live shader-compile cost; on a
       // weak mobile GPU that long in-frame GPU work trips the watchdog and loses the context —
