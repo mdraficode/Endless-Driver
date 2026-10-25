@@ -6,7 +6,7 @@ interface LegacyFullscreenElement extends HTMLElement {
   webkitRequestFullscreen?: () => Promise<void> | void;
 }
 
-const pendingGestureRequests = new WeakMap<Document, Promise<boolean>>();
+const gestureRequestByEvent = new WeakMap<Event, Promise<boolean>>();
 
 /** Attempt native landscape lock after fullscreen entry; unsupported/denied locks are harmless. */
 function requestLandscapeLockBestEffort(documentRef: Document): void {
@@ -38,7 +38,7 @@ export function requestFullscreenBestEffort(
   }
 
   if (gestureEvent !== undefined) {
-    const pending = pendingGestureRequests.get(documentRef);
+    const pending = gestureRequestByEvent.get(gestureEvent);
     if (pending !== undefined) {
       return pending;
     }
@@ -65,10 +65,11 @@ export function requestFullscreenBestEffort(
     })
     .catch(() => false);
   if (gestureEvent !== undefined) {
-    pendingGestureRequests.set(documentRef, attempt);
+    const event = gestureEvent;
+    gestureRequestByEvent.set(event, attempt);
     void attempt.then(() => {
-      if (pendingGestureRequests.get(documentRef) === attempt) {
-        pendingGestureRequests.delete(documentRef);
+      if (gestureRequestByEvent.get(event) === attempt) {
+        gestureRequestByEvent.delete(event);
       }
     });
   }
@@ -76,11 +77,10 @@ export function requestFullscreenBestEffort(
 }
 
 /**
- * Attempts fullscreen when a game session starts, then silently retries on an activation-capable
- * input event if the browser rejected startup. Touch and pen retries wait for pointerup: some
- * browsers, including Android Chrome, do not grant fullscreen activation on pointerdown. Successful
- * entry also requests landscape orientation where the browser allows native screen-orientation
- * locking.
+ * Attempts fullscreen when a game session starts, then retries on activation-capable page input if
+ * the browser rejected startup. Touch and pen prefer pointerup; clicks provide a fallback when a
+ * browser suppresses part of the pointer sequence. Successful entry also requests landscape
+ * orientation where native screen-orientation locking is supported.
  */
 export class FullscreenOnStart {
   readonly #document: Document;
@@ -104,11 +104,9 @@ export class FullscreenOnStart {
     }
   };
 
-  readonly #handleAccessibleClick = (event: Event): void => {
-    // Keep keyboard/screen-reader-generated click activation without duplicating pointer retries.
-    if ((event as MouseEvent).detail === 0) {
-      this.#handleGesture(event);
-    }
+  readonly #handleClick = (event: Event): void => {
+    // Retry for pointer clicks as well as keyboard/screen-reader clicks if earlier activation failed.
+    this.#handleGesture(event);
   };
 
   constructor(documentRef: Document = document) {
@@ -167,7 +165,7 @@ export class FullscreenOnStart {
         passive: true,
       });
     }
-    this.#document.addEventListener('click', this.#handleAccessibleClick, true);
+    this.#document.addEventListener('click', this.#handleClick, true);
     this.#document.addEventListener('keydown', this.#handleGesture, true);
   }
 
@@ -183,7 +181,7 @@ export class FullscreenOnStart {
       this.#document.removeEventListener('mousedown', this.#handleGesture, true);
       this.#document.removeEventListener('touchend', this.#handleGesture, true);
     }
-    this.#document.removeEventListener('click', this.#handleAccessibleClick, true);
+    this.#document.removeEventListener('click', this.#handleClick, true);
     this.#document.removeEventListener('keydown', this.#handleGesture, true);
   }
 }

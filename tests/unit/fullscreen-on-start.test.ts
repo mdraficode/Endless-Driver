@@ -27,10 +27,13 @@ function createFullscreenDocument(
 
   return {
     document: documentRef,
-    dispatch(type: string, pointerType?: string): void {
+    dispatch(type: string, pointerType?: string, detail?: number): void {
       const event = new Event(type);
       if (pointerType !== undefined) {
         Object.defineProperty(event, 'pointerType', { value: pointerType });
+      }
+      if (detail !== undefined) {
+        Object.defineProperty(event, 'detail', { value: detail });
       }
       eventTarget.dispatchEvent(event);
     },
@@ -74,6 +77,24 @@ describe('fullscreen on game start', () => {
     fixture.dispatch('keydown');
     await flushEvents();
     expect(requestFullscreen).toHaveBeenCalledTimes(2);
+    fullscreen.dispose();
+  });
+
+  it('retries fullscreen on a regular page click after the startup request is denied', async () => {
+    let enterFullscreen = (): void => undefined;
+    const requestFullscreen = vi.fn(async () => enterFullscreen());
+    const fixture = createFullscreenDocument(requestFullscreen);
+    enterFullscreen = fixture.enterFullscreen;
+    requestFullscreen.mockRejectedValueOnce(new Error('a user gesture is required'));
+
+    const fullscreen = new FullscreenOnStart(fixture.document);
+    expect(await fullscreen.request()).toBe(false);
+
+    fixture.dispatch('click', undefined, 1);
+    await flushEvents();
+
+    expect(requestFullscreen).toHaveBeenCalledTimes(2);
+    expect(fixture.isFullscreen()).toBe(true);
     fullscreen.dispose();
   });
 

@@ -16,16 +16,26 @@ describe('loading progress breathing style', () => {
     const reducedMotionRule =
       reducedMotionCss.match(new RegExp(`${ACTIVE_FILL_SELECTORS}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
     const breatheStart = css.indexOf('@keyframes loading-progress-breathe');
-    const glowStart = css.indexOf('@keyframes loading-progress-glow', breatheStart);
+    const reducedBreatheStart = css.indexOf('@keyframes loading-progress-breathe-reduced');
+    const reducedBreatheEnd = css.indexOf('@keyframes loading-progress-glow', reducedBreatheStart);
     const breatheKeyframes =
-      breatheStart < 0 || glowStart < 0 ? '' : css.slice(breatheStart, glowStart);
+      breatheStart < 0 || reducedBreatheStart < 0
+        ? ''
+        : css.slice(breatheStart, reducedBreatheStart);
+    const reducedBreatheKeyframes =
+      reducedBreatheStart < 0 || reducedBreatheEnd < 0
+        ? ''
+        : css.slice(reducedBreatheStart, reducedBreatheEnd);
 
     expect(activeRule).toMatch(
-      /animation:\s*loading-progress-breathe\s+3\.8s\s+ease-in-out\s+infinite;/,
+      /animation:\s*loading-progress-breathe\s+3\.2s\s+ease-in-out\s+infinite;/,
     );
-    expect(breatheKeyframes).toMatch(/0%,\s*100%\s*\{[^}]*opacity:\s*0\.78;/);
+    expect(breatheKeyframes).toMatch(/0%,\s*100%\s*\{[^}]*opacity:\s*0\.36;/);
     expect(breatheKeyframes).toMatch(/50%\s*\{[^}]*opacity:\s*1;/);
-    expect(reducedMotionRule).toMatch(/animation:\s*none;/);
-    expect(reducedMotionRule).toMatch(/opacity:\s*1;/);
+    expect(reducedMotionRule).toMatch(
+      /animation:\s*loading-progress-breathe-reduced\s+5\.4s\s+ease-in-out\s+infinite;/,
+    );
+    expect(reducedBreatheKeyframes).toMatch(/0%,\s*100%\s*\{[^}]*opacity:\s*0\.62;/);
+    expect(reducedBreatheKeyframes).toMatch(/50%\s*\{[^}]*opacity:\s*0\.92;/);
   });
 });

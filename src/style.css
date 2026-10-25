@@ -245,7 +245,7 @@ body {
 .loading-screen[data-progress-phase='finalizing'] .loading-progress-fill,
 .loading-screen[data-progress-phase='waiting'] .loading-progress-fill {
   transition: none;
-  animation: loading-progress-breathe 3.8s ease-in-out infinite;
+  animation: loading-progress-breathe 3.2s ease-in-out infinite;
 }
 
 .loading-screen[data-progress-phase='animating'] .loading-progress-fill::after {
@@ -276,13 +276,26 @@ body {
 @keyframes loading-progress-breathe {
   0%,
   100% {
-    opacity: 0.78;
-    box-shadow: 0 0 12px rgb(84 224 199 / 36%);
+    opacity: 0.36;
+    box-shadow: 0 0 7px rgb(84 224 199 / 22%);
   }
 
   50% {
     opacity: 1;
-    box-shadow: 0 0 20px rgb(84 224 199 / 68%);
+    box-shadow: 0 0 22px rgb(84 224 199 / 78%);
+  }
+}
+
+@keyframes loading-progress-breathe-reduced {
+  0%,
+  100% {
+    opacity: 0.62;
+    box-shadow: 0 0 10px rgb(84 224 199 / 30%);
+  }
+
+  50% {
+    opacity: 0.92;
+    box-shadow: 0 0 18px rgb(84 224 199 / 58%);
   }
 }
 
@@ -344,8 +357,7 @@ body {
   .loading-screen[data-progress-phase='finalizing'] .loading-progress-fill,
   .loading-screen[data-progress-phase='waiting'] .loading-progress-fill {
     transition-duration: 0.01ms;
-    animation: none;
-    opacity: 1;
+    animation: loading-progress-breathe-reduced 5.4s ease-in-out infinite;
   }
 
   .loading-screen[data-progress-phase='animating'] .loading-progress-fill::after,
