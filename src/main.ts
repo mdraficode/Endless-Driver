@@ -197,6 +197,18 @@ const loadingScreen =
   loadingRoot === null
     ? null
     : new LoadingScreen(loadingRoot, () => drivingApplication?.startDeferredAssetLoading());
+
+// Show the deployed bundle tag on the loading screen (it stays visible on the error state too).
+// Device reports can then be matched to the exact build — this is how a stale cached bundle
+// (e.g. one from before the loading fail-safe) is caught in one screenshot instead of guesswork.
+const buildTagElement = document.querySelector<HTMLElement>('#loading-build-tag');
+const buildTagMatch = document
+  .querySelector<HTMLScriptElement>('script[type="module"][src]')
+  ?.getAttribute('src')
+  ?.match(/index-([A-Za-z0-9_-]+)\.js/);
+if (buildTagElement !== null && buildTagMatch !== null) {
+  buildTagElement.textContent = `build ${buildTagMatch[1]}`;
+}
 const fullscreenOnStart = new FullscreenOnStart();
 const landscapeFallback = appRoot === null ? null : new LandscapeFallback(appRoot);
 const overlayRoot = document.querySelector<HTMLElement>('#diagnostics-overlay');

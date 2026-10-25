@@ -24,6 +24,20 @@ export function normalizeLoadingProgress(progress: number, previous = 0): number
 }
 
 /** Branded loading surface; gameplay is started automatically once the first frame is rendered. */
+export interface LoadingScreenOptions {
+  /**
+   * Ultimate backstop: after this long without completion, the screen fails itself with a retry,
+   * no matter what is happening behind it. This is the last line of defence — the application's
+   * own 30 s first-frame watchdog normally reports first, but a stale cached bundle, a hung
+   * startup stage, or any future bug must never be able to park the player at 99% forever.
+   */
+  readonly maxLoadingMs?: number;
+}
+
+/** Default lifetime for the loading backstop; generous for slow mobile cold starts. */
+const DEFAULT_MAX_LOADING_MS = 90_000;
+
+/** Branded loading surface; gameplay is started automatically once the first frame is rendered. */
 export class LoadingScreen {
   readonly #root: HTMLElement;
   readonly #bar: HTMLElement;
@@ -32,6 +46,8 @@ export class LoadingScreen {
   readonly #percent: HTMLElement;
   readonly #retryButton: HTMLButtonElement | null;
   readonly #onHidden: (() => void) | null;
+  readonly #maxLoadingMs: number;
+  #lifetimeTimer: number | null = null;
   #fraction = 0;
   #displayFraction = 0;
   #lastProgressTimestamp: number | null = null;
@@ -41,9 +57,10 @@ export class LoadingScreen {
   #finished = false;
   #hideTimer: number | null = null;
 
-  constructor(root: HTMLElement, onHidden?: () => void) {
+  constructor(root: HTMLElement, onHidden?: () => void, options: LoadingScreenOptions = {}) {
     this.#root = root;
     this.#onHidden = onHidden ?? null;
+    this.#maxLoadingMs = options.maxLoadingMs ?? DEFAULT_MAX_LOADING_MS;
     this.#bar = requireElement(root, '#loading-progress-fill');
     this.#progress = requireElement(root, '#loading-progress');
     this.#label = requireElement(root, '#loading-stage-label');
@@ -70,6 +87,7 @@ export class LoadingScreen {
     if (this.#retryButton !== null) {
       this.#retryButton.hidden = true;
     }
+    this.#armLifetimeBackstop();
     this.update(0, label);
   }
 
@@ -252,11 +270,31 @@ export class LoadingScreen {
     this.#lastProgressTimestamp = null;
   }
 
+  /** Arms the "never stuck forever" backstop for a fresh loading pass. */
+  #armLifetimeBackstop(): void {
+    this.#disarmLifetimeBackstop();
+    this.#lifetimeTimer = window.setTimeout(() => {
+      this.#lifetimeTimer = null;
+      if (this.#finished) {
+        return;
+      }
+      this.fail('The game has not finished loading in the expected time. Retry reloads the game.');
+    }, this.#maxLoadingMs);
+  }
+
+  #disarmLifetimeBackstop(): void {
+    if (this.#lifetimeTimer !== null) {
+      window.clearTimeout(this.#lifetimeTimer);
+      this.#lifetimeTimer = null;
+    }
+  }
+
   #finish(): void {
     if (this.#finished) {
       return;
     }
     this.#stopProgressAnimation();
+    this.#disarmLifetimeBackstop();
     this.#finished = true;
     this.#completionPending = false;
     this.#root.dataset['progressPhase'] = 'complete';
@@ -269,6 +307,7 @@ export class LoadingScreen {
     this.#finished = true;
     this.#completionPending = false;
     this.#stopProgressAnimation();
+    this.#disarmLifetimeBackstop();
     if (this.#hideTimer !== null) {
       window.clearTimeout(this.#hideTimer);
       this.#hideTimer = null;
@@ -294,6 +333,7 @@ export class LoadingScreen {
 
   hide(): void {
     this.#stopProgressAnimation();
+    this.#disarmLifetimeBackstop();
     if (this.#hideTimer !== null) {
       window.clearTimeout(this.#hideTimer);
       this.#hideTimer = null;

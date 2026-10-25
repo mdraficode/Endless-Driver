@@ -115,6 +115,54 @@ describe('startup progress', () => {
     }
   });
 
+  it('fails on its own if loading cannot finish, so the screen can never be stuck forever', () => {
+    const { hideTimers } = stubLoadingWindow();
+
+    try {
+      const dom = makeLoadingDom();
+      const loading = new LoadingScreen(dom.root);
+      loading.show();
+      // The backstop is the only setTimeout armed by show(); fire it as if the deadline passed.
+      expect(hideTimers).toHaveLength(1);
+      hideTimers[0]!();
+      expect(dom.dataset['state']).toBe('error');
+      expect(dom.retry.hidden).toBe(false);
+      expect(dom.label.textContent).toContain('Could not start:');
+      expect(dom.label.textContent).toContain('not finished loading');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('does not fire the backstop once the first playable frame has completed loading', () => {
+    const { ticks, hideTimers, advanceTime } = stubLoadingWindow();
+
+    try {
+      const dom = makeLoadingDom();
+      const loading = new LoadingScreen(dom.root);
+      loading.show();
+      const backstop = hideTimers[0]!;
+      loading.update(1, 'Ready — the drive starts automatically');
+
+      // Run the completion ramp; fire the one-shot hide timer as it becomes pending (the backstop
+      // is the first entry and must never be fired here).
+      for (let timestamp = 100; timestamp <= 12_000 && !dom.root.hidden; timestamp += 100) {
+        if (ticks.size === 0) break;
+        advanceTime(timestamp);
+        if (hideTimers.length > 1) {
+          hideTimers.pop()!();
+        }
+      }
+      expect(dom.root.hidden).toBe(true);
+
+      backstop();
+      expect(dom.dataset['state']).toBe('ready');
+      expect(dom.retry.hidden).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('advances gradually toward reported progress and completes only on the first playable frame', () => {
     const { ticks, hideTimers, advanceTime, getNow } = stubLoadingWindow();
 

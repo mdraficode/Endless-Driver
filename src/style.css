@@ -422,6 +422,15 @@ body {
   line-height: 1.4;
 }
 
+/* Deployed-bundle tag so a device report identifies the exact build it was running. */
+.loading-build-tag {
+  margin-left: 0.5rem;
+  color: rgb(127 215 199 / 70%);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+}
+
 .loading-retry {
   margin-top: 1rem;
   padding: 0.62rem 0.9rem;
