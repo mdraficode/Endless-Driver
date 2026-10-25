@@ -215,13 +215,14 @@ describe('startup progress', () => {
       expect(dom.label.textContent).toBe('First playable frame ready — finishing up…');
       expect(dom.progressAttributes.has('aria-valuetext')).toBe(true);
       expect(dom.classes.has('loading-screen-complete')).toBe(false);
-      expect(hideTimers).toHaveLength(0);
+      // Only the lifetime backstop (armed by show()) is pending; no fade has been scheduled yet.
+      expect(hideTimers).toHaveLength(1);
 
       const completionStart = getNow();
       advanceTime(completionStart + 50);
       expect(dom.bar.style.width).toBe('99.60%');
       expect(dom.percent.textContent).toBe('99%');
-      expect(hideTimers).toHaveLength(0);
+      expect(hideTimers).toHaveLength(1);
 
       advanceTime(completionStart + 100);
       expect(dom.bar.style.width).toBe('100%');
@@ -230,9 +231,10 @@ describe('startup progress', () => {
       expect(dom.percent.textContent).toBe('100%');
       expect(dom.progressAttributes.has('aria-valuetext')).toBe(false);
       expect(dom.classes.has('loading-screen-complete')).toBe(true);
-      expect(hideTimers).toHaveLength(1);
+      // The 520 ms fade timer joined the backstop.
+      expect(hideTimers).toHaveLength(2);
 
-      hideTimers[0]?.();
+      hideTimers[hideTimers.length - 1]!();
       expect(onHidden).toHaveBeenCalledTimes(1);
       expect(dom.root.hidden).toBe(true);
       expect(dom.rootAttributes.get('aria-hidden')).toBe('true');
@@ -327,7 +329,8 @@ describe('startup progress', () => {
       expect(dom.progressAttributes.get('aria-valuenow')).toBe('100');
       expect(dom.label.textContent).toBe('First playable frame ready — finishing up…');
       expect(dom.percent.textContent).toMatch(/^\d+%$/);
-      expect(hideTimers).toHaveLength(0);
+      // Only the lifetime backstop (armed by show()) is pending; no fade has been scheduled yet.
+      expect(hideTimers).toHaveLength(1);
 
       for (let timestamp = 5_100; timestamp <= 12_000 && ticks.size > 0; timestamp += 100) {
         advanceTime(timestamp);
@@ -340,9 +343,10 @@ describe('startup progress', () => {
       expect(dom.dataset['progressPhase']).toBe('complete');
       expect(dom.classes.has('loading-screen-complete')).toBe(true);
       expect(dom.progressAttributes.has('aria-valuetext')).toBe(false);
-      expect(hideTimers).toHaveLength(1);
+      // The 520 ms fade timer joined the backstop.
+      expect(hideTimers).toHaveLength(2);
 
-      hideTimers[0]?.();
+      hideTimers[hideTimers.length - 1]!();
       expect(dom.root.hidden).toBe(true);
     } finally {
       vi.unstubAllGlobals();
