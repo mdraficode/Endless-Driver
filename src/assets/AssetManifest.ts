@@ -220,10 +220,24 @@ export async function loadMaterialTextureSet(
     return texture;
   };
 
-  const diffuse = await load('diffuse', 'srgb');
-  const normal = await load('normal', 'linear');
-  const arm = await load('arm', 'linear');
-  const height = await load('height', 'linear');
+  const slots = await Promise.allSettled([
+    load('diffuse', 'srgb'),
+    load('normal', 'linear'),
+    load('arm', 'linear'),
+    load('height', 'linear'),
+  ] as const);
+  const failedSlot = slots.find((slot) => slot.status === 'rejected');
+  if (failedSlot?.status === 'rejected') {
+    for (const texture of loaded) {
+      texture.dispose();
+    }
+    throw failedSlot.reason;
+  }
+  const [diffuseResult, normalResult, armResult, heightResult] = slots;
+  const diffuse = diffuseResult.status === 'fulfilled' ? diffuseResult.value : null;
+  const normal = normalResult.status === 'fulfilled' ? normalResult.value : null;
+  const arm = armResult.status === 'fulfilled' ? armResult.value : null;
+  const height = heightResult.status === 'fulfilled' ? heightResult.value : null;
   if (diffuse === null || normal === null) {
     for (const texture of loaded) {
       texture.dispose();

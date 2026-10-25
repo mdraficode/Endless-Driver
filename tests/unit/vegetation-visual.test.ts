@@ -17,9 +17,9 @@ import { generateChunkVegetation } from '../../src/world/vegetation-placement';
  * matrices are plain data until something draws them.
  */
 describe('vegetation destruction visuals', () => {
-  it('prepares every chunk in the starting foliage window before drawing', async () => {
+  it('prepares near foliage before play and leaves distant chunks for the streamer', async () => {
     const sampler = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
-    const world = new VegetationWorld(sampler, { ...VEGETATION_CONFIG, radiusChunks: 1 });
+    const world = new VegetationWorld(sampler, { ...VEGETATION_CONFIG, radiusChunks: 3 });
     const progress: number[] = [];
 
     await world.prepareInitial({ x: -430, z: -1010 }, { x: 0, z: -50 }, (fraction) => {
@@ -31,9 +31,9 @@ describe('vegetation destruction visuals', () => {
     const completedChunkReports = progress.filter(
       (fraction, index) => index > 0 && fraction > (progress[index - 1] ?? 0),
     );
-    // The startup path yields and reports after each of the nine planned chunks; a larger
-    // synchronous batch makes low-end devices appear stuck while the loading screen is open.
-    expect(completedChunkReports).toHaveLength(9);
+    // The startup path yields and reports after each of the 25 near chunks. The outer ring
+    // remains queued for the per-frame streamer instead of delaying first play.
+    expect(completedChunkReports).toHaveLength(25);
 
     const stats = world.getContentStats();
     const leafyMesh = world.root.getObjectByName('vegetation-broadleaf-0');
@@ -43,9 +43,9 @@ describe('vegetation destruction visuals', () => {
       ((leafyMesh as InstancedMesh).material as MeshStandardNodeMaterial).positionNode,
     ).not.toBeNull();
     expect(stats.vegetationWindAmplitudeMeters).toBe(0.065);
-    expect(stats.vegetationChunks).toBe(9);
-    expect(stats.vegetationChunksDesired).toBe(9);
-    expect(stats.vegetationChunksPending).toBe(0);
+    expect(stats.vegetationChunks).toBe(25);
+    expect(stats.vegetationChunksDesired).toBe(49);
+    expect(stats.vegetationChunksPending).toBe(24);
     expect(stats.vegetationInstances).toBeGreaterThan(0);
     const groundCover = world.root.getObjectByName('ground-cover-grass');
     expect(groundCover).toBeInstanceOf(InstancedMesh);

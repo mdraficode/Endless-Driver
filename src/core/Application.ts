@@ -420,10 +420,9 @@ export class Application {
   /**
    * Starts the renderer and the frame loop.
    *
-   * Async because `WebGPURenderer` builds its device, backend, and node systems asynchronously;
-   * environment/surface assets and the initial terrain/vegetation windows also have to be ready.
-   * The first frame is scheduled only after those steps, so the player does not see the starting
-   * world materialise after control is handed over.
+   * Async because `WebGPURenderer` builds its device, backend, and node systems asynchronously.
+   * Independent startup assets load concurrently, and only the near terrain/foliage rings are required
+   * before the first frame; the existing streamers finish distant rings during early play.
    */
   async start(): Promise<void> {
     if (!this.#engine.isInitialized) {
@@ -432,12 +431,36 @@ export class Application {
       this.#carEffects.configureBackend(this.#engine.backend, this.#engine.renderer);
       // Load the detailed, compressed hero asynchronously; the authored visual remains visible while it arrives.
       void this.#carVisual.load(this.#engine.renderer);
-      this.#reportLoadingProgress(0.34, 'Loading sky and reflections…');
-      await this.#loadEnvironment();
-      this.#reportLoadingProgress(0.48, 'Warming the road materials…');
-      await this.#scene.loadContentSurfaces();
-      this.#reportLoadingProgress(0.62, 'Applying the visual look…');
-      await this.#loadLook();
+      let environmentReady = false;
+      let surfacesReady = false;
+      let lookReady = false;
+      const reportStartupAssets = (): void => {
+        const completedWeight =
+          (environmentReady ? 0.1 : 0) + (surfacesReady ? 0.14 : 0) + (lookReady ? 0.04 : 0);
+        const pending: string[] = [];
+        if (!environmentReady) pending.push('sky and reflections');
+        if (!surfacesReady) pending.push('road and terrain materials');
+        if (!lookReady) pending.push('the visual look');
+        this.#reportLoadingProgress(
+          0.34 + completedWeight,
+          pending.length === 0 ? 'Startup assets ready…' : `Loading ${pending.join(', ')}…`,
+        );
+      };
+      reportStartupAssets();
+      await Promise.all([
+        this.#loadEnvironment().then(() => {
+          environmentReady = true;
+          reportStartupAssets();
+        }),
+        this.#scene.loadContentSurfaces().then(() => {
+          surfacesReady = true;
+          reportStartupAssets();
+        }),
+        this.#loadLook().then(() => {
+          lookReady = true;
+          reportStartupAssets();
+        }),
+      ]);
       this.#shadowCamera = null;
       this.#syncShadowCamera(this.#activeCamera());
 

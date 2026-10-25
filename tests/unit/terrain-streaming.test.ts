@@ -5,10 +5,10 @@ import { TerrainWorld } from '../../src/world/TerrainWorld';
 import { createTerrainSampler } from '../../src/world/terrain-height';
 
 describe('terrain startup preparation', () => {
-  it('waits until the complete visual window is loaded before resolving', async () => {
+  it('prepares the near startup rings and leaves distant terrain queued for streaming', async () => {
     const config = {
       ...TERRAIN_CONFIG,
-      viewRadiusChunks: 1,
+      viewRadiusChunks: 4,
       lodSegments: [8, 4, 2] as const,
       lodRingStarts: [0, 1, 2] as const,
       maxBuildsPerFrame: 2,
@@ -27,10 +27,10 @@ describe('terrain startup preparation', () => {
     ).toBe(true);
 
     const stats = world.getContentStats();
-    expect(stats.terrainChunksLoaded).toBe(9);
-    expect(stats.terrainChunksDesired).toBe(9);
-    expect(stats.terrainBuildsPending).toBe(0);
-    expect(stats.terrainWorkerBacklog).toBe(0);
+    expect(stats.terrainChunksLoaded).toBeGreaterThanOrEqual(49);
+    expect(stats.terrainChunksLoaded).toBeLessThan(81);
+    expect(stats.terrainChunksDesired).toBe(81);
+    expect(stats.terrainBuildsPending).toBeGreaterThan(0);
     expect(stats.terrainPlanBuilds).toBe(1);
     world.dispose();
   });

@@ -85,6 +85,9 @@ const ROCK_UV = 0.45; // rock_face_03: ~2.2 m face
  * physics surface query mixes grip from (`terrain-surface.ts`): what a slope looks like
  * and how it drives cannot disagree.
  */
+/** The first-frame ground guarantee: prepare the center plus three terrain chunk rings. */
+const INITIAL_TERRAIN_READY_RING = 3;
+
 /**
  * True when a decoded texture is a uniform near-white sheet — the signature of a
  * driver that reported success but returned a blank image. Sampled at 32×32 so the
@@ -501,9 +504,9 @@ export class TerrainWorld implements SceneContent {
   }
 
   /**
-   * Fills the starting visual terrain window before the frame loop is allowed to render.
-   * Worker generation continues to run off-thread; in the synchronous fallback this yields
-   * between the same bounded upload batches instead of blocking the page in one long build.
+   * Prepares the near-start terrain rings before the frame loop is allowed to render.
+   * Terrain generation still queues the full window, but the distant rings continue streaming
+   * under the first playable frames instead of delaying the player until all 121 chunks are ready.
    */
   async prepareInitial(
     focus: { x: number; y: number; z: number },
@@ -513,26 +516,29 @@ export class TerrainWorld implements SceneContent {
     if (this.#disposed) {
       return;
     }
-    const reportProgress = (): void => {
-      const fraction =
-        this.#desiredCount === 0 ? 1 : Math.min(1, this.#chunks.size / this.#desiredCount);
-      onProgress?.(fraction);
-    };
     const deadline = Date.now() + 45_000;
     this.updateStreaming(focus, velocity);
+    const startupChunks = this.#plan.filter((chunk) => chunk.ring <= INITIAL_TERRAIN_READY_RING);
+    const countStartupChunksLoaded = (): number =>
+      startupChunks.reduce((count, chunk) => {
+        const loaded = this.#chunks.get(chunkKey(chunk.cx, chunk.cz));
+        return count + (loaded !== undefined && loaded.segments === chunk.segments ? 1 : 0);
+      }, 0);
+    const reportProgress = (): void => {
+      const fraction =
+        startupChunks.length === 0 ? 1 : countStartupChunksLoaded() / startupChunks.length;
+      onProgress?.(fraction);
+    };
     reportProgress();
     while (!this.#disposed) {
-      if (
-        this.#chunks.size === this.#desiredCount &&
-        this.#pendingBuilds === 0 &&
-        this.#generator.backlog === 0
-      ) {
+      const loaded = countStartupChunksLoaded();
+      if (loaded === startupChunks.length) {
         onProgress?.(1);
         return;
       }
       if (Date.now() >= deadline) {
         console.warn(
-          `terrain: initial preparation timed out (${this.#chunks.size}/${this.#desiredCount} chunks loaded, ${this.#pendingBuilds} pending)`,
+          `terrain: startup-ring preparation timed out (${loaded}/${startupChunks.length} near chunks loaded; ${this.#pendingBuilds} chunks remain in the full ${this.#desiredCount}-chunk window)`,
         );
         reportProgress();
         return;
