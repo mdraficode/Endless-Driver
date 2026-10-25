@@ -42,6 +42,8 @@ export interface DiagnosticsSnapshot {
    * frozen last frame; the "Graphics" row is how a device report proves the freeze cause.
    */
   readonly graphicsLost: boolean;
+  /** True once the main material pre-compile finished before the first frame. */
+  readonly warmupComplete: boolean;
   /**
    * Frame-handler exceptions the engine has survived. `count` is total since startup; `last` is
    * the most recent message, or `null` before the first one. Anything above zero is a real
@@ -303,6 +305,10 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
   {
     label: 'Graphics',
     format: (snapshot) => (snapshot.graphicsLost ? 'LOST — reload' : 'ok'),
+  },
+  {
+    label: 'Warmup',
+    format: (snapshot) => (snapshot.warmupComplete ? 'done' : 'partial — may jank'),
   },
   {
     label: 'Frame errors',

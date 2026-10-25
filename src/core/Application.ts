@@ -24,7 +24,7 @@ import { OriginManager } from '../world/origin';
 import { applyCollisionResponse, TreeCollisionField } from '../world/tree-collision';
 import { createWorldTerrainSampler } from '../world/world-terrain';
 import type { RapierModule } from '../physics/RapierModule';
-import { waitForWithinBudget } from '../shared/budget';
+import { warmupProgressFraction, waitForWithinBudget } from '../shared/budget';
 import { yawFromQuat, type Vec3 } from '../shared/vector';
 import { DiagnosticsOverlay, type DiagnosticsSnapshot } from '../ui/DiagnosticsOverlay';
 import type { LoadingProgress } from '../ui/LoadingScreen';
@@ -151,20 +151,38 @@ const CAMERA_VIEW_STORAGE_KEY = 'endless-driver:camera-view:v2';
 const FIRST_FRAME_WATCHDOG_TIMEOUT_MS = 30_000;
 
 /**
- * How long the loading phase will wait for the material pre-compile before starting the frame
- * loop. The budget stays deliberately modest: fast GPUs finish in a few seconds, and on weak
- * GPUs a partial warm-up plus the existing lost-context recovery is better than holding the
- * loading bar still (the "stuck, then suddenly 100%" report). After the timeout the compile
- * keeps finishing in the background and the first frame picks up whatever is ready.
+ * How long the loading phase waits for the main material pre-compile before the first frame.
+ *
+ * The scene's shaders can only be compiled in one of two places: before the first frame
+ * (loading screen up, a moving bar) or during gameplay (in-frame GPU stalls that read as a
+ * long freeze and can trip a weak GPU's watchdog — the "totally frozen after the game starts"
+ * report). There is no third place. Cutting this budget to 8 s moved the work into gameplay
+ * and produced the "frozen on the gameplay screen, then slowly running again after lagging"
+ * report: a weak GPU needs roughly twenty seconds for the full scene, and the unfinished
+ * remainder compiled inside the first frames.
+ *
+ * The budget therefore stays generous: fast GPUs finish in a few seconds (the wait ends as
+ * soon as the compile does), and on weak GPUs the loading bar reports steady progress for the
+ * whole time (`#awaitWarmupProgress`) so the wait reads as visible work, not a stall. The cost
+ * is one-time per device — browsers cache compiled WebGPU pipelines, so later loads are much
+ * faster. If this wait still feels too long on a device, the honest lever is a lower graphics
+ * tier in the menu (fewer effects to pre-compile).
  */
-const GRAPHICS_WARMUP_TIMEOUT_MS = 8_000;
+const WORLD_WARMUP_TIMEOUT_MS = 25_000;
+
+/**
+ * A short second compile pass after the main one: it picks up the hero car's materials (and
+ * anything the first pass missed). The hero model's download runs in parallel with the main
+ * pass, so this is usually just a handful of programs.
+ */
+const HERO_WARMUP_TIMEOUT_MS = 10_000;
 
 /**
  * How long the loading phase waits for the selected hero car model before the first frame.
  * The authored fallback is the roadster, so an unbounded background fetch (the old behaviour)
  * showed the wrong car for the first seconds of the drive. The download overlaps terrain
- * preparation above; if the budget expires anyway the classic fail-soft swap still happens
- * after the first frame.
+ * preparation and the main compile pass; if the budget expires anyway the classic fail-soft
+ * swap still happens after the first frame.
  */
 const HERO_CAR_READY_TIMEOUT_MS = 8_000;
 
@@ -206,6 +224,8 @@ export class Application {
   #carModelLoadTask: Promise<boolean> | null = null;
   #carModelLoadVisual: PlayerCarVisual | null = null;
   #heroPreloadStarted = false;
+  /** True once the main material pre-compile finished before the first frame. */
+  #warmupComplete = false;
   readonly #carEffects: CarEffects;
   readonly #input: InputManager;
 
@@ -618,10 +638,12 @@ export class Application {
    * Starts the renderer and the frame loop.
    *
    * Async because `WebGPURenderer` builds its device, backend, and node systems asynchronously.
-   * Only the spawn-adjacent ground and foliage block the first frame, plus the selected hero car
+   * What blocks the first frame: the spawn-adjacent ground and foliage, the selected hero car
    * model within HERO_CAR_READY_TIMEOUT_MS (so the first frame shows the chosen car, not the
-   * authored roadster fallback). HDRI, LUT, surface maps and scanned trees load in idle slices
-   * after the loading overlay clears.
+   * authored roadster fallback), and the material pre-compile within WORLD_WARMUP_TIMEOUT_MS
+   * (so the first frames never pay live shader-compile cost). The compile wait feeds the
+   * loading bar steady progress so it reads as work, not a stall. HDRI, LUT, surface maps and
+   * scanned trees load in idle slices after the loading overlay clears.
    */
   async start(): Promise<void> {
     if (!this.#engine.isInitialized) {
@@ -664,29 +686,52 @@ export class Application {
           );
         },
       );
-      // Gate the first frame on the selected hero car (bounded). The authored fallback is a
-      // roadster, so starting while the 2.9 MB coupé is still downloading made the visible car
-      // change a few seconds into the drive — the "Roadster, then Generic Sports Car" report.
-      // In the common case the download already finished during terrain prep, so this adds no
-      // time; on a very slow connection the budget expires and the fail-soft swap happens
-      // after the first frame instead of blocking the bar unboundedly.
-      if (heroPreload !== null) {
-        this.#reportLoadingProgress(0.85, 'Loading your car model…');
-        const heroReady = await waitForWithinBudget(heroPreload, HERO_CAR_READY_TIMEOUT_MS);
-        if (heroReady === null) {
-          console.info(
-            'Endless Driver: the hero car was still downloading when the drive started; it will swap in as soon as it arrives.',
-          );
-        }
-      }
-      this.#reportLoadingProgress(0.88, 'Warming up the graphics pipeline…');
       // Pre-compile the scene's materials while the loading screen is still up, and *wait* for
-      // it (bounded). The first frames after start used to pay live shader-compile cost; on a
-      // weak mobile GPU that long in-frame GPU work trips the watchdog and loses the context —
-      // the "totally frozen after the game starts" report. `compile` is asynchronous in the
-      // WebGPU renderer, so it yields to the loading UI instead of stalling it.
-      await this.#warmupGraphics();
-      this.#reportLoadingProgress(0.94, 'Starting the simulation…');
+      // it (bounded, with steady bar progress). The shaders can only compile here or during
+      // gameplay — starting the frame loop over an unready pipeline is exactly the post-start
+      // freeze the owner reported. `compile` is asynchronous in the WebGPU renderer, so it
+      // yields to the loading UI instead of stalling it.
+      const worldCompile = this.#beginGraphicsCompile();
+      // Gate the first frame on the selected hero car (bounded), in parallel with the main
+      // compile pass. The authored fallback is a roadster, so starting while the 2.9 MB coupé
+      // is still downloading made the visible car change a few seconds into the drive — the
+      // "Roadster, then Generic Sports Car" report. The download already overlapped terrain
+      // prep, so this usually settles immediately; on a very slow connection the budget
+      // expires and the fail-soft swap happens after the first frame.
+      if (heroPreload !== null) {
+        const heroGate = waitForWithinBudget(heroPreload, HERO_CAR_READY_TIMEOUT_MS).then(
+          (heroReady) => {
+            if (heroReady === null) {
+              console.info(
+                'Endless Driver: the hero car was still downloading when the drive started; it will swap in as soon as it arrives.',
+              );
+            }
+          },
+        );
+        await this.#awaitWarmupProgress(
+          heroGate,
+          HERO_CAR_READY_TIMEOUT_MS + 1_000, // the gate itself resolves at HERO_CAR_READY_TIMEOUT_MS
+          0.85,
+          0.87,
+          'Loading your car model…',
+        );
+      }
+      this.#warmupComplete = await this.#awaitWarmupProgress(
+        worldCompile,
+        WORLD_WARMUP_TIMEOUT_MS,
+        0.87,
+        0.97,
+        'Warming up the graphics pipeline (first run is slower)…',
+      );
+      if (!this.#warmupComplete) {
+        console.info(
+          'Endless Driver: the graphics warm-up was still running when the first frame started; it keeps finishing in the background.',
+        );
+      }
+      // Short second pass: picks up the hero car's materials (its download ran in parallel
+      // with the main pass above) and anything the first pass missed.
+      await this.#warmupGraphics(HERO_WARMUP_TIMEOUT_MS);
+      this.#reportLoadingProgress(0.99, 'Starting the simulation…');
     }
 
     this.#physics.resetAccumulator();
@@ -866,6 +911,7 @@ export class Application {
       isNight: this.#daylight?.isNight ?? false,
       rendererBackend: this.#engine.backend ?? 'pending',
       graphicsLost: this.#engine.isContextLost,
+      warmupComplete: this.#warmupComplete,
       frameErrors: {
         count: this.#engine.frameErrorCount,
         last:
@@ -1401,31 +1447,64 @@ export class Application {
   }
 
   /**
-   * Pre-compiles the scene's materials during the loading phase, bounded by a timeout.
-   *
-   * The first frames after start used to pay live shader-compile cost; on a weak mobile GPU
-   * that long in-frame GPU work is what trips the watchdog and loses the context (the freeze
-   * report). `renderer.compile` is asynchronous in the WebGPU renderer, so it yields to the
-   * loading UI; the timeout only stops *waiting* — the compile keeps finishing in the
-   * background and the first frame picks up whatever is ready. On the WebGL2 fallback the
-   * work is chunked with yields, so the loading bar keeps living through it.
+   * Starts one full-scene material pre-compile pass and returns a promise that never rejects.
+   * The pass runs on the GPU while the loading bar reports steady progress; already-compiled
+   * programs make a second pass cheap (it only compiles what the first one missed).
    */
-  async #warmupGraphics(timeoutMs = GRAPHICS_WARMUP_TIMEOUT_MS): Promise<void> {
+  #beginGraphicsCompile(): Promise<void> {
+    return this.#engine.renderer
+      .compile(this.#scene.scene, this.#activeCamera())
+      .catch((error: unknown) => {
+        console.warn(
+          'graphics warm-up pass failed; remaining materials will compile on first use:',
+          error,
+        );
+      });
+  }
+
+  /**
+   * Awaits a bounded warm-up pass while feeding the loading bar steady, visible progress
+   * (from→to across the whole timeout window, reported every 250 ms). Returns true when the
+   * pass finished within the budget; when it did not, the pass keeps finishing in the
+   * background and the first frame picks up whatever is ready.
+   */
+  async #awaitWarmupProgress(
+    task: Promise<void>,
+    timeoutMs: number,
+    from: number,
+    to: number,
+    label: string,
+  ): Promise<boolean> {
+    const startedAt = performance.now();
+    const interval = window.setInterval(() => {
+      if (this.#disposed) {
+        return;
+      }
+      this.#reportLoadingProgress(
+        warmupProgressFraction(performance.now() - startedAt, timeoutMs, from, to),
+        label,
+      );
+    }, 250);
     try {
-      const compile = this.#engine.renderer
-        .compile(this.#scene.scene, this.#activeCamera())
-        .catch((error: unknown) => {
-          console.warn('graphics warm-up failed; the first frame will compile on demand:', error);
-        });
-      await Promise.race([
-        compile,
-        new Promise<void>((resolve) => {
-          window.setTimeout(resolve, timeoutMs);
-        }),
-      ]);
-    } catch (error) {
-      console.warn('graphics warm-up interrupted; the first frame will compile on demand:', error);
+      return (await waitForWithinBudget(task, timeoutMs)) !== null;
+    } finally {
+      window.clearInterval(interval);
     }
+  }
+
+  /**
+   * Runs a short, bounded compile pass (the hero car's materials and anything the main pass
+   * missed). `renderer.compile` is asynchronous in the WebGPU renderer, so it yields to the
+   * loading UI; the timeout only stops *waiting* — the compile keeps finishing in the
+   * background and the first frame picks up whatever is ready.
+   */
+  async #warmupGraphics(timeoutMs = HERO_WARMUP_TIMEOUT_MS): Promise<void> {
+    const compile = this.#engine.renderer
+      .compile(this.#scene.scene, this.#activeCamera())
+      .catch((error: unknown) => {
+        console.warn('graphics warm-up failed; the first frame will compile on demand:', error);
+      });
+    await waitForWithinBudget(compile, timeoutMs);
   }
 
   /**

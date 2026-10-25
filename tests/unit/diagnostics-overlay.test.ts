@@ -54,6 +54,7 @@ const SNAPSHOT = {
   isNight: false,
   rendererBackend: 'webgl2',
   graphicsLost: false,
+  warmupComplete: true,
   frameErrors: { count: 0, last: null },
   particleSimulation: 'webgl2-disabled',
   postProcessing: true,
@@ -135,7 +136,7 @@ describe('full-screen diagnostics report', () => {
     expect(panel.getAttribute('aria-label')).toBe('Live diagnostics report');
     expect(panel.getAttribute('aria-hidden')).toBe('false');
     expect(grid.className).toBe('diagnostics-grid');
-    expect(grid.children).toHaveLength(32);
+    expect(grid.children).toHaveLength(33);
     expect(grid.children.every((metric) => metric.children.length === 2)).toBe(true);
 
     const labels = grid.children.map((metric) => metric.children[0]?.textContent);
@@ -197,6 +198,18 @@ describe('full-screen diagnostics report', () => {
       ]),
     );
     expect(lostReport.get('Graphics')).toBe('LOST — reload');
+
+    // A main compile pass that had to be cut off before the first frame is called out so a
+    // returning device report can prove "the freeze is the warm-up running out of budget".
+    expect(lostReport.get('Warmup')).toBe('done');
+    overlay.update({ ...SNAPSHOT, warmupComplete: false });
+    const partialReport = new Map(
+      grid.children.map((metric) => [
+        metric.children[0]?.textContent,
+        metric.children[1]?.textContent,
+      ]),
+    );
+    expect(partialReport.get('Warmup')).toBe('partial — may jank');
 
     overlay.dispose();
     expect(panel.removed).toBe(true);
