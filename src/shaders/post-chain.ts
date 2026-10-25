@@ -10,6 +10,7 @@ import {
   renderOutput,
   screenUV,
   int,
+  mix,
   texture3D,
   uniform,
   vec2,
