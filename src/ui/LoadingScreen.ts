@@ -31,6 +31,7 @@ export class LoadingScreen {
   readonly #label: HTMLElement;
   readonly #percent: HTMLElement;
   readonly #retryButton: HTMLButtonElement | null;
+  readonly #onHidden: (() => void) | null;
   #fraction = 0;
   #displayFraction = 0;
   #lastProgressTimestamp: number | null = null;
@@ -40,8 +41,9 @@ export class LoadingScreen {
   #finished = false;
   #hideTimer: number | null = null;
 
-  constructor(root: HTMLElement) {
+  constructor(root: HTMLElement, onHidden?: () => void) {
     this.#root = root;
+    this.#onHidden = onHidden ?? null;
     this.#bar = requireElement(root, '#loading-progress-fill');
     this.#progress = requireElement(root, '#loading-progress');
     this.#label = requireElement(root, '#loading-stage-label');
@@ -286,6 +288,7 @@ export class LoadingScreen {
     this.#root.hidden = true;
     this.#root.setAttribute('aria-hidden', 'true');
     this.#root.classList.remove('loading-screen-complete');
+    this.#onHidden?.();
   }
 }
 

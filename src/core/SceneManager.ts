@@ -602,9 +602,14 @@ export class SceneManager {
     this.#content.setVegetationStateProvider?.(provider);
   }
 
-  /** Resolves the content's async surface loading (terrain scans), if it has any. */
+  /** Loads optional content surfaces after the loading overlay clears. */
   async loadContentSurfaces(): Promise<void> {
     await this.#content.loadSurfaces?.();
+  }
+
+  /** Loads optional scanned models after the loading overlay clears. */
+  async loadDeferredContentAssets(): Promise<void> {
+    await this.#content.loadDeferredAssets?.();
   }
 
   getDiagnostics(): SceneDiagnostics {

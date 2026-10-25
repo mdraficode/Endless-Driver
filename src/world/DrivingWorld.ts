@@ -57,15 +57,9 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
   const detailScale = qualityTier === 'C' ? 0.6 : qualityTier === 'B' ? 0.85 : 1;
   const vegetation = new VegetationWorld(terrainSampler, undefined, detailScale, qualityTier);
   root.add(vegetation.root);
-  // Scanned CC0 trees replace the authored species behind the same scatter (Phase 5). Start
-  // loading immediately, then include it in first-world readiness so the forest is not swapped
-  // visibly after play begins; a failed asset leaves the authored species standing.
-  const scannedAssetsReady =
-    context.renderer === undefined
-      ? Promise.resolve()
-      : vegetation.adoptScanned(context.renderer).catch((error: unknown) => {
-          console.warn('scanned vegetation unavailable:', (error as Error).message);
-        });
+  // Scanned CC0 trees are optional visual upgrades. Keep the authored species for the first
+  // playable frame; the composition root starts GLB download/decode after the loading overlay hides.
+  let scannedAssetsStarted = false;
   // Yūhi Town + roadside poles (Increment 5b): static rural town, always resident.
   const town = new TownWorld(terrainSampler, surfaceTextures);
   root.add(town.root);
@@ -116,11 +110,9 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       aohara?.updateStreaming(focus);
       let terrainProgress = 0;
       let vegetationProgress = 0;
-      let scannedAssetsProgress = 0;
       let reportedProgress = -1;
       const reportProgress = (): void => {
-        const fraction =
-          terrainProgress * 0.45 + vegetationProgress * 0.45 + scannedAssetsProgress * 0.1;
+        const fraction = terrainProgress * 0.5 + vegetationProgress * 0.5;
         if (fraction > reportedProgress) {
           reportedProgress = fraction;
           onProgress?.(fraction);
@@ -134,12 +126,8 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
         vegetationProgress = Math.max(0, Math.min(1, fraction));
         reportProgress();
       });
-      const scannedAssetsPreparation = scannedAssetsReady.then(() => {
-        scannedAssetsProgress = 1;
-        reportProgress();
-      });
       reportProgress();
-      await Promise.all([terrainPreparation, vegetationPreparation, scannedAssetsPreparation]);
+      await Promise.all([terrainPreparation, vegetationPreparation]);
       onProgress?.(1);
     },
     collideTown: (car, deltaSeconds) => [
@@ -160,6 +148,17 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
         town.loadSurfaces(),
         aohara === null ? Promise.resolve() : aohara.loadSurfaces(),
       ]);
+    },
+    loadDeferredAssets: async () => {
+      if (scannedAssetsStarted || context.renderer === undefined) {
+        return;
+      }
+      scannedAssetsStarted = true;
+      try {
+        await vegetation.adoptScanned(context.renderer);
+      } catch (error) {
+        console.warn('scanned vegetation unavailable:', (error as Error).message);
+      }
     },
     getContentStats: () => {
       const terrainStats = terrain.getContentStats();

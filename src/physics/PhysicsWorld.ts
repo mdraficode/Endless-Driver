@@ -381,7 +381,7 @@ export class PhysicsWorld {
     return { x: this.#originX, z: this.#originZ };
   }
 
-  syncTerrain(focus: Vec3): void {
+  syncTerrain(focus: Vec3, maxNewChunksPerCall = Number.POSITIVE_INFINITY): void {
     const sampler = this.#terrainSampler;
     if (sampler === null || this.#disposed) {
       return;
@@ -401,10 +401,17 @@ export class PhysicsWorld {
     const segments = config.physicsSegmentsPerChunk;
     const size = config.chunkSizeMeters;
     const step = size / segments;
+    const buildBudget = Number.isFinite(maxNewChunksPerCall)
+      ? Math.max(0, Math.floor(maxNewChunksPerCall))
+      : Number.POSITIVE_INFINITY;
+    let createdChunks = 0;
     for (const chunk of planned) {
       const key = chunkKey(chunk.cx, chunk.cz);
       if (this.#terrainBodies.has(key)) {
         continue;
+      }
+      if (createdChunks >= buildBudget) {
+        break;
       }
       const originX = chunk.cx * size;
       const originZ = chunk.cz * size;
@@ -439,6 +446,7 @@ export class PhysicsWorld {
         body,
       );
       this.#terrainBodies.set(key, body);
+      createdChunks += 1;
     }
   }
 

@@ -62,10 +62,12 @@ export interface SceneContent {
     provider: ((key: string) => TreeVisualState | undefined) | null,
   ): void;
   /**
-   * Async surface/texture loading, resolved once at startup (the terrain's scanned sets).
-   * Content renders acceptably before it resolves; failure keeps the fallback material.
+   * Async surface/texture loading. Content renders acceptably with authored fallback materials;
+   * the application starts these optional downloads after the loading overlay has cleared.
    */
   loadSurfaces?(): Promise<void>;
+  /** Optional model/visual upgrades that must not block the first playable frame. */
+  loadDeferredAssets?(): Promise<void>;
   /** Flat numeric stats merged into scene diagnostics (chunk counts, triangles, budget). */
   getContentStats?(): Readonly<Record<string, number>>;
   /** Releases geometries, materials, and textures the content created. */

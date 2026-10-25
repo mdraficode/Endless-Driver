@@ -49,6 +49,21 @@ describe('terrain heightfield colliders', () => {
     physics.dispose();
   });
 
+  it('can spread heightfield creation across caller-sized frame budgets', () => {
+    const sampler = createTerrainSampler(TERRAIN_CONFIG);
+    const physics = new PhysicsWorld({ rapier });
+    physics.enableTerrain(sampler);
+    const focus = { x: 0, y: 0, z: 0 };
+
+    physics.syncTerrain(focus, 1);
+    expect(physics.terrainColliderChunks).toBe(1);
+    physics.syncTerrain(focus, 2);
+    expect(physics.terrainColliderChunks).toBe(3);
+    physics.syncTerrain(focus);
+    expect(physics.terrainColliderChunks).toBe(9);
+    physics.dispose();
+  });
+
   it('meets downward rays at the sampled height (axis convention)', () => {
     const sampler = createTerrainSampler(TERRAIN_CONFIG);
     const physics = new PhysicsWorld({ rapier });

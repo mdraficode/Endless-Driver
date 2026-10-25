@@ -86,7 +86,8 @@ describe('startup progress', () => {
 
     try {
       const dom = makeLoadingDom();
-      const loading = new LoadingScreen(dom.root);
+      const onHidden = vi.fn();
+      const loading = new LoadingScreen(dom.root, onHidden);
       loading.show();
       loading.update(0.94, 'Starting the simulation…');
 
@@ -150,6 +151,7 @@ describe('startup progress', () => {
       expect(hideTimers).toHaveLength(1);
 
       hideTimers[0]?.();
+      expect(onHidden).toHaveBeenCalledTimes(1);
       expect(dom.root.hidden).toBe(true);
       expect(dom.rootAttributes.get('aria-hidden')).toBe('true');
       expect(dom.classes.has('loading-screen-complete')).toBe(false);

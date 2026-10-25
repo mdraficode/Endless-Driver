@@ -193,7 +193,10 @@ declare global {
 let canvas = document.querySelector<HTMLCanvasElement>('#viewport-canvas');
 const appRoot = document.querySelector<HTMLElement>('#app');
 const loadingRoot = document.querySelector<HTMLElement>('#loading-screen');
-const loadingScreen = loadingRoot === null ? null : new LoadingScreen(loadingRoot);
+const loadingScreen =
+  loadingRoot === null
+    ? null
+    : new LoadingScreen(loadingRoot, () => drivingApplication?.startDeferredAssetLoading());
 const fullscreenOnStart = new FullscreenOnStart();
 const landscapeFallback = appRoot === null ? null : new LandscapeFallback(appRoot);
 const overlayRoot = document.querySelector<HTMLElement>('#diagnostics-overlay');

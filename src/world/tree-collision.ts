@@ -134,23 +134,35 @@ export class TreeCollisionField {
     this.#sampler = sampler;
   }
 
-  /** Keeps placements generated in the collision radius around a world point. */
-  sync(focusX: number, focusZ: number): void {
+  /**
+   * Keeps placements generated in the collision radius around a world point.
+   * `maxNewChunksPerCall` lets the application spread the initial nine-chunk window over frames;
+   * the center chunk is always generated first so collision at the car never waits on the ring.
+   */
+  sync(
+    focusX: number,
+    focusZ: number,
+    maxNewChunksPerCall = Number.POSITIVE_INFINITY,
+  ): void {
     const size = this.#sampler.config.chunkSizeMeters;
     const cx = Math.floor(focusX / size);
     const cz = Math.floor(focusZ / size);
-    if (cx === this.#centerChunkX && cz === this.#centerChunkZ) {
+    const centerChanged = cx !== this.#centerChunkX || cz !== this.#centerChunkZ;
+    if (!centerChanged && this.#chunks.size === 9) {
       return;
     }
     this.#centerChunkX = cx;
     this.#centerChunkZ = cz;
     const wanted = new Set<string>();
+    const missing: { cx: number; cz: number; distanceSquared: number }[] = [];
     for (let dz = -1; dz <= 1; dz += 1) {
       for (let dx = -1; dx <= 1; dx += 1) {
-        const key = chunkKey(cx + dx, cz + dz);
+        const chunkX = cx + dx;
+        const chunkZ = cz + dz;
+        const key = chunkKey(chunkX, chunkZ);
         wanted.add(key);
         if (!this.#chunks.has(key)) {
-          this.#chunks.set(key, generateChunkVegetation(this.#sampler, cx + dx, cz + dz));
+          missing.push({ cx: chunkX, cz: chunkZ, distanceSquared: dx * dx + dz * dz });
         }
       }
     }
@@ -158,6 +170,22 @@ export class TreeCollisionField {
       if (!wanted.has(key)) {
         this.#chunks.delete(key);
       }
+    }
+
+    missing.sort((a, b) => a.distanceSquared - b.distanceSquared);
+    const buildBudget = Number.isFinite(maxNewChunksPerCall)
+      ? Math.max(0, Math.floor(maxNewChunksPerCall))
+      : Number.POSITIVE_INFINITY;
+    let createdChunks = 0;
+    for (const chunk of missing) {
+      if (createdChunks >= buildBudget) {
+        break;
+      }
+      this.#chunks.set(
+        chunkKey(chunk.cx, chunk.cz),
+        generateChunkVegetation(this.#sampler, chunk.cx, chunk.cz),
+      );
+      createdChunks += 1;
     }
   }
 

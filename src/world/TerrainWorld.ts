@@ -85,8 +85,10 @@ const ROCK_UV = 0.45; // rock_face_03: ~2.2 m face
  * physics surface query mixes grip from (`terrain-surface.ts`): what a slope looks like
  * and how it drives cannot disagree.
  */
-/** The first-frame ground guarantee: prepare the center plus three terrain chunk rings. */
-const INITIAL_TERRAIN_READY_RING = 3;
+/** The first-frame ground guarantee: prepare the center and its immediate eight neighbors. */
+const INITIAL_TERRAIN_READY_RING = 1;
+const INITIAL_TERRAIN_PREPARATION_TIMEOUT_MS = 12_000;
+const INITIAL_TERRAIN_POLL_INTERVAL_MS = 16;
 
 /**
  * True when a decoded texture is a uniform near-white sheet — the signature of a
@@ -504,9 +506,10 @@ export class TerrainWorld implements SceneContent {
   }
 
   /**
-   * Prepares the near-start terrain rings before the frame loop is allowed to render.
-   * Terrain generation still queues the full window, but the distant rings continue streaming
-   * under the first playable frames instead of delaying the player until all 121 chunks are ready.
+   * Prepares only the spawn chunk and its immediate neighbors before the first frame.
+   * Terrain generation still queues the full window; farther rings stream during play instead of
+   * holding the player behind dozens of chunks. The 16 ms wait avoids a busy polling loop while
+   * workers generate those initial meshes.
    */
   async prepareInitial(
     focus: { x: number; y: number; z: number },
@@ -516,7 +519,7 @@ export class TerrainWorld implements SceneContent {
     if (this.#disposed) {
       return;
     }
-    const deadline = Date.now() + 45_000;
+    const deadline = Date.now() + INITIAL_TERRAIN_PREPARATION_TIMEOUT_MS;
     this.updateStreaming(focus, velocity);
     const startupChunks = this.#plan.filter((chunk) => chunk.ring <= INITIAL_TERRAIN_READY_RING);
     const countStartupChunksLoaded = (): number =>
@@ -543,7 +546,7 @@ export class TerrainWorld implements SceneContent {
         reportProgress();
         return;
       }
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      await new Promise<void>((resolve) => setTimeout(resolve, INITIAL_TERRAIN_POLL_INTERVAL_MS));
       if (!this.#disposed) {
         this.updateStreaming(focus, velocity);
         reportProgress();

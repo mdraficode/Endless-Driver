@@ -5,7 +5,7 @@ import { TerrainWorld } from '../../src/world/TerrainWorld';
 import { createTerrainSampler } from '../../src/world/terrain-height';
 
 describe('terrain startup preparation', () => {
-  it('prepares the near startup rings and leaves distant terrain queued for streaming', async () => {
+  it('prepares the spawn ring and leaves the majority of terrain queued for streaming', async () => {
     const config = {
       ...TERRAIN_CONFIG,
       viewRadiusChunks: 4,
@@ -27,7 +27,7 @@ describe('terrain startup preparation', () => {
     ).toBe(true);
 
     const stats = world.getContentStats();
-    expect(stats.terrainChunksLoaded).toBeGreaterThanOrEqual(49);
+    expect(stats.terrainChunksLoaded).toBeGreaterThanOrEqual(9);
     expect(stats.terrainChunksLoaded).toBeLessThan(81);
     expect(stats.terrainChunksDesired).toBe(81);
     expect(stats.terrainBuildsPending).toBeGreaterThan(0);

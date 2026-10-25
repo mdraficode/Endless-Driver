@@ -128,6 +128,24 @@ type StatusTone = 'info' | 'error';
  */
 const CAMERA_VIEW_STORAGE_KEY = 'endless-driver:camera-view:v2';
 
+function scheduleWhenIdle(callback: () => void, timeoutMs: number): void {
+  if (typeof window === 'undefined') {
+    setTimeout(callback, 0);
+    return;
+  }
+  const idleWindow = window as Window & {
+    requestIdleCallback?: (
+      callback: (deadline: { readonly didTimeout: boolean; timeRemaining(): number }) => void,
+      options?: { timeout: number },
+    ) => number;
+  };
+  if (typeof idleWindow.requestIdleCallback === 'function') {
+    idleWindow.requestIdleCallback(() => callback(), { timeout: timeoutMs });
+  } else {
+    window.setTimeout(callback, 250);
+  }
+}
+
 export class Application {
   readonly #config: RenderConfig;
   readonly #worldConfig: WorldConfig;
@@ -173,6 +191,7 @@ export class Application {
   #hudTimer = 0;
   #firstFrameRendered = false;
   #environmentLoaded = false;
+  #deferredAssetsStarted = false;
   #shadowCamera: PerspectiveCamera | null = null;
   #shadowCameraFieldOfView = 0;
   #disposed = false;
@@ -316,7 +335,9 @@ export class Application {
     }
 
     const initialPose = this.#car.getInterpolatedPose(0);
-    this.#physics.syncTerrain(initialPose.position);
+    // The spawn collider is created now; build the surrounding terrain window a chunk per frame
+    // so first-frame startup does not synchronously sample nine heightfields.
+    this.#physics.syncTerrain(initialPose.position, 1);
     // The complete initial terrain and foliage windows are prepared in `start()`, after
     // renderer/assets are ready and before the first frame is submitted.
     this.#carVisual.sync(initialPose);
@@ -417,50 +438,56 @@ export class Application {
     return this.#engine.isRunning;
   }
 
+  /** Starts nonessential image/model upgrades only after the playable view is visible. */
+  startDeferredAssetLoading(): void {
+    if (this.#disposed || this.#deferredAssetsStarted) {
+      return;
+    }
+    this.#deferredAssetsStarted = true;
+    const schedule = (delayMs: number, task: () => void): void => {
+      globalThis.setTimeout(() => {
+        if (this.#disposed) {
+          return;
+        }
+        scheduleWhenIdle(() => {
+          if (!this.#disposed) {
+            task();
+          }
+        }, 2_000);
+      }, delayMs);
+    };
+
+    // Keep the follow-up work in small waves: the player gets a responsive first drive before
+    // HDR, LUT, surface-map and scanned-model downloads compete for bandwidth or decode time.
+    schedule(0, () => {
+      void this.#loadEnvironment();
+      void this.#loadLook();
+      void this.#carVisual.load(this.#engine.renderer);
+    });
+    schedule(1_200, () => {
+      void this.#scene.loadContentSurfaces().catch((error: unknown) => {
+        console.warn('surface upgrades unavailable; keeping authored materials:', error);
+      });
+    });
+    schedule(3_200, () => {
+      void this.#scene.loadDeferredContentAssets().catch((error: unknown) => {
+        console.warn('scanned vegetation unavailable:', error);
+      });
+    });
+  }
+
   /**
    * Starts the renderer and the frame loop.
    *
    * Async because `WebGPURenderer` builds its device, backend, and node systems asynchronously.
-   * Independent startup assets load concurrently, and only the near terrain/foliage rings are required
-   * before the first frame; the existing streamers finish distant rings during early play.
+   * Only the spawn-adjacent ground and foliage block the first frame. HDRI, LUT, surface maps,
+   * scanned trees and the detailed hero model load in idle slices after the loading overlay clears.
    */
   async start(): Promise<void> {
     if (!this.#engine.isInitialized) {
       this.#reportLoadingProgress(0.2, 'Preparing the renderer…');
       await this.#engine.init();
       this.#carEffects.configureBackend(this.#engine.backend, this.#engine.renderer);
-      // Load the detailed, compressed hero asynchronously; the authored visual remains visible while it arrives.
-      void this.#carVisual.load(this.#engine.renderer);
-      let environmentReady = false;
-      let surfacesReady = false;
-      let lookReady = false;
-      const reportStartupAssets = (): void => {
-        const completedWeight =
-          (environmentReady ? 0.1 : 0) + (surfacesReady ? 0.14 : 0) + (lookReady ? 0.04 : 0);
-        const pending: string[] = [];
-        if (!environmentReady) pending.push('sky and reflections');
-        if (!surfacesReady) pending.push('road and terrain materials');
-        if (!lookReady) pending.push('the visual look');
-        this.#reportLoadingProgress(
-          0.34 + completedWeight,
-          pending.length === 0 ? 'Startup assets ready…' : `Loading ${pending.join(', ')}…`,
-        );
-      };
-      reportStartupAssets();
-      await Promise.all([
-        this.#loadEnvironment().then(() => {
-          environmentReady = true;
-          reportStartupAssets();
-        }),
-        this.#scene.loadContentSurfaces().then(() => {
-          surfacesReady = true;
-          reportStartupAssets();
-        }),
-        this.#loadLook().then(() => {
-          lookReady = true;
-          reportStartupAssets();
-        }),
-      ]);
       this.#shadowCamera = null;
       this.#syncShadowCamera(this.#activeCamera());
 
@@ -472,8 +499,8 @@ export class Application {
         y: initialPose.position.y,
         z: initialPose.position.z + this.#origin.offset.z,
       };
-      this.#setStatus('Preparing the terrain and tree line…');
-      this.#reportLoadingProgress(0.7, 'Preparing the starting roads, terrain and trees…');
+      this.#setStatus('Preparing the nearby road and terrain…');
+      this.#reportLoadingProgress(0.55, 'Preparing the playable area…');
       await this.#scene.prepareInitialContent(
         worldFocus,
         {
@@ -485,8 +512,8 @@ export class Application {
             ? Math.min(1, Math.max(0, fraction))
             : 0;
           this.#reportLoadingProgress(
-            0.7 + boundedFraction * 0.24,
-            'Preparing the starting roads, terrain and trees…',
+            0.55 + boundedFraction * 0.39,
+            'Preparing the nearby road, terrain and trees…',
           );
         },
       );
@@ -833,7 +860,7 @@ export class Application {
     {
       const carWorldX = this.#car.position.x + this.#origin.offset.x;
       const carWorldZ = this.#car.position.z + this.#origin.offset.z;
-      this.#treeField.sync(carWorldX, carWorldZ);
+      this.#treeField.sync(carWorldX, carWorldZ, 1);
       const linvel = this.#car.body.linvel();
       const hits = this.#treeField.evaluate(
         {
@@ -928,7 +955,7 @@ export class Application {
       },
       delta,
     );
-    this.#physics.syncTerrain(worldFocus);
+    this.#physics.syncTerrain(worldFocus, 1);
     this.#cockpitCamera.setEyeAnchor(this.#carVisual.cockpitEyeAnchor);
 
     if (this.#cameraMode === 'chase') {

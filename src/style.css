@@ -195,12 +195,28 @@ body {
 }
 
 .loading-progress-track {
+  position: relative;
+  isolation: isolate;
   height: 0.42rem;
   margin-top: 0.55rem;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid rgb(190 220 224 / 13%);
   border-radius: 999px;
   background: rgb(255 255 255 / 8%);
+}
+
+.loading-progress-track::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    0 0 10px 1px rgb(84 224 199 / 48%),
+    0 0 24px 3px rgb(84 224 199 / 22%);
+  content: '';
+  opacity: 0.24;
+  pointer-events: none;
+  animation: loading-progress-glow 3.4s ease-in-out infinite;
 }
 
 .loading-progress-fill {
@@ -256,6 +272,17 @@ body {
   }
 }
 
+@keyframes loading-progress-glow {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+
+  50% {
+    opacity: 0.72;
+  }
+}
+
 .loading-footnote {
   margin: 0.85rem 0 0;
   color: #7f929e;
@@ -292,6 +319,11 @@ body {
   .loading-screen,
   .loading-progress-fill {
     transition-duration: 0.01ms;
+  }
+
+  .loading-progress-track::before {
+    animation: none;
+    opacity: 0.4;
   }
 
   .loading-screen[data-progress-phase='animating'] .loading-progress-fill,

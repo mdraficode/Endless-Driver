@@ -31,9 +31,8 @@ describe('vegetation destruction visuals', () => {
     const completedChunkReports = progress.filter(
       (fraction, index) => index > 0 && fraction > (progress[index - 1] ?? 0),
     );
-    // The startup path yields and reports after each of the 25 near chunks. The outer ring
-    // remains queued for the per-frame streamer instead of delaying first play.
-    expect(completedChunkReports).toHaveLength(25);
+    // Only the spawn-adjacent chunk is prepared before play; the remaining 48 are streamed later.
+    expect(completedChunkReports).toHaveLength(1);
 
     const stats = world.getContentStats();
     const leafyMesh = world.root.getObjectByName('vegetation-broadleaf-0');
@@ -43,9 +42,9 @@ describe('vegetation destruction visuals', () => {
       ((leafyMesh as InstancedMesh).material as MeshStandardNodeMaterial).positionNode,
     ).not.toBeNull();
     expect(stats.vegetationWindAmplitudeMeters).toBe(0.065);
-    expect(stats.vegetationChunks).toBe(25);
+    expect(stats.vegetationChunks).toBe(1);
     expect(stats.vegetationChunksDesired).toBe(49);
-    expect(stats.vegetationChunksPending).toBe(24);
+    expect(stats.vegetationChunksPending).toBe(48);
     expect(stats.vegetationInstances).toBeGreaterThan(0);
     const groundCover = world.root.getObjectByName('ground-cover-grass');
     expect(groundCover).toBeInstanceOf(InstancedMesh);
