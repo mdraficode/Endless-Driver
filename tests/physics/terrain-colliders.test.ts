@@ -57,6 +57,8 @@ describe('terrain heightfield colliders', () => {
 
     physics.syncTerrain(focus, 1);
     expect(physics.terrainColliderChunks).toBe(1);
+    physics.update(1 / 60);
+    expect(raycastGroundHeight(physics, focus.x, focus.z)).not.toBeNull();
     physics.syncTerrain(focus, 2);
     expect(physics.terrainColliderChunks).toBe(3);
     physics.syncTerrain(focus);

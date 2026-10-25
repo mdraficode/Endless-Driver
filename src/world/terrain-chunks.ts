@@ -150,7 +150,7 @@ export function planPhysicsChunks(
   );
 }
 
-/** The physics window around an explicit centre chunk. */
+/** The physics window around an explicit centre chunk, ordered nearest first for budgeted builds. */
 export function planPhysicsAround(
   config: TerrainConfig,
   centerX: number,
@@ -163,5 +163,10 @@ export function planPhysicsAround(
       planned.push({ cx: centerX + dx, cz: centerZ + dz });
     }
   }
+  planned.sort((a, b) => {
+    const distanceA = (a.cx - centerX) ** 2 + (a.cz - centerZ) ** 2;
+    const distanceB = (b.cx - centerX) ** 2 + (b.cz - centerZ) ** 2;
+    return distanceA - distanceB;
+  });
   return planned;
 }
