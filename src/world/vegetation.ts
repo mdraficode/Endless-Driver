@@ -783,10 +783,14 @@ export class VegetationWorld {
       onProgress?.(fraction);
     };
     let changed = this.#retainPlannedChunks(planned);
-    const batchSize = 8;
+    // Keep each main-thread slice to one chunk so mobile browsers can paint and run the loading
+    // ticker between foliage batches instead of appearing frozen around the startup midpoint.
+    const batchSize = 1;
     const deadline = Date.now() + 30_000;
     let timedOut = false;
     reportProgress();
+    // Let the loading label/progress update paint before starting the first CPU-heavy foliage slice.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
     for (let start = 0; start < planned.length; start += batchSize) {
       if (this.#disposed) {
         return;

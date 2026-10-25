@@ -28,9 +28,12 @@ describe('vegetation destruction visuals', () => {
 
     expect(progress[0]).toBe(0);
     expect(progress[progress.length - 1]).toBe(1);
-    expect(
-      progress.some((fraction, index) => index > 0 && fraction > (progress[index - 1] ?? 0)),
-    ).toBe(true);
+    const completedChunkReports = progress.filter(
+      (fraction, index) => index > 0 && fraction > (progress[index - 1] ?? 0),
+    );
+    // The startup path yields and reports after each of the nine planned chunks; a larger
+    // synchronous batch makes low-end devices appear stuck while the loading screen is open.
+    expect(completedChunkReports).toHaveLength(9);
 
     const stats = world.getContentStats();
     const leafyMesh = world.root.getObjectByName('vegetation-broadleaf-0');
