@@ -1096,7 +1096,6 @@ export class UrbanStreetActivity {
       this.#doorHeadMesh = null;
     }
 
-    const eggCount = this.#eggs.length;
     const eggsOfKind = (kind: EasterEgg['kind']): EasterEgg[] =>
       this.#eggs.filter((egg) => egg.kind === kind);
     const jugglers = eggsOfKind(0);
@@ -2484,7 +2483,7 @@ export class UrbanStreetActivity {
         case 3: {
           // Spin dancer: a periodic 360° spin with a hop, standing still between cycles.
           const cycleT = (t + egg.cyclePhase) % SPINNER_CYCLE_SECONDS;
-          let spinYaw = egg.yaw;
+          let spinYaw: number;
           let hop = 0;
           if (cycleT < SPINNER_SPIN_SECONDS) {
             const p = cycleT / SPINNER_SPIN_SECONDS;
