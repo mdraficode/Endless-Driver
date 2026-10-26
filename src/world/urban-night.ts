@@ -66,9 +66,16 @@ import { bindScannedPbrMaps } from './scanned-pbr';
 import { createRoadWetPatchMaskTexture, createRoadWetnessNode } from './road-wet-patches';
 import { UrbanStreetFurniture } from './urban-furniture';
 import { UrbanAlleyFrontages } from './urban-alley-frontages';
-import { UrbanBackstreetProps } from './urban-backstreets';
+import {
+  UrbanBackstreetProps,
+  type UrbanAlleyPropPlacement,
+} from './urban-backstreets';
 import type { RoadNetwork } from './road-network';
-import { UrbanStreetActivity } from './urban-activity';
+import {
+  UrbanStreetActivity,
+  type AlleySitterSlot,
+  type HomeDoorSlot,
+} from './urban-activity';
 import type { PhysicsWorld } from '../physics/PhysicsWorld';
 import type { TownCarProbe, TownHit } from './town';
 import type { SceneContent, SceneContentContext } from './WorldContent';
@@ -222,6 +229,93 @@ function buildAoharaAlleyClearanceSamples(
     }
   }
   return samples;
+}
+
+/**
+ * Phase 8.2b: samples narrow-alley spots for the homeless sitters (world coordinates, one side
+ * of the alley centreline, facing along the alley). Candidates are sampled round-robin per
+ * alley edge so sitters spread across the backstreets; spots too close to a backstreet prop are
+ * dropped so the sitter and the clutter never occupy the same metre.
+ */
+export function sampleAoharaAlleySitterSlots(
+  network: RoadNetwork | undefined,
+  origin: readonly [number, number, number],
+  props: readonly UrbanAlleyPropPlacement[] = [],
+): readonly AlleySitterSlot[] {
+  if (network === undefined) {
+    return [];
+  }
+  const originX = origin[0];
+  const originZ = origin[2];
+  const alleyEdges = network.edges.filter((edge) => edge.roadClass === 'urban-alley');
+  const perEdge = (edge: RoadNetwork['edges'][number], t: number) => {
+    const points = edge.points;
+    if (points.length < 2) return null;
+    const lengths: number[] = [];
+    let total = 0;
+    for (let index = 0; index + 1 < points.length; index += 1) {
+      const start = points[index]!;
+      const end = points[index + 1]!;
+      const length = Math.hypot(end.x - start.x, end.z - start.z);
+      lengths.push(length);
+      total += length;
+    }
+    if (total <= 1) return null;
+    let distance = t * total;
+    for (let index = 0; index < lengths.length; index += 1) {
+      const length = lengths[index]!;
+      if (distance <= length || index === lengths.length - 1) {
+        const fraction = length > 0 ? Math.min(1, distance / length) : 0;
+        const start = points[index]!;
+        const end = points[index + 1]!;
+        const x = start.x + (end.x - start.x) * fraction;
+        const z = start.z + (end.z - start.z) * fraction;
+        const tangentX = (end.x - start.x) / (length || 1);
+        const tangentZ = (end.z - start.z) / (length || 1);
+        return { x, z, tangentX, tangentZ };
+      }
+      distance -= length;
+    }
+    return null;
+  };
+
+  // Round-robin: each pass takes the next fraction along each alley, so the first N candidates
+  // come from different alleys instead of one crowded backstreet.
+  const candidates: { x: number; z: number; yaw: number }[] = [];
+  for (const t of [0.32, 0.68]) {
+    for (const edge of alleyEdges) {
+      const sample = perEdge(edge, t);
+      if (sample === null) continue;
+      const normalX = -sample.tangentZ;
+      const normalZ = sample.tangentX;
+      const side = t < 0.5 ? -1 : 1;
+      const offset = Math.min(
+        0.45 * edge.halfWidthMeters,
+        Math.max(0.2, edge.halfWidthMeters - 0.45),
+      );
+      candidates.push({
+        x: sample.x + normalX * side * offset,
+        z: sample.z + normalZ * side * offset,
+        yaw: Math.atan2(sample.tangentX, sample.tangentZ),
+      });
+    }
+  }
+
+  const slots: AlleySitterSlot[] = [];
+  for (const candidate of candidates) {
+    const blockedByProp = props.some((prop) => {
+      const reach = 1.0 + Math.max(prop.widthMeters, prop.depthMeters) / 2;
+      return (candidate.x - prop.x) ** 2 + (candidate.z - prop.z) ** 2 < reach ** 2;
+    });
+    if (blockedByProp) continue;
+    slots.push({
+      x: candidate.x - originX,
+      z: candidate.z - originZ,
+      yaw: candidate.yaw,
+    });
+    if (slots.length >= 8) break;
+  }
+  return slots;
 }
 
 function selectClearCityBuildings(
@@ -1497,6 +1591,17 @@ export class UrbanNightWorld implements SceneContent {
     }
     this.#buildArchitecturalLights(budget.architecturalPointLights);
     this.#buildSignals(signalFlares);
+    // Phase 8.2b: home doors come from the facade kit's vintage eave placements (city-local,
+    // street-facing); alley sitters come from the sampled narrow alleys, kept clear of the
+    // backstreet props. Both remain deterministic per tier.
+    const homeDoorSlots: readonly HomeDoorSlot[] = this.#facadeKit.placements
+      .filter((placement) => placement.element === 'eave-trim')
+      .map((placement) => ({ x: placement.x, z: placement.z, yaw: placement.yaw }));
+    const alleySitterSlots: readonly AlleySitterSlot[] = sampleAoharaAlleySitterSlots(
+      options.roadNetwork,
+      [originX, originY, originZ],
+      this.#backstreetProps?.placements ?? [],
+    );
     this.#activity = this.#networkIntegrated
       ? new UrbanStreetActivity(tier, {
           ...(options.physics === undefined ? {} : { physics: options.physics }),
@@ -1505,6 +1610,8 @@ export class UrbanNightWorld implements SceneContent {
             : { trafficIntensity: options.trafficIntensity }),
           origin: [originX, originY, originZ],
           nightGain: this.#nightGain,
+          homeDoorSlots,
+          alleySitterSlots,
         })
       : null;
     if (this.#activity !== null) {

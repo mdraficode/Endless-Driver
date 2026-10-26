@@ -1,11 +1,14 @@
 import {
   BoxGeometry,
   Color,
+  ConeGeometry,
   CylinderGeometry,
   DynamicDrawUsage,
   Group,
   InstancedMesh,
+  Matrix4,
   Object3D,
+  SphereGeometry,
   type Material,
   type BufferGeometry,
 } from 'three';
@@ -46,9 +49,40 @@ const SIDEWALK_LIFT = 0.035;
 const LANE_OFFSET_METERS = 3.4;
 const MAX_UPDATE_DELTA_SECONDS = 0.1;
 const MAX_TRAFFIC_ROUTE_REJOIN_DISTANCE_METERS = 8;
+/** Zero-scale matrix used to hide an instance that is "inside" (e.g. a resident in a home). */
+const HIDDEN_INSTANCE_MATRIX = new Matrix4().makeScale(0, 0, 0);
 
 const PEDESTRIAN_COLORS = [0x455d76, 0x805749, 0x536348, 0x414248, 0x897753, 0x715d76] as const;
 const SKIN_COLORS = [0xc58e6c, 0xe0b890, 0x9d7259] as const;
+const BALLOON_COLORS = [
+  0xc94f4f,
+  0xe0a13c,
+  0x4f8ac9,
+  0x63a85e,
+  0x9a5fb5,
+] as const;
+
+// Phase 8.2b: home enter/exit and easter-egg timing (all deterministic, no physics).
+const DOOR_WALK_SPEED_METERS_PER_SECOND = 0.85;
+const DOOR_STAND_OFFSET_METERS = 2.2;
+const DOOR_LATERAL_SPREAD_METERS = 1.1;
+const DOOR_MIN_WAIT_SECONDS = 8;
+const DOOR_WAIT_SPREAD_SECONDS = 17;
+const DOOR_MIN_DWELL_SECONDS = 12;
+const DOOR_DWELL_SPREAD_SECONDS = 18;
+const EGG_KINDS = [0, 1, 2, 3] as const;
+const CONE_ORBIT_RADIUS_METERS = 0.28;
+const CONE_ORBIT_SPEED = 4.4;
+const CONE_HAND_HEIGHT_METERS = 0.85;
+const DOG_CYCLE_SECONDS = 27;
+const DOG_AWAKE_SECONDS = 5;
+const BALLOON_COUNT = 5;
+const BALLOON_RELEASE_PERIOD_SECONDS = 18;
+const BALLOON_FLIGHT_SECONDS = 6;
+const BALLOON_FLIGHT_HEIGHT_METERS = 4.5;
+const BALLOON_CLUSTER_HEIGHT_METERS = 1.32;
+const SPINNER_CYCLE_SECONDS = 14;
+const SPINNER_SPIN_SECONDS = 1.0;
 
 type Point2 = readonly [number, number];
 
@@ -154,6 +188,74 @@ interface Motorbike {
 interface TrafficQueueEntry {
   readonly vehicleIndex: number;
   distanceToSignal: number;
+}
+
+/**
+ * Phase 8.2b: a sampled spot in a narrow alley (city-local coordinates) where a homeless sitter
+ * can sit without colliding with backstreet props. The night world derives these from the road
+ * graph; standalone compositions fall back to deterministic sidewalk spots.
+ */
+export interface AlleySitterSlot {
+  readonly x: number;
+  readonly z: number;
+  /** Facing direction along the alley (local +Z convention). */
+  readonly yaw: number;
+}
+
+/**
+ * Phase 8.2b: a ground-floor home door (city-local coordinates, street-facing yaw) where a
+ * resident periodically enters and exits. Derived from the facade kit's vintage eave placements.
+ */
+export interface HomeDoorSlot {
+  readonly x: number;
+  readonly z: number;
+  readonly yaw: number;
+}
+
+/** Phase 8.2b: static alley sitter with a slow look-around and breathing sway. */
+interface Sitter {
+  readonly index: number;
+  readonly x: number;
+  readonly z: number;
+  readonly yaw: number;
+  readonly hasCardboard: boolean;
+  readonly lookPhase: number;
+  readonly breathePhase: number;
+}
+
+/**
+ * Phase 8.2b: one home door with its resident. The resident stands at a deterministic spot
+ * beside the doorway, walks in on a timer, stays hidden "inside" for a dwell, then exits.
+ */
+interface HomeDoor {
+  readonly index: number;
+  readonly doorX: number;
+  readonly doorZ: number;
+  readonly standX: number;
+  readonly standZ: number;
+  readonly doorYaw: number;
+  readonly walkDistance: number;
+  phase: 'waiting' | 'entering' | 'inside' | 'exiting';
+  timer: number;
+  progress: number;
+  readonly waitSeconds: number;
+  readonly dwellSeconds: number;
+  readonly idlePhase: number;
+}
+
+/**
+ * Phase 8.2b: deterministic street moments. Kinds: 0 = cone juggler, 1 = waking dog,
+ * 2 = balloon cart with a periodically released balloon, 3 = spin dancer.
+ */
+interface EasterEgg {
+  readonly index: number;
+  readonly kind: 0 | 1 | 2 | 3;
+  /** Index within its kind (cone/balloon instances are grouped per kind). */
+  readonly kindIndex: number;
+  readonly x: number;
+  readonly z: number;
+  readonly yaw: number;
+  readonly cyclePhase: number;
 }
 
 function wrapDistance(distance: number, routeLength: number): number {
@@ -461,6 +563,59 @@ function mergeActivityParts(parts: BufferGeometry[], name: string): BufferGeomet
   return merged;
 }
 
+/** Phase 8.2b: homeless sitter folded against the alley wall; local +Z is the facing direction. */
+function createSitterGeometry(): BufferGeometry {
+  return mergeBoxes(
+    [
+      { width: 0.32, height: 0.14, depth: 0.34, x: 0, y: 0.24, z: 0.12 },
+      { width: 0.28, height: 0.2, depth: 0.1, x: 0, y: 0.1, z: 0.26 },
+      { width: 0.36, height: 0.5, depth: 0.2, x: 0, y: 0.6, z: -0.02 },
+      { width: 0.09, height: 0.38, depth: 0.1, x: -0.22, y: 0.52, z: 0.06 },
+      { width: 0.09, height: 0.38, depth: 0.1, x: 0.22, y: 0.52, z: 0.06 },
+    ],
+    'aohara-alley-sitter-body',
+  );
+}
+
+/** Phase 8.2b: the cardboard collection box beside some sitters. */
+function createSitterCardboardGeometry(): BufferGeometry {
+  return mergeBoxes(
+    [
+      { width: 0.4, height: 0.26, depth: 0.3, x: 0, y: 0.13, z: 0 },
+      { width: 0.3, height: 0.05, depth: 0.22, x: 0.05, y: 0.29, z: 0.03 },
+    ],
+    'aohara-alley-sitter-cardboard',
+  );
+}
+
+/** Phase 8.2b: small street dog; local +Z is the facing direction, ground at y = 0. */
+function createDogGeometry(): BufferGeometry {
+  return mergeBoxes(
+    [
+      { width: 0.2, height: 0.16, depth: 0.44, x: 0, y: 0.16, z: 0 },
+      { width: 0.14, height: 0.14, depth: 0.16, x: 0, y: 0.26, z: 0.28 },
+      { width: 0.05, height: 0.06, depth: 0.05, x: -0.05, y: 0.35, z: 0.26 },
+      { width: 0.05, height: 0.06, depth: 0.05, x: 0.05, y: 0.35, z: 0.26 },
+      { width: 0.04, height: 0.05, depth: 0.14, x: 0, y: 0.3, z: -0.3 },
+      { width: 0.05, height: 0.14, depth: 0.05, x: -0.07, y: 0.07, z: 0.14 },
+      { width: 0.05, height: 0.14, depth: 0.05, x: 0.07, y: 0.07, z: 0.14 },
+      { width: 0.05, height: 0.14, depth: 0.05, x: -0.07, y: 0.07, z: -0.14 },
+      { width: 0.05, height: 0.14, depth: 0.05, x: 0.07, y: 0.07, z: -0.14 },
+    ],
+    'aohara-alley-dog',
+  );
+}
+
+/** Phase 8.2b: traffic cone for the juggler's act (origin at the base). */
+function createConeGeometry(): BufferGeometry {
+  const geometry = new ConeGeometry(0.07, 0.17, 8);
+  geometry.translate(0, 0.085, 0);
+  geometry.name = 'aohara-egg-juggler-cone';
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
 function createActivityMaterial(name: string, roughness = 0.78): MeshStandardNodeMaterial {
   const material = new MeshStandardNodeMaterial();
   material.color.setHex(0xffffff);
@@ -623,6 +778,17 @@ export interface UrbanStreetActivityOptions {
    * and stay faint by day. Omitted in the standalone look-dev composition.
    */
   readonly nightGain?: UniformNode<'float', number>;
+  /**
+   * Phase 8.2b: sampled narrow-alley spots for the homeless sitters (city-local). Omitted in
+   * standalone compositions, which fall back to deterministic sidewalk spots.
+   */
+  readonly alleySitterSlots?: readonly AlleySitterSlot[];
+  /**
+   * Phase 8.2b: ground-floor doors (facade kit eave placements, city-local) with a resident
+   * who enters and exits. Omitted in standalone compositions, which fall back to deterministic
+   * sidewalk-facing spots.
+   */
+  readonly homeDoorSlots?: readonly HomeDoorSlot[];
 }
 
 /**
@@ -666,7 +832,28 @@ export class UrbanStreetActivity {
   readonly #motorbikeRiderBodyMesh: InstancedMesh | null;
   readonly #motorbikeRiderHeadMesh: InstancedMesh | null;
   readonly #motorbikeByCollider = new Map<number, Motorbike>();
+  // Phase 8.2b: alley sitters, home door residents, and the deterministic street moments.
+  readonly #sitters: Sitter[];
+  readonly #doors: HomeDoor[];
+  readonly #eggs: EasterEgg[];
+  readonly #sitterBodyMesh: InstancedMesh | null;
+  readonly #sitterHeadMesh: InstancedMesh | null;
+  readonly #sitterCardboardMesh: InstancedMesh | null;
+  readonly #doorBodyMesh: InstancedMesh | null;
+  readonly #doorHeadMesh: InstancedMesh | null;
+  readonly #eggJugglerBodyMesh: InstancedMesh | null;
+  readonly #eggJugglerHeadMesh: InstancedMesh | null;
+  readonly #eggConeMesh: InstancedMesh | null;
+  readonly #eggDogMesh: InstancedMesh | null;
+  readonly #eggBalloonCartMesh: InstancedMesh | null;
+  readonly #eggBalloonVendorBodyMesh: InstancedMesh | null;
+  readonly #eggBalloonVendorHeadMesh: InstancedMesh | null;
+  readonly #eggBalloonMesh: InstancedMesh | null;
+  readonly #eggSpinnerBodyMesh: InstancedMesh | null;
+  readonly #eggSpinnerHeadMesh: InstancedMesh | null;
   #weaveTime = 0;
+  /** Render-time clock for the 8.2b periodic moments (sitters, doors, eggs). */
+  #clockTime = 0;
   readonly #meshes: InstancedMesh[] = [];
   readonly #materials: Material[] = [];
   readonly #pose: RoutePose = { x: 0, z: 0, yaw: 0 };
@@ -690,6 +877,10 @@ export class UrbanStreetActivity {
     this.#cyclists = this.#createCyclists(streetLife.cyclists);
     this.#cartVendors = this.#createCartVendors(streetLife.cartVendors);
     this.#motorbikes = this.#createMotorbikes(streetLife.motorbikes);
+    // Phase 8.2b: alley sitters, home door residents, and the deterministic street moments.
+    this.#sitters = this.#createSitters(streetLife.alleySitters, options.alleySitterSlots);
+    this.#doors = this.#createHomeDoors(streetLife.homeDoors, options.homeDoorSlots);
+    this.#eggs = this.#createEggs(streetLife.easterEggs);
     this.#createTrafficBodies();
     this.#createMotorbikeBodies();
     if (this.#physics !== null) {
@@ -863,6 +1054,156 @@ export class UrbanStreetActivity {
       this.#motorbikeRiderHeadMesh = null;
     }
 
+    const sitterCount = this.#sitters.length;
+    if (sitterCount > 0) {
+      this.#sitterBodyMesh = this.#createMesh(
+        createSitterGeometry(),
+        pedestrianBodyMaterial,
+        sitterCount,
+        'aohara-alley-sitter-bodies',
+      );
+      this.#sitterHeadMesh = this.#createMesh(
+        headGeometry,
+        pedestrianHeadMaterial,
+        sitterCount,
+        'aohara-alley-sitter-heads',
+      );
+      const cardboardMaterial = createActivityMaterial('aohara-alley-sitter-cardboard-pbr', 0.95);
+      cardboardMaterial.color.setHex(0x8a6f4d);
+      this.#materials.push(cardboardMaterial);
+      this.#sitterCardboardMesh = this.#createMesh(
+        createSitterCardboardGeometry(),
+        cardboardMaterial,
+        sitterCount,
+        'aohara-alley-sitter-cardboard',
+      );
+    } else {
+      this.#sitterBodyMesh = null;
+      this.#sitterHeadMesh = null;
+      this.#sitterCardboardMesh = null;
+    }
+
+    const doorCount = this.#doors.length;
+    if (doorCount > 0) {
+      this.#doorBodyMesh = this.#createMesh(
+        pedestrianBodyGeometry,
+        pedestrianBodyMaterial,
+        doorCount,
+        'aohara-home-door-resident-bodies',
+      );
+      this.#doorHeadMesh = this.#createMesh(
+        headGeometry,
+        pedestrianHeadMaterial,
+        doorCount,
+        'aohara-home-door-resident-heads',
+      );
+    } else {
+      this.#doorBodyMesh = null;
+      this.#doorHeadMesh = null;
+    }
+
+    const eggCount = this.#eggs.length;
+    const eggsOfKind = (kind: EasterEgg['kind']): EasterEgg[] =>
+      this.#eggs.filter((egg) => egg.kind === kind);
+    const jugglers = eggsOfKind(0);
+    const dogs = eggsOfKind(1);
+    const balloonCarts = eggsOfKind(2);
+    const spinners = eggsOfKind(3);
+    if (jugglers.length > 0) {
+      this.#eggJugglerBodyMesh = this.#createMesh(
+        pedestrianBodyGeometry,
+        pedestrianBodyMaterial,
+        jugglers.length,
+        'aohara-egg-juggler-bodies',
+      );
+      this.#eggJugglerHeadMesh = this.#createMesh(
+        headGeometry,
+        pedestrianHeadMaterial,
+        jugglers.length,
+        'aohara-egg-juggler-heads',
+      );
+      const coneMaterial = createActivityMaterial('aohara-egg-juggler-cone-pbr', 0.6);
+      coneMaterial.color.setHex(0xd4611a);
+      this.#materials.push(coneMaterial);
+      this.#eggConeMesh = this.#createMesh(
+        createConeGeometry(),
+        coneMaterial,
+        jugglers.length * 3,
+        'aohara-egg-juggler-cones',
+      );
+    } else {
+      this.#eggJugglerBodyMesh = null;
+      this.#eggJugglerHeadMesh = null;
+      this.#eggConeMesh = null;
+    }
+    if (dogs.length > 0) {
+      const dogMaterial = createActivityMaterial('aohara-alley-dog-fur', 0.9);
+      dogMaterial.color.setHex(0x6b4f35);
+      this.#materials.push(dogMaterial);
+      this.#eggDogMesh = this.#createMesh(
+        createDogGeometry(),
+        dogMaterial,
+        dogs.length,
+        'aohara-egg-dogs',
+      );
+    } else {
+      this.#eggDogMesh = null;
+    }
+    if (balloonCarts.length > 0) {
+      const balloonCartMaterial = createActivityMaterial('aohara-balloon-cart-wood', 0.85);
+      balloonCartMaterial.color.setHex(0x5d5a72);
+      this.#materials.push(balloonCartMaterial);
+      this.#eggBalloonCartMesh = this.#createMesh(
+        createCartGeometry(),
+        balloonCartMaterial,
+        balloonCarts.length,
+        'aohara-egg-balloon-carts',
+      );
+      this.#eggBalloonVendorBodyMesh = this.#createMesh(
+        pedestrianBodyGeometry,
+        pedestrianBodyMaterial,
+        balloonCarts.length,
+        'aohara-egg-balloon-vendor-bodies',
+      );
+      this.#eggBalloonVendorHeadMesh = this.#createMesh(
+        headGeometry,
+        pedestrianHeadMaterial,
+        balloonCarts.length,
+        'aohara-egg-balloon-vendor-heads',
+      );
+      const balloonMaterial = createActivityMaterial('aohara-egg-balloon-rubber', 0.35);
+      balloonMaterial.metalness = 0.02;
+      this.#materials.push(balloonMaterial);
+      this.#eggBalloonMesh = this.#createMesh(
+        new SphereGeometry(0.14, 10, 8),
+        balloonMaterial,
+        balloonCarts.length * BALLOON_COUNT,
+        'aohara-egg-balloons',
+      );
+    } else {
+      this.#eggBalloonCartMesh = null;
+      this.#eggBalloonVendorBodyMesh = null;
+      this.#eggBalloonVendorHeadMesh = null;
+      this.#eggBalloonMesh = null;
+    }
+    if (spinners.length > 0) {
+      this.#eggSpinnerBodyMesh = this.#createMesh(
+        pedestrianBodyGeometry,
+        pedestrianBodyMaterial,
+        spinners.length,
+        'aohara-egg-spinner-bodies',
+      );
+      this.#eggSpinnerHeadMesh = this.#createMesh(
+        headGeometry,
+        pedestrianHeadMaterial,
+        spinners.length,
+        'aohara-egg-spinner-heads',
+      );
+    } else {
+      this.#eggSpinnerBodyMesh = null;
+      this.#eggSpinnerHeadMesh = null;
+    }
+
     for (const pedestrian of this.#pedestrians) {
       this.#pedestrianBodyMesh.setColorAt(
         pedestrian.index,
@@ -900,6 +1241,45 @@ export class UrbanStreetActivity {
         );
       }
     }
+    for (const sitter of this.#sitters) {
+      if (this.#sitterBodyMesh !== null && this.#sitterHeadMesh !== null) {
+        colorStreetLifeActor(this.#sitterBodyMesh, this.#sitterHeadMesh, sitter.index);
+      }
+    }
+    for (const door of this.#doors) {
+      if (this.#doorBodyMesh !== null && this.#doorHeadMesh !== null) {
+        colorStreetLifeActor(this.#doorBodyMesh, this.#doorHeadMesh, door.index);
+      }
+    }
+    for (const egg of this.#eggs) {
+      const bodyMesh =
+        egg.kind === 0
+          ? this.#eggJugglerBodyMesh
+          : egg.kind === 2
+            ? this.#eggBalloonVendorBodyMesh
+            : egg.kind === 3
+              ? this.#eggSpinnerBodyMesh
+              : null;
+      const headMesh =
+        egg.kind === 0
+          ? this.#eggJugglerHeadMesh
+          : egg.kind === 2
+            ? this.#eggBalloonVendorHeadMesh
+            : egg.kind === 3
+              ? this.#eggSpinnerHeadMesh
+              : null;
+      if (bodyMesh !== null && headMesh !== null) {
+        colorStreetLifeActor(bodyMesh, headMesh, egg.kindIndex);
+      }
+      if (egg.kind === 2 && this.#eggBalloonMesh !== null) {
+        for (let slot = 0; slot < BALLOON_COUNT; slot += 1) {
+          this.#eggBalloonMesh.setColorAt(
+            egg.kindIndex * BALLOON_COUNT + slot,
+            new Color(BALLOON_COLORS[slot % BALLOON_COLORS.length]!),
+          );
+        }
+      }
+    }
     for (const mesh of [
       this.#pedestrianBodyMesh,
       this.#pedestrianHeadMesh,
@@ -909,6 +1289,17 @@ export class UrbanStreetActivity {
       this.#cartVendorHeadMesh,
       this.#motorbikeRiderBodyMesh,
       this.#motorbikeRiderHeadMesh,
+      this.#sitterBodyMesh,
+      this.#sitterHeadMesh,
+      this.#doorBodyMesh,
+      this.#doorHeadMesh,
+      this.#eggJugglerBodyMesh,
+      this.#eggJugglerHeadMesh,
+      this.#eggBalloonVendorBodyMesh,
+      this.#eggBalloonVendorHeadMesh,
+      this.#eggSpinnerBodyMesh,
+      this.#eggSpinnerHeadMesh,
+      this.#eggBalloonMesh,
     ]) {
       if (mesh === null) {
         continue;
@@ -936,6 +1327,8 @@ export class UrbanStreetActivity {
       this.#advanceMotorbikes(delta, aspect);
     }
     this.#weaveTime += delta;
+    this.#clockTime += delta;
+    this.#updateHomeDoors(delta);
     for (const pedestrian of this.#pedestrians) {
       const route = this.#sidewalkRoutes[pedestrian.routeIndex]!;
       pedestrian.distance = wrapDistance(
@@ -988,6 +1381,9 @@ export class UrbanStreetActivity {
       urbanCartVendors: this.#cartVendors.length,
       urbanMotorbikes: this.#motorbikes.length,
       urbanMotorbikePhysicsBodies: this.#motorbikes.filter((bike) => bike.body !== null).length,
+      urbanAlleySitters: this.#sitters.length,
+      urbanHomeDoors: this.#doors.length,
+      urbanEasterEggs: this.#eggs.length,
       urbanActivityBatches: this.#meshes.length,
     };
   }
@@ -1227,6 +1623,182 @@ export class UrbanStreetActivity {
       }
     });
     return bikes;
+  }
+
+  /**
+   * Phase 8.2b: homeless sitters. Uses the sampled alley slots when the night world supplies
+   * them; standalone compositions fall back to deterministic mid-block sidewalk spots so the
+   * look-dev scene still shows them.
+   */
+  #createSitters(count: number, slots?: readonly AlleySitterSlot[]): Sitter[] {
+    const available =
+      slots !== undefined && slots.length > 0
+        ? slots
+        : this.#fallbackSitterSlots(count);
+    const sitters: Sitter[] = [];
+    for (let index = 0; index < Math.min(count, available.length); index += 1) {
+      const slot = available[index]!;
+      sitters.push({
+        index,
+        x: slot.x,
+        z: slot.z,
+        yaw: slot.yaw,
+        hasCardboard: index % 2 === 0,
+        lookPhase: deterministicUnit(index, 211) * Math.PI * 2,
+        breathePhase: deterministicUnit(index, 223) * Math.PI * 2,
+      });
+    }
+    return sitters;
+  }
+
+  /** Phase 8.2b fallback: deterministic sidewalk spots for compositions without a road graph. */
+  #fallbackSitterSlots(count: number): AlleySitterSlot[] {
+    const slots: AlleySitterSlot[] = [];
+    for (let index = 0; index < count; index += 1) {
+      const routeIndex = index % this.#sidewalkRoutes.length;
+      const route = this.#sidewalkRoutes[routeIndex]!;
+      const pose: RoutePose = { x: 0, z: 0, yaw: 0 };
+      sampleRoute(route, (0.3 + 0.16 * deterministicUnit(index, 191)) * route.length, pose);
+      slots.push({ x: pose.x, z: pose.z, yaw: pose.yaw });
+    }
+    return slots;
+  }
+
+  /**
+   * Phase 8.2b: home door residents. The stand spot sits a deterministic offset along the
+   * street beside the doorway (local +Z of the slot faces the street); the resident cycles
+   * waiting → entering → inside → exiting with per-door deterministic timings.
+   */
+  #createHomeDoors(count: number, slots?: readonly HomeDoorSlot[]): HomeDoor[] {
+    const available =
+      slots !== undefined && slots.length > 0
+        ? slots
+        : this.#fallbackDoorSlots(count);
+    const doors: HomeDoor[] = [];
+    for (let index = 0; index < Math.min(count, available.length); index += 1) {
+      const slot = available[index]!;
+      // Local +Z is the street-facing direction of the eave placement.
+      const streetX = Math.sin(slot.yaw);
+      const streetZ = Math.cos(slot.yaw);
+      const tangentX = Math.cos(slot.yaw);
+      const tangentZ = -Math.sin(slot.yaw);
+      const lateral =
+        (deterministicUnit(index, 239) * 2 - 1) * DOOR_LATERAL_SPREAD_METERS;
+      const doorX = slot.x + streetX * 0.18;
+      const doorZ = slot.z + streetZ * 0.18;
+      const standX = slot.x + streetX * DOOR_STAND_OFFSET_METERS + tangentX * lateral;
+      const standZ = slot.z + streetZ * DOOR_STAND_OFFSET_METERS + tangentZ * lateral;
+      const walkDistance = Math.max(
+        0.5,
+        Math.hypot(standX - doorX, standZ - doorZ),
+      );
+      const waitSeconds =
+        DOOR_MIN_WAIT_SECONDS + deterministicUnit(index, 251) * DOOR_WAIT_SPREAD_SECONDS;
+      const dwellSeconds =
+        DOOR_MIN_DWELL_SECONDS + deterministicUnit(index, 263) * DOOR_DWELL_SPREAD_SECONDS;
+      doors.push({
+        index,
+        doorX,
+        doorZ,
+        standX,
+        standZ,
+        doorYaw: slot.yaw,
+        walkDistance,
+        // Stagger the initial phase so the doors are never synchronized.
+        phase: index % 4 === 3 ? 'inside' : 'waiting',
+        timer: (index % 4 === 3 ? dwellSeconds : waitSeconds) * deterministicUnit(index, 271),
+        progress: 0,
+        waitSeconds,
+        dwellSeconds,
+        idlePhase: deterministicUnit(index, 283) * Math.PI * 2,
+      });
+    }
+    return doors;
+  }
+
+  /** Phase 8.2b fallback: deterministic sidewalk-facing spots for compositions without facades. */
+  #fallbackDoorSlots(count: number): HomeDoorSlot[] {
+    const slots: HomeDoorSlot[] = [];
+    for (let index = 0; index < count; index += 1) {
+      const routeIndex = (index + 1) % this.#sidewalkRoutes.length;
+      const route = this.#sidewalkRoutes[routeIndex]!;
+      const pose: RoutePose = { x: 0, z: 0, yaw: 0 };
+      sampleRoute(route, (0.2 + 0.18 * deterministicUnit(index, 293)) * route.length, pose);
+      slots.push({ x: pose.x, z: pose.z, yaw: pose.yaw + Math.PI });
+    }
+    return slots;
+  }
+
+  /**
+   * Phase 8.2b: deterministic street moments. The first `count` kinds (juggler, dog, balloon
+   * cart, spinner) each take a spread deterministic sidewalk spot, nudged clear of any vendor.
+   */
+  #createEggs(count: number): EasterEgg[] {
+    const eggs: EasterEgg[] = [];
+    const kindIndex: Record<number, number> = {};
+    for (let index = 0; index < Math.min(count, EGG_KINDS.length); index += 1) {
+      const kind = EGG_KINDS[index]!;
+      const routeIndex = (index * 2 + 1) % this.#sidewalkRoutes.length;
+      const route = this.#sidewalkRoutes[routeIndex]!;
+      const pose: RoutePose = { x: 0, z: 0, yaw: 0 };
+      let distance = (0.12 + 0.21 * deterministicUnit(index, 307)) * route.length;
+      // Keep at least 4 m of sidewalk clear of the static vendors on the same loop.
+      for (const vendor of this.#cartVendors) {
+        if (vendor.routeIndex !== routeIndex) continue;
+        const gap = wrapDistance(distance - vendor.distance, route.length);
+        if (gap < 4) {
+          distance = wrapDistance(vendor.distance + 4, route.length);
+        }
+      }
+      sampleRoute(route, distance, pose);
+      kindIndex[kind] = (kindIndex[kind] ?? 0) + 1;
+      eggs.push({
+        index,
+        kind,
+        kindIndex: kindIndex[kind]! - 1,
+        x: pose.x,
+        z: pose.z,
+        yaw: pose.yaw,
+        cyclePhase: deterministicUnit(index, 317) * 16,
+      });
+    }
+    return eggs;
+  }
+
+  /** Phase 8.2b: advances the door residents' wait → enter → dwell → exit state machines. */
+  #updateHomeDoors(delta: number): void {
+    for (const door of this.#doors) {
+      switch (door.phase) {
+        case 'waiting':
+          door.timer -= delta;
+          if (door.timer <= 0) {
+            door.phase = 'entering';
+            door.progress = 0;
+          }
+          break;
+        case 'entering':
+          door.progress = Math.min(1, door.progress + (DOOR_WALK_SPEED_METERS_PER_SECOND * delta) / door.walkDistance);
+          if (door.progress >= 1) {
+            door.phase = 'inside';
+            door.timer = door.dwellSeconds;
+          }
+          break;
+        case 'inside':
+          door.timer -= delta;
+          if (door.timer <= 0) {
+            door.phase = 'exiting';
+            door.progress = 0;
+          }
+          break;
+        case 'exiting':
+          door.progress = Math.min(1, door.progress + (DOOR_WALK_SPEED_METERS_PER_SECOND * delta) / door.walkDistance);
+          if (door.progress >= 1) {
+            door.phase = 'waiting';
+            door.timer = door.waitSeconds;
+          }
+          break;
+      }
+    }
   }
 
   /**
@@ -1719,6 +2291,10 @@ export class UrbanStreetActivity {
       this.#motorbikeRiderHeadMesh?.setMatrixAt(bike.index, this.#transform.matrix);
     }
 
+    this.#writeSitterMatrices(setPose);
+    this.#writeHomeDoorMatrices(setPose);
+    this.#writeEggMatrices(setPose);
+
     for (const mesh of [
       this.#cyclistBikeMesh,
       this.#cyclistRiderBodyMesh,
@@ -1730,9 +2306,220 @@ export class UrbanStreetActivity {
       this.#motorbikeMesh,
       this.#motorbikeRiderBodyMesh,
       this.#motorbikeRiderHeadMesh,
+      this.#sitterBodyMesh,
+      this.#sitterHeadMesh,
+      this.#sitterCardboardMesh,
+      this.#doorBodyMesh,
+      this.#doorHeadMesh,
+      this.#eggJugglerBodyMesh,
+      this.#eggJugglerHeadMesh,
+      this.#eggConeMesh,
+      this.#eggDogMesh,
+      this.#eggBalloonCartMesh,
+      this.#eggBalloonVendorBodyMesh,
+      this.#eggBalloonVendorHeadMesh,
+      this.#eggBalloonMesh,
+      this.#eggSpinnerBodyMesh,
+      this.#eggSpinnerHeadMesh,
     ]) {
       if (mesh !== null) {
         mesh.instanceMatrix.needsUpdate = true;
+      }
+    }
+  }
+
+  /** Phase 8.2b: static sitters with a breathing sway and a slow look around the alley. */
+  #writeSitterMatrices(
+    setPose: (x: number, y: number, z: number, yaw: number) => void,
+  ): void {
+    if (this.#sitters.length === 0) {
+      return;
+    }
+    const t = this.#clockTime;
+    for (const sitter of this.#sitters) {
+      const breathe = Math.sin(t * 1.1 + sitter.breathePhase) * 0.008;
+      setPose(sitter.x, ROAD_Y + breathe, sitter.z, sitter.yaw);
+      this.#sitterBodyMesh?.setMatrixAt(sitter.index, this.#transform.matrix);
+      // The head looks around the alley on a slow, personal cadence.
+      const lookYaw =
+        sitter.yaw + Math.sin(t * 0.4 + sitter.lookPhase) * 0.35;
+      setPose(sitter.x, ROAD_Y + 0.98 + breathe, sitter.z, lookYaw);
+      this.#sitterHeadMesh?.setMatrixAt(sitter.index, this.#transform.matrix);
+      // The cardboard box stays put beside sitters that have one.
+      if (sitter.hasCardboard) {
+        const rightX = Math.cos(sitter.yaw);
+        const rightZ = -Math.sin(sitter.yaw);
+        setPose(
+          sitter.x + rightX * 0.42,
+          ROAD_Y,
+          sitter.z + rightZ * 0.42,
+          sitter.yaw,
+        );
+        this.#sitterCardboardMesh?.setMatrixAt(sitter.index, this.#transform.matrix);
+      } else {
+        this.#sitterCardboardMesh?.setMatrixAt(sitter.index, HIDDEN_INSTANCE_MATRIX);
+      }
+    }
+  }
+
+  /**
+   * Phase 8.2b: home door residents. Waiting stands at the spot beside the doorway, entering
+   * and exiting walk it on a straight line, and "inside" writes a zero-scale (hidden) instance.
+   */
+  #writeHomeDoorMatrices(
+    setPose: (x: number, y: number, z: number, yaw: number) => void,
+  ): void {
+    if (this.#doors.length === 0) {
+      return;
+    }
+    const t = this.#clockTime;
+    for (const door of this.#doors) {
+      if (door.phase === 'inside') {
+        this.#doorBodyMesh?.setMatrixAt(door.index, HIDDEN_INSTANCE_MATRIX);
+        this.#doorHeadMesh?.setMatrixAt(door.index, HIDDEN_INSTANCE_MATRIX);
+        continue;
+      }
+      let x: number;
+      let z: number;
+      let yaw: number;
+      if (door.phase === 'waiting') {
+        x = door.standX;
+        z = door.standZ;
+        // Facing the doorway with a gentle idle sway.
+        yaw = Math.atan2(door.doorX - door.standX, door.doorZ - door.standZ) +
+          Math.sin(t * 0.5 + door.idlePhase) * 0.12;
+      } else {
+        const eased = door.progress * door.progress * (3 - 2 * door.progress);
+        const fromX = door.phase === 'entering' ? door.standX : door.doorX;
+        const fromZ = door.phase === 'entering' ? door.standZ : door.doorZ;
+        const toX = door.phase === 'entering' ? door.doorX : door.standX;
+        const toZ = door.phase === 'entering' ? door.doorZ : door.standZ;
+        x = fromX + (toX - fromX) * eased;
+        z = fromZ + (toZ - fromZ) * eased;
+        yaw = Math.atan2(toX - fromX, toZ - fromZ);
+      }
+      const bob = door.phase === 'waiting' ? 0 : Math.abs(Math.sin(t * 7 + door.idlePhase)) * 0.02;
+      setPose(x, ROAD_Y + SIDEWALK_LIFT + bob, z, yaw);
+      this.#doorBodyMesh?.setMatrixAt(door.index, this.#transform.matrix);
+      this.#transform.position.y += 1.08;
+      this.#transform.updateMatrix();
+      this.#doorHeadMesh?.setMatrixAt(door.index, this.#transform.matrix);
+    }
+  }
+
+  /** Phase 8.2b: the deterministic street moments (juggler, dog, balloon cart, spinner). */
+  #writeEggMatrices(
+    setPose: (x: number, y: number, z: number, yaw: number) => void,
+  ): void {
+    if (this.#eggs.length === 0) {
+      return;
+    }
+    const t = this.#clockTime;
+    for (const egg of this.#eggs) {
+      switch (egg.kind) {
+        case 0: {
+          // Cone juggler: the person bobs; three cones orbit above hand height.
+          const bob = Math.abs(Math.sin(t * 2.1 + egg.cyclePhase)) * 0.03;
+          setPose(egg.x, ROAD_Y + SIDEWALK_LIFT + bob, egg.z, egg.yaw);
+          this.#eggJugglerBodyMesh?.setMatrixAt(egg.kindIndex, this.#transform.matrix);
+          this.#transform.position.y += 1.08;
+          this.#transform.updateMatrix();
+          this.#eggJugglerHeadMesh?.setMatrixAt(egg.kindIndex, this.#transform.matrix);
+          for (let cone = 0; cone < 3; cone += 1) {
+            const angle = t * CONE_ORBIT_SPEED + (cone * Math.PI * 2) / 3 + egg.cyclePhase;
+            const coneX = egg.x + Math.cos(angle) * CONE_ORBIT_RADIUS_METERS;
+            const coneZ = egg.z + Math.sin(angle * 0.5) * 0.05;
+            const coneY =
+              ROAD_Y + SIDEWALK_LIFT + CONE_HAND_HEIGHT_METERS +
+              Math.sin(angle) * 0.3;
+            setPose(coneX, coneY, coneZ, angle);
+            this.#eggConeMesh?.setMatrixAt(egg.kindIndex * 3 + cone, this.#transform.matrix);
+          }
+          break;
+        }
+        case 1: {
+          // Sleeping dog that wakes for a few seconds on its cycle, then dozes off again.
+          const cycleT = (t + egg.cyclePhase) % DOG_CYCLE_SECONDS;
+          const awake = cycleT < DOG_AWAKE_SECONDS;
+          const baseY = ROAD_Y + SIDEWALK_LIFT;
+          if (awake) {
+            const bounce = Math.abs(Math.sin(t * 9)) * 0.03;
+            const look = Math.sin(t * 5.2) * 0.4;
+            setPose(egg.x, baseY + 0.05 + bounce, egg.z, egg.yaw + look);
+          } else {
+            const doze = Math.sin(t * 0.8 + egg.cyclePhase) * 0.05;
+            setPose(egg.x, baseY, egg.z, egg.yaw + doze);
+          }
+          this.#eggDogMesh?.setMatrixAt(egg.kindIndex, this.#transform.matrix);
+          break;
+        }
+        case 2: {
+          // Balloon cart: the vendor stands by; one balloon drifts away on a fixed period.
+          setPose(egg.x, ROAD_Y + SIDEWALK_LIFT, egg.z, egg.yaw);
+          this.#eggBalloonCartMesh?.setMatrixAt(egg.kindIndex, this.#transform.matrix);
+          this.#transform.position.x += Math.cos(egg.yaw) * -0.45 + Math.sin(egg.yaw) * -0.8;
+          this.#transform.position.z += -Math.sin(egg.yaw) * -0.45 + Math.cos(egg.yaw) * -0.8;
+          this.#transform.updateMatrix();
+          this.#eggBalloonVendorBodyMesh?.setMatrixAt(egg.kindIndex, this.#transform.matrix);
+          this.#transform.position.y += 1.08;
+          this.#transform.updateMatrix();
+          this.#eggBalloonVendorHeadMesh?.setMatrixAt(egg.kindIndex, this.#transform.matrix);
+          const cycleT = (t + egg.cyclePhase) % BALLOON_RELEASE_PERIOD_SECONDS;
+          const releasedIndex = Math.floor((t + egg.cyclePhase) / BALLOON_RELEASE_PERIOD_SECONDS) % BALLOON_COUNT;
+          const inFlight = cycleT < BALLOON_FLIGHT_SECONDS;
+          const flightProgress = inFlight ? cycleT / BALLOON_FLIGHT_SECONDS : 0;
+          for (let slot = 0; slot < BALLOON_COUNT; slot += 1) {
+            const clusterAngle = (slot * Math.PI * 2) / BALLOON_COUNT;
+            const clusterX =
+              egg.x + Math.cos(clusterAngle) * 0.16 + Math.cos(egg.yaw) * 0.1;
+            const clusterZ =
+              egg.z + Math.sin(clusterAngle) * 0.16 + Math.sin(egg.yaw) * 0.1;
+            const clusterY =
+              ROAD_Y + SIDEWALK_LIFT + BALLOON_CLUSTER_HEIGHT_METERS +
+              (slot % 2) * 0.12 + Math.sin(t * 1.4 + slot + egg.cyclePhase) * 0.03;
+            if (slot === releasedIndex && inFlight) {
+              setPose(
+                clusterX + flightProgress * 1.2,
+                clusterY + flightProgress * BALLOON_FLIGHT_HEIGHT_METERS,
+                clusterZ + flightProgress * 0.4,
+                egg.yaw,
+              );
+            } else if (slot === releasedIndex) {
+              this.#eggBalloonMesh?.setMatrixAt(
+                egg.kindIndex * BALLOON_COUNT + slot,
+                HIDDEN_INSTANCE_MATRIX,
+              );
+              continue;
+            } else {
+              setPose(clusterX, clusterY, clusterZ, egg.yaw);
+            }
+            this.#eggBalloonMesh?.setMatrixAt(
+              egg.kindIndex * BALLOON_COUNT + slot,
+              this.#transform.matrix,
+            );
+          }
+          break;
+        }
+        case 3: {
+          // Spin dancer: a periodic 360° spin with a hop, standing still between cycles.
+          const cycleT = (t + egg.cyclePhase) % SPINNER_CYCLE_SECONDS;
+          let spinYaw = egg.yaw;
+          let hop = 0;
+          if (cycleT < SPINNER_SPIN_SECONDS) {
+            const p = cycleT / SPINNER_SPIN_SECONDS;
+            const eased = p * p * (3 - 2 * p);
+            spinYaw = egg.yaw + eased * Math.PI * 2;
+            hop = Math.sin(p * Math.PI) * 0.18;
+          } else {
+            spinYaw = egg.yaw + Math.sin(t * 0.6 + egg.cyclePhase) * 0.2;
+          }
+          setPose(egg.x, ROAD_Y + SIDEWALK_LIFT + hop, egg.z, spinYaw);
+          this.#eggSpinnerBodyMesh?.setMatrixAt(egg.kindIndex, this.#transform.matrix);
+          this.#transform.position.y += 1.08;
+          this.#transform.updateMatrix();
+          this.#eggSpinnerHeadMesh?.setMatrixAt(egg.kindIndex, this.#transform.matrix);
+          break;
+        }
       }
     }
   }

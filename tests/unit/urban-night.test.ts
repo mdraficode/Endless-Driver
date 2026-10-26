@@ -377,12 +377,20 @@ describe('Aohara city night-lighting rules', () => {
       const stats = activity.getContentStats();
       const streetLife = URBAN_STREET_LIFE_TIER_BUDGET[tier];
       // 5 traffic batches + 2 pedestrian batches, plus the street-life batches for whichever
-      // kinds the tier budgets (motorbikes are absent on tier C).
+      // kinds the tier budgets (motorbikes are absent on tier C), plus the phase 8.2b batches:
+      // sitters (body/head/cardboard), home doors (body/head), and one group per easter-egg
+      // kind (juggler 3, dog 1, balloon cart 4, spinner 2).
       const expectedBatches =
         7 +
         (streetLife.cyclists > 0 ? 3 : 0) +
         (streetLife.cartVendors > 0 ? 4 : 0) +
-        (streetLife.motorbikes > 0 ? 3 : 0);
+        (streetLife.motorbikes > 0 ? 3 : 0) +
+        (streetLife.alleySitters > 0 ? 3 : 0) +
+        (streetLife.homeDoors > 0 ? 2 : 0) +
+        (streetLife.easterEggs > 0 ? 3 : 0) +
+        (streetLife.easterEggs > 1 ? 1 : 0) +
+        (streetLife.easterEggs > 2 ? 4 : 0) +
+        (streetLife.easterEggs > 3 ? 2 : 0);
       expect(stats).toMatchObject({
         urbanTrafficVehicles: URBAN_ACTIVITY_TIER_BUDGET[tier].trafficVehicles,
         urbanTrafficPassengerCars: expectedByTier[tier].passengerCars,
@@ -395,6 +403,9 @@ describe('Aohara city night-lighting rules', () => {
         urbanCyclists: streetLife.cyclists,
         urbanCartVendors: streetLife.cartVendors,
         urbanMotorbikes: streetLife.motorbikes,
+        urbanAlleySitters: streetLife.alleySitters,
+        urbanHomeDoors: streetLife.homeDoors,
+        urbanEasterEggs: streetLife.easterEggs,
         urbanActivityBatches: expectedBatches,
       });
       const trafficMeshes = activity.root.children.filter(
@@ -740,7 +751,18 @@ describe('Aohara city night-lighting rules', () => {
     expect(city.root.getObjectByName('aohara-main-avenue')).toBeUndefined();
     expect(city.root.getObjectByName('aohara-signalized-cross-street')).toBeUndefined();
     expect(city.root.getObjectByName('aohara-ground-deck')).toBeUndefined();
-    expect(city.getContentStats()).toMatchObject({
+    const cityStats = city.getContentStats();
+    // Phase 8.2b: the world wires real slots in — doors from the facade kit's eave placements
+    // (10 on tier B, so the budget of 8 is fully filled) and sitters from the sampled narrow
+    // alleys (at most the budget of 2, fewer if prop clearance rejects candidates).
+    expect(cityStats.urbanHomeDoors).toBe(
+      Math.min(URBAN_STREET_LIFE_TIER_BUDGET.B.homeDoors, 10),
+    );
+    expect(cityStats.urbanAlleySitters).toBeLessThanOrEqual(
+      URBAN_STREET_LIFE_TIER_BUDGET.B.alleySitters,
+    );
+    expect(cityStats.urbanEasterEggs).toBe(URBAN_STREET_LIFE_TIER_BUDGET.B.easterEggs);
+    expect(cityStats).toMatchObject({
       cityBlocks: 16,
       highRiseBuildings: 32,
       infillBuildings: URBAN_ACTIVITY_TIER_BUDGET.B.infillBuildings,
@@ -758,11 +780,19 @@ describe('Aohara city night-lighting rules', () => {
       urbanCyclists: URBAN_STREET_LIFE_TIER_BUDGET.B.cyclists,
       urbanCartVendors: URBAN_STREET_LIFE_TIER_BUDGET.B.cartVendors,
       urbanMotorbikes: URBAN_STREET_LIFE_TIER_BUDGET.B.motorbikes,
+      urbanHomeDoors: URBAN_STREET_LIFE_TIER_BUDGET.B.homeDoors,
+      urbanEasterEggs: URBAN_STREET_LIFE_TIER_BUDGET.B.easterEggs,
       urbanActivityBatches:
         7 +
         (URBAN_STREET_LIFE_TIER_BUDGET.B.cyclists > 0 ? 3 : 0) +
         (URBAN_STREET_LIFE_TIER_BUDGET.B.cartVendors > 0 ? 4 : 0) +
-        (URBAN_STREET_LIFE_TIER_BUDGET.B.motorbikes > 0 ? 3 : 0),
+        (URBAN_STREET_LIFE_TIER_BUDGET.B.motorbikes > 0 ? 3 : 0) +
+        (cityStats.urbanAlleySitters > 0 ? 3 : 0) +
+        (cityStats.urbanHomeDoors > 0 ? 2 : 0) +
+        (cityStats.urbanEasterEggs > 0 ? 3 : 0) +
+        (cityStats.urbanEasterEggs > 1 ? 1 : 0) +
+        (cityStats.urbanEasterEggs > 2 ? 4 : 0) +
+        (cityStats.urbanEasterEggs > 3 ? 2 : 0),
       stadiums: 1,
       casinos: 2,
       mansions: 4,
