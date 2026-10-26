@@ -9,6 +9,7 @@ import {
   Matrix4,
   Object3D,
   SphereGeometry,
+  Vector3,
   type Material,
   type BufferGeometry,
 } from 'three';
@@ -43,6 +44,8 @@ import {
   triggerVehicleImpact,
   type VehicleImpactState,
 } from '../vehicles/VehicleImpact';
+import { testCarCirclesVsCircle } from './static-building-collision';
+import type { TownCarProbe, TownHit } from './town';
 
 const ROAD_Y = -0.46;
 const SIDEWALK_LIFT = 0.035;
@@ -77,6 +80,25 @@ const BALLOON_FLIGHT_HEIGHT_METERS = 4.5;
 const BALLOON_CLUSTER_HEIGHT_METERS = 1.32;
 const SPINNER_CYCLE_SECONDS = 14;
 const SPINNER_SPIN_SECONDS = 1.0;
+// Street-actor car collision contract (owner direction: every element on the roads and alleys
+// has collision). Standing actors absorb up to the stop speed; a closing hit above the soft
+// threshold triggers the reaction (knockdown, dog flee, cone scatter), and one above the hard
+// threshold is a strong impact (longer lie, dog tumble, harder scatter).
+const ACTOR_HIT_COOLDOWN_SECONDS = 0.35;
+const ACTOR_REACT_THRESHOLD_MPS = 2.6;
+const ACTOR_STRONG_THRESHOLD_MPS = 3.4;
+const ACTOR_STOP_SPEED_MPS = 2.2;
+const ACTOR_BODY_RADIUS_METERS = 0.3;
+const ACTOR_WIDE_RADIUS_METERS = 0.45;
+const CART_RADIUS_METERS = 0.85;
+const DOG_FLEE_DISTANCE_METERS = 7;
+const DOG_FLEE_SECONDS = 4;
+const DOG_FLEETED_TUMBLES = 4;
+const DOG_FLEETED_SECONDS = 1.2;
+const CONE_SCATTER_SETTLE_SECONDS = 0.58;
+const CONE_GATHER_SECONDS = 1.2;
+/** Released balloon: a 1.5 s ascent to flight height, then the existing 6 s drift. */
+const BALLOON_ASCENT_SECONDS = 1.5;
 
 type Point2 = readonly [number, number];
 
@@ -131,12 +153,44 @@ interface TrafficVehicle {
   unregisterOriginAware: (() => void) | null;
 }
 
+/**
+ * Knockdown state for a street actor after a hard car hit: a 0.55 s fall, a deterministic
+ * ~4 s lie-down, and a 0.45 s get-up. The pose is `base + drift(v) * slideEase` — the actor
+ * slides in the car's direction of travel while falling, then back to their spot on the way up.
+ */
+interface KnockdownState {
+  phase: 'none' | 'falling' | 'lying' | 'getting-up';
+  timer: number;
+  lyingSeconds: number;
+  /** Normalised car-velocity direction (city-local) the actor slides along. */
+  dirX: number;
+  dirZ: number;
+  /** Slide distance, from the car's speed at impact. */
+  driftMeters: number;
+  baseYaw: number;
+}
+
+const KNOCKDOWN_FALL_SECONDS = 0.55;
+const KNOCKDOWN_GET_UP_SECONDS = 0.45;
+
+const createKnockdownState = (): KnockdownState => ({
+  phase: 'none',
+  timer: 0,
+  lyingSeconds: 4,
+  dirX: 0,
+  dirZ: 1,
+  driftMeters: 0,
+  baseYaw: 0,
+});
+
 interface Pedestrian {
   readonly index: number;
   readonly routeIndex: number;
   readonly speedMetersPerSecond: number;
   phase: number;
   distance: number;
+  knockdown: KnockdownState;
+  lastHitTime: number;
 }
 
 /** Phase 8.2: cyclist route follower on the sidewalk loops (no right-of-way, like pedestrians). */
@@ -146,6 +200,8 @@ interface Cyclist {
   readonly speedMetersPerSecond: number;
   phase: number;
   distance: number;
+  knockdown: KnockdownState;
+  lastHitTime: number;
 }
 
 /** Phase 8.2: static cart vendor with a warm lantern; only the sway phase advances. */
@@ -215,6 +271,8 @@ interface Sitter {
   readonly hasCardboard: boolean;
   readonly lookPhase: number;
   readonly breathePhase: number;
+  knockdown: KnockdownState;
+  lastHitTime: number;
 }
 
 /**
@@ -235,6 +293,9 @@ interface HomeDoor {
   readonly waitSeconds: number;
   readonly dwellSeconds: number;
   readonly idlePhase: number;
+  /** Knockdown of the resident while they are on the sidewalk (never while "inside"). */
+  knockdown: KnockdownState;
+  lastHitTime: number;
 }
 
 /**
@@ -250,6 +311,18 @@ interface EasterEgg {
   readonly z: number;
   readonly yaw: number;
   readonly cyclePhase: number;
+  knockdown: KnockdownState;
+  lastHitTime: number;
+  /** Dog (kind 1): flee state — runs 7 m away from the car at ~3.2 m/s. */
+  fleeSeconds: number;
+  fleeDurationSeconds: number;
+  /** Dog: run direction (away from the car at impact). */
+  fleeDirectionX: number;
+  fleeDirectionZ: number;
+  /** Dog: knockdown hits at closing > 3.4; an exhausted dog (4+ tumbles) only stumbles 1.2 s. */
+  tumbleCount: number;
+  /** Juggler (kind 0): cone scatter window (scatter, 0.58 s settle, then gather). */
+  coneScatterSeconds: number;
 }
 
 function wrapDistance(distance: number, routeLength: number): number {
@@ -848,10 +921,16 @@ export class UrbanStreetActivity {
   #weaveTime = 0;
   /** Render-time clock for the 8.2b periodic moments (sitters, doors, eggs). */
   #clockTime = 0;
+  /** Count of car-hit reactions (knockdowns, flees, scatters) for diagnostics. */
+  #streetActorImpacts = 0;
   readonly #meshes: InstancedMesh[] = [];
   readonly #materials: Material[] = [];
   readonly #pose: RoutePose = { x: 0, z: 0, yaw: 0 };
   readonly #transform = new Object3D();
+  /** Dedicated transform for knockdown poses (YXZ Euler: yaw first, then the pitch fall). */
+  readonly #knockdownTransform = new Object3D();
+  readonly #knockdownOut = { x: 0, z: 0, pitch: 0 };
+  readonly #knockdownUp = new Vector3();
   #disposed = false;
 
   constructor(tier: TierId, options: UrbanStreetActivityOptions = {}) {
@@ -1321,6 +1400,7 @@ export class UrbanStreetActivity {
     }
     this.#weaveTime += delta;
     this.#clockTime += delta;
+    this.#advanceKnockdowns(delta);
     this.#updateHomeDoors(delta);
     for (const pedestrian of this.#pedestrians) {
       const route = this.#sidewalkRoutes[pedestrian.routeIndex]!;
@@ -1344,6 +1424,275 @@ export class UrbanStreetActivity {
     this.#writeTrafficMatrices(delta);
     this.#writePedestrianMatrices();
     this.#writeStreetLifeMatrices(delta);
+  }
+
+  /**
+   * Car contact circles vs. every street-life actor on the roads and alleys (city-local car
+   * probe; the night world converts the world probe). Standing actors are tagged
+   * `'street-actor'`: they absorb up to the stop speed (the car pushes on), and a closing hit
+   * above the react threshold triggers the actor's reaction — pedestrians, sitters, residents
+   * and street moments knock down (slide + fall + lie + get up), the dog flees, the juggler's
+   * cones scatter, and the carts block. Actors already on the ground are driven over.
+   */
+  collideActors(car: TownCarProbe): TownHit[] {
+    if (this.#disposed) {
+      return [];
+    }
+    const hits: TownHit[] = [];
+    const pose: RoutePose = { x: 0, z: 0, yaw: 0 };
+
+    const testActor = (
+      x: number,
+      z: number,
+      radius: number,
+      actor: { knockdown: KnockdownState; lastHitTime: number },
+      reaction: ((contact: { normalX: number; normalZ: number; closing: number }) => void) | null,
+      solid: boolean,
+      absorbCap: number = ACTOR_STOP_SPEED_MPS,
+    ): void => {
+      const contact = testCarCirclesVsCircle(car, x, z, radius);
+      if (contact === null) {
+        return;
+      }
+      let strong = false;
+      const onCooldown = this.#clockTime - actor.lastHitTime < ACTOR_HIT_COOLDOWN_SECONDS;
+      if (contact.closing > ACTOR_REACT_THRESHOLD_MPS && !onCooldown) {
+        actor.lastHitTime = this.#clockTime;
+        strong = contact.closing > ACTOR_STRONG_THRESHOLD_MPS;
+        reaction?.(contact);
+        this.#streetActorImpacts += 1;
+      }
+      hits.push({
+        normalX: contact.normalX,
+        normalZ: contact.normalZ,
+        penetration: contact.penetration,
+        absorbedSpeed: Math.min(contact.closing, absorbCap),
+        solid,
+        impact: strong,
+        impactSpeed: contact.closing,
+        lateralOffset: contact.lateralOffset,
+        element: 'street-actor',
+      });
+    };
+
+    const knockDownActor = (
+      actor: { knockdown: KnockdownState; lastHitTime: number },
+      salt: number,
+      baseYaw: number,
+      velocityX: number,
+      velocityZ: number,
+    ): void => {
+      const speed = Math.hypot(velocityX, velocityZ);
+      if (speed < 0.01) {
+        return;
+      }
+      const knockdown = actor.knockdown;
+      if (knockdown.phase !== 'none') {
+        return;
+      }
+      knockdown.phase = 'falling';
+      knockdown.timer = 0;
+      // A deterministic per-actor lie-down of roughly four seconds.
+      knockdown.lyingSeconds = 3.5 + deterministicUnit(salt, 389);
+      knockdown.dirX = velocityX / speed;
+      knockdown.dirZ = velocityZ / speed;
+      knockdown.driftMeters = Math.min(1.6, speed * 0.28);
+      knockdown.baseYaw = baseYaw;
+    };
+
+    for (const pedestrian of this.#pedestrians) {
+      if (pedestrian.knockdown.phase !== 'none') {
+        continue;
+      }
+      sampleRoute(this.#sidewalkRoutes[pedestrian.routeIndex]!, pedestrian.distance, pose);
+      testActor(
+        pose.x,
+        pose.z,
+        ACTOR_BODY_RADIUS_METERS,
+        pedestrian,
+        () => knockDownActor(pedestrian, pedestrian.index, pose.yaw, car.velocityX, car.velocityZ),
+        false,
+      );
+    }
+    for (const cyclist of this.#cyclists) {
+      if (cyclist.knockdown.phase !== 'none') {
+        continue;
+      }
+      sampleRoute(this.#sidewalkRoutes[cyclist.routeIndex]!, cyclist.distance, pose);
+      testActor(
+        pose.x,
+        pose.z,
+        ACTOR_BODY_RADIUS_METERS,
+        cyclist,
+        () => knockDownActor(cyclist, cyclist.index, pose.yaw, car.velocityX, car.velocityZ),
+        false,
+      );
+    }
+    for (const vendor of this.#cartVendors) {
+      sampleRoute(this.#sidewalkRoutes[vendor.routeIndex]!, vendor.distance, pose);
+      // The cart is furniture, not a person: it blocks the car (solid) and never reacts.
+      testActor(
+        pose.x,
+        pose.z,
+        CART_RADIUS_METERS,
+        { knockdown: createKnockdownState(), lastHitTime: -Number.POSITIVE_INFINITY },
+        null,
+        true,
+        4,
+      );
+    }
+    for (const sitter of this.#sitters) {
+      if (sitter.knockdown.phase !== 'none') {
+        continue;
+      }
+      testActor(
+        sitter.x,
+        sitter.z,
+        ACTOR_BODY_RADIUS_METERS,
+        sitter,
+        () => knockDownActor(sitter, sitter.index, sitter.yaw, car.velocityX, car.velocityZ),
+        false,
+      );
+    }
+    for (const door of this.#doors) {
+      if (door.phase === 'inside' || door.knockdown.phase !== 'none') {
+        continue;
+      }
+      const t =
+        door.phase === 'entering' ? door.progress : door.phase === 'exiting' ? 1 - door.progress : 0;
+      const x = door.standX + (door.doorX - door.standX) * t;
+      const z = door.standZ + (door.doorZ - door.standZ) * t;
+      testActor(
+        x,
+        z,
+        ACTOR_BODY_RADIUS_METERS,
+        door,
+        () => knockDownActor(door, door.index, door.doorYaw, car.velocityX, car.velocityZ),
+        false,
+      );
+    }
+    for (const egg of this.#eggs) {
+      const x = egg.x;
+      const z = egg.z;
+      if (egg.kind === 1) {
+        // Dog: flees when hit (never knocked down); an exhausted dog only stumbles.
+        if (egg.fleeSeconds > 0 || egg.knockdown.phase !== 'none') {
+          continue;
+        }
+        testActor(
+          x,
+          z,
+          ACTOR_WIDE_RADIUS_METERS,
+          egg,
+          (contact) => {
+            if (egg.fleeSeconds > 0) {
+              return;
+            }
+            if (contact.closing > ACTOR_STRONG_THRESHOLD_MPS) {
+              egg.tumbleCount += 1;
+            }
+            egg.fleeDirectionX = contact.normalX;
+            egg.fleeDirectionZ = contact.normalZ;
+            const exhausted = egg.tumbleCount >= DOG_FLEETED_TUMBLES;
+            egg.fleeDurationSeconds = exhausted ? DOG_FLEETED_SECONDS : DOG_FLEE_SECONDS;
+            egg.fleeSeconds = egg.fleeDurationSeconds;
+          },
+          false,
+        );
+      } else if (egg.kind === 0) {
+        // Juggler: knocks down and scatters the cones.
+        if (egg.knockdown.phase !== 'none') {
+          continue;
+        }
+        testActor(
+          x,
+          z,
+          ACTOR_WIDE_RADIUS_METERS,
+          egg,
+          () => {
+            knockDownActor(egg, egg.index, egg.yaw, car.velocityX, car.velocityZ);
+            // Rest through the long knockdown; the gather starts when the juggler stands.
+            egg.coneScatterSeconds = CONE_SCATTER_SETTLE_SECONDS + CONE_GATHER_SECONDS + 5;
+          },
+          false,
+        );
+      } else if (egg.kind === 3) {
+        if (egg.knockdown.phase !== 'none') {
+          continue;
+        }
+        testActor(
+          x,
+          z,
+          ACTOR_WIDE_RADIUS_METERS,
+          egg,
+          () => knockDownActor(egg, egg.index, egg.yaw, car.velocityX, car.velocityZ),
+          false,
+        );
+      } else {
+        // Balloon cart: blocks like the static vendors.
+        testActor(
+          x,
+          z,
+          CART_RADIUS_METERS,
+          { knockdown: createKnockdownState(), lastHitTime: -Number.POSITIVE_INFINITY },
+          null,
+          true,
+          4,
+        );
+      }
+    }
+    return hits;
+  }
+
+  /**
+   * Advances knockdowns (fall → lie → get up), the dog's flee, and the juggler's cone
+   * scatter/gather on the render clock.
+   */
+  #advanceKnockdowns(delta: number): void {
+    for (const actor of [
+      ...this.#pedestrians,
+      ...this.#cyclists,
+      ...this.#sitters,
+      ...this.#doors,
+      ...this.#eggs,
+    ]) {
+      const knockdown = actor.knockdown;
+      if (knockdown.phase === 'falling') {
+        knockdown.timer += delta;
+        if (knockdown.timer >= KNOCKDOWN_FALL_SECONDS) {
+          knockdown.phase = 'lying';
+          knockdown.timer = 0;
+        }
+      } else if (knockdown.phase === 'lying') {
+        knockdown.timer += delta;
+        if (knockdown.timer >= knockdown.lyingSeconds) {
+          knockdown.phase = 'getting-up';
+          knockdown.timer = 0;
+        }
+      } else if (knockdown.phase === 'getting-up') {
+        knockdown.timer += delta;
+        if (knockdown.timer >= KNOCKDOWN_GET_UP_SECONDS) {
+          knockdown.phase = 'none';
+          knockdown.timer = 0;
+        }
+      }
+    }
+    for (const egg of this.#eggs) {
+      if (egg.fleeSeconds > 0) {
+        egg.fleeSeconds = Math.max(0, egg.fleeSeconds - delta);
+      }
+      if (
+        egg.kind === 0 &&
+        egg.knockdown.phase === 'none' &&
+        egg.coneScatterSeconds > CONE_GATHER_SECONDS
+      ) {
+        // The juggler is back on their feet: the cones now ease back to the orbit.
+        egg.coneScatterSeconds = CONE_GATHER_SECONDS;
+      }
+      if (egg.coneScatterSeconds > 0) {
+        egg.coneScatterSeconds = Math.max(0, egg.coneScatterSeconds - delta);
+      }
+    }
   }
 
   /**
@@ -1377,6 +1726,7 @@ export class UrbanStreetActivity {
       urbanAlleySitters: this.#sitters.length,
       urbanHomeDoors: this.#doors.length,
       urbanEasterEggs: this.#eggs.length,
+      urbanStreetActorImpacts: this.#streetActorImpacts,
       urbanActivityBatches: this.#meshes.length,
     };
   }
@@ -1547,6 +1897,8 @@ export class UrbanStreetActivity {
           distance: ((localIndex + 0.5) / counts[routeIndex]!) * route.length,
           speedMetersPerSecond: 0.9 + deterministicUnit(index, routeIndex + 29) * 0.4,
           phase: deterministicUnit(index, routeIndex + 43) * Math.PI * 2,
+          knockdown: createKnockdownState(),
+          lastHitTime: -Number.POSITIVE_INFINITY,
         });
         index += 1;
       }
@@ -1566,6 +1918,8 @@ export class UrbanStreetActivity {
           distance: ((localIndex + 0.5) / counts[routeIndex]!) * route.length,
           speedMetersPerSecond: 3.1 + deterministicUnit(index, routeIndex + 61) * 0.7,
           phase: deterministicUnit(index, routeIndex + 73) * Math.PI * 2,
+          knockdown: createKnockdownState(),
+          lastHitTime: -Number.POSITIVE_INFINITY,
         });
         index += 1;
       }
@@ -1637,6 +1991,8 @@ export class UrbanStreetActivity {
         hasCardboard: index % 2 === 0,
         lookPhase: deterministicUnit(index, 211) * Math.PI * 2,
         breathePhase: deterministicUnit(index, 223) * Math.PI * 2,
+        knockdown: createKnockdownState(),
+        lastHitTime: -Number.POSITIVE_INFINITY,
       });
     }
     return sitters;
@@ -1696,6 +2052,8 @@ export class UrbanStreetActivity {
         waitSeconds,
         dwellSeconds,
         idlePhase: deterministicUnit(index, 283) * Math.PI * 2,
+        knockdown: createKnockdownState(),
+        lastHitTime: -Number.POSITIVE_INFINITY,
       });
     }
     return doors;
@@ -1745,6 +2103,14 @@ export class UrbanStreetActivity {
         z: pose.z,
         yaw: pose.yaw,
         cyclePhase: deterministicUnit(index, 317) * 16,
+        knockdown: createKnockdownState(),
+        lastHitTime: -Number.POSITIVE_INFINITY,
+        fleeSeconds: 0,
+        fleeDurationSeconds: 0,
+        fleeDirectionX: 0,
+        fleeDirectionZ: 1,
+        tumbleCount: 0,
+        coneScatterSeconds: 0,
       });
     }
     return eggs;
@@ -2178,11 +2544,82 @@ export class UrbanStreetActivity {
     applyToBike(bikeB);
   };
 
+  /**
+   * The knockdown pose: `base + drift(v) * slideEase` (slide eased over the fall, held on the
+   * ground, slid back on the way up) with the pitch fall in YXZ Euler. Returns false while the
+   * actor is standing.
+   */
+  #knockdownPose(knockdown: KnockdownState, baseX: number, baseZ: number): boolean {
+    if (knockdown.phase === 'none') {
+      return false;
+    }
+    const out = this.#knockdownOut;
+    if (knockdown.phase === 'falling') {
+      const p = Math.min(1, knockdown.timer / KNOCKDOWN_FALL_SECONDS);
+      const eased = p * p * (3 - 2 * p);
+      out.x = baseX + knockdown.dirX * knockdown.driftMeters * eased;
+      out.z = baseZ + knockdown.dirZ * knockdown.driftMeters * eased;
+      out.pitch = -(Math.PI / 2) * eased;
+    } else if (knockdown.phase === 'lying') {
+      out.x = baseX + knockdown.dirX * knockdown.driftMeters;
+      out.z = baseZ + knockdown.dirZ * knockdown.driftMeters;
+      out.pitch = -Math.PI / 2;
+    } else {
+      const p = Math.min(1, knockdown.timer / KNOCKDOWN_GET_UP_SECONDS);
+      const eased = 1 - p * p * (3 - 2 * p);
+      out.x = baseX + knockdown.dirX * knockdown.driftMeters * eased;
+      out.z = baseZ + knockdown.dirZ * knockdown.driftMeters * eased;
+      out.pitch = -(Math.PI / 2) * eased;
+    }
+    return true;
+  }
+
+  /**
+   * Writes a knocked-down body + head pair (the head rides the body's rotated up axis, so it
+   * falls with the torso instead of staying overhead).
+   */
+  #writeKnockdownPair(
+    bodyMesh: InstancedMesh,
+    headMesh: InstancedMesh,
+    index: number,
+    x: number,
+    z: number,
+    yaw: number,
+    pitch: number,
+    bodyY: number,
+  ): void {
+    const transform = this.#knockdownTransform;
+    transform.rotation.order = 'YXZ';
+    transform.position.set(x, bodyY, z);
+    transform.rotation.set(pitch, yaw, 0);
+    transform.scale.set(1, 1, 1);
+    transform.updateMatrix();
+    bodyMesh.setMatrixAt(index, transform.matrix);
+    this.#knockdownUp.set(0, 1.08, 0).applyQuaternion(transform.quaternion);
+    transform.position.add(this.#knockdownUp);
+    transform.updateMatrix();
+    headMesh.setMatrixAt(index, transform.matrix);
+  }
+
   #writePedestrianMatrices(): void {
     for (const pedestrian of this.#pedestrians) {
       const route = this.#sidewalkRoutes[pedestrian.routeIndex]!;
       sampleRoute(route, pedestrian.distance, this.#pose);
       const bob = Math.abs(Math.sin(pedestrian.phase)) * 0.025;
+      if (this.#knockdownPose(pedestrian.knockdown, this.#pose.x, this.#pose.z)) {
+        const pose = this.#knockdownOut;
+        this.#writeKnockdownPair(
+          this.#pedestrianBodyMesh,
+          this.#pedestrianHeadMesh,
+          pedestrian.index,
+          pose.x,
+          pose.z,
+          pedestrian.knockdown.baseYaw,
+          pose.pitch,
+          ROAD_Y + SIDEWALK_LIFT,
+        );
+        continue;
+      }
       this.#transform.position.set(this.#pose.x, ROAD_Y + SIDEWALK_LIFT + bob, this.#pose.z);
       this.#transform.rotation.set(0, this.#pose.yaw, 0);
       this.#transform.scale.set(1, 1, 1);
@@ -2218,6 +2655,26 @@ export class UrbanStreetActivity {
       const route = this.#sidewalkRoutes[cyclist.routeIndex]!;
       sampleRoute(route, cyclist.distance, this.#pose);
       const bob = Math.abs(Math.sin(cyclist.phase)) * 0.03;
+      if (this.#knockdownPose(cyclist.knockdown, this.#pose.x, this.#pose.z)) {
+        // Bike and rider fall as one: the bike tips over, the rider goes with it.
+        const pose = this.#knockdownOut;
+        const transform = this.#knockdownTransform;
+        transform.rotation.order = 'YXZ';
+        transform.position.set(pose.x, sidewalkY, pose.z);
+        transform.rotation.set(pose.pitch, cyclist.knockdown.baseYaw, 0);
+        transform.scale.set(1, 1, 1);
+        transform.updateMatrix();
+        this.#cyclistBikeMesh?.setMatrixAt(cyclist.index, transform.matrix);
+        this.#knockdownUp.set(0, -0.16, 0).applyQuaternion(transform.quaternion);
+        transform.position.add(this.#knockdownUp);
+        transform.updateMatrix();
+        this.#cyclistRiderBodyMesh?.setMatrixAt(cyclist.index, transform.matrix);
+        this.#knockdownUp.set(0, 1.08, 0).applyQuaternion(transform.quaternion);
+        transform.position.add(this.#knockdownUp);
+        transform.updateMatrix();
+        this.#cyclistRiderHeadMesh?.setMatrixAt(cyclist.index, transform.matrix);
+        continue;
+      }
       setPose(this.#pose.x, sidewalkY + bob, this.#pose.z, this.#pose.yaw);
       this.#cyclistBikeMesh?.setMatrixAt(cyclist.index, this.#transform.matrix);
       // The rider reuses the upright pedestrian body, sunk slightly so it reads as seated.
@@ -2327,12 +2784,27 @@ export class UrbanStreetActivity {
     const t = this.#clockTime;
     for (const sitter of this.#sitters) {
       const breathe = Math.sin(t * 1.1 + sitter.breathePhase) * 0.008;
-      setPose(sitter.x, ROAD_Y + breathe, sitter.z, sitter.yaw);
-      this.#sitterBodyMesh?.setMatrixAt(sitter.index, this.#transform.matrix);
-      // The head looks around the alley on a slow, personal cadence.
-      const lookYaw = sitter.yaw + Math.sin(t * 0.4 + sitter.lookPhase) * 0.35;
-      setPose(sitter.x, ROAD_Y + 0.98 + breathe, sitter.z, lookYaw);
-      this.#sitterHeadMesh?.setMatrixAt(sitter.index, this.#transform.matrix);
+      if (this.#knockdownPose(sitter.knockdown, sitter.x, sitter.z)) {
+        // The sitter goes over (the cardboard box stays where it was set down).
+        const pose = this.#knockdownOut;
+        this.#writeKnockdownPair(
+          this.#sitterBodyMesh!,
+          this.#sitterHeadMesh!,
+          sitter.index,
+          pose.x,
+          pose.z,
+          sitter.knockdown.baseYaw,
+          pose.pitch,
+          ROAD_Y,
+        );
+      } else {
+        setPose(sitter.x, ROAD_Y + breathe, sitter.z, sitter.yaw);
+        this.#sitterBodyMesh?.setMatrixAt(sitter.index, this.#transform.matrix);
+        // The head looks around the alley on a slow, personal cadence.
+        const lookYaw = sitter.yaw + Math.sin(t * 0.4 + sitter.lookPhase) * 0.35;
+        setPose(sitter.x, ROAD_Y + 0.98 + breathe, sitter.z, lookYaw);
+        this.#sitterHeadMesh?.setMatrixAt(sitter.index, this.#transform.matrix);
+      }
       // The cardboard box stays put beside sitters that have one.
       if (sitter.hasCardboard) {
         const rightX = Math.cos(sitter.yaw);
@@ -2381,11 +2853,26 @@ export class UrbanStreetActivity {
         yaw = Math.atan2(toX - fromX, toZ - fromZ);
       }
       const bob = door.phase === 'waiting' ? 0 : Math.abs(Math.sin(t * 7 + door.idlePhase)) * 0.02;
-      setPose(x, ROAD_Y + SIDEWALK_LIFT + bob, z, yaw);
-      this.#doorBodyMesh?.setMatrixAt(door.index, this.#transform.matrix);
-      this.#transform.position.y += 1.08;
-      this.#transform.updateMatrix();
-      this.#doorHeadMesh?.setMatrixAt(door.index, this.#transform.matrix);
+      if (this.#knockdownPose(door.knockdown, x, z)) {
+        // The resident goes over mid-walk; the walk resumes from the route when they stand.
+        const pose = this.#knockdownOut;
+        this.#writeKnockdownPair(
+          this.#doorBodyMesh!,
+          this.#doorHeadMesh!,
+          door.index,
+          pose.x,
+          pose.z,
+          door.knockdown.baseYaw,
+          pose.pitch,
+          ROAD_Y + SIDEWALK_LIFT,
+        );
+      } else {
+        setPose(x, ROAD_Y + SIDEWALK_LIFT + bob, z, yaw);
+        this.#doorBodyMesh?.setMatrixAt(door.index, this.#transform.matrix);
+        this.#transform.position.y += 1.08;
+        this.#transform.updateMatrix();
+        this.#doorHeadMesh?.setMatrixAt(door.index, this.#transform.matrix);
+      }
     }
   }
 
@@ -2400,12 +2887,56 @@ export class UrbanStreetActivity {
         case 0: {
           // Cone juggler: the person bobs; three cones orbit above hand height.
           const bob = Math.abs(Math.sin(t * 2.1 + egg.cyclePhase)) * 0.03;
-          setPose(egg.x, ROAD_Y + SIDEWALK_LIFT + bob, egg.z, egg.yaw);
-          this.#eggJugglerBodyMesh?.setMatrixAt(egg.kindIndex, this.#transform.matrix);
-          this.#transform.position.y += 1.08;
-          this.#transform.updateMatrix();
-          this.#eggJugglerHeadMesh?.setMatrixAt(egg.kindIndex, this.#transform.matrix);
+          if (this.#knockdownPose(egg.knockdown, egg.x, egg.z)) {
+            const pose = this.#knockdownOut;
+            this.#writeKnockdownPair(
+              this.#eggJugglerBodyMesh!,
+              this.#eggJugglerHeadMesh!,
+              egg.kindIndex,
+              pose.x,
+              pose.z,
+              egg.knockdown.baseYaw,
+              pose.pitch,
+              ROAD_Y + SIDEWALK_LIFT,
+            );
+          } else {
+            setPose(egg.x, ROAD_Y + SIDEWALK_LIFT + bob, egg.z, egg.yaw);
+            this.#eggJugglerBodyMesh?.setMatrixAt(egg.kindIndex, this.#transform.matrix);
+            this.#transform.position.y += 1.08;
+            this.#transform.updateMatrix();
+            this.#eggJugglerHeadMesh?.setMatrixAt(egg.kindIndex, this.#transform.matrix);
+          }
           for (let cone = 0; cone < 3; cone += 1) {
+            // Scatter: while the scatter window runs, the cone rests at its deterministic
+            // spot; in the final gather phase it eases back to the orbit.
+            const scattering = egg.coneScatterSeconds > 0;
+            if (scattering) {
+              const scatterAngle =
+                deterministicUnit(egg.kindIndex * 3 + cone, 401) * Math.PI * 2;
+              const scatterRadius = 0.55 + deterministicUnit(egg.kindIndex * 3 + cone, 419) * 0.5;
+              const scatterX = egg.x + Math.cos(scatterAngle) * scatterRadius;
+              const scatterZ = egg.z + Math.sin(scatterAngle) * scatterRadius;
+              let gather = 0;
+              if (egg.coneScatterSeconds < CONE_GATHER_SECONDS) {
+                gather = Math.min(
+                  1,
+                  (CONE_GATHER_SECONDS - egg.coneScatterSeconds) / CONE_GATHER_SECONDS,
+                );
+                gather = gather * gather * (3 - 2 * gather);
+              }
+              const angle = t * CONE_ORBIT_SPEED + (cone * Math.PI * 2) / 3 + egg.cyclePhase;
+              const orbitX = egg.x + Math.cos(angle) * CONE_ORBIT_RADIUS_METERS;
+              const orbitZ = egg.z + Math.sin(angle * 0.5) * 0.05;
+              const coneX = scatterX + (orbitX - scatterX) * gather;
+              const coneZ = scatterZ + (orbitZ - scatterZ) * gather;
+              const coneY =
+                ROAD_Y +
+                SIDEWALK_LIFT +
+                (0.05 + (CONE_HAND_HEIGHT_METERS + Math.sin(angle) * 0.3 - 0.05) * gather);
+              setPose(coneX, coneY, coneZ, angle);
+              this.#eggConeMesh?.setMatrixAt(egg.kindIndex * 3 + cone, this.#transform.matrix);
+              continue;
+            }
             const angle = t * CONE_ORBIT_SPEED + (cone * Math.PI * 2) / 3 + egg.cyclePhase;
             const coneX = egg.x + Math.cos(angle) * CONE_ORBIT_RADIUS_METERS;
             const coneZ = egg.z + Math.sin(angle * 0.5) * 0.05;
@@ -2417,9 +2948,29 @@ export class UrbanStreetActivity {
         }
         case 1: {
           // Sleeping dog that wakes for a few seconds on its cycle, then dozes off again.
+          // A car hit sends it fleeing: 7 m away from the car at ~3.2 m/s (eased-out),
+          // shortened to a 1.2 s stumble once it has tumbled four times.
+          const baseY = ROAD_Y + SIDEWALK_LIFT;
+          if (egg.fleeSeconds > 0) {
+            const progress =
+              egg.fleeDurationSeconds > 0
+                ? 1 - egg.fleeSeconds / egg.fleeDurationSeconds
+                : 1;
+            const eased = 1 - (1 - progress) * (1 - progress);
+            const distance = DOG_FLEE_DISTANCE_METERS * eased;
+            const runYaw = Math.atan2(-egg.fleeDirectionX, -egg.fleeDirectionZ);
+            const bounce = Math.abs(Math.sin(t * 12)) * 0.05;
+            setPose(
+              egg.x + egg.fleeDirectionX * distance,
+              baseY + 0.05 + bounce,
+              egg.z + egg.fleeDirectionZ * distance,
+              runYaw,
+            );
+            this.#eggDogMesh?.setMatrixAt(egg.kindIndex, this.#transform.matrix);
+            break;
+          }
           const cycleT = (t + egg.cyclePhase) % DOG_CYCLE_SECONDS;
           const awake = cycleT < DOG_AWAKE_SECONDS;
-          const baseY = ROAD_Y + SIDEWALK_LIFT;
           if (awake) {
             const bounce = Math.abs(Math.sin(t * 9)) * 0.03;
             const look = Math.sin(t * 5.2) * 0.4;
@@ -2445,8 +2996,14 @@ export class UrbanStreetActivity {
           const cycleT = (t + egg.cyclePhase) % BALLOON_RELEASE_PERIOD_SECONDS;
           const releasedIndex =
             Math.floor((t + egg.cyclePhase) / BALLOON_RELEASE_PERIOD_SECONDS) % BALLOON_COUNT;
-          const inFlight = cycleT < BALLOON_FLIGHT_SECONDS;
-          const flightProgress = inFlight ? cycleT / BALLOON_FLIGHT_SECONDS : 0;
+          const flightSeconds = BALLOON_ASCENT_SECONDS + BALLOON_FLIGHT_SECONDS;
+          const inFlight = cycleT < flightSeconds;
+          // Ascent (1.5 s, eased) to flight height, then the 6 s horizontal drift.
+          const ascentProgress = inFlight ? Math.min(1, cycleT / BALLOON_ASCENT_SECONDS) : 1;
+          const ascentEased = 1 - (1 - ascentProgress) * (1 - ascentProgress);
+          const driftProgress = inFlight
+            ? Math.max(0, (cycleT - BALLOON_ASCENT_SECONDS) / BALLOON_FLIGHT_SECONDS)
+            : 0;
           for (let slot = 0; slot < BALLOON_COUNT; slot += 1) {
             const clusterAngle = (slot * Math.PI * 2) / BALLOON_COUNT;
             const clusterX = egg.x + Math.cos(clusterAngle) * 0.16 + Math.cos(egg.yaw) * 0.1;
@@ -2459,9 +3016,9 @@ export class UrbanStreetActivity {
               Math.sin(t * 1.4 + slot + egg.cyclePhase) * 0.03;
             if (slot === releasedIndex && inFlight) {
               setPose(
-                clusterX + flightProgress * 1.2,
-                clusterY + flightProgress * BALLOON_FLIGHT_HEIGHT_METERS,
-                clusterZ + flightProgress * 0.4,
+                clusterX + driftProgress * 1.2,
+                clusterY + ascentEased * BALLOON_FLIGHT_HEIGHT_METERS,
+                clusterZ + driftProgress * 0.4,
                 egg.yaw,
               );
             } else if (slot === releasedIndex) {
@@ -2493,11 +3050,25 @@ export class UrbanStreetActivity {
           } else {
             spinYaw = egg.yaw + Math.sin(t * 0.6 + egg.cyclePhase) * 0.2;
           }
-          setPose(egg.x, ROAD_Y + SIDEWALK_LIFT + hop, egg.z, spinYaw);
-          this.#eggSpinnerBodyMesh?.setMatrixAt(egg.kindIndex, this.#transform.matrix);
-          this.#transform.position.y += 1.08;
-          this.#transform.updateMatrix();
-          this.#eggSpinnerHeadMesh?.setMatrixAt(egg.kindIndex, this.#transform.matrix);
+          if (this.#knockdownPose(egg.knockdown, egg.x, egg.z)) {
+            const pose = this.#knockdownOut;
+            this.#writeKnockdownPair(
+              this.#eggSpinnerBodyMesh!,
+              this.#eggSpinnerHeadMesh!,
+              egg.kindIndex,
+              pose.x,
+              pose.z,
+              egg.knockdown.baseYaw,
+              pose.pitch,
+              ROAD_Y + SIDEWALK_LIFT,
+            );
+          } else {
+            setPose(egg.x, ROAD_Y + SIDEWALK_LIFT + hop, egg.z, spinYaw);
+            this.#eggSpinnerBodyMesh?.setMatrixAt(egg.kindIndex, this.#transform.matrix);
+            this.#transform.position.y += 1.08;
+            this.#transform.updateMatrix();
+            this.#eggSpinnerHeadMesh?.setMatrixAt(egg.kindIndex, this.#transform.matrix);
+          }
           break;
         }
       }

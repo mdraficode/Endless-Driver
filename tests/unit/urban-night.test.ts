@@ -167,8 +167,11 @@ function expectUrbanAlleyClearance(city: UrbanNightWorld, network: RoadNetwork):
               `half(${hitBox.halfWidth.toFixed(2)},${hitBox.halfDepth.toFixed(2)}) yaw${hitBox.yaw.toFixed(3)} ` +
               `nearestRoad=${nearestRoad?.edgeId ?? 'none'} distance=${nearestRoad?.distance.toFixed(2) ?? 'n/a'} ` +
               `halfWidth=${nearestRoad?.halfWidthMeters.toFixed(2) ?? 'n/a'}`;
+        // Only untagged hits must keep the alley clear: street actors (sitters, moments) sit
+        // on the alley by design, and the car can pass them (absorbed speed, then knockdown).
+        const solidObstructions = obstructions.filter((hit) => hit.element === undefined);
         expect(
-          obstructions,
+          solidObstructions,
           `${edge.id} is obstructed at ${point.alongMeters.toFixed(1)} m, lateral ${lateralOffset.toFixed(1)} m ` +
             `position (${probe.x.toFixed(1)},${probe.z.toFixed(1)}); building hits: ${buildingHits.join('; ') || 'none'}, ` +
             `facade hit: ${facadeDescription}, prop hit: ${propHit}`,
@@ -223,8 +226,12 @@ function expectUrbanRoadClearance(city: UrbanNightWorld, network: RoadNetwork): 
           obstructions.length === 0
             ? 0
             : collideCarWithStaticBoxes(probe, buildingFootprints).length;
+        // Only untagged hits (buildings, frontages, static props) must keep the probe clear:
+        // the street-lamp poles stand on the sidewalk centreline by design, and the car can
+        // pass a standing pole (it absorbs up to the pole stop speed, then folds).
+        const solidObstructions = obstructions.filter((hit) => hit.element === undefined);
         expect(
-          obstructions,
+          solidObstructions,
           `${edge.id} has an obstruction across the road/sidewalk probe at ${point.alongMeters.toFixed(1)} m, ` +
             `lateral ${lateralOffset.toFixed(1)} m (building hits: ${buildingObstructions})`,
         ).toHaveLength(0);
