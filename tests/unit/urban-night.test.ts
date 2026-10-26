@@ -809,7 +809,10 @@ describe('Aohara city night-lighting rules', () => {
     let bulbInstance: { mesh: InstancedMesh; index: number } | null = null;
     const bulbMatrix = new Matrix4();
     for (const child of city.root.children) {
-      if (!(child instanceof InstancedMesh) || !child.name.startsWith('aohara-street-lamp-emitters-')) {
+      if (
+        !(child instanceof InstancedMesh) ||
+        !child.name.startsWith('aohara-street-lamp-emitters-')
+      ) {
         continue;
       }
       for (let index = 0; index < child.count; index += 1) {
@@ -855,8 +858,7 @@ describe('Aohara city night-lighting rules', () => {
         Math.hypot(
           pose.elements[12]! - headsBefore[index]![12]!,
           pose.elements[14]! - headsBefore[index]![14]!,
-        ) > 0.05 ||
-        Math.abs(pose.elements[13]! - headsBefore[index]![13]!) > 0.05
+        ) > 0.05 || Math.abs(pose.elements[13]! - headsBefore[index]![13]!) > 0.05
       );
     };
     const movedHeads = Array.from({ length: count }, (_, index) => index).filter(brokenHeadIndex);

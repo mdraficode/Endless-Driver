@@ -2060,10 +2060,7 @@ export class UrbanNightWorld implements SceneContent {
             normalX: contact.normalX,
             normalZ: contact.normalZ,
             penetration: contact.penetration,
-            absorbedSpeed: Math.min(
-              contact.closing,
-              URBAN_CITY_CONFIG.streetLamp.poleStopSpeed,
-            ),
+            absorbedSpeed: Math.min(contact.closing, URBAN_CITY_CONFIG.streetLamp.poleStopSpeed),
             solid: false,
             impact,
             impactSpeed: contact.closing,

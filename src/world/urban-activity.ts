@@ -1559,7 +1559,11 @@ export class UrbanStreetActivity {
         continue;
       }
       const t =
-        door.phase === 'entering' ? door.progress : door.phase === 'exiting' ? 1 - door.progress : 0;
+        door.phase === 'entering'
+          ? door.progress
+          : door.phase === 'exiting'
+            ? 1 - door.progress
+            : 0;
       const x = door.standX + (door.doorX - door.standX) * t;
       const z = door.standZ + (door.doorZ - door.standZ) * t;
       testActor(
@@ -2911,8 +2915,7 @@ export class UrbanStreetActivity {
             // spot; in the final gather phase it eases back to the orbit.
             const scattering = egg.coneScatterSeconds > 0;
             if (scattering) {
-              const scatterAngle =
-                deterministicUnit(egg.kindIndex * 3 + cone, 401) * Math.PI * 2;
+              const scatterAngle = deterministicUnit(egg.kindIndex * 3 + cone, 401) * Math.PI * 2;
               const scatterRadius = 0.55 + deterministicUnit(egg.kindIndex * 3 + cone, 419) * 0.5;
               const scatterX = egg.x + Math.cos(scatterAngle) * scatterRadius;
               const scatterZ = egg.z + Math.sin(scatterAngle) * scatterRadius;
@@ -2953,9 +2956,7 @@ export class UrbanStreetActivity {
           const baseY = ROAD_Y + SIDEWALK_LIFT;
           if (egg.fleeSeconds > 0) {
             const progress =
-              egg.fleeDurationSeconds > 0
-                ? 1 - egg.fleeSeconds / egg.fleeDurationSeconds
-                : 1;
+              egg.fleeDurationSeconds > 0 ? 1 - egg.fleeSeconds / egg.fleeDurationSeconds : 1;
             const eased = 1 - (1 - progress) * (1 - progress);
             const distance = DOG_FLEE_DISTANCE_METERS * eased;
             const runYaw = Math.atan2(-egg.fleeDirectionX, -egg.fleeDirectionZ);

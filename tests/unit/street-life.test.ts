@@ -439,9 +439,9 @@ describe('Aohara street life', () => {
     const hitsA = a.collideActors(probe);
     const hitsB = b.collideActors(probe);
     expect(hitsA.length).toBe(hitsB.length);
-    expect(
-      hitsA.some((hit) => hit.element === 'street-actor' && hit.absorbedSpeed === 2.2),
-    ).toBe(true);
+    expect(hitsA.some((hit) => hit.element === 'street-actor' && hit.absorbedSpeed === 2.2)).toBe(
+      true,
+    );
 
     const bodyA = streetLifeMesh(a, 'aohara-alley-sitter-bodies');
     const bodyB = streetLifeMesh(b, 'aohara-alley-sitter-bodies');
@@ -508,6 +508,8 @@ describe('Aohara street life', () => {
     }
     [offset, headY] = headBodyOffset();
     expect(offset).toBeLessThan(0.15);
+    // The head is back over the body, not lying on the ground.
+    expect(headY).toBeGreaterThan(baseY + 0.9);
     bodyA.getMatrixAt(0, mA);
     expect(mA.elements[13]).toBeGreaterThan(-0.5);
     expect(mA.elements[13]).toBeLessThan(-0.4);
@@ -548,7 +550,7 @@ describe('Aohara street life', () => {
     activity.dispose();
   });
 
-  it('scatters the juggler\'s cones when knocked down and gathers them back after the get-up', () => {
+  it("scatters the juggler's cones when knocked down and gathers them back after the get-up", () => {
     const activity = new UrbanStreetActivity('A');
     const jugglers = streetLifeMesh(activity, 'aohara-egg-juggler-bodies');
     const cones = streetLifeMesh(activity, 'aohara-egg-juggler-cones');
@@ -563,9 +565,9 @@ describe('Aohara street life', () => {
       velocityZ: 0,
     };
     const hits = activity.collideActors(probe);
-    expect(
-      hits.some((hit) => hit.element === 'street-actor' && hit.absorbedSpeed === 2.2),
-    ).toBe(true);
+    expect(hits.some((hit) => hit.element === 'street-actor' && hit.absorbedSpeed === 2.2)).toBe(
+      true,
+    );
 
     // 0.3 s after the hit: all three cones rest at their deterministic scatter spots.
     for (let frame = 0; frame < 18; frame += 1) {
