@@ -211,8 +211,13 @@ describe('Aohara street life', () => {
       { x: 30.5, z: -20.5, yaw: -1.9 },
       { x: 2.5, z: 78.5, yaw: 2.6 },
     ];
-    const a = new UrbanStreetActivity('C', { alleySitterSlots: slots });
+    // Tier A budgets three sitters, so all three explicit slots are used; a lower tier would
+    // take only its budget from the same list.
+    const a = new UrbanStreetActivity('A', { alleySitterSlots: slots });
     expect(a.getContentStats().urbanAlleySitters).toBe(3);
+    const capped = new UrbanStreetActivity('C', { alleySitterSlots: slots });
+    expect(capped.getContentStats().urbanAlleySitters).toBe(1);
+    capped.dispose();
     const body = streetLifeMesh(a, 'aohara-alley-sitter-bodies');
     const cardboard = streetLifeMesh(a, 'aohara-alley-sitter-cardboard');
     const hidden = new Matrix4().makeScale(0, 0, 0);
@@ -231,7 +236,7 @@ describe('Aohara street life', () => {
       }
     }
     // The sitters sway: the same seat produces the same pose in two independent instances.
-    const b = new UrbanStreetActivity('C', { alleySitterSlots: slots });
+    const b = new UrbanStreetActivity('A', { alleySitterSlots: slots });
     for (let frame = 0; frame < 6000; frame += 1) {
       a.update(1 / 60, 'green');
       b.update(1 / 60, 'green');

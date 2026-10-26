@@ -752,10 +752,15 @@ describe('Aohara city night-lighting rules', () => {
     expect(city.root.getObjectByName('aohara-signalized-cross-street')).toBeUndefined();
     expect(city.root.getObjectByName('aohara-ground-deck')).toBeUndefined();
     const nightStats = city.getContentStats();
-    // Phase 8.2b: the world wires real slots in — doors from the facade kit's eave placements
-    // (10 on tier B, so the budget of 8 is fully filled) and sitters from the sampled narrow
-    // alleys (at most the budget of 2, fewer if prop clearance rejects candidates).
-    expect(nightStats.urbanHomeDoors).toBe(Math.min(URBAN_STREET_LIFE_TIER_BUDGET.B.homeDoors, 10));
+    // Phase 8.2b: the world wires real slots in — doors come one-to-one from the facade kit's
+    // vintage eave placements (capped by the tier budget), and sitters come from the sampled
+    // narrow alleys (at most the budget, fewer if prop clearance rejects candidates).
+    const eaveMesh = city.root.getObjectByName('aohara-facade-kit-eave-trim');
+    const eaveCount = eaveMesh instanceof InstancedMesh ? eaveMesh.count : 0;
+    expect(eaveCount).toBeGreaterThan(0);
+    expect(nightStats.urbanHomeDoors).toBe(
+      Math.min(URBAN_STREET_LIFE_TIER_BUDGET.B.homeDoors, eaveCount),
+    );
     expect(nightStats.urbanAlleySitters).toBeLessThanOrEqual(
       URBAN_STREET_LIFE_TIER_BUDGET.B.alleySitters,
     );
@@ -778,7 +783,6 @@ describe('Aohara city night-lighting rules', () => {
       urbanCyclists: URBAN_STREET_LIFE_TIER_BUDGET.B.cyclists,
       urbanCartVendors: URBAN_STREET_LIFE_TIER_BUDGET.B.cartVendors,
       urbanMotorbikes: URBAN_STREET_LIFE_TIER_BUDGET.B.motorbikes,
-      urbanHomeDoors: URBAN_STREET_LIFE_TIER_BUDGET.B.homeDoors,
       urbanEasterEggs: URBAN_STREET_LIFE_TIER_BUDGET.B.easterEggs,
       urbanActivityBatches:
         7 +
