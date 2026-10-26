@@ -2,8 +2,8 @@ import {
   AdditiveBlending,
   BoxGeometry,
   Color,
-  DataTexture,
   ConeGeometry,
+  DataTexture,
   CylinderGeometry,
   Group,
   InstancedMesh,
@@ -11,8 +11,10 @@ import {
   Object3D,
   PlaneGeometry,
   PointLight,
+  Quaternion,
   SphereGeometry,
   Sprite,
+  Vector3,
   type BufferGeometry,
 } from 'three';
 import {
@@ -59,7 +61,12 @@ import type { TierId } from '../config/tiers';
 import { configureTiledSurface, SurfaceTextureLibrary } from '../assets/SurfaceTextureLibrary';
 import type { MaterialTextureSet } from '../assets/AssetManifest';
 import type { DaylightState } from '../environment/EnvironmentClock';
-import { collideCarWithStaticBoxes, type StaticBuildingBox } from './static-building-collision';
+import {
+  collideCarWithStaticBoxes,
+  testCarCirclesVsCircle,
+  type CarCircleContact,
+  type StaticBuildingBox,
+} from './static-building-collision';
 import { createArchitecturalMaterial } from './architectural-materials';
 import { FacadeKitWorld } from './building-facades';
 import { bindScannedPbrMaps } from './scanned-pbr';
@@ -95,7 +102,11 @@ const LOOKDEV_TOWERS: readonly TowerSpec[] = [
 ];
 
 const SIGNAL_ASPECTS: readonly TrafficSignalAspect[] = ['red', 'amber', 'green'];
-const STREET_LAMP_PALETTE = [0xffbf68, 0xff5ad3, 0x54dcff, 0xa78bfa, 0x5ce4b5, 0xff7c62] as const;
+/**
+ * Halogen city-light palette (owner direction: real street lamps, not neon). Four warm white
+ * tones in the 2700–3200 K neighbourhood; the per-lamp pick stays deterministic by grid cell.
+ */
+const STREET_LAMP_PALETTE = [0xffe7c0, 0xffdda8, 0xfff1d2, 0xffd9a0] as const;
 const NIGHT_DECORATION_PALETTE = [
   0x38dfff, 0xff4f9a, 0xffbe48, 0x9b79ff, 0x54e1ba, 0xff785c,
 ] as const;
@@ -1150,28 +1161,81 @@ function createWindowInstances(
   return { illuminatedWindows: litWindows.length, facadeWindows: staticWindows.length };
 }
 
-function createLampGeometry(): BufferGeometry {
-  const pole = new CylinderGeometry(0.12, 0.17, URBAN_CITY_CONFIG.streetLamp.heightMeters, 8);
+/**
+ * The pole body (mast + arm), rooted at the sidewalk. Split from the head so a broken lamp can
+ * fold the mast while the canopy tumbles away as an independent body.
+ */
+function createLampPoleGeometry(): BufferGeometry {
+  const pole = new CylinderGeometry(
+    URBAN_CITY_CONFIG.streetLamp.poleRadiusMeters * 0.5,
+    URBAN_CITY_CONFIG.streetLamp.poleRadiusMeters,
+    URBAN_CITY_CONFIG.streetLamp.heightMeters,
+    8,
+  );
   pole.translate(0, URBAN_CITY_CONFIG.streetLamp.heightMeters / 2, 0);
   const arm = new BoxGeometry(2.25, 0.13, 0.16);
   arm.translate(1.0, URBAN_CITY_CONFIG.streetLamp.heightMeters - 0.28, 0);
-  const canopy = new BoxGeometry(0.9, 0.17, 0.48);
-  canopy.translate(1.86, URBAN_CITY_CONFIG.streetLamp.heightMeters - 0.4, 0);
-  const merged = mergeGeometries([pole, arm, canopy], false);
+  const merged = mergeGeometries([pole, arm], false);
   if (merged === null) {
     arm.dispose();
-    canopy.dispose();
     return pole;
   }
   pole.dispose();
   arm.dispose();
-  canopy.dispose();
   return merged;
+}
+
+/**
+ * The lamp head (canopy over the bulb), rooted at the pole base so it can be driven by the
+ * same instance-matrix contract as the pole. The bulb sits at local (1.88, h−0.4, 0).
+ */
+function createLampHeadGeometry(): BufferGeometry {
+  const canopy = new BoxGeometry(0.9, 0.17, 0.48);
+  canopy.translate(1.86, URBAN_CITY_CONFIG.streetLamp.heightMeters - 0.4, 0);
+  return canopy;
 }
 
 interface StreetLampPlacement {
   readonly pole: TransformSpec;
   readonly bulb: readonly [number, number, number];
+}
+
+/**
+ * Per-lamp dynamic state for the destroyable street lights. The mast folds like a Yuhi town
+ * pole; the head (canopy) separates and tumbles on simple ballistics; the light and bulb
+ * flicker out over `flickerSeconds` and stay dark once `isBroken`.
+ */
+interface StreetLampRecord {
+  /** Accumulated closing-speed damage; `>= poleHitPoints` breaks the lamp. */
+  damage: number;
+  /** World time of the last damaging hit (cooldown gate). */
+  lastHitTime: number;
+  down: boolean;
+  leanAngle: number;
+  leanVelocity: number;
+  /** Mast fold direction (unit, city-local), pointing away from the car's impact. */
+  dirX: number;
+  dirZ: number;
+  /** Head ballistics (city-local metres); the head starts at the bulb. */
+  headActive: boolean;
+  headX: number;
+  headY: number;
+  headZ: number;
+  headVelX: number;
+  headVelY: number;
+  headVelZ: number;
+  /** Tumble: rotation about a horizontal axis. */
+  headSpin: number;
+  headSpinVelocity: number;
+  headAxisX: number;
+  headAxisZ: number;
+  headResting: boolean;
+  /** Remaining flicker window after the breaking hit. */
+  flickerSeconds: number;
+}
+
+function isStreetLampBroken(record: StreetLampRecord): boolean {
+  return record.down && record.flickerSeconds <= 0;
 }
 
 interface StreetLampBuildStats {
@@ -1403,6 +1467,20 @@ export class UrbanNightWorld implements SceneContent {
   readonly #cityOriginZ: number;
   readonly #streetLightBudget: number;
   readonly #architecturalLightBudget: number;
+  /** All street-lamp placements (city-local), in build order; drives collision and visuals. */
+  #streetLampPlacements: readonly StreetLampPlacement[] = [];
+  readonly #streetLampRecords: Map<number, StreetLampRecord> = new Map();
+  #streetLampPoleMesh: InstancedMesh | null = null;
+  #streetLampHeadMesh: InstancedMesh | null = null;
+  /** Per-placement slot of the bulb emitter instance (for flicker pulses and dark-outs). */
+  #streetLampEmitterSlots: Array<{ mesh: InstancedMesh; index: number } | null> = [];
+  /** 16 m spatial hash over the pole positions; the car queries its 3×3 neighbourhood. */
+  readonly #streetLampSpatialCells: Map<string, number[]> = new Map();
+  readonly #streetLampSpatialCellSize = 16;
+  /** Placement indices currently owned by the active street point lights. */
+  #streetLightActivePlacementIndex: number[] = [];
+  #streetLightPolesDown = 0;
+  #streetLampTime = 0;
   #streetLightSpatialGain = 1;
   #architecturalLightSpatialGain = 1;
   #lastStreetLightFocus: { x: number; z: number } | null = null;
@@ -1735,11 +1813,28 @@ export class UrbanNightWorld implements SceneContent {
     this.#lastStreetLightFocus = { x: localX, z: localZ };
     this.#streetLightSpatialGain = coverage;
     this.#streetLightGain.value = coverage;
+    // Broken lamps are out of the active pool: their slot goes to the next-nearest standing
+    // lamp so the budget is never spent on a dark head.
+    const liveCandidates: (readonly [number, number, number])[] = [];
+    this.#streetLightCandidates.forEach((position, placementIndex) => {
+      const record = this.#streetLampRecords.get(placementIndex);
+      if (record !== undefined && isStreetLampBroken(record)) {
+        return;
+      }
+      liveCandidates.push(position);
+    });
     const nearest = selectNearestStreetLights(
-      this.#streetLightCandidates,
+      liveCandidates,
       this.#streetLightBudget,
       localX,
       localZ,
+    );
+    const nearestToPlacementIndex = new Map<string, number>();
+    this.#streetLightCandidates.forEach((position, placementIndex) => {
+      nearestToPlacementIndex.set(`${position[0]}|${position[2]}`, placementIndex);
+    });
+    this.#streetLightActivePlacementIndex = nearest.map(
+      (position) => nearestToPlacementIndex.get(`${position[0]}|${position[2]}`) ?? -1,
     );
     nearest.forEach((position, index) => {
       const light = this.#streetLights[index];
@@ -1754,6 +1849,14 @@ export class UrbanNightWorld implements SceneContent {
       flare.material = this.#streetLightFlareMaterials[paletteIndex]!;
       flare.visible = coverage > 0;
     });
+    // Flares beyond the live selection stay hidden; their light is darkened by
+    // `#setStreetLightIntensity` below (lights past the active count get zero intensity).
+    for (let index = nearest.length; index < this.#streetLightFlares.length; index += 1) {
+      const flare = this.#streetLightFlares[index];
+      if (flare !== undefined) {
+        flare.visible = false;
+      }
+    }
     this.#setStreetLightIntensity();
     this.#updateArchitecturalLightSelection(localX, localZ, coverage);
   }
@@ -1765,6 +1868,8 @@ export class UrbanNightWorld implements SceneContent {
     this.#signalSeconds =
       (this.#signalSeconds + deltaSeconds) % URBAN_CITY_CONFIG.trafficSignal.cycleSeconds;
     this.#synchronizeSignals();
+    this.#streetLampTime += deltaSeconds;
+    this.#updateStreetLampPoles(deltaSeconds);
     this.#activity?.update(deltaSeconds, this.#signalHeads[0]?.active ?? 'red');
   }
 
@@ -1781,6 +1886,7 @@ export class UrbanNightWorld implements SceneContent {
       infillFlatRoofs: this.#cityTypologyStats.infillFlatRoofs,
       frontageBuildings: this.#cityTypologyStats.frontageBuildings,
       streetLightPoles: this.#streetLightPoleCount,
+      streetLightPolesDown: this.#streetLightPolesDown,
       streetLightBollards: this.#streetLightBollardInstances,
       nightMoodLightCandidates: this.#nightMoodLightCandidates,
       activeMoodPointLights: this.#activeArchitecturalCandidates.filter(
@@ -1839,14 +1945,300 @@ export class UrbanNightWorld implements SceneContent {
     };
   }
 
-  /** Static city-building footprints stop the player car through the existing collision response. */
+  /**
+   * City collision: static buildings/frontages/props stop the car, the street-lamp poles give
+   * way (damage, fold, head tumbles), and every street-life actor on the roads and alleys
+   * collides (knockdown, flee, scatter, block) — nothing on the street is hit-free.
+   */
   collide(car: TownCarProbe): TownHit[] {
     if (this.#disposed) return [];
+    const localCar: TownCarProbe = {
+      x: car.x - this.#cityOriginX,
+      z: car.z - this.#cityOriginZ,
+      yaw: car.yaw,
+      velocityX: car.velocityX,
+      velocityZ: car.velocityZ,
+    };
     return [
       ...collideCarWithStaticBoxes(car, this.#buildingColliders),
       ...(this.#backstreetFrontages?.collide(car) ?? []),
       ...collideCarWithStaticBoxes(car, this.#backstreetProps?.collisionBoxes ?? []),
+      ...this.#collideStreetLampPoles(car),
+      ...(this.#activity?.collideActors(localCar) ?? []),
     ];
+  }
+
+  /**
+   * Car contact circles vs. every standing street-lamp pole in the car's 3×3 spatial-hash
+   * neighbourhood. Standing poles are not solid: they absorb up to `poleStopSpeed` and take
+   * damage; at `poleHitPoints` of accumulated closing speed the lamp breaks (mast folds, the
+   * head tumbles toward the car, the light flickers out).
+   */
+  #collideStreetLampPoles(car: TownCarProbe): TownHit[] {
+    const hits: TownHit[] = [];
+    if (this.#streetLampPlacements.length === 0) {
+      return hits;
+    }
+    const localX = car.x - this.#cityOriginX;
+    const localZ = car.z - this.#cityOriginZ;
+    const localCar: TownCarProbe = {
+      x: localX,
+      z: localZ,
+      yaw: car.yaw,
+      velocityX: car.velocityX,
+      velocityZ: car.velocityZ,
+    };
+    const cellSize = this.#streetLampSpatialCellSize;
+    const baseCx = Math.floor(localX / cellSize);
+    const baseCz = Math.floor(localZ / cellSize);
+    for (let cx = baseCx - 1; cx <= baseCx + 1; cx += 1) {
+      for (let cz = baseCz - 1; cz <= baseCz + 1; cz += 1) {
+        const cell = this.#streetLampSpatialCells.get(`${cx}|${cz}`);
+        if (cell === undefined) {
+          continue;
+        }
+        for (const placementIndex of cell) {
+          const placement = this.#streetLampPlacements[placementIndex]!;
+          const record = this.#streetLampRecords.get(placementIndex);
+          // A folded mast lies flat on the sidewalk: the car drives over it (town precedent).
+          if (record !== undefined && record.down) {
+            continue;
+          }
+          const contact = testCarCirclesVsCircle(
+            localCar,
+            placement.pole.x,
+            placement.pole.z,
+            URBAN_CITY_CONFIG.streetLamp.poleRadiusMeters,
+          );
+          if (contact === null) {
+            continue;
+          }
+          const lamp: StreetLampRecord = record ?? {
+            damage: 0,
+            lastHitTime: -Number.POSITIVE_INFINITY,
+            down: false,
+            leanAngle: 0,
+            leanVelocity: 0,
+            dirX: -contact.normalX,
+            dirZ: -contact.normalZ,
+            headActive: false,
+            headX: placement.bulb[0],
+            headY: placement.bulb[1],
+            headZ: placement.bulb[2],
+            headVelX: 0,
+            headVelY: 0,
+            headVelZ: 0,
+            headSpin: 0,
+            headSpinVelocity: 0,
+            headAxisX: -contact.normalZ,
+            headAxisZ: contact.normalX,
+            headResting: false,
+            flickerSeconds: 0,
+          };
+          let impact = false;
+          const onCooldown =
+            this.#streetLampTime - lamp.lastHitTime <
+            URBAN_CITY_CONFIG.streetLamp.poleHitCooldownSeconds;
+          if (contact.closing > 0.9 && !onCooldown) {
+            lamp.damage += contact.closing * 10;
+            lamp.lastHitTime = this.#streetLampTime;
+            lamp.dirX = -contact.normalX;
+            lamp.dirZ = -contact.normalZ;
+            impact = lamp.damage >= URBAN_CITY_CONFIG.streetLamp.poleHitPoints;
+            if (impact && !lamp.down) {
+              this.#breakStreetLamp(
+                placementIndex,
+                lamp,
+                contact,
+                localCar.velocityX,
+                localCar.velocityZ,
+              );
+            }
+            this.#streetLampRecords.set(placementIndex, lamp);
+          }
+          hits.push({
+            normalX: contact.normalX,
+            normalZ: contact.normalZ,
+            penetration: contact.penetration,
+            absorbedSpeed: Math.min(
+              contact.closing,
+              URBAN_CITY_CONFIG.streetLamp.poleStopSpeed,
+            ),
+            solid: false,
+            impact,
+            impactSpeed: contact.closing,
+            lateralOffset: contact.lateralOffset,
+            element: 'street-lamp',
+          });
+        }
+      }
+    }
+    return hits;
+  }
+
+  /**
+   * Breaks a lamp: the mast folds away from the car and the head is launched toward it
+   * (`car velocity × 0.3` + `normal × 0.45 × closing`), lifted `0.8 + 0.3 × closing`, and the
+   * light enters its flicker-out window.
+   */
+  #breakStreetLamp(
+    placementIndex: number,
+    lamp: StreetLampRecord,
+    contact: CarCircleContact,
+    carVelocityX: number,
+    carVelocityZ: number,
+  ): void {
+    const placement = this.#streetLampPlacements[placementIndex]!;
+    lamp.down = true;
+    lamp.leanVelocity = 1.2;
+    lamp.flickerSeconds = URBAN_CITY_CONFIG.streetLamp.flickerSeconds;
+    lamp.headActive = true;
+    lamp.headResting = false;
+    lamp.headX = placement.bulb[0];
+    lamp.headY = placement.bulb[1];
+    lamp.headZ = placement.bulb[2];
+    // The head is knocked toward the car: a share of the car's own velocity plus the contact
+    // push, with a lift that grows with the closing speed.
+    lamp.headVelX = carVelocityX * 0.3 + contact.closing * 0.45 * contact.normalX;
+    lamp.headVelZ = carVelocityZ * 0.3 + contact.closing * 0.45 * contact.normalZ;
+    lamp.headVelY = 0.8 + 0.3 * contact.closing;
+    lamp.headSpinVelocity = 4 + contact.closing * 1.5;
+    this.#streetLightPolesDown += 1;
+  }
+
+  /**
+   * Advances the lamp dynamics: mast fold (clamped at 1.45 rad), head ballistics with floor
+   * at `WORLD_BASE_Y + 0.14`, and the post-hit flicker on the light and the bulb emitter.
+   */
+  #updateStreetLampPoles(deltaSeconds: number): void {
+    if (this.#streetLampRecords.size === 0) {
+      return;
+    }
+    const dt = Math.min(deltaSeconds, 0.05);
+    const dummy = new Object3D();
+    const up = new Vector3(0, 1, 0);
+    const axis = new Vector3();
+    for (const [placementIndex, lamp] of this.#streetLampRecords) {
+      if (!lamp.down) {
+        continue;
+      }
+      const placement = this.#streetLampPlacements[placementIndex];
+      if (placement === undefined) {
+        continue;
+      }
+      // Mast: accelerate to ~83 degrees and settle (no spring-back), like the town poles.
+      lamp.leanVelocity += Math.sin(Math.max(0, 1.45 - lamp.leanAngle)) * 6 * dt;
+      lamp.leanVelocity *= Math.pow(0.25, dt);
+      lamp.leanAngle = Math.min(1.45, lamp.leanAngle + lamp.leanVelocity * dt);
+      axis.set(lamp.dirZ, 0, -lamp.dirX);
+      if (axis.lengthSq() < 1e-12) {
+        axis.set(1, 0, 0);
+      }
+      axis.normalize();
+      if (this.#streetLampPoleMesh !== null) {
+        dummy.position.set(placement.pole.x, placement.pole.y, placement.pole.z);
+        dummy.quaternion
+          .setFromAxisAngle(up, placement.pole.yaw ?? 0)
+          .multiply(new Quaternion().setFromAxisAngle(axis, lamp.leanAngle));
+        dummy.scale.setScalar(1);
+        dummy.updateMatrix();
+        this.#streetLampPoleMesh.setMatrixAt(placementIndex, dummy.matrix);
+        this.#streetLampPoleMesh.instanceMatrix.needsUpdate = true;
+      }
+      // Head: simple gravity ballistics; the floor is just above the road plane.
+      if (lamp.headActive && !lamp.headResting) {
+        lamp.headVelY -= 9.81 * dt;
+        lamp.headX += lamp.headVelX * dt;
+        lamp.headY += lamp.headVelY * dt;
+        lamp.headZ += lamp.headVelZ * dt;
+        const floorY = WORLD_BASE_Y + 0.14;
+        if (lamp.headY <= floorY && lamp.headVelY < 0) {
+          lamp.headY = floorY;
+          if (Math.abs(lamp.headVelY) < 0.6) {
+            lamp.headVelY = 0;
+            lamp.headVelX *= 0.55;
+            lamp.headVelZ *= 0.55;
+            lamp.headSpinVelocity *= 0.5;
+            if (
+              Math.abs(lamp.headVelX) < 0.05 &&
+              Math.abs(lamp.headVelZ) < 0.05 &&
+              Math.abs(lamp.headSpinVelocity) < 0.2
+            ) {
+              lamp.headResting = true;
+            }
+          } else {
+            lamp.headVelY *= -0.28;
+            lamp.headVelX *= 0.82;
+            lamp.headVelZ *= 0.82;
+          }
+        }
+        lamp.headSpin += lamp.headSpinVelocity * dt;
+      }
+      if (this.#streetLampHeadMesh !== null && lamp.headActive) {
+        const tumbleAxisX = lamp.headAxisX;
+        const tumbleAxisZ = lamp.headAxisZ;
+        dummy.position.set(lamp.headX, lamp.headY, lamp.headZ);
+        dummy.quaternion
+          .setFromAxisAngle(up, placement.pole.yaw ?? 0)
+          .multiply(
+            new Quaternion().setFromAxisAngle(
+              axis.set(tumbleAxisX, 0, tumbleAxisZ).normalize(),
+              lamp.headSpin,
+            ),
+          );
+        dummy.scale.setScalar(1);
+        dummy.updateMatrix();
+        this.#streetLampHeadMesh.setMatrixAt(placementIndex, dummy.matrix);
+        this.#streetLampHeadMesh.instanceMatrix.needsUpdate = true;
+      }
+      // Bulb emitter (a sphere, so orientation is irrelevant): it follows the tumbling head,
+      // flickers in scale while the window runs, and darks out once the lamp is broken.
+      const slot = this.#streetLampEmitterSlots[placementIndex] ?? null;
+      if (slot !== null && lamp.headActive) {
+        let scale = 0;
+        if (lamp.flickerSeconds > 0) {
+          const elapsed = URBAN_CITY_CONFIG.streetLamp.flickerSeconds - lamp.flickerSeconds;
+          scale = Math.max(
+            0.12,
+            (0.55 + 0.06 * Math.sin(elapsed * 14 * Math.PI * 2)) *
+              (1 - elapsed / URBAN_CITY_CONFIG.streetLamp.flickerSeconds),
+          );
+        }
+        dummy.position.set(lamp.headX, lamp.headY, lamp.headZ);
+        dummy.quaternion.identity();
+        dummy.scale.setScalar(scale);
+        dummy.updateMatrix();
+        slot.mesh.setMatrixAt(slot.index, dummy.matrix);
+        slot.mesh.instanceMatrix.needsUpdate = true;
+      }
+      // The light: flicker while the window runs, dark once the lamp is fully broken.
+      const activeIndex = this.#streetLightActivePlacementIndex.indexOf(placementIndex);
+      if (activeIndex !== -1) {
+        const light = this.#streetLights[activeIndex];
+        const flare = this.#streetLightFlares[activeIndex];
+        if (light !== undefined) {
+          const baseIntensity =
+            URBAN_CITY_CONFIG.streetLamp.pointLightIntensity *
+            this.#nightGain.value *
+            this.#streetLightSpatialGain;
+          if (lamp.flickerSeconds > 0) {
+            const elapsed = URBAN_CITY_CONFIG.streetLamp.flickerSeconds - lamp.flickerSeconds;
+            light.intensity =
+              baseIntensity *
+              (0.55 + 0.06 * Math.sin(elapsed * 14 * Math.PI * 2)) *
+              (1 - elapsed / URBAN_CITY_CONFIG.streetLamp.flickerSeconds);
+          } else {
+            light.intensity = 0;
+            if (flare !== undefined) {
+              flare.visible = false;
+            }
+          }
+        }
+      }
+      if (lamp.flickerSeconds > 0) {
+        lamp.flickerSeconds = Math.max(0, lamp.flickerSeconds - dt);
+      }
+    }
   }
 
   /** Read-only diagnostic copy used to audit city building clearances against the road graph. */
@@ -2863,12 +3255,21 @@ export class UrbanNightWorld implements SceneContent {
     }
 
     if (placements.length > 0) {
-      addInstancedBoxes(
+      this.#streetLampPoleMesh = addInstancedBoxes(
         this.root,
-        createLampGeometry(),
+        createLampPoleGeometry(),
         poleMaterial,
         placements.map((placement) => placement.pole),
         'aohara-street-lamp-poles',
+      );
+      // The head rides the same transforms while the lamp stands; the knockdown ballistics
+      // take over its per-instance matrix when the lamp breaks.
+      this.#streetLampHeadMesh = addInstancedBoxes(
+        this.root,
+        createLampHeadGeometry(),
+        poleMaterial,
+        placements.map((placement) => placement.pole),
+        'aohara-street-lamp-heads',
       );
     }
 
@@ -2916,20 +3317,38 @@ export class UrbanNightWorld implements SceneContent {
       group.push({ x, y, z });
       emitterGroups.set(color, group);
     }
+    // Map every bulb position to its instanced slot so the flicker pulse and the dark-out of a
+    // broken lamp can drive the exact instance (scale) without touching the other bulbs.
+    const emitterSlotByBulb = new Map<string, { mesh: InstancedMesh; index: number }>();
     for (const [index, [color, transforms]] of [...emitterGroups].entries()) {
       const tint = new Color(color);
       const emitter = new MeshBasicNodeMaterial();
       emitter.colorNode = vec4(vec3(tint.r, tint.g, tint.b).mul(this.#nightGain), 1);
       emitter.toneMapped = false;
       emitter.name = `aohara-street-lamp-emitter-${index}`;
-      addInstancedBoxes(
+      const mesh = addInstancedBoxes(
         this.root,
         emitterGeometry,
         emitter,
         transforms,
         `aohara-street-lamp-emitters-${index}`,
       );
+      transforms.forEach((transform, instanceIndex) => {
+        emitterSlotByBulb.set(`${transform.x}|${transform.z}`, { mesh, index: instanceIndex });
+      });
     }
+    this.#streetLampEmitterSlots = placements.map(
+      (placement) => emitterSlotByBulb.get(`${placement.bulb[0]}|${placement.bulb[2]}`) ?? null,
+    );
+    this.#streetLampPlacements = placements;
+    placements.forEach((placement, index) => {
+      const cellKey = `${Math.floor(
+        placement.pole.x / this.#streetLampSpatialCellSize,
+      )}|${Math.floor(placement.pole.z / this.#streetLampSpatialCellSize)}`;
+      const cell = this.#streetLampSpatialCells.get(cellKey) ?? [];
+      cell.push(index);
+      this.#streetLampSpatialCells.set(cellKey, cell);
+    });
 
     const bollardStride = pointLightBudget === 4 ? 12 : pointLightBudget === 6 ? 8 : 6;
     const bollardGroups = new Map<number, TransformSpec[]>();
@@ -3110,8 +3529,18 @@ export class UrbanNightWorld implements SceneContent {
       URBAN_CITY_CONFIG.streetLamp.pointLightIntensity *
       this.#nightGain.value *
       this.#streetLightSpatialGain;
-    for (const light of this.#streetLights) {
-      light.intensity = intensity;
+    // The look-dev block (no network) never reselects: all of its lamps are always active.
+    const activeCount = this.#networkIntegrated
+      ? this.#streetLightActivePlacementIndex.length
+      : this.#streetLights.length;
+    for (let index = 0; index < this.#streetLights.length; index += 1) {
+      const light = this.#streetLights[index];
+      if (light === undefined) {
+        continue;
+      }
+      // Lights outside the live selection (their lamp broke, or no selection yet) stay dark;
+      // the flicker-out of an active broken lamp is layered on in `#updateStreetLampPoles`.
+      light.intensity = index < activeCount ? intensity : 0;
     }
   }
 

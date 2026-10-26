@@ -31,9 +31,23 @@ export const URBAN_CITY_CONFIG = {
     sidewalkWidthMeters: 3.2,
     sideXMeters: 13.5,
     heightMeters: 7.4,
-    pointLightIntensity: 28,
-    pointLightDistanceMeters: 26,
-    haloScaleMeters: 2.5,
+    /**
+     * Halogen city-light photometrics (owner direction: real street lamps, not neon): a ~550 cd
+     * source over 34 m reads as an easily-lit street while the night mood stays intact. The
+     * earlier 28 cd / 26 m neon tuning was explicitly rejected as too weak and too coloured.
+     */
+    pointLightIntensity: 550,
+    pointLightDistanceMeters: 34,
+    haloScaleMeters: 3.1,
+    /** Pole body radius used by the car collision (the visual cylinder matches). */
+    poleRadiusMeters: 0.24,
+    /** Accumulated closing-speed hits before the lamp breaks (same contract as Yuhi town poles). */
+    poleHitPoints: 30,
+    poleHitCooldownSeconds: 0.3,
+    /** How much of the car's closing speed a standing pole absorbs before the car pushes on. */
+    poleStopSpeed: 2.2,
+    /** Post-impact flicker window for the broken lamp's light and bulb. */
+    flickerSeconds: 0.7,
     /** Keep dynamic point lights around the player inside the bounded city, then fade them out. */
     activeLightFadeStartMeters: 500,
     activeLightRangeMeters: 620,
@@ -69,10 +83,15 @@ export const URBAN_CITY_CONFIG = {
   },
 
   optics: {
-    gaussianHaloStrength: 0.16,
-    broadHaloStrength: 0.022,
+    /**
+     * Gaussian diffraction tuning (owner direction: the halo must be *visible*). The street
+     * lamps' halogen PSF shows a clear soft halo, a wide low-energy tail and a bright core;
+     * the architectural flares share these weights at reduced per-source strength.
+     */
+    gaussianHaloStrength: 0.22,
+    broadHaloStrength: 0.03,
     apertureRingStrength: 0.009,
-    coreStrength: 0.13,
+    coreStrength: 0.18,
     maximumOpacity: 0.38,
   },
   window: {

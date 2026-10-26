@@ -549,6 +549,12 @@ export interface TownHit {
   readonly impact: boolean;
   readonly impactSpeed: number;
   readonly lateralOffset: number;
+  /**
+   * Optional tag for hits on dynamic street elements. Untagged hits are buildings and
+   * frontages (solid, immovable); `'street-lamp'` marks the destroyable lamp poles and
+   * `'street-actor'` marks the living street life. The response path keys off this tag.
+   */
+  readonly element?: 'street-lamp' | 'street-actor';
 }
 
 export interface TownCarProbe {
