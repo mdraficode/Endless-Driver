@@ -6,6 +6,7 @@ import {
   URBAN_STREET_LIFE_TIER_BUDGET,
 } from '../../src/config/urban-city';
 import { UrbanStreetActivity } from '../../src/world/urban-activity';
+import type { TownCarProbe } from '../../src/world/town';
 
 const SAMPLE = new Matrix4();
 
@@ -370,5 +371,223 @@ describe('Aohara street life', () => {
     expect(spinnerCosMin).toBeLessThan(-0.95);
     expect(spinnerCosMax).toBeGreaterThan(0.95);
     a.dispose();
+  });
+
+  it('sends the easter-egg dog fleeing when the car hits it, and shortens the flee once it has tumbled four times', () => {
+    const activity = new UrbanStreetActivity('A');
+    expect(activity.getContentStats().urbanEasterEggs).toBe(4);
+    const dog = streetLifeMesh(activity, 'aohara-egg-dogs');
+    activity.update(1 / 60, 'green');
+    const [baseX, , baseZ] = meshPosition(dog, 0);
+
+    // The car's front contact circle reaches the dog (wide radius 0.45) at 1.53 m centre
+    // distance: 1.18 + 0.45 - 0.1 overlap, driving straight into it at 8 m/s.
+    const makeProbe = (): TownCarProbe => ({
+      x: baseX - 1.53,
+      z: baseZ,
+      yaw: -Math.PI / 2,
+      velocityX: 8,
+      velocityZ: 0,
+    });
+
+    for (let strike = 1; strike <= 5; strike += 1) {
+      const hits = activity.collideActors(makeProbe());
+      const absorbed = new Set(
+        hits.filter((hit) => hit.element === 'street-actor').map((hit) => hit.absorbedSpeed),
+      );
+      // The dog's hit absorbs the 2.2 m/s street-actor cap (min(closing 8, cap 2.2)).
+      expect(absorbed.has(2.2)).toBe(true);
+
+      // Follow the dog out and back to its spot.
+      let maxDistance = 0;
+      let returnedFrame = -1;
+      for (let frame = 0; frame < 360; frame += 1) {
+        activity.update(1 / 60, 'green');
+        const [x, , z] = meshPosition(dog, 0);
+        const distance = Math.hypot(x - baseX, z - baseZ);
+        maxDistance = Math.max(maxDistance, distance);
+        if (returnedFrame < 0 && frame >= 30 && distance < 0.02) {
+          returnedFrame = frame;
+        }
+      }
+      expect(maxDistance).toBeGreaterThan(6.9);
+      if (strike <= 3) {
+        // A full flee covers the 7 m over the whole 4 s: still out at 3 s, back by ~4 s.
+        expect(returnedFrame).toBeGreaterThan(180);
+        expect(returnedFrame).toBeLessThanOrEqual(242);
+      } else {
+        // The fourth strong strike is the fourth tumble: the exhausted flee is cut to 1.2 s.
+        expect(returnedFrame).toBeGreaterThanOrEqual(30);
+        expect(returnedFrame).toBeLessThanOrEqual(120);
+      }
+    }
+    expect(activity.getContentStats().urbanStreetActorImpacts).toBeGreaterThanOrEqual(5);
+    activity.dispose();
+  });
+
+  it('knocks a street-life actor down deterministically: fall, lie, get up', () => {
+    const slots = [{ x: 5, z: 5, yaw: 0.5 }];
+    const a = new UrbanStreetActivity('A', { alleySitterSlots: slots });
+    const b = new UrbanStreetActivity('A', { alleySitterSlots: slots });
+    const probe: TownCarProbe = {
+      x: 5 - 1.38, // 1.18 + 0.3 body radius - 0.1 overlap
+      z: 5,
+      yaw: -Math.PI / 2,
+      velocityX: 8,
+      velocityZ: 0,
+    };
+    const hitsA = a.collideActors(probe);
+    const hitsB = b.collideActors(probe);
+    expect(hitsA.length).toBe(hitsB.length);
+    expect(
+      hitsA.some((hit) => hit.element === 'street-actor' && hit.absorbedSpeed === 2.2),
+    ).toBe(true);
+
+    const bodyA = streetLifeMesh(a, 'aohara-alley-sitter-bodies');
+    const bodyB = streetLifeMesh(b, 'aohara-alley-sitter-bodies');
+    const headA = streetLifeMesh(a, 'aohara-alley-sitter-heads');
+    const headB = streetLifeMesh(b, 'aohara-alley-sitter-heads');
+    const baseY = -0.46 + 0.035;
+
+    const mA = new Matrix4();
+    const mB = new Matrix4();
+    // Same strike in two independent instances → the whole knockdown must match exactly.
+    const expectSamePose = (tLabel: string): void => {
+      bodyA.getMatrixAt(0, mA);
+      bodyB.getMatrixAt(0, mB);
+      headA.getMatrixAt(0, mA);
+      headB.getMatrixAt(0, mB);
+      for (let channel = 0; channel < 16; channel += 1) {
+        expect(mA.elements[channel], `seated matrix channel ${channel} at ${tLabel}`).toBeCloseTo(
+          mB.elements[channel]!,
+          9,
+        );
+      }
+    };
+    const headBodyOffset = (): [number, number] => {
+      bodyA.getMatrixAt(0, mA);
+      headA.getMatrixAt(0, mB);
+      return [
+        Math.hypot(mB.elements[12]! - mA.elements[12]!, mB.elements[14]! - mA.elements[14]!),
+        mB.elements[13]!,
+      ];
+    };
+
+    // 0.25 s: mid-fall. The head is part-way over, still well above the ground.
+    for (let frame = 0; frame < 15; frame += 1) {
+      a.update(1 / 60, 'green');
+      b.update(1 / 60, 'green');
+    }
+    let [offset, headY] = headBodyOffset();
+    expect(offset).toBeGreaterThan(0.3);
+    expect(offset).toBeLessThan(1.0);
+    expect(headY).toBeGreaterThan(baseY + 0.4);
+    expectSamePose('0.25 s');
+
+    // 2 s and 4 s: lying flat. The head rests a body-length from the body, at ground level.
+    let elapsedFrames = 15;
+    for (const target of [120, 240]) {
+      for (let frame = elapsedFrames; frame < target; frame += 1) {
+        a.update(1 / 60, 'green');
+        b.update(1 / 60, 'green');
+      }
+      elapsedFrames = target;
+      [offset, headY] = headBodyOffset();
+      expect(offset).toBeGreaterThan(1.02);
+      expect(offset).toBeLessThan(1.14);
+      expect(headY).toBeGreaterThan(baseY - 0.05);
+      expect(headY).toBeLessThan(baseY + 0.15);
+      expectSamePose(`${target / 60} s`);
+    }
+
+    // 5.5 s: the fall (0.55 s) + lie (<= 4.5 s) + get-up (0.45 s) is over: seated again, head
+    // back over the body.
+    for (let frame = 0; frame < 90; frame += 1) {
+      a.update(1 / 60, 'green');
+      b.update(1 / 60, 'green');
+    }
+    [offset, headY] = headBodyOffset();
+    expect(offset).toBeLessThan(0.15);
+    bodyA.getMatrixAt(0, mA);
+    expect(mA.elements[13]).toBeGreaterThan(-0.5);
+    expect(mA.elements[13]).toBeLessThan(-0.4);
+    expectSamePose('5.5 s');
+    a.dispose();
+    b.dispose();
+  });
+
+  it('treats cart vendors as solid: the car absorbs to the cart stop speed and the cart never moves', () => {
+    const activity = new UrbanStreetActivity('A');
+    activity.update(1 / 60, 'green');
+    const cart = streetLifeMesh(activity, 'aohara-cart-vendor-carts');
+    const [cx, cy, cz] = meshPosition(cart, 0);
+    const probe: TownCarProbe = {
+      x: cx - 1.93, // 1.18 + 0.85 cart radius - 0.1 overlap
+      z: cz,
+      yaw: -Math.PI / 2,
+      velocityX: 8,
+      velocityZ: 0,
+    };
+    const hits = activity.collideActors(probe);
+    // The cart is the only street actor with the 4 m/s absorb cap.
+    const cartHits = hits.filter(
+      (hit) => hit.element === 'street-actor' && hit.absorbedSpeed === 4,
+    );
+    expect(cartHits.length).toBeGreaterThanOrEqual(1);
+    for (const hit of cartHits) {
+      expect(hit.impactSpeed).toBeGreaterThan(0);
+    }
+    // The cart is furniture: the hit does not move it (vendors stay planted).
+    for (let frame = 0; frame < 180; frame += 1) {
+      activity.update(1 / 60, 'green');
+      const [x, y, z] = meshPosition(cart, 0);
+      expect(x).toBeCloseTo(cx, 9);
+      expect(y).toBeCloseTo(cy, 9);
+      expect(z).toBeCloseTo(cz, 9);
+    }
+    activity.dispose();
+  });
+
+  it('scatters the juggler\'s cones when knocked down and gathers them back after the get-up', () => {
+    const activity = new UrbanStreetActivity('A');
+    const jugglers = streetLifeMesh(activity, 'aohara-egg-juggler-bodies');
+    const cones = streetLifeMesh(activity, 'aohara-egg-juggler-cones');
+    activity.update(1 / 60, 'green');
+    const [jx, , jz] = meshPosition(jugglers, 0);
+    const baseY = -0.46 + 0.035;
+    const probe: TownCarProbe = {
+      x: jx - 1.53,
+      z: jz,
+      yaw: -Math.PI / 2,
+      velocityX: 8,
+      velocityZ: 0,
+    };
+    const hits = activity.collideActors(probe);
+    expect(
+      hits.some((hit) => hit.element === 'street-actor' && hit.absorbedSpeed === 2.2),
+    ).toBe(true);
+
+    // 0.3 s after the hit: all three cones rest at their deterministic scatter spots.
+    for (let frame = 0; frame < 18; frame += 1) {
+      activity.update(1 / 60, 'green');
+    }
+    for (let cone = 0; cone < 3; cone += 1) {
+      const [x, y, z] = meshPosition(cones, cone);
+      const distance = Math.hypot(x - jx, z - jz);
+      expect(distance).toBeGreaterThanOrEqual(0.55);
+      expect(distance).toBeLessThan(1.06);
+      expect(y).toBeCloseTo(baseY + 0.05, 5);
+    }
+    // By 7.2 s the scatter window (0.58 + 1.2 + 5 s) has closed and the cones orbit again.
+    for (let frame = 18; frame < Math.round(60 * 7.2); frame += 1) {
+      activity.update(1 / 60, 'green');
+    }
+    for (let cone = 0; cone < 3; cone += 1) {
+      const [x, y, z] = meshPosition(cones, cone);
+      expect(Math.hypot(x - jx, z - jz)).toBeLessThanOrEqual(0.4);
+      expect(y).toBeGreaterThanOrEqual(baseY + 0.1);
+      expect(y).toBeLessThanOrEqual(baseY + 1.15);
+    }
+    activity.dispose();
   });
 });

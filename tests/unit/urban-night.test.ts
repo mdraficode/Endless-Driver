@@ -27,6 +27,7 @@ import { DEFAULT_SPAWN_ID, SPAWN_POINTS } from '../../src/config/spawns';
 import { ROAD_MARKING_JUNCTION_CLEARANCE_METERS } from '../../src/world/road-geometry';
 import { EnvironmentClock } from '../../src/environment/EnvironmentClock';
 import { UrbanNightWorld } from '../../src/world/urban-night';
+import type { TownCarProbe } from '../../src/world/town';
 import {
   advanceTrafficWithSignal,
   constrainTrafficFollowingTravel,
@@ -744,6 +745,151 @@ describe('Aohara city night-lighting rules', () => {
     expect(pointLight.intensity).toBe(0);
     expect(architecturalLight.intensity).toBe(0);
     expect(city.root.getObjectByName('aohara-streetlight-gaussian-flare-1')?.visible).toBe(false);
+    city.dispose();
+  });
+
+  it('lets the car destroy a street light: the pole folds, the head tumbles and settles, and the bulb darks out', () => {
+    const roadNetwork = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG).roadNetwork;
+    if (roadNetwork === undefined) {
+      throw new Error('the shared world sampler should expose the road graph');
+    }
+    const city = new UrbanNightWorld('B', {
+      position: [AOHARA_DISTRICT_CONFIG.centerX, 0, AOHARA_DISTRICT_CONFIG.centerZ],
+      roadNetwork,
+      networkIntegrated: true,
+    });
+    const poleMesh = city.root.getObjectByName('aohara-street-lamp-poles');
+    const headMesh = city.root.getObjectByName('aohara-street-lamp-heads');
+    if (
+      !(poleMesh instanceof InstancedMesh) ||
+      !(headMesh instanceof InstancedMesh) ||
+      poleMesh.count === 0
+    ) {
+      throw new Error('the network-integrated city should build street-lamp pole and head batches');
+    }
+    const count = poleMesh.count;
+
+    const snapshot = (mesh: InstancedMesh): number[][] => {
+      const matrix = new Matrix4();
+      const out: number[][] = [];
+      for (let index = 0; index < mesh.count; index += 1) {
+        mesh.getMatrixAt(index, matrix);
+        out.push([...matrix.elements] as number[]);
+      }
+      return out;
+    };
+    const polesBefore = snapshot(poleMesh);
+    const headsBefore = snapshot(headMesh);
+
+    // Drive the car's front circle (1.05 m ahead of centre) straight into pole 0 from the west:
+    // circle-to-pole distance 1.3 m - (1.18 + 0.24) = 0.12 m deep, closing at 8 m/s.
+    const poleX = polesBefore[0]![12]!;
+    const poleZ = polesBefore[0]![14]!;
+    const originX = city.root.position.x;
+    const originZ = city.root.position.z;
+    const probe: TownCarProbe = {
+      x: originX + poleX - 1.3,
+      z: originZ + poleZ,
+      yaw: -Math.PI / 2,
+      velocityX: 8,
+      velocityZ: 0,
+    };
+    const hits = city.collide(probe);
+    const lampHits = hits.filter((hit) => hit.element === 'street-lamp');
+    expect(lampHits.length).toBeGreaterThanOrEqual(1);
+    expect(lampHits.some((hit) => hit.impact)).toBe(true);
+    // 8 m/s against the pole's 2.2 m/s stop speed: the car absorbs 2.2 m/s.
+    expect(Math.max(...lampHits.map((hit) => hit.absorbedSpeed))).toBe(2.2);
+    expect(city.getContentStats().streetLightPolesDown).toBe(1);
+
+    // The bulb of pole 0 (canopy offset in the pole's local +X): find its emitter instance.
+    const poleYaw = Math.atan2(-polesBefore[0]![2]!, polesBefore[0]![0]!);
+    const bulbX = poleX + Math.cos(poleYaw) * 1.88;
+    const bulbZ = poleZ - Math.sin(poleYaw) * 1.88;
+    let bulbInstance: { mesh: InstancedMesh; index: number } | null = null;
+    const bulbMatrix = new Matrix4();
+    for (const child of city.root.children) {
+      if (!(child instanceof InstancedMesh) || !child.name.startsWith('aohara-street-lamp-emitters-')) {
+        continue;
+      }
+      for (let index = 0; index < child.count; index += 1) {
+        child.getMatrixAt(index, bulbMatrix);
+        // Instance matrices are float32, so match on a millimetre.
+        if (
+          Math.abs(bulbMatrix.elements[12]! - bulbX) < 1e-3 &&
+          Math.abs(bulbMatrix.elements[14]! - bulbZ) < 1e-3
+        ) {
+          bulbInstance = { mesh: child, index };
+        }
+      }
+    }
+    if (bulbInstance === null) {
+      throw new Error('the broken lamp should have a bulb emitter instance');
+    }
+    // The bulb is lit before the break.
+    bulbInstance.mesh.getMatrixAt(bulbInstance.index, bulbMatrix);
+    expect(bulbMatrix.elements[0]).toBeGreaterThan(0.1);
+
+    // One second in: the mast has folded to its clamp and every other pole still stands.
+    for (let frame = 0; frame < 60; frame += 1) {
+      city.update(1 / 60);
+    }
+    const pose = new Matrix4();
+    let tiltedPoles = 0;
+    for (let index = 0; index < count; index += 1) {
+      poleMesh.getMatrixAt(index, pose);
+      // The pole's local +Y world-y component is cos(lean): 1 standing, cos(1.45) ≈ 0.12 down.
+      const upY = pose.elements[5]!;
+      if (upY < 0.3) {
+        tiltedPoles += 1;
+      } else {
+        expect(upY, `pole ${index} must still stand vertical`).toBeGreaterThan(0.99);
+      }
+    }
+    expect(tiltedPoles).toBe(1);
+
+    // Exactly one head leaves its pole.
+    const brokenHeadIndex = (index: number): boolean => {
+      headMesh.getMatrixAt(index, pose);
+      return (
+        Math.hypot(
+          pose.elements[12]! - headsBefore[index]![12]!,
+          pose.elements[14]! - headsBefore[index]![14]!,
+        ) > 0.05 ||
+        Math.abs(pose.elements[13]! - headsBefore[index]![13]!) > 0.05
+      );
+    };
+    const movedHeads = Array.from({ length: count }, (_, index) => index).filter(brokenHeadIndex);
+    expect(movedHeads).toEqual([0]);
+    // Launched from the 7 m bulb, at 1 s the head has fallen from the apex but not settled.
+    expect(pose.elements[13]!).toBeLessThan(headsBefore[0]![13]! + 2.5);
+
+    // Five seconds in: the head is at rest on the floor, well away from its pole, and the
+    // 0.7 s flicker window is over, so the bulb has darked out (emitter scale 0).
+    for (let frame = 60; frame < 300; frame += 1) {
+      city.update(1 / 60);
+    }
+    headMesh.getMatrixAt(0, pose);
+    expect(pose.elements[13]!).toBeCloseTo(-0.55 + 0.14, 1);
+    expect(
+      Math.hypot(
+        pose.elements[12]! - polesBefore[0]![12]!,
+        pose.elements[14]! - polesBefore[0]![14]!,
+      ),
+    ).toBeGreaterThan(0.5);
+    bulbInstance.mesh.getMatrixAt(bulbInstance.index, bulbMatrix);
+    expect(Math.abs(bulbMatrix.elements[0]!)).toBeLessThan(1e-6);
+    // Resting: two more frames move nothing.
+    const restBefore = [...pose.elements] as number[];
+    for (let frame = 0; frame < 2; frame += 1) {
+      city.update(1 / 60);
+    }
+    headMesh.getMatrixAt(0, pose);
+    expect(pose.elements).toEqual(restBefore);
+
+    // A folded mast lies flat: the car drives over it, no re-hit, no second lamp down.
+    expect(city.collide(probe).filter((hit) => hit.element === 'street-lamp')).toHaveLength(0);
+    expect(city.getContentStats().streetLightPolesDown).toBe(1);
     city.dispose();
   });
 
