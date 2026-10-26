@@ -324,11 +324,7 @@ describe('Aohara street life', () => {
       a.update(1 / 60, 'green');
       if (frame % 60 === 0 && jugglerPos === null) {
         jugglers.getMatrixAt(0, SAMPLE);
-        jugglerPos = [
-          SAMPLE.elements[12]!,
-          SAMPLE.elements[13]!,
-          SAMPLE.elements[14]!,
-        ];
+        jugglerPos = [SAMPLE.elements[12]!, SAMPLE.elements[13]!, SAMPLE.elements[14]!];
       }
       // Cones orbit within reach of the juggler and stay hand-to-head height above the walk.
       if (frame % 60 === 0) {

@@ -54,13 +54,7 @@ const HIDDEN_INSTANCE_MATRIX = new Matrix4().makeScale(0, 0, 0);
 
 const PEDESTRIAN_COLORS = [0x455d76, 0x805749, 0x536348, 0x414248, 0x897753, 0x715d76] as const;
 const SKIN_COLORS = [0xc58e6c, 0xe0b890, 0x9d7259] as const;
-const BALLOON_COLORS = [
-  0xc94f4f,
-  0xe0a13c,
-  0x4f8ac9,
-  0x63a85e,
-  0x9a5fb5,
-] as const;
+const BALLOON_COLORS = [0xc94f4f, 0xe0a13c, 0x4f8ac9, 0x63a85e, 0x9a5fb5] as const;
 
 // Phase 8.2b: home enter/exit and easter-egg timing (all deterministic, no physics).
 const DOOR_WALK_SPEED_METERS_PER_SECOND = 0.85;
@@ -1632,9 +1626,7 @@ export class UrbanStreetActivity {
    */
   #createSitters(count: number, slots?: readonly AlleySitterSlot[]): Sitter[] {
     const available =
-      slots !== undefined && slots.length > 0
-        ? slots
-        : this.#fallbackSitterSlots(count);
+      slots !== undefined && slots.length > 0 ? slots : this.#fallbackSitterSlots(count);
     const sitters: Sitter[] = [];
     for (let index = 0; index < Math.min(count, available.length); index += 1) {
       const slot = available[index]!;
@@ -1671,9 +1663,7 @@ export class UrbanStreetActivity {
    */
   #createHomeDoors(count: number, slots?: readonly HomeDoorSlot[]): HomeDoor[] {
     const available =
-      slots !== undefined && slots.length > 0
-        ? slots
-        : this.#fallbackDoorSlots(count);
+      slots !== undefined && slots.length > 0 ? slots : this.#fallbackDoorSlots(count);
     const doors: HomeDoor[] = [];
     for (let index = 0; index < Math.min(count, available.length); index += 1) {
       const slot = available[index]!;
@@ -1682,16 +1672,12 @@ export class UrbanStreetActivity {
       const streetZ = Math.cos(slot.yaw);
       const tangentX = Math.cos(slot.yaw);
       const tangentZ = -Math.sin(slot.yaw);
-      const lateral =
-        (deterministicUnit(index, 239) * 2 - 1) * DOOR_LATERAL_SPREAD_METERS;
+      const lateral = (deterministicUnit(index, 239) * 2 - 1) * DOOR_LATERAL_SPREAD_METERS;
       const doorX = slot.x + streetX * 0.18;
       const doorZ = slot.z + streetZ * 0.18;
       const standX = slot.x + streetX * DOOR_STAND_OFFSET_METERS + tangentX * lateral;
       const standZ = slot.z + streetZ * DOOR_STAND_OFFSET_METERS + tangentZ * lateral;
-      const walkDistance = Math.max(
-        0.5,
-        Math.hypot(standX - doorX, standZ - doorZ),
-      );
+      const walkDistance = Math.max(0.5, Math.hypot(standX - doorX, standZ - doorZ));
       const waitSeconds =
         DOOR_MIN_WAIT_SECONDS + deterministicUnit(index, 251) * DOOR_WAIT_SPREAD_SECONDS;
       const dwellSeconds =
@@ -1777,7 +1763,10 @@ export class UrbanStreetActivity {
           }
           break;
         case 'entering':
-          door.progress = Math.min(1, door.progress + (DOOR_WALK_SPEED_METERS_PER_SECOND * delta) / door.walkDistance);
+          door.progress = Math.min(
+            1,
+            door.progress + (DOOR_WALK_SPEED_METERS_PER_SECOND * delta) / door.walkDistance,
+          );
           if (door.progress >= 1) {
             door.phase = 'inside';
             door.timer = door.dwellSeconds;
@@ -1791,7 +1780,10 @@ export class UrbanStreetActivity {
           }
           break;
         case 'exiting':
-          door.progress = Math.min(1, door.progress + (DOOR_WALK_SPEED_METERS_PER_SECOND * delta) / door.walkDistance);
+          door.progress = Math.min(
+            1,
+            door.progress + (DOOR_WALK_SPEED_METERS_PER_SECOND * delta) / door.walkDistance,
+          );
           if (door.progress >= 1) {
             door.phase = 'waiting';
             door.timer = door.waitSeconds;
@@ -2329,9 +2321,7 @@ export class UrbanStreetActivity {
   }
 
   /** Phase 8.2b: static sitters with a breathing sway and a slow look around the alley. */
-  #writeSitterMatrices(
-    setPose: (x: number, y: number, z: number, yaw: number) => void,
-  ): void {
+  #writeSitterMatrices(setPose: (x: number, y: number, z: number, yaw: number) => void): void {
     if (this.#sitters.length === 0) {
       return;
     }
@@ -2341,20 +2331,14 @@ export class UrbanStreetActivity {
       setPose(sitter.x, ROAD_Y + breathe, sitter.z, sitter.yaw);
       this.#sitterBodyMesh?.setMatrixAt(sitter.index, this.#transform.matrix);
       // The head looks around the alley on a slow, personal cadence.
-      const lookYaw =
-        sitter.yaw + Math.sin(t * 0.4 + sitter.lookPhase) * 0.35;
+      const lookYaw = sitter.yaw + Math.sin(t * 0.4 + sitter.lookPhase) * 0.35;
       setPose(sitter.x, ROAD_Y + 0.98 + breathe, sitter.z, lookYaw);
       this.#sitterHeadMesh?.setMatrixAt(sitter.index, this.#transform.matrix);
       // The cardboard box stays put beside sitters that have one.
       if (sitter.hasCardboard) {
         const rightX = Math.cos(sitter.yaw);
         const rightZ = -Math.sin(sitter.yaw);
-        setPose(
-          sitter.x + rightX * 0.42,
-          ROAD_Y,
-          sitter.z + rightZ * 0.42,
-          sitter.yaw,
-        );
+        setPose(sitter.x + rightX * 0.42, ROAD_Y, sitter.z + rightZ * 0.42, sitter.yaw);
         this.#sitterCardboardMesh?.setMatrixAt(sitter.index, this.#transform.matrix);
       } else {
         this.#sitterCardboardMesh?.setMatrixAt(sitter.index, HIDDEN_INSTANCE_MATRIX);
@@ -2366,9 +2350,7 @@ export class UrbanStreetActivity {
    * Phase 8.2b: home door residents. Waiting stands at the spot beside the doorway, entering
    * and exiting walk it on a straight line, and "inside" writes a zero-scale (hidden) instance.
    */
-  #writeHomeDoorMatrices(
-    setPose: (x: number, y: number, z: number, yaw: number) => void,
-  ): void {
+  #writeHomeDoorMatrices(setPose: (x: number, y: number, z: number, yaw: number) => void): void {
     if (this.#doors.length === 0) {
       return;
     }
@@ -2386,7 +2368,8 @@ export class UrbanStreetActivity {
         x = door.standX;
         z = door.standZ;
         // Facing the doorway with a gentle idle sway.
-        yaw = Math.atan2(door.doorX - door.standX, door.doorZ - door.standZ) +
+        yaw =
+          Math.atan2(door.doorX - door.standX, door.doorZ - door.standZ) +
           Math.sin(t * 0.5 + door.idlePhase) * 0.12;
       } else {
         const eased = door.progress * door.progress * (3 - 2 * door.progress);
@@ -2408,9 +2391,7 @@ export class UrbanStreetActivity {
   }
 
   /** Phase 8.2b: the deterministic street moments (juggler, dog, balloon cart, spinner). */
-  #writeEggMatrices(
-    setPose: (x: number, y: number, z: number, yaw: number) => void,
-  ): void {
+  #writeEggMatrices(setPose: (x: number, y: number, z: number, yaw: number) => void): void {
     if (this.#eggs.length === 0) {
       return;
     }
@@ -2429,9 +2410,7 @@ export class UrbanStreetActivity {
             const angle = t * CONE_ORBIT_SPEED + (cone * Math.PI * 2) / 3 + egg.cyclePhase;
             const coneX = egg.x + Math.cos(angle) * CONE_ORBIT_RADIUS_METERS;
             const coneZ = egg.z + Math.sin(angle * 0.5) * 0.05;
-            const coneY =
-              ROAD_Y + SIDEWALK_LIFT + CONE_HAND_HEIGHT_METERS +
-              Math.sin(angle) * 0.3;
+            const coneY = ROAD_Y + SIDEWALK_LIFT + CONE_HAND_HEIGHT_METERS + Math.sin(angle) * 0.3;
             setPose(coneX, coneY, coneZ, angle);
             this.#eggConeMesh?.setMatrixAt(egg.kindIndex * 3 + cone, this.#transform.matrix);
           }
@@ -2465,18 +2444,20 @@ export class UrbanStreetActivity {
           this.#transform.updateMatrix();
           this.#eggBalloonVendorHeadMesh?.setMatrixAt(egg.kindIndex, this.#transform.matrix);
           const cycleT = (t + egg.cyclePhase) % BALLOON_RELEASE_PERIOD_SECONDS;
-          const releasedIndex = Math.floor((t + egg.cyclePhase) / BALLOON_RELEASE_PERIOD_SECONDS) % BALLOON_COUNT;
+          const releasedIndex =
+            Math.floor((t + egg.cyclePhase) / BALLOON_RELEASE_PERIOD_SECONDS) % BALLOON_COUNT;
           const inFlight = cycleT < BALLOON_FLIGHT_SECONDS;
           const flightProgress = inFlight ? cycleT / BALLOON_FLIGHT_SECONDS : 0;
           for (let slot = 0; slot < BALLOON_COUNT; slot += 1) {
             const clusterAngle = (slot * Math.PI * 2) / BALLOON_COUNT;
-            const clusterX =
-              egg.x + Math.cos(clusterAngle) * 0.16 + Math.cos(egg.yaw) * 0.1;
-            const clusterZ =
-              egg.z + Math.sin(clusterAngle) * 0.16 + Math.sin(egg.yaw) * 0.1;
+            const clusterX = egg.x + Math.cos(clusterAngle) * 0.16 + Math.cos(egg.yaw) * 0.1;
+            const clusterZ = egg.z + Math.sin(clusterAngle) * 0.16 + Math.sin(egg.yaw) * 0.1;
             const clusterY =
-              ROAD_Y + SIDEWALK_LIFT + BALLOON_CLUSTER_HEIGHT_METERS +
-              (slot % 2) * 0.12 + Math.sin(t * 1.4 + slot + egg.cyclePhase) * 0.03;
+              ROAD_Y +
+              SIDEWALK_LIFT +
+              BALLOON_CLUSTER_HEIGHT_METERS +
+              (slot % 2) * 0.12 +
+              Math.sin(t * 1.4 + slot + egg.cyclePhase) * 0.03;
             if (slot === releasedIndex && inFlight) {
               setPose(
                 clusterX + flightProgress * 1.2,

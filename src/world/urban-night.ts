@@ -66,16 +66,9 @@ import { bindScannedPbrMaps } from './scanned-pbr';
 import { createRoadWetPatchMaskTexture, createRoadWetnessNode } from './road-wet-patches';
 import { UrbanStreetFurniture } from './urban-furniture';
 import { UrbanAlleyFrontages } from './urban-alley-frontages';
-import {
-  UrbanBackstreetProps,
-  type UrbanAlleyPropPlacement,
-} from './urban-backstreets';
+import { UrbanBackstreetProps, type UrbanAlleyPropPlacement } from './urban-backstreets';
 import type { RoadNetwork } from './road-network';
-import {
-  UrbanStreetActivity,
-  type AlleySitterSlot,
-  type HomeDoorSlot,
-} from './urban-activity';
+import { UrbanStreetActivity, type AlleySitterSlot, type HomeDoorSlot } from './urban-activity';
 import type { PhysicsWorld } from '../physics/PhysicsWorld';
 import type { TownCarProbe, TownHit } from './town';
 import type { SceneContent, SceneContentContext } from './WorldContent';

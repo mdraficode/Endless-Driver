@@ -755,9 +755,7 @@ describe('Aohara city night-lighting rules', () => {
     // Phase 8.2b: the world wires real slots in — doors from the facade kit's eave placements
     // (10 on tier B, so the budget of 8 is fully filled) and sitters from the sampled narrow
     // alleys (at most the budget of 2, fewer if prop clearance rejects candidates).
-    expect(cityStats.urbanHomeDoors).toBe(
-      Math.min(URBAN_STREET_LIFE_TIER_BUDGET.B.homeDoors, 10),
-    );
+    expect(cityStats.urbanHomeDoors).toBe(Math.min(URBAN_STREET_LIFE_TIER_BUDGET.B.homeDoors, 10));
     expect(cityStats.urbanAlleySitters).toBeLessThanOrEqual(
       URBAN_STREET_LIFE_TIER_BUDGET.B.alleySitters,
     );
