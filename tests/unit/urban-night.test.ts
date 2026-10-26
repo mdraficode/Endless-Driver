@@ -751,16 +751,16 @@ describe('Aohara city night-lighting rules', () => {
     expect(city.root.getObjectByName('aohara-main-avenue')).toBeUndefined();
     expect(city.root.getObjectByName('aohara-signalized-cross-street')).toBeUndefined();
     expect(city.root.getObjectByName('aohara-ground-deck')).toBeUndefined();
-    const cityStats = city.getContentStats();
+    const nightStats = city.getContentStats();
     // Phase 8.2b: the world wires real slots in — doors from the facade kit's eave placements
     // (10 on tier B, so the budget of 8 is fully filled) and sitters from the sampled narrow
     // alleys (at most the budget of 2, fewer if prop clearance rejects candidates).
-    expect(cityStats.urbanHomeDoors).toBe(Math.min(URBAN_STREET_LIFE_TIER_BUDGET.B.homeDoors, 10));
-    expect(cityStats.urbanAlleySitters).toBeLessThanOrEqual(
+    expect(nightStats.urbanHomeDoors).toBe(Math.min(URBAN_STREET_LIFE_TIER_BUDGET.B.homeDoors, 10));
+    expect(nightStats.urbanAlleySitters).toBeLessThanOrEqual(
       URBAN_STREET_LIFE_TIER_BUDGET.B.alleySitters,
     );
-    expect(cityStats.urbanEasterEggs).toBe(URBAN_STREET_LIFE_TIER_BUDGET.B.easterEggs);
-    expect(cityStats).toMatchObject({
+    expect(nightStats.urbanEasterEggs).toBe(URBAN_STREET_LIFE_TIER_BUDGET.B.easterEggs);
+    expect(nightStats).toMatchObject({
       cityBlocks: 16,
       highRiseBuildings: 32,
       infillBuildings: URBAN_ACTIVITY_TIER_BUDGET.B.infillBuildings,
@@ -785,12 +785,12 @@ describe('Aohara city night-lighting rules', () => {
         (URBAN_STREET_LIFE_TIER_BUDGET.B.cyclists > 0 ? 3 : 0) +
         (URBAN_STREET_LIFE_TIER_BUDGET.B.cartVendors > 0 ? 4 : 0) +
         (URBAN_STREET_LIFE_TIER_BUDGET.B.motorbikes > 0 ? 3 : 0) +
-        (cityStats.urbanAlleySitters > 0 ? 3 : 0) +
-        (cityStats.urbanHomeDoors > 0 ? 2 : 0) +
-        (cityStats.urbanEasterEggs > 0 ? 3 : 0) +
-        (cityStats.urbanEasterEggs > 1 ? 1 : 0) +
-        (cityStats.urbanEasterEggs > 2 ? 4 : 0) +
-        (cityStats.urbanEasterEggs > 3 ? 2 : 0),
+        (nightStats.urbanAlleySitters! > 0 ? 3 : 0) +
+        (nightStats.urbanHomeDoors! > 0 ? 2 : 0) +
+        (nightStats.urbanEasterEggs! > 0 ? 3 : 0) +
+        (nightStats.urbanEasterEggs! > 1 ? 1 : 0) +
+        (nightStats.urbanEasterEggs! > 2 ? 4 : 0) +
+        (nightStats.urbanEasterEggs! > 3 ? 2 : 0),
       stadiums: 1,
       casinos: 2,
       mansions: 4,
