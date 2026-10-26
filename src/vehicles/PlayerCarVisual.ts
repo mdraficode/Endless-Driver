@@ -67,11 +67,31 @@ export class PlayerCarVisual {
   #headlightsEnabled = false;
   readonly #selectedModel: PlayerCarModel;
 
-  constructor(selectedModel: PlayerCarModel = 'generic-sport-coupe') {
+  /**
+   * `revealFallback: true` (a mid-drive model switch) shows the authored roadster while the
+   * selected car is being fetched, so the car never vanishes under a deliberate choice. The
+   * startup path leaves it false: the roadster would read as the wrong car for the first
+   * moments of the drive, so the vehicle stays hidden until the chosen model is ready (or the
+   * budget expires and `revealFallback()` is called as the fail-soft last resort).
+   */
+  constructor(
+    selectedModel: PlayerCarModel = 'generic-sport-coupe',
+    options?: { revealFallback?: boolean },
+  ) {
     this.#selectedModel = selectedModel;
     this.root.name = 'player-car-visual';
     this.root.add(this.#fallback.root);
     this.#fallback.root.add(this.#headlightRig.root);
+    if (selectedModel === 'generic-sport-coupe' && options?.revealFallback !== true) {
+      this.#fallback.root.visible = false;
+    }
+  }
+
+  /** Shows the authored roadster (a download that is too slow or failed); idempotent. */
+  revealFallback(): void {
+    if (!this.#fallbackDisposed) {
+      this.#fallback.root.visible = true;
+    }
   }
 
   get model(): PlayerCarModel {
@@ -118,7 +138,11 @@ export class PlayerCarVisual {
     let model: LoadedModel | null = null;
     try {
       model = await loadModelAsset({ renderer, assetId: PLAYER_HERO_CAR_ASSET_ID });
-      if (model === null) return false;
+      if (model === null) {
+        // No verified asset: the roadster becomes the car of record.
+        this.revealFallback();
+        return false;
+      }
       if (this.#disposed) {
         model.dispose();
         return false;
@@ -155,6 +179,8 @@ export class PlayerCarVisual {
         }
         model.dispose();
       }
+      // The car was hidden while the fetch ran; it must not stay hidden on failure.
+      this.revealFallback();
       console.warn(
         'Endless Driver: hero model could not be loaded; keeping the authored fallback.',
         error,

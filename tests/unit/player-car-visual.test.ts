@@ -176,16 +176,54 @@ describe('PlayerCarVisual', () => {
     const visual = new PlayerCarVisual();
     visual.sync(POSE);
 
+    // The coupé is selected: the roadster stays hidden while the fetch runs, so the first
+    // frame never shows the wrong car ("the Roadster flash" report).
+    const fallbackBefore = visual.root.getObjectByName('kaminari-gt-roadster');
+    expect(fallbackBefore?.visible).toBe(false);
+
     await expect(visual.load({})).resolves.toBe(false);
     expect(visual.isHeroModelLoaded).toBe(false);
     expect(visual.cockpitEyeAnchor).toEqual(FALLBACK_COCKPIT_EYE_ANCHOR);
     expect(visual.root.children).toHaveLength(1);
     expect(visual.root.children[0]?.name).toBe('kaminari-gt-roadster');
     expect(visual.root.children[0]?.position.toArray()).toEqual([7, 2, -4]);
+    // The failed fetch revealed the roadster: the car of record is visible again.
+    expect(visual.root.children[0]?.visible).toBe(true);
     expect(warning).toHaveBeenCalledOnce();
 
     visual.dispose();
     warning.mockRestore();
+  });
+
+  it('keeps the fallback hidden until the hero model is ready, then drops it entirely', async () => {
+    const model = createLoadedHero();
+    loadModelAssetMock.mockResolvedValue(model);
+    const visual = new PlayerCarVisual();
+    visual.sync(POSE);
+
+    const fallback = visual.root.getObjectByName('kaminari-gt-roadster');
+    expect(fallback?.visible).toBe(false);
+
+    await expect(visual.load({})).resolves.toBe(true);
+    // Success: no reveal ever happens and the roadster is gone from the scene graph.
+    expect(visual.root.children.some((child) => child.name === 'kaminari-gt-roadster')).toBe(false);
+    expect(model.dispose).not.toHaveBeenCalled();
+    visual.dispose();
+    expect(model.dispose).toHaveBeenCalledOnce();
+  });
+
+  it('shows the fallback while a mid-drive switch to the coupé is fetched', async () => {
+    loadModelAssetMock.mockRejectedValue(new Error('offline'));
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    // A deliberate player choice keeps the car visible on the roadster until the swap.
+    const visual = new PlayerCarVisual('generic-sport-coupe', { revealFallback: true });
+    expect(visual.root.getObjectByName('kaminari-gt-roadster')?.visible).toBe(true);
+
+    await expect(visual.load({})).resolves.toBe(false);
+    expect(visual.root.children[0]?.name).toBe('kaminari-gt-roadster');
+    expect(visual.root.children[0]?.visible).toBe(true);
+    warning.mockRestore();
+    visual.dispose();
   });
 
   it('keeps the authored fallback when the hero asset lacks named rear-lamp materials', async () => {

@@ -57,15 +57,29 @@ function makeLoadingDom() {
 
 function stubLoadingWindow(prefersReducedMotion = false) {
   const ticks = new Map<number, () => void>();
+  // Live one-shot timers only: clearTimeout removes the entry (browser-faithful), so the
+  // array mirrors what a real page would still have pending.
   const hideTimers: Array<() => void> = [];
+  const callbackIds = new Map<() => void, number>();
+  const clearedIds = new Set<number>();
+  let nextTimeoutId = 0;
   let nextIntervalId = 0;
   let now = 0;
   vi.stubGlobal('window', {
     setTimeout: (callback: () => void) => {
+      const id = ++nextTimeoutId;
+      callbackIds.set(callback, id);
       hideTimers.push(callback);
-      return 1;
+      return id;
     },
-    clearTimeout: vi.fn(),
+    clearTimeout: (id: number) => {
+      if (clearedIds.has(id)) return;
+      clearedIds.add(id);
+      const index = hideTimers.findIndex((callback) => callbackIds.get(callback) === id);
+      if (index >= 0) {
+        hideTimers.splice(index, 1);
+      }
+    },
     setInterval: (callback: () => void) => {
       const id = ++nextIntervalId;
       ticks.set(id, callback);
@@ -128,7 +142,37 @@ describe('startup progress', () => {
       expect(dom.dataset['state']).toBe('error');
       expect(dom.retry.hidden).toBe(false);
       expect(dom.label.textContent).toContain('Could not start:');
-      expect(dom.label.textContent).toContain('not finished loading');
+      expect(dom.label.textContent).toContain('not made loading progress');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps a slow-but-alive loading pass alive: progress ticks restart the stall backstop', () => {
+    const { hideTimers } = stubLoadingWindow();
+
+    try {
+      const dom = makeLoadingDom();
+      const loading = new LoadingScreen(dom.root);
+      loading.show();
+      loading.update(0.88, 'Warming up the graphics pipeline (first run is slower)…');
+      const superseded = hideTimers[0]!;
+      // A weak GPU's full shader pre-compile reports progress for minutes; every tick restarts
+      // the stall deadline, so the pass can run far past the original window.
+      for (let tick = 1; tick < 40; tick += 1) {
+        loading.update(
+          0.88 + tick / 1000,
+          'Warming up the graphics pipeline (first run is slower)…',
+        );
+      }
+      // Only the latest deadline is live; the superseded one is inert when it eventually fires.
+      expect(hideTimers).toHaveLength(1);
+      expect(hideTimers[0]).not.toBe(superseded);
+      superseded();
+      expect(dom.dataset['state']).toBe('loading');
+      hideTimers[0]!();
+      expect(dom.dataset['state']).toBe('error');
+      expect(dom.label.textContent).toContain('not made loading progress');
     } finally {
       vi.unstubAllGlobals();
     }
@@ -163,17 +207,19 @@ describe('startup progress', () => {
       const backstop = hideTimers[0]!;
       loading.update(1, 'Ready — the drive starts automatically');
 
-      // Run the completion ramp; fire the one-shot hide timer as it becomes pending (the backstop
-      // is the first entry and must never be fired here).
+      // Run the completion ramp; fire the fade timer as it becomes pending. Completion disarms
+      // the backstop, so once the fade appears it is the only entry and must not be fired twice.
       for (let timestamp = 100; timestamp <= 12_000 && !dom.root.hidden; timestamp += 100) {
         if (ticks.size === 0) break;
         advanceTime(timestamp);
-        if (hideTimers.length > 1) {
+        if (hideTimers.length > 0 && hideTimers[0] !== backstop) {
           hideTimers.pop()!();
         }
       }
       expect(dom.root.hidden).toBe(true);
 
+      // The backstop was disarmed at completion: firing the captured (superseded) deadline must
+      // be a no-op, whatever its identity check does.
       backstop();
       expect(dom.dataset['state']).toBe('ready');
       expect(dom.retry.hidden).toBe(true);
@@ -250,10 +296,10 @@ describe('startup progress', () => {
       expect(dom.percent.textContent).toBe('100%');
       expect(dom.progressAttributes.has('aria-valuetext')).toBe(false);
       expect(dom.classes.has('loading-screen-complete')).toBe(true);
-      // The 520 ms fade timer joined the backstop.
-      expect(hideTimers).toHaveLength(2);
+      // Completion disarmed the backstop; only the 520 ms fade timer is pending.
+      expect(hideTimers).toHaveLength(1);
 
-      hideTimers[hideTimers.length - 1]!();
+      hideTimers[0]!();
       expect(onHidden).toHaveBeenCalledTimes(1);
       expect(dom.root.hidden).toBe(true);
       expect(dom.rootAttributes.get('aria-hidden')).toBe('true');
@@ -362,10 +408,10 @@ describe('startup progress', () => {
       expect(dom.dataset['progressPhase']).toBe('complete');
       expect(dom.classes.has('loading-screen-complete')).toBe(true);
       expect(dom.progressAttributes.has('aria-valuetext')).toBe(false);
-      // The 520 ms fade timer joined the backstop.
-      expect(hideTimers).toHaveLength(2);
+      // Completion disarmed the backstop; only the 520 ms fade timer is pending.
+      expect(hideTimers).toHaveLength(1);
 
-      hideTimers[hideTimers.length - 1]!();
+      hideTimers[0]!();
       expect(dom.root.hidden).toBe(true);
     } finally {
       vi.unstubAllGlobals();

@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { warmupProgressFraction, waitForWithinBudget } from '../../src/shared/budget';
+import {
+  warmupProgressAsymptotic,
+  warmupProgressFraction,
+  waitForWithinBudget,
+} from '../../src/shared/budget';
 
 describe('waitForWithinBudget', () => {
   beforeEach(() => {
@@ -78,5 +82,38 @@ describe('warmupProgressFraction', () => {
   it('clamps negative elapsed to the lower bound and a zero window to the upper bound', () => {
     expect(warmupProgressFraction(-500, 25_000, 0.87, 0.97)).toBe(0.87);
     expect(warmupProgressFraction(0, 0, 0.87, 0.97)).toBe(0.97);
+  });
+});
+
+describe('warmupProgressAsymptotic', () => {
+  it('starts at the lower bound and approaches the upper bound without overshooting', () => {
+    expect(warmupProgressAsymptotic(0, 45_000, 0.88, 0.97)).toBe(0.88);
+    for (const elapsedMs of [60_000, 5 * 60_000, 60 * 60_000]) {
+      const value = warmupProgressAsymptotic(elapsedMs, 45_000, 0.88, 0.97);
+      expect(value).toBeGreaterThanOrEqual(0.88);
+      // The exponential never overshoots; double precision rests it exactly at `to` after ~36τ.
+      expect(value).toBeLessThanOrEqual(0.97);
+    }
+    // A minute in, the bar is already most of the way across the band.
+    expect(warmupProgressAsymptotic(60_000, 45_000, 0.88, 0.97)).toBeGreaterThan(0.94);
+  });
+
+  it('creeps visibly every 250 ms for as long as the wait lasts', () => {
+    const tauMs = 45_000;
+    let previous = warmupProgressAsymptotic(0, tauMs, 0.88, 0.97);
+    let totalMovement = 0;
+    for (let elapsedMs = 250; elapsedMs <= 3 * 60_000; elapsedMs += 250) {
+      const value = warmupProgressAsymptotic(elapsedMs, tauMs, 0.88, 0.97);
+      expect(value).toBeGreaterThan(previous);
+      totalMovement += value - previous;
+      previous = value;
+    }
+    // Three minutes of ticking still moved the bar most of the way across the band.
+    expect(totalMovement).toBeGreaterThan(0.07);
+  });
+
+  it('clamps negative elapsed to the lower bound and a non-positive tau to the upper bound', () => {
+    expect(warmupProgressAsymptotic(-500, 45_000, 0.88, 0.97)).toBe(0.88);
+    expect(warmupProgressAsymptotic(1_000, 0, 0.88, 0.97)).toBe(0.97);
   });
 });

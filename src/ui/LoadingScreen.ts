@@ -34,7 +34,12 @@ export interface LoadingScreenOptions {
   readonly maxLoadingMs?: number;
 }
 
-/** Default lifetime for the loading backstop; generous for slow mobile cold starts. */
+/**
+ * Default *stall* window for the loading backstop: it fires when no progress tick arrives for
+ * this long — not after this long of total loading. Slow-but-alive stages (a weak GPU's full
+ * shader pre-compile takes minutes and ticks every 250 ms) refresh it on every tick and can
+ * never trip it; a truly dead pipeline stops ticking and is reported.
+ */
 const DEFAULT_MAX_LOADING_MS = 90_000;
 
 /** Branded loading surface; gameplay is started automatically once the first frame is rendered. */
@@ -92,10 +97,23 @@ export class LoadingScreen {
   }
 
   update(progress: number, label: string): void {
-    if (this.#finished || this.#completionPending) {
+    if (this.#finished) {
       return;
     }
-    this.#fraction = normalizeLoadingProgress(progress, this.#fraction);
+    if (this.#completionPending) {
+      // Completion is deterministic (a short ramp, then the fade); the stall deadline no
+      // longer applies while it runs.
+      this.#disarmLifetimeBackstop();
+      return;
+    }
+    const nextFraction = normalizeLoadingProgress(progress, this.#fraction);
+    // This tick proves the startup is alive: restart the stall backstop. The completion tick
+    // (fraction 1) is the exception — the ramp that follows is short and deterministic, and
+    // #finish() disarms the deadline when the fade is scheduled.
+    if (nextFraction < 1) {
+      this.#armLifetimeBackstop();
+    }
+    this.#fraction = nextFraction;
     const percent = Math.round(this.#fraction * 100);
     this.#progress.setAttribute('aria-valuenow', String(percent));
 
@@ -270,16 +288,27 @@ export class LoadingScreen {
     this.#lastProgressTimestamp = null;
   }
 
-  /** Arms the "never stuck forever" backstop for a fresh loading pass. */
+  /**
+   * Arms (or re-arms) the stall backstop: the deadline restarts on every progress tick, so a
+   * slow-but-alive startup can run as long as it keeps reporting, and only a dead pipeline —
+   * one that stops ticking entirely — can fail the screen.
+   */
   #armLifetimeBackstop(): void {
     this.#disarmLifetimeBackstop();
-    this.#lifetimeTimer = window.setTimeout(() => {
+    const timer = window.setTimeout(() => {
+      // A re-arm or a completion replaced this deadline; only the latest one may fail us.
+      if (this.#lifetimeTimer !== timer) {
+        return;
+      }
       this.#lifetimeTimer = null;
       if (this.#finished) {
         return;
       }
-      this.fail('The game has not finished loading in the expected time. Retry reloads the game.');
+      this.fail(
+        'The game has not made loading progress in the expected time. Retry reloads the game.',
+      );
     }, this.#maxLoadingMs);
+    this.#lifetimeTimer = timer;
   }
 
   #disarmLifetimeBackstop(): void {

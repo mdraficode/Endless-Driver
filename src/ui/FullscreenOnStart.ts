@@ -68,7 +68,15 @@ export function requestFullscreenBestEffort(
       requestLandscapeLockBestEffort(documentRef);
       return true;
     })
-    .catch(() => false);
+    .catch((error: unknown) => {
+      // Name the rejection: the next device report can then say whether the browser denied
+      // the request, what it wanted (a gesture, a user-activation window), or what failed.
+      console.warn(
+        'Endless Driver: the fullscreen request was not honoured by the browser.',
+        error instanceof Error ? error.name + ': ' + error.message : String(error),
+      );
+      return false;
+    });
   if (gestureEvent !== undefined) {
     const event = gestureEvent;
     gestureRequestByEvent.set(event, attempt);
