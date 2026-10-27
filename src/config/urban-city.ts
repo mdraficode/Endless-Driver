@@ -96,8 +96,8 @@ export const URBAN_CITY_CONFIG = {
   },
   window: {
     floorSpacingMeters: 3.35,
-    widthMeters: 1.3,
-    heightMeters: 1.35,
+    widthMeters: 1.9,
+    heightMeters: 1.7,
     facadeMarginMeters: 2.4,
     columnSpacingMeters: 3.3,
   },
@@ -147,7 +147,7 @@ export const URBAN_NIGHT_TIER_BUDGET: Readonly<Record<TierId, UrbanNightTierBudg
     pointLights: 6,
     streetPointLights: 4,
     architecturalPointLights: 2,
-    litWindowInstances: 240,
+    litWindowInstances: 800,
     facadeWindowInstances: 4_800,
     facadeDetailInstances: 512,
     cardinalStarburst: 0.035,
@@ -157,7 +157,7 @@ export const URBAN_NIGHT_TIER_BUDGET: Readonly<Record<TierId, UrbanNightTierBudg
     pointLights: 8,
     streetPointLights: 6,
     architecturalPointLights: 2,
-    litWindowInstances: 480,
+    litWindowInstances: 1_800,
     facadeWindowInstances: 9_600,
     facadeDetailInstances: 1_024,
     cardinalStarburst: 0.05,
@@ -167,7 +167,7 @@ export const URBAN_NIGHT_TIER_BUDGET: Readonly<Record<TierId, UrbanNightTierBudg
     pointLights: 12,
     streetPointLights: 8,
     architecturalPointLights: 4,
-    litWindowInstances: 900,
+    litWindowInstances: 3_000,
     facadeWindowInstances: 14_400,
     facadeDetailInstances: 1_600,
     cardinalStarburst: 0.06,
@@ -212,8 +212,10 @@ export interface UrbanFacadeKitTierBudget {
   readonly floorBands: number;
   /** Phase 8.3: dark vertical strips at the two street-facing corners. */
   readonly cornerReveals: number;
-  /** Phase 8.3: rooftop mechanical penthouses on flat roofs. */
-  readonly penthouses: number;
+  /** Phase 8.3d: slim antenna masts on flat roofs (replace the boxy penthouses). */
+  readonly masts: number;
+  /** Phase 8.3d: dark shopfront glazing units on the street face ground level. */
+  readonly storefrontGlazing: number;
   /** Phase 8.3b: dark stone base band across the street face (ground floor). */
   readonly groundCladding: number;
   /** Phase 8.3b: lighter parapet band across the top of the street face. */
@@ -236,7 +238,8 @@ export const URBAN_FACADE_KIT_TIER_BUDGET: Readonly<Record<TierId, UrbanFacadeKi
     awnings: 20,
     floorBands: 4280,
     cornerReveals: 1088,
-    penthouses: 216,
+    masts: 160,
+    storefrontGlazing: 950,
     groundCladding: 1088,
     crownCladding: 1088,
   },
@@ -250,7 +253,8 @@ export const URBAN_FACADE_KIT_TIER_BUDGET: Readonly<Record<TierId, UrbanFacadeKi
     awnings: 26,
     floorBands: 4316,
     cornerReveals: 1104,
-    penthouses: 218,
+    masts: 180,
+    storefrontGlazing: 950,
     groundCladding: 1104,
     crownCladding: 1104,
   },
@@ -264,7 +268,8 @@ export const URBAN_FACADE_KIT_TIER_BUDGET: Readonly<Record<TierId, UrbanFacadeKi
     awnings: 40,
     floorBands: 4360,
     cornerReveals: 1120,
-    penthouses: 222,
+    masts: 200,
+    storefrontGlazing: 950,
     groundCladding: 1120,
     crownCladding: 1120,
   },

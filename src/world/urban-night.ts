@@ -381,6 +381,8 @@ interface ArchitecturalLightCandidate {
 interface NightArchitectureAccentStats {
   readonly highRiseInstances: number;
   readonly storefrontInstances: number;
+  /** Phase 8.3d: lit shopfront bands on the street face ground level. */
+  readonly storefrontBandInstances: number;
 }
 
 interface CityTypologyStats {
@@ -913,7 +915,11 @@ function createWindowMaterial(
 
 interface WindowCandidate extends TransformSpec {
   readonly rank: number;
+  /** Phase 8.3d: per-building occupancy score; lit windows are the highest-scored within budget. */
+  readonly score: number;
   readonly tone: 'warm' | 'cool';
+  /** Street-facing windows; selected first when the tier facade budget is tighter than the pool. */
+  readonly priority?: boolean;
 }
 
 function buildWindowCandidates(
@@ -926,7 +932,9 @@ function buildWindowCandidates(
     position: readonly [number, number, number],
     yaw: number,
     rank: number,
-    toneSeed: number,
+    score: number,
+    tone: 'warm' | 'cool',
+    priority: boolean,
   ): void => {
     candidates.push({
       x: position[0],
@@ -934,7 +942,9 @@ function buildWindowCandidates(
       z: position[2],
       yaw,
       rank,
-      tone: stableUnit(toneSeed, Math.floor(rank * 1_000_000), 227) < 0.74 ? 'warm' : 'cool',
+      score,
+      tone,
+      ...(priority ? { priority: true } : {}),
     });
   };
 
@@ -983,9 +993,18 @@ function buildWindowCandidates(
         length: tower.width,
       },
     ];
+    // Phase 8.3d: per-tower occupancy — some towers glow after hours, others sit dark.
+    const towerLitness = 0.35 + 0.5 * stableUnit(towerIndex, 613, 701);
+    const towerTone: 'warm' | 'cool' = stableUnit(towerIndex, 719, 823) < 0.6 ? 'cool' : 'warm';
     for (let sideIndex = 0; sideIndex < sides.length; sideIndex += 1) {
       const side = sides[sideIndex]!;
+      // The +Z face is the authored front (the night accents light it too); prefer it in cuts.
+      const streetFace = sideIndex === 3;
       for (let floor = 1; floor < floors; floor += 1) {
+        const floorFactor =
+          stableUnit(towerIndex, 911 + floor, 929) < 0.12
+            ? 0
+            : 0.55 + 0.45 * stableUnit(towerIndex, 941 + floor, 947);
         for (let column = 0; column < side.columns; column += 1) {
           if (stableUnit(towerIndex, floor * 31 + column, sideIndex + 17) < 0.31) {
             continue;
@@ -996,11 +1015,14 @@ function buildWindowCandidates(
           const x = side.x + (side.along === 'x' ? along : 0);
           const z = side.z + (side.along === 'z' ? along : 0);
           const rank = stableUnit(towerIndex * 101 + floor, column + sideIndex * 29, 59);
+          const roll = stableUnit(towerIndex * 131 + floor, column * 7 + sideIndex, 591);
           add(
             [x, WORLD_BASE_Y + 3.1 + floor * floorSpacingMeters, z],
             side.yaw,
             rank,
-            towerIndex * 97 + sideIndex,
+            towerLitness * floorFactor * (0.4 + 0.6 * roll) * (streetFace ? 1.3 : 1),
+            towerTone,
+            streetFace,
           );
         }
       }
@@ -1012,7 +1034,6 @@ function buildWindowCandidates(
     const yaw = building.yaw ?? 0;
     const cos = Math.cos(yaw);
     const sin = Math.sin(yaw);
-    const floors = Math.max(1, Math.floor((building.height - 1.5) / 2.8));
     const xFaceColumns = Math.max(1, Math.floor((building.depth - 2) / 3.2));
     const zFaceColumns = Math.max(1, Math.floor((building.width - 2) / 3.2));
     const sides = [
@@ -1049,24 +1070,42 @@ function buildWindowCandidates(
         length: building.width,
       },
     ];
+    // Phase 8.3d: per-building occupancy and tone — some blocks are full of warm light,
+    // others sit dark after hours. The street face leads when the tier budget cuts.
+    const litness = 0.08 + 0.8 * stableUnit(buildingIndex + 701, 517, 613);
+    const buildingTone: 'warm' | 'cool' =
+      stableUnit(buildingIndex + 701, 719, 823) < 0.62 ? 'warm' : 'cool';
+    const streetSideIndex = building.kind === 'frontage' || building.kind === 'shop' ? 1 : 3;
     for (let sideIndex = 0; sideIndex < sides.length; sideIndex += 1) {
       const side = sides[sideIndex]!;
-      for (let floor = 0; floor < floors; floor += 1) {
+      const streetFace = sideIndex === streetSideIndex;
+      // The ground floor belongs to the shopfronts; window rows start at 4.3 m and climb the
+      // 2.6 m floor rhythm until 0.35 m under the roof line.
+      for (let row = 0; ; row += 1) {
+        const rowY = 4.3 + row * 2.6;
+        if (rowY + 0.85 > building.height - 0.35) break;
+        const floorFactor =
+          stableUnit(buildingIndex + 701, 911 + row, 929) < 0.12
+            ? 0
+            : 0.55 + 0.45 * stableUnit(buildingIndex + 701, 941 + row, 947);
         for (let column = 0; column < side.columns; column += 1) {
           const spacing = Math.min(3.1, (side.length - 2.2) / side.columns);
           const along = (column - (side.columns - 1) / 2) * spacing;
           const localX = side.localX + (side.along === 'x' ? along : 0);
           const localZ = side.localZ + (side.along === 'z' ? along : 0);
-          const rank = stableUnit(buildingIndex + 701, floor * 19 + column + sideIndex * 23, 223);
+          const rank = stableUnit(buildingIndex + 701, row * 19 + column + sideIndex * 23, 223);
+          const roll = stableUnit(buildingIndex + 701, row * 19 + column + sideIndex * 23, 2231);
           add(
             [
               building.x + cos * localX + sin * localZ,
-              WORLD_BASE_Y + 1.7 + floor * 2.6,
+              WORLD_BASE_Y + rowY,
               building.z - sin * localX + cos * localZ,
             ],
             side.yaw,
             rank,
-            buildingIndex * 13 + sideIndex,
+            litness * floorFactor * (0.4 + 0.6 * roll) * (streetFace ? 1.3 : 1),
+            buildingTone,
+            streetFace,
           );
         }
       }
@@ -1112,10 +1151,14 @@ function createWindowInstances(
   extraBuildings: readonly CityBuildingSpec[] = [],
 ): { readonly illuminatedWindows: number; readonly facadeWindows: number } {
   const candidates = buildWindowCandidates(towers, extraBuildings);
-  const ranked = [...candidates].sort((a, b) => a.rank - b.rank);
+  // Phase 8.3d: street-facing windows keep their panes first when the tier budget cuts.
+  const ranked = [...candidates].sort(
+    (a, b) => (b.priority === true ? 1 : 0) - (a.priority === true ? 1 : 0) || a.rank - b.rank,
+  );
   const staticWindows = ranked.slice(0, facadeBudget);
   if (staticWindows.length > 0) {
-    const paneGeometry = new BoxGeometry(0.055, 1.17, 1.12);
+    const { widthMeters, heightMeters } = URBAN_CITY_CONFIG.window;
+    const paneGeometry = new BoxGeometry(0.055, heightMeters - 0.15, widthMeters - 0.15);
     const glazing = createArchitecturalMaterial({
       name: 'aohara-hdri-tinted-facade-glazing',
       colorHex: 0x1a2a38,
@@ -1155,12 +1198,23 @@ function createWindowInstances(
     ).castShadow = true;
   }
 
-  const litWindows = ranked.slice(0, litBudget);
+  // Phase 8.3d: lit windows follow per-building occupancy (score), not the flat rank order —
+  // bright blocks glow, dark blocks stay dark, and the street face leads.
+  const litWindows = [...candidates]
+    .sort((a, b) => b.score - a.score || a.rank - b.rank)
+    .slice(0, litBudget);
   const lightGeometry = new BoxGeometry(
     0.14,
     URBAN_CITY_CONFIG.window.heightMeters,
     URBAN_CITY_CONFIG.window.widthMeters,
   );
+  // The glowing pane stands slightly proud of the tinted glazing so no dark rim shows.
+  const litTransforms = (windows: readonly WindowCandidate[]): WindowCandidate[] =>
+    windows.map((window) => ({
+      ...window,
+      x: window.x + Math.cos(window.yaw ?? 0) * 0.075,
+      z: window.z - Math.sin(window.yaw ?? 0) * 0.075,
+    }));
   const warm = litWindows.filter((window) => window.tone === 'warm');
   const cool = litWindows.filter((window) => window.tone === 'cool');
   if (warm.length > 0) {
@@ -1168,7 +1222,7 @@ function createWindowInstances(
       root,
       lightGeometry,
       createWindowMaterial([1.0, 0.56, 0.25], nightGain, 'aohara-warm-window-light'),
-      warm,
+      litTransforms(warm),
       'aohara-warm-windows',
     );
   }
@@ -1177,7 +1231,7 @@ function createWindowInstances(
       root,
       lightGeometry,
       createWindowMaterial([0.43, 0.66, 1.0], nightGain, 'aohara-cool-window-light'),
-      cool,
+      litTransforms(cool),
       'aohara-cool-windows',
     );
   }
@@ -1464,6 +1518,7 @@ export class UrbanNightWorld implements SceneContent {
   readonly #architecturalFlareMaterials = new Map<number, SpriteNodeMaterial>();
   readonly #highRiseNightAccentInstances: number;
   readonly #storefrontNightAccentInstances: number;
+  readonly #storefrontBandInstances: number;
   readonly #streetLightBollardInstances: number;
   readonly #nightMoodLightCandidates: number;
   readonly #activeArchitecturalCandidates: ArchitecturalLightCandidate[] = [];
@@ -1636,6 +1691,7 @@ export class UrbanNightWorld implements SceneContent {
     const accentStats = this.#buildNightArchitectureAccents(this.#towers, additionalBuildings);
     this.#highRiseNightAccentInstances = accentStats.highRiseInstances;
     this.#storefrontNightAccentInstances = accentStats.storefrontInstances;
+    this.#storefrontBandInstances = accentStats.storefrontBandInstances;
     this.#facadeDetailInstances = this.#buildFacadeDetails(
       this.#towers,
       additionalBuildings,
@@ -1917,6 +1973,7 @@ export class UrbanNightWorld implements SceneContent {
       ).length,
       highRiseNightAccentInstances: this.#highRiseNightAccentInstances,
       storefrontNightAccentInstances: this.#storefrontNightAccentInstances,
+      storefrontBandInstances: this.#storefrontBandInstances,
       streetLightPointLights: this.#streetLights.length,
       architecturalPointLights: this.#architecturalLights.length,
       activePointLights: this.#streetLights.length + this.#architecturalLights.length,
@@ -2591,37 +2648,70 @@ export class UrbanNightWorld implements SceneContent {
       );
     }
 
+    // Phase 8.3d: lit shopfronts — the street face ground level glows like a night city
+    // street. Closed shops keep the facade kit's dark glazing (same layout, one batch behind).
+    const storefrontBands = new Map<number, TransformSpec[]>();
     let commercialIndex = 0;
-    for (const building of buildings) {
-      if (building.kind !== 'shop' && building.kind !== 'casino') {
-        continue;
-      }
-      const color = NIGHT_DECORATION_PALETTE[commercialIndex % NIGHT_DECORATION_PALETTE.length]!;
-      commercialIndex += 1;
-      const yaw = building.yaw ?? 0;
-      const frontDistance = building.width / 2 + 0.16;
-      const frontX = building.x + Math.cos(yaw) * frontDistance;
-      const frontZ = building.z - Math.sin(yaw) * frontDistance;
-      const awningY =
-        WORLD_BASE_Y + Math.min(building.height - 1.4, Math.max(2.6, building.height * 0.52));
-      const awningLength = Math.min(building.depth * 0.76, building.kind === 'casino' ? 28 : 14);
-      addTransform(storefrontGroups, color, {
-        x: frontX,
-        y: awningY,
-        z: frontZ,
-        yaw,
-        scale: [0.18, 0.16, awningLength],
-      });
-      for (const side of [-1, 1] as const) {
-        const along = (side * awningLength) / 2;
+    for (let buildingIndex = 0; buildingIndex < buildings.length; buildingIndex += 1) {
+      const building = buildings[buildingIndex]!;
+      if (building.kind === 'shop' || building.kind === 'casino') {
+        const color = NIGHT_DECORATION_PALETTE[commercialIndex % NIGHT_DECORATION_PALETTE.length]!;
+        commercialIndex += 1;
+        const yaw = building.yaw ?? 0;
+        const frontDistance = building.width / 2 + 0.16;
+        const frontX = building.x + Math.cos(yaw) * frontDistance;
+        const frontZ = building.z - Math.sin(yaw) * frontDistance;
+        const awningY =
+          WORLD_BASE_Y + Math.min(building.height - 1.4, Math.max(2.6, building.height * 0.52));
+        const awningLength = Math.min(building.depth * 0.76, building.kind === 'casino' ? 28 : 14);
         addTransform(storefrontGroups, color, {
-          x: frontX + Math.sin(yaw) * along,
-          y: awningY - 0.85,
-          z: frontZ + Math.cos(yaw) * along,
+          x: frontX,
+          y: awningY,
+          z: frontZ,
           yaw,
-          scale: [0.16, 1.7, 0.16],
+          scale: [0.18, 0.16, awningLength],
         });
+        for (const side of [-1, 1] as const) {
+          const along = (side * awningLength) / 2;
+          addTransform(storefrontGroups, color, {
+            x: frontX + Math.sin(yaw) * along,
+            y: awningY - 0.85,
+            z: frontZ + Math.cos(yaw) * along,
+            yaw,
+            scale: [0.16, 1.7, 0.16],
+          });
+        }
       }
+      if (building.kind === 'frontage' || building.kind === 'shop') {
+        const yaw = building.yaw ?? 0;
+        const frontDistance = building.width / 2 + 0.16;
+        const frontX = building.x + Math.cos(yaw) * frontDistance;
+        const frontZ = building.z - Math.sin(yaw) * frontDistance;
+        const storefronts = Math.floor((building.depth - 3) / 4.2);
+        // Same tone salt as the window builder, so a shopfront matches its upper windows.
+        const toneCool = stableUnit(buildingIndex + 701, 719, 823) >= 0.62;
+        const color = toneCool ? 0xbcd8ff : 0xffa558;
+        for (let k = 0; k < storefronts; k += 1) {
+          if (stableUnit(buildingIndex + 701, 3001 + k, 3101) >= 0.66) continue;
+          const along = (k - (storefronts - 1) / 2) * 4.2;
+          addTransform(storefrontBands, color, {
+            x: frontX + Math.sin(yaw) * along,
+            y: WORLD_BASE_Y + 1.55,
+            z: frontZ + Math.cos(yaw) * along,
+            yaw,
+            scale: [0.16, 2.6, 3.4],
+          });
+        }
+      }
+    }
+    for (const [index, [color, transforms]] of [...storefrontBands].entries()) {
+      addInstancedBoxes(
+        this.root,
+        unitBox,
+        createNightEmissiveMaterial(color, this.#nightGain, `aohara-storefront-band-${index}`),
+        transforms,
+        `aohara-storefront-bands-${index}`,
+      );
     }
     for (const [index, [color, transforms]] of [...storefrontGroups].entries()) {
       addInstancedBoxes(
@@ -2643,6 +2733,10 @@ export class UrbanNightWorld implements SceneContent {
         0,
       ),
       storefrontInstances: [...storefrontGroups.values()].reduce(
+        (total, group) => total + group.length,
+        0,
+      ),
+      storefrontBandInstances: [...storefrontBands.values()].reduce(
         (total, group) => total + group.length,
         0,
       ),

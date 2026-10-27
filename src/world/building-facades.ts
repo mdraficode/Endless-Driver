@@ -32,6 +32,15 @@ import { createArchitecturalMaterial } from './architectural-materials';
  * street facade into base / body / crown (dark stone ground floor behind the glazing plane,
  * light parapet crown) — the tonal contrast carries the read at 30 m in the night mood.
  *
+ * Phase 8.3d (fourth owner verdict: "still boxes with little square boxes on them") removes
+ * the box-on-box read the penthouses created and gives the wall itself the texture a building
+ * reads with at night: dark shopfront glazing units line the street face ground level (the
+ * closest, previously blank zone; the lit subset is added by the night world as emissive
+ * storefront bands), and slim antenna masts replace the penthouse volumes on flat roofs. The
+ * companion change in `urban-night.ts` widens the window grid to 1.9 x 1.7 m, starts the
+ * window rows above the shopfronts, and selects lit windows by per-building occupancy so some
+ * blocks glow while others sit dark.
+ *
  * Elements protrude at most ~1.3 m from a wall face and sit above the car body height where
  * relevant, so the existing static building colliders (which bound the shell) remain the single
  * collision authority. No new physics, lights, or texture assets are introduced.
@@ -47,7 +56,8 @@ export type FacadeKitElement =
   | 'awning'
   | 'floor-band'
   | 'corner-reveal'
-  | 'penthouse'
+  | 'mast'
+  | 'storefront-glazing'
   | 'ground-cladding'
   | 'crown-cladding';
 
@@ -226,7 +236,8 @@ export function generateFacadeKitPlacements(
     awning: [],
     'floor-band': [],
     'corner-reveal': [],
-    penthouse: [],
+    mast: [],
+    'storefront-glazing': [],
     'ground-cladding': [],
     'crown-cladding': [],
   };
@@ -369,7 +380,6 @@ export function generateFacadeKitPlacements(
     }
 
     // Phase 8.3 corner reveals: a dark vertical strip at each of the four corners.
-    const { lx, lz } = streetFrontSigns(building);
     const cos = Math.cos(yaw);
     const sin = Math.sin(yaw);
     ALL_CORNERS.forEach(([cornerX, cornerZ], cornerIndex) => {
@@ -390,33 +400,57 @@ export function generateFacadeKitPlacements(
       });
     });
 
-    // Phase 8.3 penthouse: rooftop mechanical room set back from the street face on flat roofs.
-    if (!hasPitchedRoof(building) && building.height >= 5) {
-      const cos = Math.cos(yaw);
-      const sin = Math.sin(yaw);
-      const localX =
-        -lx * building.width * 0.18 +
-        (stableUnit(buildingIndex, 2201, 2209) - 0.5) * building.width * 0.2;
-      const localZ =
-        -lz * building.depth * 0.15 +
-        (stableUnit(buildingIndex, 2202, 2211) - 0.5) * building.depth * 0.2;
-      const penthouseHeight = 1.8 + stableUnit(buildingIndex, 2203, 2213) * 0.9;
-      candidates.penthouse.push({
-        rank: stableUnit(buildingIndex, 2204, 2217),
+    // Phase 8.3d mast: a slim antenna pole breaks the flat roofline without adding another
+    // box on top of the box (the 8.3 penthouses read as exactly that on the owner's drive).
+    if (
+      !hasPitchedRoof(building) &&
+      building.height >= 5 &&
+      stableUnit(buildingIndex, 2501, 2503) < 0.45
+    ) {
+      const mastHeight = 2.5 + stableUnit(buildingIndex, 2507, 2509) * 3.5;
+      candidates.mast.push({
+        rank: stableUnit(buildingIndex, 2511, 2513),
         placement: {
-          element: 'penthouse',
+          element: 'mast',
           buildingIndex,
-          x: building.x + cos * localX + sin * localZ,
+          x:
+            building.x +
+            Math.cos(yaw) * (stableUnit(buildingIndex, 2201, 2209) - 0.5) * building.width * 0.3 +
+            Math.sin(yaw) * (stableUnit(buildingIndex, 2202, 2211) - 0.5) * building.depth * 0.3,
           y: FACADE_KIT_BASE_Y + building.height,
-          z: building.z - sin * localX + cos * localZ,
+          z:
+            building.z -
+            Math.sin(yaw) * (stableUnit(buildingIndex, 2201, 2209) - 0.5) * building.width * 0.3 +
+            Math.cos(yaw) * (stableUnit(buildingIndex, 2202, 2211) - 0.5) * building.depth * 0.3,
           yaw,
-          scale: [
-            Math.min(building.width * 0.5, 7),
-            penthouseHeight,
-            Math.min(building.depth * 0.4, 7),
-          ],
+          scale: [1, mastHeight, 1],
         },
       });
+    }
+
+    // Phase 8.3d shopfront glazing: a row of dark glass shopfront units on the street face
+    // ground level — the zone closest to the driver, which was a blank stone slab before.
+    // The lit subset is added by the night world's storefront-band accents (same layout).
+    if (building.kind === 'frontage' || building.kind === 'shop') {
+      const face = streetFacePlacement(building, 0.13);
+      const storefronts = Math.floor((face.length - 3) / 4.2);
+      const faceCos = Math.cos(face.yaw);
+      const faceSin = Math.sin(face.yaw);
+      for (let k = 0; k < storefronts; k += 1) {
+        const along = (k - (storefronts - 1) / 2) * 4.2;
+        candidates['storefront-glazing'].push({
+          rank: stableUnit(buildingIndex, 2601 + k, 2603),
+          placement: {
+            element: 'storefront-glazing',
+            buildingIndex,
+            x: face.x + faceCos * along,
+            y: FACADE_KIT_BASE_Y + 1.55,
+            z: face.z - faceSin * along,
+            yaw: face.yaw,
+            scale: [3.4, 2.6, 0.16],
+          },
+        });
+      }
     }
 
     // Phase 8.3b ground cladding: a dark stone base band on every wall (behind the window
@@ -526,6 +560,21 @@ export function generateFacadeKitPlacements(
         scale: [tower.width + 0.12, 1.1, tower.depth + 0.12],
       },
     });
+    // Phase 8.3d: a rooftop mast on every tower — the skyline needs verticals, and a thin
+    // pole does not repeat the box-on-box read the penthouses did.
+    candidates.mast.push({
+      rank: stableUnit(towerIndex, 45, 1037),
+      placement: {
+        element: 'mast',
+        buildingIndex: -1,
+        towerIndex,
+        x: tower.x + (stableUnit(towerIndex, 2201, 2209) - 0.5) * tower.width * 0.4,
+        y: FACADE_KIT_BASE_Y + tower.height,
+        z: tower.z + (stableUnit(towerIndex, 2202, 2211) - 0.5) * tower.depth * 0.4,
+        yaw: 0,
+        scale: [1, Math.max(3, tower.height * 0.05), 1],
+      },
+    });
   });
 
   const placements: FacadeKitPlacement[] = [];
@@ -539,7 +588,8 @@ export function generateFacadeKitPlacements(
     awning: budget.awnings,
     'floor-band': budget.floorBands,
     'corner-reveal': budget.cornerReveals,
-    penthouse: budget.penthouses,
+    mast: budget.masts,
+    'storefront-glazing': budget.storefrontGlazing,
     'ground-cladding': budget.groundCladding,
     'crown-cladding': budget.crownCladding,
   };
@@ -635,13 +685,14 @@ function mergedKitGeometry(element: FacadeKitElement): BufferGeometry {
       // Unit-height corner pilaster (0.3 m section, 0.03 m proud); scaled to the wall height.
       parts = [boxPart([0.3, 1, 0.3], [0, 0.5, 0.03])];
       break;
-    case 'penthouse':
-      // Unit rooftop mechanical room: box, parapet lip, and a service door.
-      parts = [
-        boxPart([1, 1, 1], [0, 0.5, 0]),
-        boxPart([1.08, 0.1, 1.08], [0, 1.05, 0]),
-        boxPart([0.34, 0.62, 0.05], [0.2, 0.31, 0.5]),
-      ];
+    case 'mast':
+      // Unit-height antenna pole (0.1 m section) with one crossbar at 85% height; scaled to
+      // the placement height. Thin enough to read as a vertical, not a box.
+      parts = [boxPart([0.1, 1, 0.1], [0, 0.5, 0]), boxPart([0.5, 0.04, 0.04], [0, 0.85, 0])];
+      break;
+    case 'storefront-glazing':
+      // Unit shopfront glass panel; scaled per placement to [3.4, 2.6, 0.16].
+      parts = [boxPart([1, 1, 1], [0, 0, 0])];
       break;
     case 'ground-cladding':
       // Unit-width dark stone base band, 3 m tall; scaled along the face length. Kept behind
@@ -781,17 +832,29 @@ const KIT_MATERIALS: Readonly<
     },
     castShadow: false,
   },
-  penthouse: {
+  mast: {
     options: {
-      name: 'aohara-rooftop-penthouse-pbr',
-      colorHex: 0x6a7078,
-      roughness: 0.62,
-      metalness: 0.22,
-      detailAmplitude: 0.02,
-      clearcoat: 0.2,
-      clearcoatRoughness: 0.3,
+      name: 'aohara-rooftop-antenna-pole-pbr',
+      colorHex: 0x39424c,
+      roughness: 0.55,
+      metalness: 0.45,
+      detailAmplitude: 0.012,
+      clearcoat: 0.25,
+      clearcoatRoughness: 0.35,
     },
-    castShadow: true,
+    castShadow: false,
+  },
+  'storefront-glazing': {
+    options: {
+      name: 'aohara-shopfront-tinted-glazing-pbr',
+      colorHex: 0x16222c,
+      roughness: 0.2,
+      metalness: 0.22,
+      detailAmplitude: 0.01,
+      clearcoat: 0.8,
+      clearcoatRoughness: 0.1,
+    },
+    castShadow: false,
   },
   'ground-cladding': {
     options: {
@@ -829,7 +892,8 @@ const KIT_ELEMENTS: readonly FacadeKitElement[] = [
   'awning',
   'floor-band',
   'corner-reveal',
-  'penthouse',
+  'mast',
+  'storefront-glazing',
   'ground-cladding',
   'crown-cladding',
 ];
@@ -864,7 +928,8 @@ export class FacadeKitWorld {
       awning: 0,
       'floor-band': 0,
       'corner-reveal': 0,
-      penthouse: 0,
+      mast: 0,
+      'storefront-glazing': 0,
       'ground-cladding': 0,
       'crown-cladding': 0,
     };
@@ -905,7 +970,8 @@ export class FacadeKitWorld {
       facadeKitAwnings: counts.awning,
       facadeKitFloorBands: counts['floor-band'],
       facadeKitCornerReveals: counts['corner-reveal'],
-      facadeKitPenthouses: counts.penthouse,
+      facadeKitMasts: counts.mast,
+      facadeKitStorefrontGlazing: counts['storefront-glazing'],
       facadeKitGroundCladding: counts['ground-cladding'],
       facadeKitCrownCladding: counts['crown-cladding'],
       facadeKitBatches: this.#meshes.length,

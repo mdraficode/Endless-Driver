@@ -971,6 +971,12 @@ describe('Aohara city night-lighting rules', () => {
     expect(cityStats.shops).toBeGreaterThan(4);
     expect(cityStats.billboards).toBe(cityStats.shops! + 14);
     expect(cityStats.storefrontNightAccentInstances).toBe((cityStats.shops! + 2) * 3);
+    // Phase 8.3d: the street face ground level carries shopfronts — dark glazing on every
+    // shell (kit) plus the lit subset (emissive bands, same 4.2 m layout).
+    expect(cityStats.facadeKitStorefrontGlazing).toBeGreaterThanOrEqual(
+      cityStats.frontageBuildings!,
+    );
+    expect(cityStats.storefrontBandInstances).toBeGreaterThan(0);
     expect(cityStats.urbanAlleyProps).toBe(URBAN_ACTIVITY_TIER_BUDGET.B.alleyProps);
     expect(cityStats.urbanAlleyPropsBudget).toBe(URBAN_ACTIVITY_TIER_BUDGET.B.alleyProps);
     expect(cityStats.urbanAlleyPropBatches).toBeGreaterThan(0);
