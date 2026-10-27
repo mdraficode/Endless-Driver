@@ -66,7 +66,6 @@ describe('fullscreen on game start', () => {
     const fullscreen = new FullscreenOnStart(fixture.document);
     expect(await fullscreen.request()).toBe(false);
     expect(requestFullscreen).toHaveBeenCalledTimes(1);
-    fullscreen.armPassiveRetries(); // the first frame was submitted
 
     // Touch pointerdown is not a reliable activation event on Android Chrome.
     fixture.dispatch('pointerdown', 'touch');
@@ -86,7 +85,7 @@ describe('fullscreen on game start', () => {
     fullscreen.dispose();
   });
 
-  it('keeps passive retries dormant until the first frame arms them', async () => {
+  it('retries on any interaction from the loading screen — no first-frame arming (owner direction)', async () => {
     let enterFullscreen = (): void => undefined;
     const requestFullscreen = vi.fn(async () => enterFullscreen());
     const fixture = createFullscreenDocument(requestFullscreen);
@@ -97,18 +96,52 @@ describe('fullscreen on game start', () => {
     expect(await fullscreen.request()).toBe(false);
     expect(requestFullscreen).toHaveBeenCalledTimes(1);
 
-    // Loading-screen taps (the startup shader pre-compile is still running) must not swap the
-    // display surface: no fullscreen request while the passive retries are dormant.
+    // The first interaction happens on the loading screen (the startup shader pre-compile is
+    // still running). It must enter fullscreen — the retries are armed from construction.
+    fixture.dispatch('pointerup', 'touch');
+    await flushEvents();
+    expect(requestFullscreen).toHaveBeenCalledTimes(2);
+    expect(fixture.isFullscreen()).toBe(true);
+    fullscreen.dispose();
+  });
+
+  it('retries on every interaction kind while the page is not fullscreen, on any screen', async () => {
+    let enterFullscreen = (): void => undefined;
+    let attempts = 0;
+    const requestFullscreen = vi.fn(async () => {
+      attempts += 1;
+      // The first three attempts are denied (the page stays on whatever screen the player is
+      // on); the fourth is honoured.
+      if (attempts > 3) enterFullscreen();
+    });
+    const fixture = createFullscreenDocument(requestFullscreen);
+    enterFullscreen = fixture.enterFullscreen;
+
+    const fullscreen = new FullscreenOnStart(fixture.document);
+    // A loading-screen tap (pre-compile still running).
     fixture.dispatch('pointerup', 'touch');
     await flushEvents();
     expect(requestFullscreen).toHaveBeenCalledTimes(1);
     expect(fixture.isFullscreen()).toBe(false);
 
-    // Once the first frame was submitted the same interaction enters fullscreen.
-    fullscreen.armPassiveRetries();
-    fixture.dispatch('pointerup', 'touch');
+    // A mouse click on a later screen: pointerdown alone must not fire, click does.
+    fixture.dispatch('pointerdown', 'mouse');
+    await flushEvents();
+    fixture.dispatch('click', undefined, 1);
     await flushEvents();
     expect(requestFullscreen).toHaveBeenCalledTimes(2);
+    expect(fixture.isFullscreen()).toBe(false);
+
+    // A keyboard interaction while still not fullscreen.
+    fixture.dispatch('keydown');
+    await flushEvents();
+    expect(requestFullscreen).toHaveBeenCalledTimes(3);
+    expect(fixture.isFullscreen()).toBe(false);
+
+    // The next in-game tap finally enters.
+    fixture.dispatch('pointerup', 'touch');
+    await flushEvents();
+    expect(requestFullscreen).toHaveBeenCalledTimes(4);
     expect(fixture.isFullscreen()).toBe(true);
     fullscreen.dispose();
   });
@@ -122,7 +155,6 @@ describe('fullscreen on game start', () => {
     const fullscreen = new FullscreenOnStart(fixture.document);
     expect(await fullscreen.request()).toBe(true);
     expect(requestFullscreen).toHaveBeenCalledTimes(1);
-    fullscreen.armPassiveRetries(); // the first frame was submitted
 
     fixture.exitFullscreen();
     expect(requestFullscreen).toHaveBeenCalledTimes(1);
@@ -148,7 +180,6 @@ describe('fullscreen on game start', () => {
     const fullscreen = new FullscreenOnStart(fixture.document);
     expect(await fullscreen.request()).toBe(false);
     expect(fixture.isFullscreen()).toBe(false);
-    fullscreen.armPassiveRetries(); // the first frame was submitted
 
     fixture.dispatch('click', undefined, 1);
     await flushEvents();
@@ -167,8 +198,6 @@ describe('fullscreen on game start', () => {
 
     const fullscreen = new FullscreenOnStart(fixture.document);
     expect(await fullscreen.request()).toBe(false);
-    fullscreen.armPassiveRetries(); // the first frame was submitted
-
     fixture.dispatch('pointerdown', 'mouse');
     await flushEvents();
     expect(requestFullscreen).toHaveBeenCalledTimes(1);
@@ -190,8 +219,6 @@ describe('fullscreen on game start', () => {
 
     const fullscreen = new FullscreenOnStart(fixture.document);
     expect(await fullscreen.request()).toBe(false);
-    fullscreen.armPassiveRetries(); // the first frame was submitted
-
     fixture.dispatch('keydown');
     await flushEvents();
 
@@ -209,8 +236,6 @@ describe('fullscreen on game start', () => {
 
     const fullscreen = new FullscreenOnStart(fixture.document);
     expect(await fullscreen.request()).toBe(false);
-    fullscreen.armPassiveRetries(); // the first frame was submitted
-
     fixture.dispatch('touchstart');
     await flushEvents();
     expect(requestFullscreen).toHaveBeenCalledTimes(1);
