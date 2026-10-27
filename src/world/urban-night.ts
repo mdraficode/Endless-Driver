@@ -87,6 +87,11 @@ interface TowerSpec {
   readonly depth: number;
   readonly height: number;
   readonly color: number;
+  /**
+   * Phase 8.3f: a centred set-back crown volume on top of the tower body (the tower is
+   * rendered as a body box up to `height - crown.height` plus the crown box).
+   */
+  readonly crown?: { readonly width: number; readonly depth: number; readonly height: number };
 }
 
 /** Compact skyline retained by the standalone night-lighting look-dev block. */
@@ -453,13 +458,23 @@ function buildAoharaTowerSpecs(): readonly TowerSpec[] {
         const zJitter = (stableUnit(seed, side, 127) - 0.5) * 8;
         const heightIndex = Math.floor(stableUnit(seed, side, 149) * CITY_TOWER_HEIGHTS.length);
         const colorIndex = Math.floor(stableUnit(seed, side, 173) * CITY_FACADE_PALETTE.length);
+        const towerWidth = 28 + stableUnit(seed, side, 191) * 8;
+        const towerDepth = 30 + stableUnit(seed, side, 211) * 10;
+        const towerHeight = CITY_TOWER_HEIGHTS[heightIndex] ?? CITY_TOWER_HEIGHTS[0];
+        // Phase 8.3f: a centred set-back crown breaks the skyline — a flat glass box at this
+        // scale reads as a box from the street.
         towers.push({
           x: blockCenterX + side * 35 + xJitter,
           z: blockCenterZ + zJitter,
-          width: 28 + stableUnit(seed, side, 191) * 8,
-          depth: 30 + stableUnit(seed, side, 211) * 10,
-          height: CITY_TOWER_HEIGHTS[heightIndex] ?? CITY_TOWER_HEIGHTS[0],
+          width: towerWidth,
+          depth: towerDepth,
+          height: towerHeight,
           color: CITY_FACADE_PALETTE[colorIndex] ?? CITY_FACADE_PALETTE[0],
+          crown: {
+            width: towerWidth * (0.58 + 0.22 * stableUnit(seed, side, 1113)),
+            depth: towerDepth * (0.58 + 0.22 * stableUnit(seed, side, 1115)),
+            height: Math.max(10, towerHeight * (0.15 + 0.1 * stableUnit(seed, side, 1117))),
+          },
         });
       }
     }
@@ -607,6 +622,31 @@ function buildAoharaInfillBuildingCandidates(): readonly CityBuildingSpec[] {
         const paletteIndex = Math.floor(
           stableUnit(block.rowIndex, block.columnIndex, 811 + cornerIndex) * wallPalette.length,
         );
+        const width = 12.8 + stableUnit(blockIndex, cornerIndex, 839) * 4;
+        const depth = 10 + stableUnit(blockIndex, cornerIndex, 853) * 3.4;
+        const height = 6.3 + stableUnit(blockIndex, cornerIndex, 877) * 4.2;
+        // Phase 8.3f: the infill boxes seen through the frontage gaps mass too — a smaller
+        // podium base and tighter insets (the volumes are ~half the frontage shells).
+        const baseHeight = 5.6;
+        let massing: BuildingMassingRef | undefined;
+        if (height - baseHeight >= 1.8) {
+          const frontInset = 0.9 + stableUnit(blockIndex, cornerIndex, 1089) * 0.8;
+          const backInset =
+            stableUnit(blockIndex, cornerIndex, 1093) < 0.5
+              ? 0.8 + stableUnit(blockIndex, cornerIndex, 1097) * 0.7
+              : 0;
+          let plusXInset = 0;
+          let minusXInset = 0;
+          if (stableUnit(blockIndex, cornerIndex, 1101) < 0.35) {
+            const sideInset = 0.8 + stableUnit(blockIndex, cornerIndex, 1103) * 0.8;
+            if (stableUnit(blockIndex, cornerIndex, 1107) < 0.5) {
+              plusXInset = sideInset;
+            } else {
+              minusXInset = sideInset;
+            }
+          }
+          massing = { baseHeight, insets: [plusXInset, minusXInset, frontInset, backInset] };
+        }
         candidates.push({
           rank: stableUnit(blockIndex, cornerIndex, 827),
           building: {
@@ -615,12 +655,13 @@ function buildAoharaInfillBuildingCandidates(): readonly CityBuildingSpec[] {
               block.centerLocalX + xSign * AOHARA_BACKSTREET_CONFIG.innerBuildingCornerOffsetMeters,
             z:
               block.centerLocalZ + zSign * AOHARA_BACKSTREET_CONFIG.innerBuildingCornerOffsetMeters,
-            width: 12.8 + stableUnit(blockIndex, cornerIndex, 839) * 4,
-            depth: 10 + stableUnit(blockIndex, cornerIndex, 853) * 3.4,
-            height: 6.3 + stableUnit(blockIndex, cornerIndex, 877) * 4.2,
+            width,
+            depth,
+            height,
             color: wallPalette[paletteIndex] ?? wallPalette[0],
             roofColor: roofPalette[paletteIndex] ?? roofPalette[0],
             yaw: stableUnit(blockIndex, cornerIndex, 883) < 0.5 ? 0 : Math.PI / 2,
+            ...(massing === undefined ? {} : { massing }),
           },
         });
       });
@@ -711,8 +752,9 @@ function buildAoharaFrontageBuildingSpecs(): readonly CityBuildingSpec[] {
           streetInset *= scale;
           alleyInset *= scale;
         }
+        // Phase 8.3f: 1.8 m threshold — every mid/high shell, and most lows, now mass.
         const massing: BuildingMassingRef | undefined =
-          height - baseHeight >= 2.5
+          height - baseHeight >= 1.8
             ? { baseHeight, insets: [streetInset, alleyInset, plusZInset, minusZInset] }
             : undefined;
         const building: CityBuildingSpec = {
@@ -990,56 +1032,73 @@ function buildWindowCandidates(
   for (let towerIndex = 0; towerIndex < towers.length; towerIndex += 1) {
     const tower = towers[towerIndex]!;
     const floors = Math.floor((tower.height - 6) / floorSpacingMeters);
-    const xFaceColumns = Math.max(
-      2,
-      Math.floor((tower.depth - 2 * facadeMarginMeters) / columnSpacingMeters),
-    );
-    const zFaceColumns = Math.max(
-      2,
-      Math.floor((tower.width - 2 * facadeMarginMeters) / columnSpacingMeters),
-    );
-    const sides = [
-      {
-        x: tower.x - tower.width / 2 - 0.1,
-        z: tower.z,
-        yaw: Math.PI,
-        columns: xFaceColumns,
-        along: 'z' as const,
-        length: tower.depth,
-      },
-      {
-        x: tower.x + tower.width / 2 + 0.1,
-        z: tower.z,
-        yaw: 0,
-        columns: xFaceColumns,
-        along: 'z' as const,
-        length: tower.depth,
-      },
-      {
-        x: tower.x,
-        z: tower.z - tower.depth / 2 - 0.1,
-        yaw: Math.PI / 2,
-        columns: zFaceColumns,
-        along: 'x' as const,
-        length: tower.width,
-      },
-      {
-        x: tower.x,
-        z: tower.z + tower.depth / 2 + 0.1,
-        yaw: -Math.PI / 2,
-        columns: zFaceColumns,
-        along: 'x' as const,
-        length: tower.width,
-      },
-    ];
+    // Phase 8.3f: the tower may carry a centred set-back crown; window floors above the
+    // crown's base sit on the crown's faces instead of the body's.
+    const crown = tower.crown;
+    const crownStart = crown ? tower.height - crown.height : tower.height;
+    const facesFor = (width: number, depth: number) => {
+      const xColumns = Math.max(
+        2,
+        Math.floor((depth - 2 * facadeMarginMeters) / columnSpacingMeters),
+      );
+      const zColumns = Math.max(
+        2,
+        Math.floor((width - 2 * facadeMarginMeters) / columnSpacingMeters),
+      );
+      return [
+        {
+          x: tower.x - width / 2 - 0.1,
+          z: tower.z,
+          yaw: Math.PI,
+          columns: xColumns,
+          along: 'z' as const,
+          length: depth,
+        },
+        {
+          x: tower.x + width / 2 + 0.1,
+          z: tower.z,
+          yaw: 0,
+          columns: xColumns,
+          along: 'z' as const,
+          length: depth,
+        },
+        {
+          x: tower.x,
+          z: tower.z - depth / 2 - 0.1,
+          yaw: Math.PI / 2,
+          columns: zColumns,
+          along: 'x' as const,
+          length: width,
+        },
+        {
+          x: tower.x,
+          z: tower.z + depth / 2 + 0.1,
+          yaw: -Math.PI / 2,
+          columns: zColumns,
+          along: 'x' as const,
+          length: width,
+        },
+      ];
+    };
+    const bodyFaces = facesFor(tower.width, tower.depth);
+    const crownFaces = crown ? facesFor(crown.width, crown.depth) : null;
     // Phase 8.3d: per-tower occupancy — some towers glow after hours, others sit dark.
     const towerLitness = 0.35 + 0.5 * stableUnit(towerIndex, 613, 701);
     const towerTone: 'warm' | 'cool' = stableUnit(towerIndex, 719, 823) < 0.6 ? 'cool' : 'warm';
-    for (let sideIndex = 0; sideIndex < sides.length; sideIndex += 1) {
-      const side = sides[sideIndex]!;
-      // The +Z face is the authored front (the night accents light it too); prefer it in cuts.
-      const streetFace = sideIndex === 3;
-      for (let floor = 1; floor < floors; floor += 1) {
+    for (let floor = 1; floor < floors; floor += 1) {
+      const rowY = 3.1 + floor * floorSpacingMeters;
+      let faces = bodyFaces;
+      if (crownFaces) {
+        if (rowY - 0.85 >= crownStart + 0.25) {
+          faces = crownFaces;
+        } else if (rowY + 0.85 > crownStart - 0.25) {
+          continue; // the floor straddling the crown base keeps the edge clean
+        }
+      }
+      for (let sideIndex = 0; sideIndex < faces.length; sideIndex += 1) {
+        const side = faces[sideIndex]!;
+        // The +Z face is the authored front (the night accents light it too); prefer it in cuts.
+        const streetFace = sideIndex === 3;
         const floorFactor =
           stableUnit(towerIndex, 911 + floor, 929) < 0.12
             ? 0
@@ -2625,18 +2684,32 @@ export class UrbanNightWorld implements SceneContent {
         clearcoat: 0.16,
         clearcoatRoughness: 0.32,
       });
-      const mesh = new InstancedMesh(unitBox, wall, group.length);
+      // Phase 8.3f: body + set-back crown, same instanced batch per colour.
+      const crownCount = group.reduce((total, tower) => total + (tower.crown ? 1 : 0), 0);
+      const mesh = new InstancedMesh(unitBox, wall, group.length + crownCount);
       mesh.name = `aohara-high-rise-facades-${paletteIndex}`;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.frustumCulled = false;
-      group.forEach((tower, index) => {
-        transform.position.set(tower.x, WORLD_BASE_Y + tower.height / 2, tower.z);
-        transform.scale.set(tower.width, tower.height, tower.depth);
+      let instanceIndex = 0;
+      for (const tower of group) {
+        const bodyHeight = tower.crown ? tower.height - tower.crown.height : tower.height;
+        transform.position.set(tower.x, WORLD_BASE_Y + bodyHeight / 2, tower.z);
+        transform.scale.set(tower.width, bodyHeight, tower.depth);
         transform.rotation.set(0, 0, 0);
         transform.updateMatrix();
-        mesh.setMatrixAt(index, transform.matrix);
-      });
+        mesh.setMatrixAt(instanceIndex++, transform.matrix);
+        if (tower.crown) {
+          transform.position.set(
+            tower.x,
+            WORLD_BASE_Y + tower.height - tower.crown.height / 2,
+            tower.z,
+          );
+          transform.scale.set(tower.crown.width, tower.crown.height, tower.crown.depth);
+          transform.updateMatrix();
+          mesh.setMatrixAt(instanceIndex++, transform.matrix);
+        }
+      }
       mesh.instanceMatrix.needsUpdate = true;
       this.root.add(mesh);
       paletteIndex += 1;
@@ -2651,16 +2724,35 @@ export class UrbanNightWorld implements SceneContent {
       clearcoat: 0.08,
       clearcoatRoughness: 0.42,
     });
-    const roofs = new InstancedMesh(unitBox, roofMaterial, towers.length);
+    const capCount = towers.reduce((total, tower) => total + (tower.crown ? 2 : 1), 0);
+    const roofs = new InstancedMesh(unitBox, roofMaterial, capCount);
     roofs.name = 'aohara-rooftop-caps';
     roofs.frustumCulled = false;
-    towers.forEach((tower, index) => {
-      transform.position.set(tower.x, WORLD_BASE_Y + tower.height + 0.35, tower.z);
-      transform.scale.set(tower.width + 0.5, 0.7, tower.depth + 0.5);
-      transform.rotation.set(0, 0, 0);
-      transform.updateMatrix();
-      roofs.setMatrixAt(index, transform.matrix);
-    });
+    let capIndex = 0;
+    for (const tower of towers) {
+      if (tower.crown) {
+        // The body top reads as a dark terrace around the set-back crown.
+        transform.position.set(
+          tower.x,
+          WORLD_BASE_Y + tower.height - tower.crown.height + 0.2,
+          tower.z,
+        );
+        transform.scale.set(tower.width + 0.5, 0.4, tower.depth + 0.5);
+        transform.rotation.set(0, 0, 0);
+        transform.updateMatrix();
+        roofs.setMatrixAt(capIndex++, transform.matrix);
+        transform.position.set(tower.x, WORLD_BASE_Y + tower.height + 0.35, tower.z);
+        transform.scale.set(tower.crown.width + 0.5, 0.7, tower.crown.depth + 0.5);
+        transform.updateMatrix();
+        roofs.setMatrixAt(capIndex++, transform.matrix);
+      } else {
+        transform.position.set(tower.x, WORLD_BASE_Y + tower.height + 0.35, tower.z);
+        transform.scale.set(tower.width + 0.5, 0.7, tower.depth + 0.5);
+        transform.rotation.set(0, 0, 0);
+        transform.updateMatrix();
+        roofs.setMatrixAt(capIndex++, transform.matrix);
+      }
+    }
     roofs.instanceMatrix.needsUpdate = true;
     this.root.add(roofs);
   }
@@ -2691,7 +2783,10 @@ export class UrbanNightWorld implements SceneContent {
         NIGHT_DECORATION_PALETTE[
           Math.floor(towerIndex / towerStride) % NIGHT_DECORATION_PALETTE.length
         ]!;
-      const stripHeight = Math.max(8, tower.height - 10);
+      // Phase 8.3f: the verticals stop at the body top — above the crown base the set-back
+      // crown has no wall behind the body-edge strips, so they would float.
+      const bodyTop = tower.crown ? tower.height - tower.crown.height : tower.height;
+      const stripHeight = Math.max(8, bodyTop - 5);
       const frontZ = tower.z + tower.depth / 2 + 0.1;
       for (const side of [-1, 1] as const) {
         addTransform(towerGroups, color, {
@@ -2701,11 +2796,12 @@ export class UrbanNightWorld implements SceneContent {
           scale: [0.16, stripHeight, 0.12],
         });
       }
+      const bandWidth = (tower.crown ? tower.crown.width : tower.width) * 0.78;
       addTransform(towerGroups, color, {
         x: tower.x,
         y: WORLD_BASE_Y + tower.height - 0.7,
         z: frontZ,
-        scale: [tower.width * 0.78, 0.14, 0.12],
+        scale: [bandWidth, 0.14, 0.12],
       });
     });
     for (const [index, [color, transforms]] of [...towerGroups].entries()) {

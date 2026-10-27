@@ -693,6 +693,40 @@ describe('Aohara facade kit', () => {
     }
   });
 
+  it('keeps balconies on the volume they sit on when the shell is set back', () => {
+    // Phase 8.3f regression guard: an infill shell (residential, local +Z front) with a
+    // podium base and front/back insets — slabs below the step stay on the box face, slabs
+    // above the step sit on the set-back upper face instead of floating over the terrace.
+    const building: FacadeKitBuildingRef = {
+      kind: 'infill',
+      x: 0,
+      z: 0,
+      width: 14,
+      depth: 11,
+      height: 10.5,
+      roofStyle: 'flat',
+      yaw: 0,
+      massing: { baseHeight: 5.6, insets: [0, 0, 1.4, 0.8] },
+    };
+    const placements = generateFacadeKitPlacements('A', [building], []);
+    const balconies = placements.filter((placement) => placement.element === 'balcony');
+    expect(balconies.length).toBe(3);
+    const atFloor = (floorY: number): FacadeKitPlacement => {
+      const slab = balconies.find(
+        (placement) => Math.abs(placement.y - FACADE_KIT_BASE_Y - floorY) < 1e-9,
+      );
+      expect(slab, `missing balcony slab at ${floorY} m`).toBeDefined();
+      return slab!;
+    };
+    // 2.85 m slab: below the 5.6 m step → full box face (+0.4 m protrude).
+    expect(atFloor(2.85).z).toBeCloseTo(11 / 2 + 0.4, 6);
+    // 5.7 m and 8.55 m slabs: above the step → the set-back upper face. Upper centre sits at
+    // local z = (−Z inset − +Z inset)/2 = (0.8 − 1.4)/2 = −0.3, upper depth 11 − 1.4 − 0.8 =
+    // 8.8 → face at −0.3 + 4.4 + 0.4.
+    expect(atFloor(5.7).z).toBeCloseTo(4.5, 6);
+    expect(atFloor(8.55).z).toBeCloseTo(4.5, 6);
+  });
+
   it('dresses nearly every street-facing shell and scales C < B < A across the district', () => {
     // Owner verdict "still big boxes": density must be visible from the road, i.e. most
     // block-perimeter shells need floor rhythm, corner treatment, and rooftop mass.

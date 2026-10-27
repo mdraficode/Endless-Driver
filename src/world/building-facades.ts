@@ -105,7 +105,8 @@ export function upperVolumeOf(ref: {
   readonly depth: number;
 } | null {
   const { massing } = ref;
-  if (massing === undefined || ref.height - massing.baseHeight < 2.5) return null;
+  // Phase 8.3f: 1.8 m threshold — under the 2.6 m floor rhythm most mids (10 m+) mass too.
+  if (massing === undefined || ref.height - massing.baseHeight < 1.8) return null;
   const [streetInset, alleyInset, plusZInset, minusZInset] = massing.insets;
   const width = ref.width - streetInset - alleyInset;
   const depth = ref.depth - plusZInset - minusZInset;
@@ -125,6 +126,8 @@ export interface FacadeKitTowerRef {
   readonly width: number;
   readonly depth: number;
   readonly height: number;
+  /** Phase 8.3f: centred set-back crown on top of the tower body. */
+  readonly crown?: { readonly width: number; readonly depth: number; readonly height: number };
 }
 
 export interface FacadeKitPlacement {
@@ -334,21 +337,33 @@ export function generateFacadeKitPlacements(
     const faceEave = streetFacePlacement(building, 0.32);
     const faceAwning = streetFacePlacement(building, 0.42);
 
-    // Balcony: stacked slabs (second/third/fourth floor) on residential shells.
+    // Balcony: stacked slabs (second/third/fourth floor) on residential shells. Phase 8.3f:
+    // slabs above the podium step sit on the set-back upper face — never in mid-air over the
+    // terrace.
     if (residential(building) && building.height >= 6.0) {
       [2.85, 5.7, 8.55].forEach((floorY, slabIndex) => {
         if (floorY + 1.1 > building.height - 0.6) return;
         if (stableUnit(buildingIndex, 31 + slabIndex * 7, 977) >= 0.85) return;
-        const slabWidth = Math.min(2.6, Math.max(1.8, building.width * 0.55));
+        const face =
+          upper !== null && floorY >= baseHeight
+            ? upperFacePlacement(building, upper, streetFrontSigns(building), 0.4)
+            : faceBalcony;
+        const slabWidth = Math.min(
+          2.6,
+          Math.max(
+            1.8,
+            (upper !== null && floorY >= baseHeight ? upper.width : building.width) * 0.55,
+          ),
+        );
         candidates.balcony.push({
           rank: stableUnit(buildingIndex, 32 + slabIndex * 7, 979),
           placement: {
             element: 'balcony',
             buildingIndex,
-            x: faceBalcony.x,
+            x: face.x,
             y: FACADE_KIT_BASE_Y + floorY,
-            z: faceBalcony.z,
-            yaw: faceBalcony.yaw,
+            z: face.z,
+            yaw: face.yaw,
             scale: [slabWidth / 2.2, 1, 1],
           },
         });
@@ -611,6 +626,9 @@ export function generateFacadeKitPlacements(
   });
 
   towers.forEach((tower, towerIndex) => {
+    // Phase 8.3f: set-back crown — the fins run the body height only, the crown band sits on
+    // the crown face, and the mast stands on the crown roof.
+    const bodyHeight = tower.crown ? tower.height - tower.crown.height : tower.height;
     // Curtain-wall fins wrap the four corners and the front/back centrelines of every
     // high-rise. Corner fins sit on the face line; centre fins stand 0.05 m proud along the
     // face normal so the 0.22 m section reads as a mullion against the glass.
@@ -640,14 +658,17 @@ export function generateFacadeKitPlacements(
           buildingIndex: -1,
           towerIndex,
           x: tower.x + face.dx + face.normalX * offset,
-          y: FACADE_KIT_BASE_Y + tower.height / 2,
+          y: FACADE_KIT_BASE_Y + bodyHeight / 2,
           z: tower.z + face.dz + face.normalZ * offset,
           yaw: 0,
-          scale: [1, tower.height, 1],
+          scale: [1, bodyHeight, 1],
         },
       });
     }
-    // Crown glass band marks the curtain-wall head against the rooftop.
+    // Crown glass band marks the curtain-wall head against the rooftop — on the set-back
+    // crown face when the tower carries one.
+    const bandWidth = tower.crown ? tower.crown.width + 0.12 : tower.width + 0.12;
+    const bandDepth = tower.crown ? tower.crown.depth + 0.12 : tower.depth + 0.12;
     candidates['glass-band'].push({
       rank: stableUnit(towerIndex, 41, 1033),
       placement: {
@@ -658,7 +679,7 @@ export function generateFacadeKitPlacements(
         y: FACADE_KIT_BASE_Y + tower.height - 2.2,
         z: tower.z,
         yaw: 0,
-        scale: [tower.width + 0.12, 1.3, tower.depth + 0.12],
+        scale: [bandWidth, 1.3, bandDepth],
       },
     });
     // Phase 8.3 mid spandrel: a band at two-thirds height so the tower reads as a stack of
@@ -678,15 +699,17 @@ export function generateFacadeKitPlacements(
     });
     // Phase 8.3d: a rooftop mast on every tower — the skyline needs verticals, and a thin
     // pole does not repeat the box-on-box read the penthouses did.
+    const mastWidth = tower.crown ? tower.crown.width : tower.width;
+    const mastDepth = tower.crown ? tower.crown.depth : tower.depth;
     candidates.mast.push({
       rank: stableUnit(towerIndex, 45, 1037),
       placement: {
         element: 'mast',
         buildingIndex: -1,
         towerIndex,
-        x: tower.x + (stableUnit(towerIndex, 2201, 2209) - 0.5) * tower.width * 0.4,
+        x: tower.x + (stableUnit(towerIndex, 2201, 2209) - 0.5) * mastWidth * 0.4,
         y: FACADE_KIT_BASE_Y + tower.height,
-        z: tower.z + (stableUnit(towerIndex, 2202, 2211) - 0.5) * tower.depth * 0.4,
+        z: tower.z + (stableUnit(towerIndex, 2202, 2211) - 0.5) * mastDepth * 0.4,
         yaw: 0,
         scale: [1, Math.max(3, tower.height * 0.05), 1],
       },

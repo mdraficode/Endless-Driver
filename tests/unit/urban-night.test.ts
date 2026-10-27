@@ -1068,6 +1068,46 @@ describe('Aohara city night-lighting rules', () => {
     city.dispose();
   });
 
+  it('crowns every generated high-rise and masses the low-rise stock', () => {
+    // Phase 8.3f: the boxy verdict — the 24 grid high-rises render as a body plus a centred
+    // set-back crown (the 8 authored lookdev towers stay single volumes), and the setback
+    // massing now reaches the infill and most frontage shells too, so the low-rise facade
+    // batches carry more instances than buildings.
+    const position = [AOHARA_DISTRICT_CONFIG.centerX, 12, AOHARA_DISTRICT_CONFIG.centerZ] as const;
+    const roadNetwork = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG).roadNetwork;
+    if (roadNetwork === undefined) {
+      throw new Error('the shared world sampler should expose the road graph');
+    }
+    const city = new UrbanNightWorld('B', { position, roadNetwork, networkIntegrated: true });
+    try {
+      const stats = city.getContentStats();
+      const sumByPrefix = (prefix: string): number =>
+        city.root.children.reduce(
+          (total, child) =>
+            child.name.startsWith(prefix) && child instanceof InstancedMesh
+              ? total + child.count
+              : total,
+          0,
+        );
+      expect(stats.highRiseBuildings).toBe(32);
+      expect(sumByPrefix('aohara-high-rise-facades-')).toBe(32 + 24);
+      // Each facade box gets exactly one roof cap (terrace + crown cap when crowned).
+      expect(sumByPrefix('aohara-rooftop-caps')).toBe(sumByPrefix('aohara-high-rise-facades-'));
+      const totalBuildings =
+        (stats.infillBuildings ?? 0) +
+        (stats.frontageBuildings ?? 0) +
+        (stats.shops ?? 0) +
+        (stats.houses ?? 0) +
+        (stats.townhouses ?? 0) +
+        (stats.mansions ?? 0) +
+        (stats.casinos ?? 0) +
+        (stats.stadiums ?? 0);
+      expect(sumByPrefix('aohara-low-rise-facades-')).toBeGreaterThanOrEqual(totalBuildings + 100);
+    } finally {
+      city.dispose();
+    }
+  });
+
   it('keeps sampled urban road/sidewalk corridors clear of collision footprints and building overlap', () => {
     const network = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG).roadNetwork;
     if (network === undefined) {
