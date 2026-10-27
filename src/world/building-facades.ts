@@ -7,7 +7,7 @@ import type { TierId } from '../config/tiers';
 import { createArchitecturalMaterial } from './architectural-materials';
 
 /**
- * Phase 8.1 — Aohara facade kit.
+ * Phase 8.1 — Aohara facade kit (densified in Phase 8.3).
  *
  * The city shell is deliberately instanced unit geometry, so the previous look was "big boxes"
  * with sparse budgeted cornices. This module adds the architectural character that reads at
@@ -16,13 +16,31 @@ import { createArchitecturalMaterial } from './architectural-materials';
  * building: every element type is one merged low-poly geometry in one InstancedMesh, placed
  * deterministically from the same building references the shells use, and capped per tier.
  *
+ * Phase 8.3 (owner verdict: "still looks like big boxes") corrects and densifies. The
+ * block-perimeter shells (`frontage`/`shop`) are 20 m long along the street and 8.5 m deep, and
+ * their street-facing side is a local ±X face — the 8.1 front elements landed on the local +Z
+ * face (the alley-adjacent side), leaving the road-facing facades bare. Every street-facing
+ * element now targets the true street face. The caps were raised so most eligible buildings are
+ * dressed, and three dense rhythm elements were added: per-floor slab reveals across the street
+ * facade (the strongest anti-box read), dark corner reveals at the two street corners, and
+ * rooftop mechanical penthouses on flat roofs.
+ *
  * Elements protrude at most ~1.3 m from a wall face and sit above the car body height where
  * relevant, so the existing static building colliders (which bound the shell) remain the single
  * collision authority. No new physics, lights, or texture assets are introduced.
  */
 
 export type FacadeKitElement =
-  'balcony' | 'veranda' | 'chimney' | 'eave-trim' | 'curtain-fin' | 'glass-band' | 'awning';
+  | 'balcony'
+  | 'veranda'
+  | 'chimney'
+  | 'eave-trim'
+  | 'curtain-fin'
+  | 'glass-band'
+  | 'awning'
+  | 'floor-band'
+  | 'corner-reveal'
+  | 'penthouse';
 
 /** Mirrors `CityBuildingKind` in `urban-night.ts`; kept structural to avoid an import cycle. */
 export type FacadeKitBuildingKind =
@@ -81,14 +99,85 @@ function hasPitchedRoof(building: FacadeKitBuildingRef): boolean {
   );
 }
 
-/** Local +Z offset rotated into world space by the building yaw. */
-function frontOffset(yaw: number, distance: number): readonly [number, number] {
-  return [Math.sin(yaw) * distance, Math.cos(yaw) * distance];
+/**
+ * The street-facing face of a building, as local-axis signs. Block-perimeter shells
+ * (`frontage`/`shop`) are authored 20 m long along the street and 8.5 m deep, with their yaw
+ * rotating the local +X axis radially outward from the block — so for all four block sides the
+ * road-facing face is local +X (the window builder uses the same convention: its local +X
+ * side spans `building.depth`). Every other kind keeps the 8.1 local +Z front (standalone
+ * houses, mansions, townhouses, infill).
+ */
+export function streetFrontSigns(building: FacadeKitBuildingRef): {
+  readonly lx: number;
+  readonly lz: number;
+} {
+  if (building.kind === 'frontage' || building.kind === 'shop') {
+    return { lx: 1, lz: 0 };
+  }
+  return { lx: 0, lz: 1 };
+}
+
+/**
+ * World placement of a wall-face element: the face centre pushed `protrude` along the face
+ * normal, the element yaw (kit elements face the wall along their local +Z), and the face's
+ * horizontal extent (for scaling full-width elements like floor bands).
+ */
+function streetFacePlacement(
+  building: FacadeKitBuildingRef,
+  protrude: number,
+): {
+  readonly x: number;
+  readonly z: number;
+  readonly yaw: number;
+  readonly length: number;
+} {
+  const { lx, lz } = streetFrontSigns(building);
+  const yaw = building.yaw ?? 0;
+  const cos = Math.cos(yaw);
+  const sin = Math.sin(yaw);
+  if (lz !== 0) {
+    // Local ±Z face: extent runs along local X, normal along local ±Z.
+    const distance = building.depth / 2 + protrude;
+    return {
+      x: building.x + sin * distance * lz,
+      z: building.z + cos * distance * lz,
+      yaw: lz > 0 ? yaw : yaw + Math.PI,
+      length: building.width,
+    };
+  }
+  // Local ±X face: extent runs along local Z, normal along local ±X.
+  const distance = building.width / 2 + protrude;
+  const normalX = cos * lx;
+  const normalZ = -sin * lx;
+  return {
+    x: building.x + normalX * distance,
+    z: building.z + normalZ * distance,
+    // Element local +Z must point along the face normal: (sin θ, cos θ) = (normalX, normalZ).
+    yaw: lx > 0 ? yaw + Math.PI / 2 : yaw + (3 * Math.PI) / 2,
+    length: building.depth,
+  };
+}
+
+/** Corners of the street face in local coordinates, as [localX, localZ] signs pairs. */
+function streetFaceCorners(building: FacadeKitBuildingRef): Array<readonly [number, number]> {
+  const { lx, lz } = streetFrontSigns(building);
+  if (lz !== 0) {
+    return [
+      [-1, lz],
+      [1, lz],
+    ];
+  }
+  return [
+    [lx, -1],
+    [lx, 1],
+  ];
 }
 
 interface ElementCandidate {
   readonly placement: FacadeKitPlacement;
   readonly rank: number;
+  /** Selected before non-priority candidates when the tier budget is tighter than the pool. */
+  readonly priority?: boolean;
 }
 
 function residential(building: FacadeKitBuildingRef): boolean {
@@ -119,34 +208,40 @@ export function generateFacadeKitPlacements(
     'curtain-fin': [],
     'glass-band': [],
     awning: [],
+    'floor-band': [],
+    'corner-reveal': [],
+    penthouse: [],
   };
 
   buildings.forEach((building, buildingIndex) => {
     const yaw = building.yaw ?? 0;
-    const frontDistance = building.depth / 2 + 0.4;
-    const [fx, fz] = frontOffset(yaw, frontDistance);
-    const frontX = building.x + fx;
-    const frontZ = building.z + fz;
+    // Phase 8.3: every street-facing element lands on the true street face. Block-perimeter
+    // shells (frontage/shop) face the road across their local ±X side; standalone kinds keep
+    // the 8.1 local +Z front, so their placements are byte-identical to 8.1.
+    const faceBalcony = streetFacePlacement(building, 0.4);
+    const faceVeranda = streetFacePlacement(building, 0.55);
+    const faceEave = streetFacePlacement(building, 0.32);
+    const faceAwning = streetFacePlacement(building, 0.42);
+    const faceBand = streetFacePlacement(building, 0.04);
 
-    // Balcony: second (or third) floor of any residential shell tall enough for two storeys.
-    if (
-      residential(building) &&
-      building.height >= 6.0 &&
-      stableUnit(buildingIndex, 31, 977) < 0.8
-    ) {
-      const floorY = building.height < 9.5 ? 2.85 : 5.7;
-      const slabWidth = Math.min(2.6, Math.max(1.8, building.width * 0.55));
-      candidates.balcony.push({
-        rank: stableUnit(buildingIndex, 32, 979),
-        placement: {
-          element: 'balcony',
-          buildingIndex,
-          x: frontX,
-          y: FACADE_KIT_BASE_Y + floorY,
-          z: frontZ,
-          yaw,
-          scale: [slabWidth / 2.2, 1, 1],
-        },
+    // Balcony: stacked slabs (second/third/fourth floor) on residential shells.
+    if (residential(building) && building.height >= 6.0) {
+      [2.85, 5.7, 8.55].forEach((floorY, slabIndex) => {
+        if (floorY + 1.1 > building.height - 0.6) return;
+        if (stableUnit(buildingIndex, 31 + slabIndex * 7, 977) >= 0.85) return;
+        const slabWidth = Math.min(2.6, Math.max(1.8, building.width * 0.55));
+        candidates.balcony.push({
+          rank: stableUnit(buildingIndex, 32 + slabIndex * 7, 979),
+          placement: {
+            element: 'balcony',
+            buildingIndex,
+            x: faceBalcony.x,
+            y: FACADE_KIT_BASE_Y + floorY,
+            z: faceBalcony.z,
+            yaw: faceBalcony.yaw,
+            scale: [slabWidth / 2.2, 1, 1],
+          },
+        });
       });
     }
 
@@ -157,16 +252,15 @@ export function generateFacadeKitPlacements(
         (building.kind === 'house' && stableUnit(buildingIndex, 33, 983) < 0.55);
       if (eligible) {
         const porchWidth = Math.min(3.4, Math.max(2.2, building.width * 0.7));
-        const [vx, vz] = frontOffset(yaw, building.depth / 2 + 0.55);
         candidates.veranda.push({
           rank: stableUnit(buildingIndex, 34, 991),
           placement: {
             element: 'veranda',
             buildingIndex,
-            x: building.x + vx,
+            x: faceVeranda.x,
             y: FACADE_KIT_BASE_Y,
-            z: building.z + vz,
-            yaw,
+            z: faceVeranda.z,
+            yaw: faceVeranda.yaw,
             scale: [porchWidth / 3.0, 1, 1],
           },
         });
@@ -199,38 +293,108 @@ export function generateFacadeKitPlacements(
       building.height < 10 &&
       stableUnit(buildingIndex, 36, 1013) < 0.75
     ) {
-      const [ex, ez] = frontOffset(yaw, building.depth / 2 + 0.32);
       candidates['eave-trim'].push({
         rank: stableUnit(buildingIndex, 37, 1019),
         placement: {
           element: 'eave-trim',
           buildingIndex,
-          x: building.x + ex,
+          x: faceEave.x,
           y: FACADE_KIT_BASE_Y,
-          z: building.z + ez,
-          yaw,
+          z: faceEave.z,
+          yaw: faceEave.yaw,
           scale: [Math.min(5.6, Math.max(3.4, building.width)) / 3.4, 1, 1],
         },
       });
     }
 
     // Shopfront awning + sign band: ground-floor commerce on shops and perimeter frontages.
+    // Shops are priority candidates so every shop keeps a canopy at any tier budget.
     if (
       (building.kind === 'shop' || building.kind === 'frontage') &&
       building.height >= 5.2 &&
       stableUnit(buildingIndex, 38, 1021) < 0.85
     ) {
-      const [ax, az] = frontOffset(yaw, building.depth / 2 + 0.42);
       candidates.awning.push({
         rank: stableUnit(buildingIndex, 39, 1027),
+        priority: building.kind === 'shop',
         placement: {
           element: 'awning',
           buildingIndex,
-          x: building.x + ax,
+          x: faceAwning.x,
           y: FACADE_KIT_BASE_Y,
-          z: building.z + az,
+          z: faceAwning.z,
+          yaw: faceAwning.yaw,
+          scale: [Math.min(4.6, Math.max(2.4, faceAwning.length)) / 2.4, 1, 1],
+        },
+      });
+    }
+
+    // Phase 8.3 floor bands: per-floor slab reveals across the street facade — the strongest
+    // anti-box read. One candidate per floor line, up to three; the tier budget trims the rest.
+    for (let band = 1; band <= 3; band += 1) {
+      if (FACADE_KIT_BASE_Y + 3.15 * band + 0.2 > FACADE_KIT_BASE_Y + building.height - 0.9) {
+        break;
+      }
+      candidates['floor-band'].push({
+        rank: stableUnit(buildingIndex, 2001 + band, 2013),
+        placement: {
+          element: 'floor-band',
+          buildingIndex,
+          x: faceBand.x,
+          y: FACADE_KIT_BASE_Y + 3.15 * band,
+          z: faceBand.z,
+          yaw: faceBand.yaw,
+          scale: [faceBand.length, 1, 1],
+        },
+      });
+    }
+
+    // Phase 8.3 corner reveals: a dark vertical strip at each street-facing corner.
+    const { lx, lz } = streetFrontSigns(building);
+    streetFaceCorners(building).forEach(([cornerX, cornerZ], cornerIndex) => {
+      const cos = Math.cos(yaw);
+      const sin = Math.sin(yaw);
+      const localX = cornerX * (building.width / 2 - 0.07);
+      const localZ = cornerZ * (building.depth / 2 - 0.07);
+      candidates['corner-reveal'].push({
+        rank: stableUnit(buildingIndex, 2101 + cornerIndex, 2113),
+        placement: {
+          element: 'corner-reveal',
+          buildingIndex,
+          x: building.x + cos * localX + sin * localZ,
+          y: FACADE_KIT_BASE_Y,
+          z: building.z - sin * localX + cos * localZ,
           yaw,
-          scale: [Math.min(4.6, Math.max(2.4, building.width)) / 2.4, 1, 1],
+          scale: [1, building.height, 1],
+        },
+      });
+    });
+
+    // Phase 8.3 penthouse: rooftop mechanical room set back from the street face on flat roofs.
+    if (!hasPitchedRoof(building) && building.height >= 5) {
+      const cos = Math.cos(yaw);
+      const sin = Math.sin(yaw);
+      const localX =
+        -lx * building.width * 0.18 +
+        (stableUnit(buildingIndex, 2201, 2209) - 0.5) * building.width * 0.2;
+      const localZ =
+        -lz * building.depth * 0.15 +
+        (stableUnit(buildingIndex, 2202, 2211) - 0.5) * building.depth * 0.2;
+      const penthouseHeight = 1.5 + stableUnit(buildingIndex, 2203, 2213) * 0.9;
+      candidates.penthouse.push({
+        rank: stableUnit(buildingIndex, 2204, 2217),
+        placement: {
+          element: 'penthouse',
+          buildingIndex,
+          x: building.x + cos * localX + sin * localZ,
+          y: FACADE_KIT_BASE_Y + building.height,
+          z: building.z - sin * localX + cos * localZ,
+          yaw,
+          scale: [
+            Math.min(building.width * 0.4, 6),
+            penthouseHeight,
+            Math.min(building.depth * 0.34, 6),
+          ],
         },
       });
     }
@@ -287,6 +451,21 @@ export function generateFacadeKitPlacements(
         scale: [tower.width + 0.12, 1.3, tower.depth + 0.12],
       },
     });
+    // Phase 8.3 mid spandrel: a band at two-thirds height so the tower reads as a stack of
+    // floors rather than one glass slab.
+    candidates['glass-band'].push({
+      rank: stableUnit(towerIndex, 43, 1035),
+      placement: {
+        element: 'glass-band',
+        buildingIndex: -1,
+        towerIndex,
+        x: tower.x,
+        y: FACADE_KIT_BASE_Y + tower.height * (2 / 3),
+        z: tower.z,
+        yaw: 0,
+        scale: [tower.width + 0.12, 1.1, tower.depth + 0.12],
+      },
+    });
   });
 
   const placements: FacadeKitPlacement[] = [];
@@ -298,10 +477,16 @@ export function generateFacadeKitPlacements(
     'curtain-fin': budget.curtainFins,
     'glass-band': budget.glassBands,
     awning: budget.awnings,
+    'floor-band': budget.floorBands,
+    'corner-reveal': budget.cornerReveals,
+    penthouse: budget.penthouses,
   };
   for (const element of Object.keys(candidates) as FacadeKitElement[]) {
     const ranked = [...candidates[element]].sort(
-      (a, b) => a.rank - b.rank || a.placement.buildingIndex - b.placement.buildingIndex,
+      (a, b) =>
+        (b.priority === true ? 1 : 0) - (a.priority === true ? 1 : 0) ||
+        a.rank - b.rank ||
+        a.placement.buildingIndex - b.placement.buildingIndex,
     );
     for (const { placement } of ranked.slice(0, capFor[element])) {
       placements.push(placement);
@@ -377,6 +562,22 @@ function mergedKitGeometry(element: FacadeKitElement): BufferGeometry {
         boxPart([0.05, 0.05, 0.5], [-0.9, 2.78, 0.35]),
         boxPart([0.05, 0.05, 0.5], [0.9, 2.78, 0.35]),
         boxPart([2.2, 0.62, 0.07], [0, 3.5, 0.05]),
+      ];
+      break;
+    case 'floor-band':
+      // Unit-width precast slab reveal; scaled along the face length per placement.
+      parts = [boxPart([1, 0.16, 0.12], [0, 0, 0.04])];
+      break;
+    case 'corner-reveal':
+      // Unit-height corner pilaster strip; scaled to the wall height per placement.
+      parts = [boxPart([0.14, 1, 0.14], [0, 0.5, 0])];
+      break;
+    case 'penthouse':
+      // Unit rooftop mechanical room: box, parapet lip, and a service door.
+      parts = [
+        boxPart([1, 1, 1], [0, 0.5, 0]),
+        boxPart([1.08, 0.1, 1.08], [0, 1.05, 0]),
+        boxPart([0.34, 0.62, 0.05], [0.2, 0.31, 0.5]),
       ];
       break;
   }
@@ -484,6 +685,42 @@ const KIT_MATERIALS: Readonly<
     },
     castShadow: true,
   },
+  'floor-band': {
+    options: {
+      name: 'aohara-floor-slab-reveal-pbr',
+      colorHex: 0x454d55,
+      roughness: 0.72,
+      metalness: 0.08,
+      detailAmplitude: 0.02,
+      clearcoat: 0.1,
+      clearcoatRoughness: 0.4,
+    },
+    castShadow: false,
+  },
+  'corner-reveal': {
+    options: {
+      name: 'aohara-corner-pilaster-reveal-pbr',
+      colorHex: 0x363d44,
+      roughness: 0.8,
+      metalness: 0.06,
+      detailAmplitude: 0.025,
+      clearcoat: 0.08,
+      clearcoatRoughness: 0.45,
+    },
+    castShadow: false,
+  },
+  penthouse: {
+    options: {
+      name: 'aohara-rooftop-penthouse-pbr',
+      colorHex: 0x6a7078,
+      roughness: 0.62,
+      metalness: 0.22,
+      detailAmplitude: 0.02,
+      clearcoat: 0.2,
+      clearcoatRoughness: 0.3,
+    },
+    castShadow: true,
+  },
 };
 
 const KIT_ELEMENTS: readonly FacadeKitElement[] = [
@@ -494,6 +731,9 @@ const KIT_ELEMENTS: readonly FacadeKitElement[] = [
   'curtain-fin',
   'glass-band',
   'awning',
+  'floor-band',
+  'corner-reveal',
+  'penthouse',
 ];
 
 /** Tier-bounded instanced facade-kit content; one batch per element kind, deterministic per city. */
@@ -524,6 +764,9 @@ export class FacadeKitWorld {
       'curtain-fin': 0,
       'glass-band': 0,
       awning: 0,
+      'floor-band': 0,
+      'corner-reveal': 0,
+      penthouse: 0,
     };
 
     for (const element of KIT_ELEMENTS) {
@@ -560,6 +803,9 @@ export class FacadeKitWorld {
       facadeKitCurtainFins: counts['curtain-fin'],
       facadeKitGlassBands: counts['glass-band'],
       facadeKitAwnings: counts.awning,
+      facadeKitFloorBands: counts['floor-band'],
+      facadeKitCornerReveals: counts['corner-reveal'],
+      facadeKitPenthouses: counts.penthouse,
       facadeKitBatches: this.#meshes.length,
       facadeKitBudgetBalconies: URBAN_FACADE_KIT_TIER_BUDGET[tier].balconies,
       facadeKitBudgetCurtainFins: URBAN_FACADE_KIT_TIER_BUDGET[tier].curtainFins,

@@ -204,43 +204,59 @@ export interface UrbanFacadeKitTierBudget {
   readonly eaveTrims: number;
   /** Vertical curtain-wall fins on high-rises (six face slots per tower). */
   readonly curtainFins: number;
-  /** Crown glass bands at the curtain-wall head of high-rises. */
+  /** Glass bands at the curtain-wall head and mid-spandrels of high-rises. */
   readonly glassBands: number;
   /** Shopfront awning + sign kits on shops and perimeter frontages. */
   readonly awnings: number;
+  /** Phase 8.3: per-floor slab reveals across the street-facing facade. */
+  readonly floorBands: number;
+  /** Phase 8.3: dark vertical strips at the two street-facing corners. */
+  readonly cornerReveals: number;
+  /** Phase 8.3: rooftop mechanical penthouses on flat roofs. */
+  readonly penthouses: number;
 }
 
 /**
- * Phase 8.1 facade-kit caps. These bound instanced detail batches, not measured FPS; the counts
- * stay ordered C <= B <= A and each element type renders as a single InstancedMesh.
+ * Phase 8.1 facade-kit caps (densified in Phase 8.3 after the owner's "still big boxes"
+ * verdict). These bound instanced detail batches, not measured FPS; the counts stay ordered
+ * C <= B <= A and each element type renders as a single InstancedMesh.
  */
 export const URBAN_FACADE_KIT_TIER_BUDGET: Readonly<Record<TierId, UrbanFacadeKitTierBudget>> = {
   C: {
-    balconies: 14,
+    balconies: 20,
     verandas: 5,
     chimneys: 10,
     eaveTrims: 6,
     curtainFins: 24,
-    glassBands: 6,
-    awnings: 10,
+    glassBands: 36,
+    awnings: 20,
+    floorBands: 700,
+    cornerReveals: 540,
+    penthouses: 220,
   },
   B: {
-    balconies: 24,
+    balconies: 40,
     verandas: 8,
     chimneys: 14,
     eaveTrims: 10,
     curtainFins: 40,
-    glassBands: 10,
-    awnings: 18,
+    glassBands: 48,
+    awnings: 26,
+    floorBands: 710,
+    cornerReveals: 548,
+    penthouses: 224,
   },
   A: {
-    balconies: 34,
+    balconies: 72,
     verandas: 12,
     chimneys: 18,
     eaveTrims: 14,
     curtainFins: 56,
-    glassBands: 14,
-    awnings: 26,
+    glassBands: 64,
+    awnings: 40,
+    floorBands: 720,
+    cornerReveals: 580,
+    penthouses: 230,
   },
 };
 
