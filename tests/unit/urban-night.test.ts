@@ -964,7 +964,10 @@ describe('Aohara city night-lighting rules', () => {
     expect(city.getContentStats().nightMoodLightCandidates).toBe(15);
     expect(city.getContentStats().highRiseNightAccentInstances).toBe(33);
     const cityStats = city.getContentStats();
-    expect(cityStats.frontageBuildings).toBeGreaterThanOrEqual(240);
+    // Phase 8.3c massing: the perimeter rows open where the alley mouths cross them
+    // (29 of the 240 candidates are clearance-rejected at the real district origin).
+    expect(cityStats.frontageBuildings).toBeGreaterThanOrEqual(200);
+    expect(cityStats.frontageBuildings).toBeLessThanOrEqual(240);
     expect(cityStats.shops).toBeGreaterThan(4);
     expect(cityStats.billboards).toBe(cityStats.shops! + 14);
     expect(cityStats.storefrontNightAccentInstances).toBe((cityStats.shops! + 2) * 3);

@@ -131,8 +131,9 @@ export function streetFrontSigns(building: FacadeKitBuildingRef): {
  * normal, the element yaw (kit elements face the wall along their local +Z), and the face's
  * horizontal extent (for scaling full-width elements like floor bands).
  */
-function streetFacePlacement(
+function facePlacement(
   building: FacadeKitBuildingRef,
+  signs: { readonly lx: number; readonly lz: number },
   protrude: number,
 ): {
   readonly x: number;
@@ -140,7 +141,7 @@ function streetFacePlacement(
   readonly yaw: number;
   readonly length: number;
 } {
-  const { lx, lz } = streetFrontSigns(building);
+  const { lx, lz } = signs;
   const yaw = building.yaw ?? 0;
   const cos = Math.cos(yaw);
   const sin = Math.sin(yaw);
@@ -167,20 +168,26 @@ function streetFacePlacement(
   };
 }
 
-/** Corners of the street face in local coordinates, as [localX, localZ] signs pairs. */
-function streetFaceCorners(building: FacadeKitBuildingRef): Array<readonly [number, number]> {
-  const { lx, lz } = streetFrontSigns(building);
-  if (lz !== 0) {
-    return [
-      [-1, lz],
-      [1, lz],
-    ];
-  }
-  return [
-    [lx, -1],
-    [lx, 1],
-  ];
+/** Placement on the building's street face (the face the commerce elements dress). */
+function streetFacePlacement(building: FacadeKitBuildingRef, protrude: number) {
+  return facePlacement(building, streetFrontSigns(building), protrude);
 }
+
+/** All four wall faces; the rhythm elements (bands, corners, cladding) dress every one. */
+const ALL_FACES: ReadonlyArray<{ readonly lx: number; readonly lz: number }> = [
+  { lx: 1, lz: 0 },
+  { lx: -1, lz: 0 },
+  { lx: 0, lz: 1 },
+  { lx: 0, lz: -1 },
+];
+
+/** The four unique building corners (each belongs to two faces; deduped for corner strips). */
+const ALL_CORNERS: ReadonlyArray<readonly [number, number]> = [
+  [1, 1],
+  [1, -1],
+  [-1, 1],
+  [-1, -1],
+];
 
 interface ElementCandidate {
   readonly placement: FacadeKitPlacement;
@@ -233,7 +240,6 @@ export function generateFacadeKitPlacements(
     const faceVeranda = streetFacePlacement(building, 0.55);
     const faceEave = streetFacePlacement(building, 0.32);
     const faceAwning = streetFacePlacement(building, 0.42);
-    const faceBand = streetFacePlacement(building, 0.04);
 
     // Balcony: stacked slabs (second/third/fourth floor) on residential shells.
     if (residential(building) && building.height >= 6.0) {
@@ -340,30 +346,33 @@ export function generateFacadeKitPlacements(
       });
     }
 
-    // Phase 8.3b floor bands: per-floor slab lines across the street facade, one per window
-    // floor (slab just above the window head, 2.6 m pitch) — the strongest anti-box read.
-    for (let floor = 0; ; floor += 1) {
-      const bandY = 2.97 + 2.6 * floor;
-      if (bandY + 0.17 > building.height - 0.6) break;
-      candidates['floor-band'].push({
-        rank: stableUnit(buildingIndex, 2001 + floor, 2013),
-        placement: {
-          element: 'floor-band',
-          buildingIndex,
-          x: faceBand.x,
-          y: FACADE_KIT_BASE_Y + bandY,
-          z: faceBand.z,
-          yaw: faceBand.yaw,
-          scale: [faceBand.length, 1, 1],
-        },
-      });
+    // Phase 8.3b floor bands: per-floor slab lines across every wall, one per window floor
+    // (slab just above the window head, 2.6 m pitch) — the strongest anti-box read.
+    for (const faceSigns of ALL_FACES) {
+      const face = facePlacement(building, faceSigns, 0.04);
+      for (let floor = 0; ; floor += 1) {
+        const bandY = 2.97 + 2.6 * floor;
+        if (bandY + 0.17 > building.height - 0.6) break;
+        candidates['floor-band'].push({
+          rank: stableUnit(buildingIndex, 2001 + floor * 4 + ALL_FACES.indexOf(faceSigns), 2013),
+          placement: {
+            element: 'floor-band',
+            buildingIndex,
+            x: face.x,
+            y: FACADE_KIT_BASE_Y + bandY,
+            z: face.z,
+            yaw: face.yaw,
+            scale: [face.length, 1, 1],
+          },
+        });
+      }
     }
 
-    // Phase 8.3 corner reveals: a dark vertical strip at each street-facing corner.
+    // Phase 8.3 corner reveals: a dark vertical strip at each of the four corners.
     const { lx, lz } = streetFrontSigns(building);
-    streetFaceCorners(building).forEach(([cornerX, cornerZ], cornerIndex) => {
-      const cos = Math.cos(yaw);
-      const sin = Math.sin(yaw);
+    const cos = Math.cos(yaw);
+    const sin = Math.sin(yaw);
+    ALL_CORNERS.forEach(([cornerX, cornerZ], cornerIndex) => {
       // 0.3 m section, outer face 0.03 m proud of the wall, clear of the window margin.
       const localX = cornerX * (building.width / 2 - 0.12);
       const localZ = cornerZ * (building.depth / 2 - 0.12);
@@ -410,39 +419,43 @@ export function generateFacadeKitPlacements(
       });
     }
 
-    // Phase 8.3b ground cladding: a dark stone base band across the whole street face
-    // (behind the window plane, so storefront glazing reads proud of it).
+    // Phase 8.3b ground cladding: a dark stone base band on every wall (behind the window
+    // plane, so glazing reads proud of it).
     if (building.height >= 4.5) {
-      const face = streetFacePlacement(building, 0.05);
-      candidates['ground-cladding'].push({
-        rank: stableUnit(buildingIndex, 2301, 2311),
-        placement: {
-          element: 'ground-cladding',
-          buildingIndex,
-          x: face.x,
-          y: FACADE_KIT_BASE_Y,
-          z: face.z,
-          yaw: face.yaw,
-          scale: [face.length, 3.0, 1],
-        },
+      ALL_FACES.forEach((faceSigns, faceIndex) => {
+        const face = facePlacement(building, faceSigns, 0.05);
+        candidates['ground-cladding'].push({
+          rank: stableUnit(buildingIndex, 2301 + faceIndex, 2311),
+          placement: {
+            element: 'ground-cladding',
+            buildingIndex,
+            x: face.x,
+            y: FACADE_KIT_BASE_Y,
+            z: face.z,
+            yaw: face.yaw,
+            scale: [face.length, 3.0, 1],
+          },
+        });
       });
     }
 
-    // Phase 8.3b crown cladding: a lighter band across the top 1.8 m of the street face,
-    // separating the parapet from the body of the wall.
+    // Phase 8.3b crown cladding: a lighter band across the top 1.8 m of every wall,
+    // separating the parapet from the body of the facade.
     if (building.height >= 4.5) {
-      const face = streetFacePlacement(building, 0.05);
-      candidates['crown-cladding'].push({
-        rank: stableUnit(buildingIndex, 2401, 2411),
-        placement: {
-          element: 'crown-cladding',
-          buildingIndex,
-          x: face.x,
-          y: FACADE_KIT_BASE_Y + building.height - 0.9,
-          z: face.z,
-          yaw: face.yaw,
-          scale: [face.length, 1.8, 1],
-        },
+      ALL_FACES.forEach((faceSigns, faceIndex) => {
+        const face = facePlacement(building, faceSigns, 0.05);
+        candidates['crown-cladding'].push({
+          rank: stableUnit(buildingIndex, 2401 + faceIndex, 2411),
+          placement: {
+            element: 'crown-cladding',
+            buildingIndex,
+            x: face.x,
+            y: FACADE_KIT_BASE_Y + building.height - 0.9,
+            z: face.z,
+            yaw: face.yaw,
+            scale: [face.length, 1.8, 1],
+          },
+        });
       });
     }
   });

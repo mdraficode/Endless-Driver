@@ -159,6 +159,49 @@ function streetFaceCenter(
   };
 }
 
+/**
+ * Phase 8.3c: the rhythm elements dress all four walls. Return every face the point lies on
+ * (within 0.6 m of the face line and inside the face span), with the signed distance from the
+ * face line (positive outward) and the distance along the face. A corner point matches two
+ * faces; a wall-line point matches exactly one.
+ */
+function locateOnFaces(
+  building: FacadeKitBuildingRef,
+  px: number,
+  pz: number,
+): Array<{ beyond: number; along: number; length: number }> {
+  const yaw = building.yaw ?? 0;
+  const cos = Math.cos(yaw);
+  const sin = Math.sin(yaw);
+  const faces: Array<{ lx: number; lz: number; length: number }> = [
+    { lx: 1, lz: 0, length: building.depth },
+    { lx: -1, lz: 0, length: building.depth },
+    { lx: 0, lz: 1, length: building.width },
+    { lx: 0, lz: -1, length: building.width },
+  ];
+  const matches: Array<{ beyond: number; along: number; length: number }> = [];
+  for (const face of faces) {
+    const faceX =
+      building.x +
+      (face.lz !== 0 ? sin * building.depth * 0.5 * face.lz : cos * building.width * 0.5 * face.lx);
+    const faceZ =
+      building.z +
+      (face.lz !== 0
+        ? cos * building.depth * 0.5 * face.lz
+        : -sin * building.width * 0.5 * face.lx);
+    const nx = face.lz !== 0 ? sin * face.lz : cos * face.lx;
+    const nz = face.lz !== 0 ? cos * face.lz : -sin * face.lx;
+    const dx = px - faceX;
+    const dz = pz - faceZ;
+    const beyond = dx * nx + dz * nz;
+    if (Math.abs(beyond) > 0.6) continue;
+    const along = -dx * nz + dz * nx;
+    if (Math.abs(along) > face.length / 2 + 0.6) continue;
+    matches.push({ beyond, along, length: face.length });
+  }
+  return matches;
+}
+
 describe('Aohara facade kit', () => {
   it('places kit elements deterministically for the same city', () => {
     const buildings = fixtureBuildings();
@@ -224,15 +267,10 @@ describe('Aohara facade kit', () => {
     const buildings = fixtureBuildings();
     const towers = fixtureTowers();
     const placements = generateFacadeKitPlacements('A', buildings, towers);
-    const wallSideElements: FacadeKitElement[] = [
-      'balcony',
-      'veranda',
-      'eave-trim',
-      'awning',
-      'ground-cladding',
-      'crown-cladding',
-    ];
-    // Protrusion of each wall-side element's placement point from the street face line.
+    // Commerce elements stay on the street face; the cladding/bands/corners dress all walls
+    // and are validated per-face in their own cases.
+    const streetSideElements: FacadeKitElement[] = ['balcony', 'veranda', 'eave-trim', 'awning'];
+    // Protrusion of each street-side element's placement point from the street face line.
     const protrusionFor: Partial<Record<FacadeKitElement, number>> = {
       balcony: 0.4,
       veranda: 0.55,
@@ -270,35 +308,31 @@ describe('Aohara facade kit', () => {
           expect(placement.z).toBeCloseTo(face.z, 6);
           break;
         case 'floor-band': {
-          // Bands sit just proud of the street face, span its full length, and land on the
-          // 2.6 m window-floor rhythm (slab line just above each window head).
+          // Phase 8.3c: bands dress every wall — on one face line, just proud (0.04 m),
+          // spanning its full length, on the 2.6 m window-floor rhythm.
           expect(placement.y).toBeGreaterThanOrEqual(FACADE_KIT_BASE_Y + 2.97 - 1e-6);
           expect(placement.y).toBeLessThan(FACADE_KIT_BASE_Y + building.height - 0.6 + 1e-6);
           const floorsDown = (placement.y - FACADE_KIT_BASE_Y - 2.97) / 2.6;
           expect(Math.abs(floorsDown - Math.round(floorsDown))).toBeLessThan(1e-6);
-          expect(placement.x).toBeCloseTo(face.x, 6);
-          expect(placement.z).toBeCloseTo(face.z, 6);
-          expect(placement.scale[0]).toBeCloseTo(face.length, 6);
+          const onFaces = locateOnFaces(building, placement.x, placement.z);
+          expect(onFaces.length).toBe(1);
+          expect(onFaces[0]!.beyond).toBeCloseTo(0.04, 6);
+          expect(onFaces[0]!.along).toBeCloseTo(0, 6);
+          expect(placement.scale[0]).toBeCloseTo(onFaces[0]!.length, 6);
           break;
         }
         case 'corner-reveal': {
           expect(placement.y).toBeCloseTo(FACADE_KIT_BASE_Y, 6);
           expect(placement.scale[1]).toBeCloseTo(building.height, 6);
-          // The strip hugs a street-face corner: its centre sits 0.12 m inboard of the face
-          // line (the 0.3 m section stands 0.03 m proud) and at the face's end.
-          const { lx, lz } = expectedStreetFace(building);
-          const yaw = building.yaw ?? 0;
-          const cos = Math.cos(yaw);
-          const sin = Math.sin(yaw);
-          const nx = lz !== 0 ? sin * lz : cos * lx;
-          const nz = lz !== 0 ? cos * lz : -sin * lx;
-          const ax = -nz;
-          const az = nx;
-          const beyond = (placement.x - face.x) * nx + (placement.z - face.z) * nz;
-          const along = (placement.x - face.x) * ax + (placement.z - face.z) * az;
-          expect(beyond).toBeCloseTo(-0.12, 6);
-          const endLength = lz !== 0 ? building.width : building.depth;
-          expect(Math.abs(along)).toBeCloseTo(endLength / 2 - 0.12, 6);
+          // Phase 8.3c: one strip at each of the four corners — the centre sits 0.12 m inboard
+          // of both adjacent face lines (the 0.3 m section stands 0.03 m proud) and at the
+          // end of both faces.
+          const onFaces = locateOnFaces(building, placement.x, placement.z);
+          expect(onFaces.length).toBe(2);
+          for (const faceMatch of onFaces) {
+            expect(faceMatch.beyond).toBeCloseTo(-0.12, 6);
+            expect(Math.abs(faceMatch.along)).toBeCloseTo(faceMatch.length / 2 - 0.12, 6);
+          }
           break;
         }
         case 'penthouse':
@@ -306,27 +340,33 @@ describe('Aohara facade kit', () => {
           expect(placement.scale[0]).toBeLessThanOrEqual(building.width * 0.5 + 1e-9);
           expect(placement.scale[2]).toBeLessThanOrEqual(building.depth * 0.4 + 1e-9);
           break;
-        case 'ground-cladding':
-          // Dark base band: street-face line, full face length, from ground level.
+        case 'ground-cladding': {
+          // Phase 8.3c: the dark base band dresses every wall, from ground level.
           expect(placement.y).toBeCloseTo(FACADE_KIT_BASE_Y, 6);
-          expect(placement.scale[0]).toBeCloseTo(face.length, 6);
           expect(placement.scale[1]).toBeCloseTo(3.0, 6);
-          expect(placement.x).toBeCloseTo(face.x, 6);
-          expect(placement.z).toBeCloseTo(face.z, 6);
+          const onFaces = locateOnFaces(building, placement.x, placement.z);
+          expect(onFaces.length).toBe(1);
+          expect(onFaces[0]!.beyond).toBeCloseTo(0.05, 6);
+          expect(onFaces[0]!.along).toBeCloseTo(0, 6);
+          expect(placement.scale[0]).toBeCloseTo(onFaces[0]!.length, 6);
           break;
-        case 'crown-cladding':
-          // Parapet band: centred 0.9 m below the roof line, full face length.
+        }
+        case 'crown-cladding': {
+          // Phase 8.3c: the parapet band dresses the top 1.8 m of every wall.
           expect(placement.y).toBeCloseTo(FACADE_KIT_BASE_Y + building.height - 0.9, 6);
-          expect(placement.scale[0]).toBeCloseTo(face.length, 6);
           expect(placement.scale[1]).toBeCloseTo(1.8, 6);
-          expect(placement.x).toBeCloseTo(face.x, 6);
-          expect(placement.z).toBeCloseTo(face.z, 6);
+          const onFaces = locateOnFaces(building, placement.x, placement.z);
+          expect(onFaces.length).toBe(1);
+          expect(onFaces[0]!.beyond).toBeCloseTo(0.05, 6);
+          expect(onFaces[0]!.along).toBeCloseTo(0, 6);
+          expect(placement.scale[0]).toBeCloseTo(onFaces[0]!.length, 6);
           break;
+        }
         default:
           throw new Error(`unexpected building-side element: ${placement.element}`);
       }
-      // No wall-side element may sit farther than 1.3 m past the street face line.
-      if (wallSideElements.includes(placement.element)) {
+      // No street-side element may sit farther than 1.3 m past the street face line.
+      if (streetSideElements.includes(placement.element)) {
         const { lx, lz } = expectedStreetFace(building);
         const yaw = building.yaw ?? 0;
         const cos = Math.cos(yaw);
@@ -371,15 +411,17 @@ describe('Aohara facade kit', () => {
   });
 
   it('never stacks placements of the same element beyond their per-building design cap', () => {
-    // Most elements are at most one per building. Phase 8.3/8.3b exceptions: stacked balcony
-    // slabs (up to three floor lines), floor bands (one per window floor, up to five on the
-    // tallest shells), corner reveals (two corners), and the tower's crown + mid glass bands
-    // (two per tower).
+    // Most elements are at most one per building. Phase 8.3/8.3b/8.3c exceptions: stacked
+    // balcony slabs (up to three floor lines), floor bands (four faces x up to five floors),
+    // corner reveals (four corners), ground/crown cladding (four faces), and the tower's
+    // crown + mid glass bands (two per tower).
     const maxPerBuilding: Partial<Record<FacadeKitElement, number>> = {
       balcony: 3,
-      'floor-band': 5,
-      'corner-reveal': 2,
+      'floor-band': 20,
+      'corner-reveal': 4,
       'glass-band': 2,
+      'ground-cladding': 4,
+      'crown-cladding': 4,
     };
     for (const tier of ['C', 'B', 'A'] as const) {
       const placements = generateFacadeKitPlacements(tier, fixtureBuildings(), fixtureTowers());
@@ -501,32 +543,41 @@ describe('Aohara facade kit', () => {
         frontage: true,
       };
       const placements = generateFacadeKitPlacements('A', [building], []);
-      const bands = placements.filter((placement) => placement.element === 'floor-band');
-      expect(bands.length).toBeGreaterThanOrEqual(2);
-      for (const band of bands) {
-        // The band must sit on the street side of the shell centre, not the alley side.
+      const streetBeyond = (x: number, z: number): number =>
+        (x - origin.x) * outward[0] + (z - origin.z) * outward[1];
+      // Phase 8.3c: the street face is dressed like the other three walls; every floor-band
+      // on it must sit at the street-face line, and the alley face gets its own set.
+      const streetBands = placements
+        .filter(
+          (placement) =>
+            placement.element === 'floor-band' && streetBeyond(placement.x, placement.z) > 1,
+        )
+        .map((placement) => ({ x: placement.x, z: placement.z }));
+      expect(streetBands.length).toBeGreaterThanOrEqual(2);
+      const { lx, lz } = expectedStreetFace(building);
+      const cos = Math.cos(yaw);
+      const sin = Math.sin(yaw);
+      const nx = lz !== 0 ? sin * lz : cos * lx;
+      const nz = lz !== 0 ? cos * lz : -sin * lx;
+      for (const band of streetBands) {
         const dx = band.x - origin.x;
         const dz = band.z - origin.z;
-        expect(dx * outward[0] + dz * outward[1]).toBeGreaterThan(0);
-        // ...and at the street-face line (width/2 + 0.04 m), within the 20 m face span.
-        const { lx, lz } = expectedStreetFace(building);
-        const cos = Math.cos(yaw);
-        const sin = Math.sin(yaw);
-        const nx = lz !== 0 ? sin * lz : cos * lx;
-        const nz = lz !== 0 ? cos * lz : -sin * lx;
         expect(dx * nx + dz * nz).toBeCloseTo(8.5 / 2 + 0.04, 6);
         const ax = -nz;
         const az = nx;
         expect(Math.abs(dx * ax + dz * az)).toBeLessThanOrEqual(10 + 1e-6);
       }
-      // Corner reveals flank the street face, not the alley face.
+      // The opposite (alley) face is dressed too — the box is wrapped, not fronted.
+      const alleyBands = placements.filter(
+        (placement) =>
+          placement.element === 'floor-band' && streetBeyond(placement.x, placement.z) < -1,
+      );
+      expect(alleyBands.length).toBe(streetBands.length);
+      // Corner reveals flank the street face: exactly the two corners on the street side.
       const corners = placements.filter((placement) => placement.element === 'corner-reveal');
-      expect(corners.length).toBe(2);
-      for (const corner of corners) {
-        const dx = corner.x - origin.x;
-        const dz = corner.z - origin.z;
-        expect(dx * outward[0] + dz * outward[1]).toBeGreaterThan(0);
-      }
+      expect(corners.length).toBe(4);
+      const streetCorners = corners.filter((corner) => streetBeyond(corner.x, corner.z) > 1);
+      expect(streetCorners.length).toBe(2);
     });
   });
 

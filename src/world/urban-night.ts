@@ -645,12 +645,36 @@ function buildAoharaFrontageBuildingSpecs(): readonly CityBuildingSpec[] {
   AOHARA_BACKSTREET_BLOCKS.forEach((block, blockIndex) => {
     const shopSide = Math.floor(stableUnit(block.rowIndex, block.columnIndex, 1901) * sides.length);
     const shopPosition = Math.floor(stableUnit(block.rowIndex, block.columnIndex, 1913) * 4);
+    // Phase 8.3c massing: each block side takes a street character — a contiguous run of
+    // low, mid or high buildings. Edge blocks (on the avenues) may carry high-rise; inner
+    // blocks stay low/mid so the district reads as a street of varied blocks, not one height.
+    const blockRows = AOHARA_GRID_ROWS.length - 1;
+    const blockCols = AOHARA_GRID_COLUMNS.length - 1;
+    const isEdgeBlock =
+      block.rowIndex === 0 ||
+      block.rowIndex === blockRows - 1 ||
+      block.columnIndex === 0 ||
+      block.columnIndex === blockCols - 1;
     sides.forEach((side, sideIndex) => {
+      const characterRoll = stableUnit(blockIndex, sideIndex, 1953);
+      const character: 'low' | 'mid' | 'high' =
+        isEdgeBlock && characterRoll < 0.2 ? 'high' : characterRoll < 0.45 ? 'low' : 'mid';
       AOHARA_BACKSTREET_CONFIG.frontagePositionsMeters.forEach((tangentOffset, positionIndex) => {
         const paletteIndex = Math.floor(
           stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1931) * wallPalette.length,
         );
         const radialInset = grid / 2 - AOHARA_BACKSTREET_CONFIG.frontageBuildingInsetMeters;
+        const heightJitter = stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1949);
+        const height =
+          character === 'low'
+            ? 5.5 + heightJitter * 3.0
+            : character === 'mid'
+              ? 10 + heightJitter * 6.0
+              : 18 + heightJitter * 8.0;
+        const roofRoll = stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1951);
+        const hippedChance = character === 'low' ? 0.45 : character === 'mid' ? 0.15 : 0;
+        // Tangential street span 16–24 m: varied building lengths along the street.
+        const streetSpan = 16 + stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1963) * 8;
         const building: CityBuildingSpec = {
           kind: sideIndex === shopSide && positionIndex === shopPosition ? 'shop' : 'frontage',
           frontage: true,
@@ -667,12 +691,11 @@ function buildAoharaFrontageBuildingSpecs(): readonly CityBuildingSpec[] {
                 ? block.centerLocalZ + radialInset
                 : block.centerLocalZ + tangentOffset,
           width: AOHARA_BACKSTREET_CONFIG.frontageBuildingDepthMeters,
-          depth: AOHARA_BACKSTREET_CONFIG.frontageBuildingWidthMeters,
-          height: 8.2 + stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1949) * 5.1,
+          depth: streetSpan,
+          height,
           color: wallPalette[paletteIndex] ?? wallPalette[0],
           roofColor: roofPalette[paletteIndex] ?? roofPalette[0],
-          roofStyle:
-            stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1951) < 0.18 ? 'hipped' : 'flat',
+          roofStyle: roofRoll < hippedChance ? 'hipped' : 'flat',
           yaw:
             side === 'north'
               ? Math.PI / 2
@@ -2807,8 +2830,9 @@ export class UrbanNightWorld implements SceneContent {
         y: WORLD_BASE_Y + building.height + (pitched ? 0.72 : 0.28),
         z: building.z,
         yaw: yaw + (pitched ? Math.PI / 4 : 0),
+        // Phase 8.3c: steeper, taller hipped roofs so low/mid-rise blocks shed their box tops.
         scale: pitched
-          ? [building.width * 0.53, Math.min(2.2, building.height * 0.25), building.depth * 0.53]
+          ? [building.width * 0.53, Math.min(3.4, building.height * 0.3), building.depth * 0.53]
           : [building.width + 0.6, 0.56, building.depth + 0.6],
       });
       roofGroups.set(building.roofColor, roofTransforms);

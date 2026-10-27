@@ -62,7 +62,9 @@ describe('Aohara driving-world integration', () => {
     if (stats === undefined) {
       throw new Error('the driving world should expose integrated enrichment diagnostics');
     }
-    expect(stats.frontageBuildings).toBeGreaterThanOrEqual(240);
+    // Phase 8.3c massing: the perimeter rows open where the alley mouths cross them.
+    expect(stats.frontageBuildings).toBeGreaterThanOrEqual(200);
+    expect(stats.frontageBuildings).toBeLessThanOrEqual(240);
     expect(stats.urbanAlleyFacadeBuildings).toBeGreaterThan(0);
     expect(stats.urbanAlleyFacadeWindows).toBeGreaterThan(0);
     expect(stats.urbanAlleyFacadeDoors).toBeGreaterThan(0);
