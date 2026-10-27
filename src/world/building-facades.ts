@@ -76,6 +76,46 @@ export interface FacadeKitBuildingRef {
   readonly roofStyle?: 'flat' | 'hipped';
   readonly yaw?: number;
   readonly frontage?: boolean;
+  /**
+   * Phase 8.3e massing: a full-footprint base volume up to `baseHeight` with the upper volume
+   * set back from the street face (and possibly one or both other faces).
+   */
+  readonly massing?: BuildingMassingRef;
+}
+
+/** Setback massing, relative to the building footprint: insets are [+X street, -X, +Z, -Z]. */
+export interface BuildingMassingRef {
+  readonly baseHeight: number;
+  readonly insets: readonly [number, number, number, number];
+}
+
+/**
+ * The upper volume of a set-back building: the footprint minus the face insets, shifted so the
+ * insets open toward the street face. Null when the building is a single volume.
+ */
+export function upperVolumeOf(ref: {
+  readonly width: number;
+  readonly depth: number;
+  readonly height: number;
+  readonly massing?: BuildingMassingRef;
+}): {
+  readonly localX: number;
+  readonly localZ: number;
+  readonly width: number;
+  readonly depth: number;
+} | null {
+  const { massing } = ref;
+  if (massing === undefined || ref.height - massing.baseHeight < 2.5) return null;
+  const [streetInset, alleyInset, plusZInset, minusZInset] = massing.insets;
+  const width = ref.width - streetInset - alleyInset;
+  const depth = ref.depth - plusZInset - minusZInset;
+  if (width < 3.5 || depth < 4.5) return null;
+  return {
+    localX: (alleyInset - streetInset) / 2,
+    localZ: (minusZInset - plusZInset) / 2,
+    width,
+    depth,
+  };
 }
 
 /** Tower reference in city-local coordinates, compatible with the night-world tower specs. */
@@ -183,6 +223,44 @@ function streetFacePlacement(building: FacadeKitBuildingRef, protrude: number) {
   return facePlacement(building, streetFrontSigns(building), protrude);
 }
 
+/** Placement on the set-back upper volume's wall face (Phase 8.3e massing). */
+function upperFacePlacement(
+  building: FacadeKitBuildingRef,
+  upper: {
+    readonly localX: number;
+    readonly localZ: number;
+    readonly width: number;
+    readonly depth: number;
+  },
+  signs: { readonly lx: number; readonly lz: number },
+  protrude: number,
+): { readonly x: number; readonly z: number; readonly yaw: number; readonly length: number } {
+  const { lx, lz } = signs;
+  const yaw = building.yaw ?? 0;
+  const cos = Math.cos(yaw);
+  const sin = Math.sin(yaw);
+  const centerX = building.x + cos * upper.localX + sin * upper.localZ;
+  const centerZ = building.z - sin * upper.localX + cos * upper.localZ;
+  if (lz !== 0) {
+    const distance = upper.depth / 2 + protrude;
+    return {
+      x: centerX + sin * distance * lz,
+      z: centerZ + cos * distance * lz,
+      yaw: lz > 0 ? yaw : yaw + Math.PI,
+      length: upper.width,
+    };
+  }
+  const distance = upper.width / 2 + protrude;
+  const normalX = cos * lx;
+  const normalZ = -sin * lx;
+  return {
+    x: centerX + normalX * distance,
+    z: centerZ + normalZ * distance,
+    yaw: lx > 0 ? yaw + Math.PI / 2 : yaw + (3 * Math.PI) / 2,
+    length: upper.depth,
+  };
+}
+
 /** All four wall faces; the rhythm elements (bands, corners, cladding) dress every one. */
 const ALL_FACES: ReadonlyArray<{ readonly lx: number; readonly lz: number }> = [
   { lx: 1, lz: 0 },
@@ -244,6 +322,10 @@ export function generateFacadeKitPlacements(
 
   buildings.forEach((building, buildingIndex) => {
     const yaw = building.yaw ?? 0;
+    // Phase 8.3e: set-back massing — the rhythm elements follow the two volumes (the full
+    // podium and the set-back upper volume) instead of one imaginary box face.
+    const upper = upperVolumeOf(building);
+    const baseHeight = upper !== null ? building.massing!.baseHeight : building.height;
     // Phase 8.3: every street-facing element lands on the true street face. Block-perimeter
     // shells (frontage/shop) face the road across their local ±X side; standalone kinds keep
     // the 8.1 local +Z front, so their placements are byte-identical to 8.1.
@@ -357,25 +439,47 @@ export function generateFacadeKitPlacements(
       });
     }
 
-    // Phase 8.3b floor bands: per-floor slab lines across every wall, one per window floor
-    // (slab just above the window head, 2.6 m pitch) — the strongest anti-box read.
+    // Phase 8.3b floor bands (following the 8.3e volumes): per-floor slab lines across every
+    // wall, 2.6 m pitch — the strongest anti-box read. The podium faces take the bands up to
+    // the step (the last band doubles as the terrace cornice); the set-back upper faces take
+    // the bands from the step to the roof.
     for (const faceSigns of ALL_FACES) {
-      const face = facePlacement(building, faceSigns, 0.04);
+      const baseFace = facePlacement(building, faceSigns, 0.04);
       for (let floor = 0; ; floor += 1) {
         const bandY = 2.97 + 2.6 * floor;
-        if (bandY + 0.17 > building.height - 0.6) break;
+        if (bandY + 0.17 > baseHeight + 0.14) break;
         candidates['floor-band'].push({
           rank: stableUnit(buildingIndex, 2001 + floor * 4 + ALL_FACES.indexOf(faceSigns), 2013),
           placement: {
             element: 'floor-band',
             buildingIndex,
-            x: face.x,
+            x: baseFace.x,
             y: FACADE_KIT_BASE_Y + bandY,
-            z: face.z,
-            yaw: face.yaw,
-            scale: [face.length, 1, 1],
+            z: baseFace.z,
+            yaw: baseFace.yaw,
+            scale: [baseFace.length, 1, 1],
           },
         });
+      }
+      if (upper !== null) {
+        const upperFace = upperFacePlacement(building, upper, faceSigns, 0.04);
+        for (let floor = 0; ; floor += 1) {
+          const bandY = 2.97 + 2.6 * floor;
+          if (bandY - 0.17 < baseHeight - 0.14) continue;
+          if (bandY + 0.17 > building.height - 0.6) break;
+          candidates['floor-band'].push({
+            rank: stableUnit(buildingIndex, 2001 + floor * 4 + ALL_FACES.indexOf(faceSigns), 2013),
+            placement: {
+              element: 'floor-band',
+              buildingIndex,
+              x: upperFace.x,
+              y: FACADE_KIT_BASE_Y + bandY,
+              z: upperFace.z,
+              yaw: upperFace.yaw,
+              scale: [upperFace.length, 1, 1],
+            },
+          });
+        }
       }
     }
 
@@ -395,7 +499,8 @@ export function generateFacadeKitPlacements(
           y: FACADE_KIT_BASE_Y,
           z: building.z - sin * localX + cos * localZ,
           yaw,
-          scale: [1, building.height, 1],
+          // Phase 8.3e: the pilaster follows the podium (full height on single volumes).
+          scale: [1, baseHeight + 0.1, 1],
         },
       });
     });
@@ -408,20 +513,27 @@ export function generateFacadeKitPlacements(
       stableUnit(buildingIndex, 2501, 2503) < 0.45
     ) {
       const mastHeight = 2.5 + stableUnit(buildingIndex, 2507, 2509) * 3.5;
+      // Phase 8.3e: the mast stands on the upper volume's roof when the building is set back.
+      const mastCos = Math.cos(yaw);
+      const mastSin = Math.sin(yaw);
+      const mastCenterX =
+        upper !== null ? building.x + mastCos * upper.localX + mastSin * upper.localZ : building.x;
+      const mastCenterZ =
+        upper !== null ? building.z - mastSin * upper.localX + mastCos * upper.localZ : building.z;
+      const mastWidth = upper !== null ? upper.width : building.width;
+      const mastDepth = upper !== null ? upper.depth : building.depth;
+      const offsetU = stableUnit(buildingIndex, 2201, 2209) - 0.5;
+      const offsetV = stableUnit(buildingIndex, 2202, 2211) - 0.5;
       candidates.mast.push({
         rank: stableUnit(buildingIndex, 2511, 2513),
         placement: {
           element: 'mast',
           buildingIndex,
           x:
-            building.x +
-            Math.cos(yaw) * (stableUnit(buildingIndex, 2201, 2209) - 0.5) * building.width * 0.3 +
-            Math.sin(yaw) * (stableUnit(buildingIndex, 2202, 2211) - 0.5) * building.depth * 0.3,
+            mastCenterX + mastCos * offsetU * mastWidth * 0.3 + mastSin * offsetV * mastDepth * 0.3,
           y: FACADE_KIT_BASE_Y + building.height,
           z:
-            building.z -
-            Math.sin(yaw) * (stableUnit(buildingIndex, 2201, 2209) - 0.5) * building.width * 0.3 +
-            Math.cos(yaw) * (stableUnit(buildingIndex, 2202, 2211) - 0.5) * building.depth * 0.3,
+            mastCenterZ - mastSin * offsetU * mastWidth * 0.3 + mastCos * offsetV * mastDepth * 0.3,
           yaw,
           scale: [1, mastHeight, 1],
         },
@@ -453,11 +565,11 @@ export function generateFacadeKitPlacements(
       }
     }
 
-    // Phase 8.3b ground cladding: a dark stone base band on every wall (behind the window
-    // plane, so glazing reads proud of it).
+    // Phase 8.3b ground cladding (8.3e: flush with the wall, behind the glazing plane): a
+    // dark stone base band on every podium face.
     if (building.height >= 4.5) {
       ALL_FACES.forEach((faceSigns, faceIndex) => {
-        const face = facePlacement(building, faceSigns, 0.05);
+        const face = facePlacement(building, faceSigns, 0);
         candidates['ground-cladding'].push({
           rank: stableUnit(buildingIndex, 2301 + faceIndex, 2311),
           placement: {
@@ -473,11 +585,15 @@ export function generateFacadeKitPlacements(
       });
     }
 
-    // Phase 8.3b crown cladding: a lighter band across the top 1.8 m of every wall,
-    // separating the parapet from the body of the facade.
+    // Phase 8.3b crown cladding (8.3e: flush, and on the set-back upper volume's faces when
+    // the building is massed): a lighter band across the top 1.8 m, separating the parapet
+    // from the body of the facade — behind the window plane so the top row still glows.
     if (building.height >= 4.5) {
       ALL_FACES.forEach((faceSigns, faceIndex) => {
-        const face = facePlacement(building, faceSigns, 0.05);
+        const face =
+          upper !== null
+            ? upperFacePlacement(building, upper, faceSigns, 0)
+            : facePlacement(building, faceSigns, 0);
         candidates['crown-cladding'].push({
           rank: stableUnit(buildingIndex, 2401 + faceIndex, 2411),
           placement: {
@@ -695,13 +811,15 @@ function mergedKitGeometry(element: FacadeKitElement): BufferGeometry {
       parts = [boxPart([1, 1, 1], [0, 0, 0])];
       break;
     case 'ground-cladding':
-      // Unit-width dark stone base band, 3 m tall; scaled along the face length. Kept behind
-      // the window plane (front at 0.09 m vs window rear at 0.1125 m) so glazing reads proud.
-      parts = [boxPart([1, 3, 0.08], [0, 1.5, 0.05])];
+      // Unit-width dark stone base band, 3 m tall; scaled along the face length. Flush with
+      // the wall (front at 0.02 m), behind the window panes (rear at 0.0325 m) and the
+      // shopfront glazing, so the glass plane always reads in front of the stone.
+      parts = [boxPart([1, 3, 0.04], [0, 1.5, 0.02])];
       break;
     case 'crown-cladding':
-      // Unit-width lighter parapet band, 1.8 m tall, centred on the placement point.
-      parts = [boxPart([1, 1.8, 0.08], [0, 0, 0.05])];
+      // Unit-width lighter parapet band, 1.8 m tall, centred on the placement point. Flush
+      // with the wall so the top window row (and its lit panes) reads in front of the band.
+      parts = [boxPart([1, 1.8, 0.04], [0, 0, 0.02])];
       break;
   }
   const merged = mergeGeometries(parts, false);

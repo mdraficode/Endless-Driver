@@ -320,9 +320,10 @@ describe('Aohara facade kit', () => {
           break;
         case 'floor-band': {
           // Phase 8.3c: bands dress every wall — on one face line, just proud (0.04 m),
-          // spanning its full length, on the 2.6 m window-floor rhythm.
+          // spanning its full length, on the 2.6 m window-floor rhythm. Phase 8.3e: the
+          // last podium band may sit at the step (terrace cornice), 0.03 m under the top.
           expect(placement.y).toBeGreaterThanOrEqual(FACADE_KIT_BASE_Y + 2.97 - 1e-6);
-          expect(placement.y).toBeLessThan(FACADE_KIT_BASE_Y + building.height - 0.6 + 1e-6);
+          expect(placement.y).toBeLessThan(FACADE_KIT_BASE_Y + building.height - 0.03 + 1e-6);
           const floorsDown = (placement.y - FACADE_KIT_BASE_Y - 2.97) / 2.6;
           expect(Math.abs(floorsDown - Math.round(floorsDown))).toBeLessThan(1e-6);
           const onFaces = locateOnFaces(building, placement.x, placement.z);
@@ -334,7 +335,9 @@ describe('Aohara facade kit', () => {
         }
         case 'corner-reveal': {
           expect(placement.y).toBeCloseTo(FACADE_KIT_BASE_Y, 6);
-          expect(placement.scale[1]).toBeCloseTo(building.height, 6);
+          // Phase 8.3e: the pilaster follows the podium (full height + 0.1 m on single
+          // volumes, which the fixtures are).
+          expect(placement.scale[1]).toBeCloseTo(building.height + 0.1, 6);
           // Phase 8.3c: one strip at each of the four corners — the centre sits 0.12 m inboard
           // of both adjacent face lines (the 0.3 m section stands 0.03 m proud) and at the
           // end of both faces.
@@ -377,22 +380,24 @@ describe('Aohara facade kit', () => {
         }
         case 'ground-cladding': {
           // Phase 8.3c: the dark base band dresses every wall, from ground level.
+          // Phase 8.3e: flush with the wall (behind the glazing plane).
           expect(placement.y).toBeCloseTo(FACADE_KIT_BASE_Y, 6);
           expect(placement.scale[1]).toBeCloseTo(3.0, 6);
           const onFaces = locateOnFaces(building, placement.x, placement.z);
           expect(onFaces.length).toBe(1);
-          expect(onFaces[0]!.beyond).toBeCloseTo(0.05, 6);
+          expect(onFaces[0]!.beyond).toBeCloseTo(0, 6);
           expect(onFaces[0]!.along).toBeCloseTo(0, 6);
           expect(placement.scale[0]).toBeCloseTo(onFaces[0]!.length, 6);
           break;
         }
         case 'crown-cladding': {
           // Phase 8.3c: the parapet band dresses the top 1.8 m of every wall.
+          // Phase 8.3e: flush with the wall (behind the top window row).
           expect(placement.y).toBeCloseTo(FACADE_KIT_BASE_Y + building.height - 0.9, 6);
           expect(placement.scale[1]).toBeCloseTo(1.8, 6);
           const onFaces = locateOnFaces(building, placement.x, placement.z);
           expect(onFaces.length).toBe(1);
-          expect(onFaces[0]!.beyond).toBeCloseTo(0.05, 6);
+          expect(onFaces[0]!.beyond).toBeCloseTo(0, 6);
           expect(onFaces[0]!.along).toBeCloseTo(0, 6);
           expect(placement.scale[0]).toBeCloseTo(onFaces[0]!.length, 6);
           break;
@@ -452,7 +457,8 @@ describe('Aohara facade kit', () => {
     // crown + mid glass bands (two per tower).
     const maxPerBuilding: Partial<Record<FacadeKitElement, number>> = {
       balcony: 3,
-      'floor-band': 20,
+      // Phase 8.3e: podium bands + upper-volume bands per face (up to ~9 each, four faces).
+      'floor-band': 40,
       'corner-reveal': 4,
       'glass-band': 2,
       'storefront-glazing': 6,
@@ -618,6 +624,73 @@ describe('Aohara facade kit', () => {
       const streetCorners = corners.filter((corner) => streetBeyond(corner.x, corner.z) > 1);
       expect(streetCorners.length).toBe(2);
     });
+  });
+
+  it('masses set-back frontage shells: the rhythm kit follows both volumes', () => {
+    // Phase 8.3e regression guard: a frontage with a 2 m street-face inset — the bands,
+    // crown cladding, masts and shopfronts must follow the two volumes, not the old box.
+    const building: FacadeKitBuildingRef = {
+      kind: 'frontage',
+      x: 0,
+      z: 0,
+      width: 8.5,
+      depth: 20,
+      height: 14,
+      roofStyle: 'flat',
+      yaw: 0,
+      frontage: true,
+      massing: { baseHeight: 8.2, insets: [2.0, 0, 0, 0] },
+    };
+    const placements = generateFacadeKitPlacements('A', [building], []);
+    // Podium street-face bands (full box line + 0.04 m) stop at the step.
+    const streetBands = placements.filter(
+      (placement) => placement.element === 'floor-band' && placement.x > 4.0,
+    );
+    expect(streetBands.length).toBeGreaterThanOrEqual(2);
+    for (const band of streetBands) {
+      expect(band.x).toBeCloseTo(8.5 / 2 + 0.04, 6);
+      expect(band.y - FACADE_KIT_BASE_Y).toBeLessThanOrEqual(8.2 + 0.14 + 1e-6);
+    }
+    // Upper-volume street-face bands (inset face line + 0.04 m) start at the step.
+    const upperStreetBands = placements.filter(
+      (placement) => placement.element === 'floor-band' && placement.x > 1.5 && placement.x < 3.0,
+    );
+    expect(upperStreetBands.length).toBeGreaterThanOrEqual(1);
+    for (const band of upperStreetBands) {
+      expect(band.x).toBeCloseTo(8.5 / 2 - 2.0 + 0.04, 6);
+      expect(band.y - FACADE_KIT_BASE_Y).toBeGreaterThanOrEqual(8.2 - 0.14 - 1e-6);
+    }
+    // The alley face (no inset) is dressed base to roof.
+    const alleyBands = placements.filter(
+      (placement) => placement.element === 'floor-band' && placement.x < -4.0,
+    );
+    expect(alleyBands.length).toBeGreaterThanOrEqual(streetBands.length);
+    // The crown cladding: the street crown sits on the inset face, the alley crown on the box.
+    const crowns = placements.filter((placement) => placement.element === 'crown-cladding');
+    expect(crowns.length).toBe(4);
+    const streetCrowns = crowns.filter((crown) => crown.x > 0);
+    expect(streetCrowns.length).toBe(1);
+    expect(streetCrowns[0]!.x).toBeCloseTo(8.5 / 2 - 2.0, 6);
+    expect(crowns.find((crown) => crown.x < -4)!.x).toBeCloseTo(-8.5 / 2, 6);
+    // The corner pilasters follow the podium, not the old full box.
+    const corners = placements.filter((placement) => placement.element === 'corner-reveal');
+    expect(corners.length).toBe(4);
+    for (const corner of corners) {
+      expect(corner.scale[1]).toBeCloseTo(8.3, 6);
+    }
+    // Masts stand on the upper volume's roof when present.
+    for (const mast of placements.filter((placement) => placement.element === 'mast')) {
+      expect(Math.abs(mast.x + 1.0)).toBeLessThanOrEqual(6.5 * 0.15 + 1e-6);
+      expect(Math.abs(mast.z)).toBeLessThanOrEqual(20 * 0.15 + 1e-6);
+    }
+    // The shopfront row stays on the podium street face (full box line + 0.13 m).
+    const storefronts = placements.filter(
+      (placement) => placement.element === 'storefront-glazing',
+    );
+    expect(storefronts.length).toBeGreaterThanOrEqual(3);
+    for (const storefront of storefronts) {
+      expect(storefront.x).toBeCloseTo(8.5 / 2 + 0.13, 6);
+    }
   });
 
   it('dresses nearly every street-facing shell and scales C < B < A across the district', () => {

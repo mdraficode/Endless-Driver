@@ -68,7 +68,7 @@ import {
   type StaticBuildingBox,
 } from './static-building-collision';
 import { createArchitecturalMaterial } from './architectural-materials';
-import { FacadeKitWorld } from './building-facades';
+import { FacadeKitWorld, upperVolumeOf, type BuildingMassingRef } from './building-facades';
 import { bindScannedPbrMaps } from './scanned-pbr';
 import { createRoadWetPatchMaskTexture, createRoadWetnessNode } from './road-wet-patches';
 import { UrbanStreetFurniture } from './urban-furniture';
@@ -152,6 +152,8 @@ interface CityBuildingSpec {
   readonly yaw?: number;
   /** Marks a shell added by the dense Aohara perimeter-frontage pass, including small shops. */
   readonly frontage?: boolean;
+  /** Phase 8.3e: setback massing (full-footprint podium + set-back upper volume). */
+  readonly massing?: BuildingMassingRef;
 }
 
 function hasPitchedRoof(building: CityBuildingSpec): boolean {
@@ -677,9 +679,46 @@ function buildAoharaFrontageBuildingSpecs(): readonly CityBuildingSpec[] {
         const hippedChance = character === 'low' ? 0.45 : character === 'mid' ? 0.15 : 0;
         // Tangential street span 16–24 m: varied building lengths along the street.
         const streetSpan = 16 + stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1963) * 8;
+        // Phase 8.3e setback massing: a full-footprint podium plus a set-back upper volume,
+        // so the row reads as composed volumes instead of coplanar prisms. The insets open
+        // toward the street face (local +X); the collider keeps the full bounding box. The
+        // podium top sits mid-spandrel of the 2.6 m window rhythm (5.6 + 2.6 k) so no window
+        // row straddles the step.
+        const baseHeight = character === 'low' ? 5.6 : character === 'mid' ? 8.2 : 10.8;
+        let streetInset = 1.2 + stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1971) * 1.3;
+        const alleyRoll = stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1973);
+        let alleyInset =
+          alleyRoll < 0.5
+            ? 1.0 + stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1975) * 1.0
+            : 0;
+        let plusZInset = 0;
+        let minusZInset = 0;
+        if (stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1977) < 0.35) {
+          const sideInset = 0.8 + stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1981) * 1.2;
+          if (stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1979) < 0.5) {
+            plusZInset = sideInset;
+          } else {
+            minusZInset = sideInset;
+          }
+        }
+        // Keep the upper volume at least 4.5 m across the street axis (width 8.5 m).
+        const maxWidthInset = Math.max(
+          0,
+          AOHARA_BACKSTREET_CONFIG.frontageBuildingDepthMeters - 4.5,
+        );
+        if (streetInset + alleyInset > maxWidthInset) {
+          const scale = maxWidthInset / (streetInset + alleyInset);
+          streetInset *= scale;
+          alleyInset *= scale;
+        }
+        const massing: BuildingMassingRef | undefined =
+          height - baseHeight >= 2.5
+            ? { baseHeight, insets: [streetInset, alleyInset, plusZInset, minusZInset] }
+            : undefined;
         const building: CityBuildingSpec = {
           kind: sideIndex === shopSide && positionIndex === shopPosition ? 'shop' : 'frontage',
           frontage: true,
+          ...(massing === undefined ? {} : { massing }),
           x:
             side === 'west'
               ? block.centerLocalX - radialInset
@@ -1034,79 +1073,114 @@ function buildWindowCandidates(
     const yaw = building.yaw ?? 0;
     const cos = Math.cos(yaw);
     const sin = Math.sin(yaw);
-    const xFaceColumns = Math.max(1, Math.floor((building.depth - 2) / 3.2));
-    const zFaceColumns = Math.max(1, Math.floor((building.width - 2) / 3.2));
-    const sides = [
-      {
-        localX: -building.width / 2 - 0.14,
-        localZ: 0,
-        yaw: yaw + Math.PI,
-        columns: xFaceColumns,
-        along: 'z' as const,
-        length: building.depth,
-      },
-      {
-        localX: building.width / 2 + 0.14,
-        localZ: 0,
-        yaw,
-        columns: xFaceColumns,
-        along: 'z' as const,
-        length: building.depth,
-      },
-      {
-        localX: 0,
-        localZ: -building.depth / 2 - 0.14,
-        yaw: yaw + Math.PI / 2,
-        columns: zFaceColumns,
-        along: 'x' as const,
-        length: building.width,
-      },
-      {
-        localX: 0,
-        localZ: building.depth / 2 + 0.14,
-        yaw: yaw - Math.PI / 2,
-        columns: zFaceColumns,
-        along: 'x' as const,
-        length: building.width,
-      },
-    ];
     // Phase 8.3d: per-building occupancy and tone — some blocks are full of warm light,
     // others sit dark after hours. The street face leads when the tier budget cuts.
     const litness = 0.08 + 0.8 * stableUnit(buildingIndex + 701, 517, 613);
     const buildingTone: 'warm' | 'cool' =
       stableUnit(buildingIndex + 701, 719, 823) < 0.62 ? 'warm' : 'cool';
     const streetSideIndex = building.kind === 'frontage' || building.kind === 'shop' ? 1 : 3;
-    for (let sideIndex = 0; sideIndex < sides.length; sideIndex += 1) {
-      const side = sides[sideIndex]!;
-      const streetFace = sideIndex === streetSideIndex;
-      // The ground floor belongs to the shopfronts; window rows start at 4.3 m and climb the
-      // 2.6 m floor rhythm until 0.35 m under the roof line.
-      for (let row = 0; ; row += 1) {
-        const rowY = 4.3 + row * 2.6;
-        if (rowY + 0.85 > building.height - 0.35) break;
-        const floorFactor =
-          stableUnit(buildingIndex + 701, 911 + row, 929) < 0.12
-            ? 0
-            : 0.55 + 0.45 * stableUnit(buildingIndex + 701, 941 + row, 947);
-        for (let column = 0; column < side.columns; column += 1) {
-          const spacing = Math.min(3.1, (side.length - 2.2) / side.columns);
-          const along = (column - (side.columns - 1) / 2) * spacing;
-          const localX = side.localX + (side.along === 'x' ? along : 0);
-          const localZ = side.localZ + (side.along === 'z' ? along : 0);
-          const rank = stableUnit(buildingIndex + 701, row * 19 + column + sideIndex * 23, 223);
-          const roll = stableUnit(buildingIndex + 701, row * 19 + column + sideIndex * 23, 2231);
-          add(
-            [
-              building.x + cos * localX + sin * localZ,
-              WORLD_BASE_Y + rowY,
-              building.z - sin * localX + cos * localZ,
-            ],
-            side.yaw,
-            rank,
-            litness * floorFactor * (0.4 + 0.6 * roll) * (streetFace ? 1.3 : 1),
-            buildingTone,
-            streetFace,
-          );
+    // Phase 8.3e: set-back massing splits the window grid into two volumes — the podium
+    // (rows fully below its top) and the set-back upper volume (rows fully above it).
+    const upper = upperVolumeOf(building);
+    const baseHeight = upper !== null ? building.massing!.baseHeight : building.height;
+    const upperCenterX =
+      upper !== null ? building.x + cos * upper.localX + sin * upper.localZ : building.x;
+    const upperCenterZ =
+      upper !== null ? building.z - sin * upper.localX + cos * upper.localZ : building.z;
+    const segments = [
+      {
+        centerX: building.x,
+        centerZ: building.z,
+        width: building.width,
+        depth: building.depth,
+        rowMinY: 3.45,
+        rowMaxY: baseHeight,
+        rowClearance: 0.25,
+      },
+      ...(upper === null
+        ? []
+        : [
+            {
+              centerX: upperCenterX,
+              centerZ: upperCenterZ,
+              width: upper.width,
+              depth: upper.depth,
+              rowMinY: baseHeight,
+              rowMaxY: building.height,
+              rowClearance: 0.35,
+            },
+          ]),
+    ];
+    for (const segment of segments) {
+      const xFaceColumns = Math.max(1, Math.floor((segment.depth - 2) / 3.2));
+      const zFaceColumns = Math.max(1, Math.floor((segment.width - 2) / 3.2));
+      const sides = [
+        {
+          localX: -segment.width / 2 - 0.14,
+          localZ: 0,
+          yaw: yaw + Math.PI,
+          columns: xFaceColumns,
+          along: 'z' as const,
+          length: segment.depth,
+        },
+        {
+          localX: segment.width / 2 + 0.14,
+          localZ: 0,
+          yaw,
+          columns: xFaceColumns,
+          along: 'z' as const,
+          length: segment.depth,
+        },
+        {
+          localX: 0,
+          localZ: -segment.depth / 2 - 0.14,
+          yaw: yaw + Math.PI / 2,
+          columns: zFaceColumns,
+          along: 'x' as const,
+          length: segment.width,
+        },
+        {
+          localX: 0,
+          localZ: segment.depth / 2 + 0.14,
+          yaw: yaw - Math.PI / 2,
+          columns: zFaceColumns,
+          along: 'x' as const,
+          length: segment.width,
+        },
+      ];
+      for (let sideIndex = 0; sideIndex < sides.length; sideIndex += 1) {
+        const side = sides[sideIndex]!;
+        const streetFace = sideIndex === streetSideIndex;
+        // The ground floor belongs to the shopfronts; window rows start at 4.3 m and climb the
+        // 2.6 m floor rhythm until 0.35 m under the roof line.
+        for (let row = 0; ; row += 1) {
+          const rowY = 4.3 + row * 2.6;
+          if (rowY - 0.85 < segment.rowMinY - 0.1) continue;
+          if (rowY + 0.85 > segment.rowMaxY - segment.rowClearance) break;
+          const floorFactor =
+            stableUnit(buildingIndex + 701, 911 + row, 929) < 0.12
+              ? 0
+              : 0.55 + 0.45 * stableUnit(buildingIndex + 701, 941 + row, 947);
+          for (let column = 0; column < side.columns; column += 1) {
+            const spacing = Math.min(3.1, (side.length - 2.2) / side.columns);
+            const along = (column - (side.columns - 1) / 2) * spacing;
+            const localX = side.localX + (side.along === 'x' ? along : 0);
+            const localZ = side.localZ + (side.along === 'z' ? along : 0);
+            const rank = stableUnit(buildingIndex + 701, row * 19 + column + sideIndex * 23, 223);
+            const roll = stableUnit(buildingIndex + 701, row * 19 + column + sideIndex * 23, 2231);
+            add(
+              [
+                segment.centerX + cos * localX + sin * localZ,
+                WORLD_BASE_Y + rowY,
+                segment.centerZ - sin * localX + cos * localZ,
+              ],
+              side.yaw,
+              rank,
+              litness * floorFactor * (0.4 + 0.6 * roll) * (streetFace ? 1.3 : 1),
+              buildingTone,
+              streetFace,
+            );
+          }
         }
       }
     }
@@ -2900,14 +2974,31 @@ export class UrbanNightWorld implements SceneContent {
           infillFlatRoofs += 1;
         }
       }
+      // Phase 8.3e: set-back massing — a full-footprint podium plus a set-back upper volume
+      // (same instanced colour batches, no new draw calls; the collider keeps the full box).
+      const upper = upperVolumeOf(building);
+      const baseHeight = upper !== null ? building.massing!.baseHeight : building.height;
       const wallTransforms = wallGroups.get(building.color) ?? [];
       wallTransforms.push({
         x: building.x,
-        y: WORLD_BASE_Y + building.height / 2,
+        y: WORLD_BASE_Y + baseHeight / 2,
         z: building.z,
         yaw,
-        scale: [building.width, building.height, building.depth],
+        scale: [building.width, baseHeight, building.depth],
       });
+      let upperWorldX = building.x;
+      let upperWorldZ = building.z;
+      if (upper !== null) {
+        upperWorldX = building.x + Math.cos(yaw) * upper.localX + Math.sin(yaw) * upper.localZ;
+        upperWorldZ = building.z - Math.sin(yaw) * upper.localX + Math.cos(yaw) * upper.localZ;
+        wallTransforms.push({
+          x: upperWorldX,
+          y: WORLD_BASE_Y + baseHeight + (building.height - baseHeight) / 2,
+          z: upperWorldZ,
+          yaw,
+          scale: [upper.width, building.height - baseHeight, upper.depth],
+        });
+      }
       wallGroups.set(building.color, wallTransforms);
       this.#buildingColliders.push({
         x: this.#cityOriginX + building.x,
@@ -2919,15 +3010,30 @@ export class UrbanNightWorld implements SceneContent {
 
       const roofGroups = pitched ? pitchedRoofGroups : flatRoofGroups;
       const roofTransforms = roofGroups.get(building.roofColor) ?? [];
+      if (upper !== null) {
+        // The podium top reads as a dark terrace slab around the set-back volume.
+        roofTransforms.push({
+          x: building.x,
+          y: WORLD_BASE_Y + baseHeight + 0.2,
+          z: building.z,
+          yaw,
+          scale: [building.width + 0.4, 0.4, building.depth + 0.4],
+        });
+      }
+      const roofX = upper !== null ? upperWorldX : building.x;
+      const roofZ = upper !== null ? upperWorldZ : building.z;
+      const roofWidth = upper !== null ? upper.width : building.width;
+      const roofDepth = upper !== null ? upper.depth : building.depth;
+      const roofRise = upper !== null ? building.height - baseHeight : building.height;
       roofTransforms.push({
-        x: building.x,
+        x: roofX,
         y: WORLD_BASE_Y + building.height + (pitched ? 0.72 : 0.28),
-        z: building.z,
+        z: roofZ,
         yaw: yaw + (pitched ? Math.PI / 4 : 0),
         // Phase 8.3c: steeper, taller hipped roofs so low/mid-rise blocks shed their box tops.
         scale: pitched
-          ? [building.width * 0.53, Math.min(3.4, building.height * 0.3), building.depth * 0.53]
-          : [building.width + 0.6, 0.56, building.depth + 0.6],
+          ? [roofWidth * 0.53, Math.min(3.4, Math.max(1.4, roofRise * 0.3)), roofDepth * 0.53]
+          : [roofWidth + 0.6, 0.56, roofDepth + 0.6],
       });
       roofGroups.set(building.roofColor, roofTransforms);
     }
