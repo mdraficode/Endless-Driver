@@ -115,6 +115,8 @@ function countByElement(
     'floor-band': 0,
     'corner-reveal': 0,
     penthouse: 0,
+    'ground-cladding': 0,
+    'crown-cladding': 0,
   };
   for (const placement of placements) {
     counts[placement.element] += 1;
@@ -188,11 +190,15 @@ describe('Aohara facade kit', () => {
       expect(counts['floor-band']).toBeLessThanOrEqual(budget.floorBands);
       expect(counts['corner-reveal']).toBeLessThanOrEqual(budget.cornerReveals);
       expect(counts.penthouse).toBeLessThanOrEqual(budget.penthouses);
+      expect(counts['ground-cladding']).toBeLessThanOrEqual(budget.groundCladding);
+      expect(counts['crown-cladding']).toBeLessThanOrEqual(budget.crownCladding);
     }
     const c = countByElement(byTier.C);
     const b = countByElement(byTier.B);
     const a = countByElement(byTier.A);
-    expect(a.balcony).toBeGreaterThan(c.balcony);
+    // Balcony budgets now exceed this small fixture's candidate pool, so the fixture counts
+    // can tie between tiers; strict ordering is asserted on the real district below.
+    expect(a.balcony).toBeGreaterThanOrEqual(c.balcony);
     expect(a.veranda).toBeGreaterThan(c.veranda);
     expect(a.chimney).toBeGreaterThan(c.chimney);
     expect(a['eave-trim']).toBeGreaterThan(c['eave-trim']);
@@ -208,13 +214,24 @@ describe('Aohara facade kit', () => {
     expect(a['corner-reveal']).toBeGreaterThanOrEqual(b['corner-reveal']);
     expect(b.penthouse).toBeGreaterThanOrEqual(c.penthouse);
     expect(a.penthouse).toBeGreaterThanOrEqual(b.penthouse);
+    expect(b['ground-cladding']).toBeGreaterThanOrEqual(c['ground-cladding']);
+    expect(a['ground-cladding']).toBeGreaterThanOrEqual(b['ground-cladding']);
+    expect(b['crown-cladding']).toBeGreaterThanOrEqual(c['crown-cladding']);
+    expect(a['crown-cladding']).toBeGreaterThanOrEqual(b['crown-cladding']);
   });
 
   it('attaches buildings-side elements to the street-facing face at plausible heights', () => {
     const buildings = fixtureBuildings();
     const towers = fixtureTowers();
     const placements = generateFacadeKitPlacements('A', buildings, towers);
-    const wallSideElements: FacadeKitElement[] = ['balcony', 'veranda', 'eave-trim', 'awning'];
+    const wallSideElements: FacadeKitElement[] = [
+      'balcony',
+      'veranda',
+      'eave-trim',
+      'awning',
+      'ground-cladding',
+      'crown-cladding',
+    ];
     // Protrusion of each wall-side element's placement point from the street face line.
     const protrusionFor: Partial<Record<FacadeKitElement, number>> = {
       balcony: 0.4,
@@ -222,6 +239,8 @@ describe('Aohara facade kit', () => {
       'eave-trim': 0.32,
       awning: 0.42,
       'floor-band': 0.04,
+      'ground-cladding': 0.05,
+      'crown-cladding': 0.05,
     };
     for (const placement of placements) {
       if (placement.buildingIndex < 0) continue;
@@ -250,19 +269,23 @@ describe('Aohara facade kit', () => {
           expect(placement.x).toBeCloseTo(face.x, 6);
           expect(placement.z).toBeCloseTo(face.z, 6);
           break;
-        case 'floor-band':
-          // Bands sit just proud of the street face and span its full length.
-          expect(placement.y).toBeGreaterThanOrEqual(FACADE_KIT_BASE_Y + 3.1);
-          expect(placement.y).toBeLessThan(FACADE_KIT_BASE_Y + building.height - 0.7);
+        case 'floor-band': {
+          // Bands sit just proud of the street face, span its full length, and land on the
+          // 2.6 m window-floor rhythm (slab line just above each window head).
+          expect(placement.y).toBeGreaterThanOrEqual(FACADE_KIT_BASE_Y + 2.97 - 1e-6);
+          expect(placement.y).toBeLessThan(FACADE_KIT_BASE_Y + building.height - 0.6 + 1e-6);
+          const floorsDown = (placement.y - FACADE_KIT_BASE_Y - 2.97) / 2.6;
+          expect(Math.abs(floorsDown - Math.round(floorsDown))).toBeLessThan(1e-6);
           expect(placement.x).toBeCloseTo(face.x, 6);
           expect(placement.z).toBeCloseTo(face.z, 6);
           expect(placement.scale[0]).toBeCloseTo(face.length, 6);
           break;
+        }
         case 'corner-reveal': {
           expect(placement.y).toBeCloseTo(FACADE_KIT_BASE_Y, 6);
           expect(placement.scale[1]).toBeCloseTo(building.height, 6);
-          // The strip hugs a street-face corner: its centre sits 0.07 m inboard of the face
-          // line (the 0.14 m section is flush with the wall) and at the face's end.
+          // The strip hugs a street-face corner: its centre sits 0.12 m inboard of the face
+          // line (the 0.3 m section stands 0.03 m proud) and at the face's end.
           const { lx, lz } = expectedStreetFace(building);
           const yaw = building.yaw ?? 0;
           const cos = Math.cos(yaw);
@@ -273,15 +296,31 @@ describe('Aohara facade kit', () => {
           const az = nx;
           const beyond = (placement.x - face.x) * nx + (placement.z - face.z) * nz;
           const along = (placement.x - face.x) * ax + (placement.z - face.z) * az;
-          expect(beyond).toBeCloseTo(-0.07, 6);
+          expect(beyond).toBeCloseTo(-0.12, 6);
           const endLength = lz !== 0 ? building.width : building.depth;
-          expect(Math.abs(along)).toBeCloseTo(endLength / 2 - 0.07, 6);
+          expect(Math.abs(along)).toBeCloseTo(endLength / 2 - 0.12, 6);
           break;
         }
         case 'penthouse':
           expect(placement.y).toBeCloseTo(FACADE_KIT_BASE_Y + building.height, 6);
-          expect(placement.scale[0]).toBeLessThanOrEqual(building.width * 0.4 + 1e-9);
-          expect(placement.scale[2]).toBeLessThanOrEqual(building.depth * 0.34 + 1e-9);
+          expect(placement.scale[0]).toBeLessThanOrEqual(building.width * 0.5 + 1e-9);
+          expect(placement.scale[2]).toBeLessThanOrEqual(building.depth * 0.4 + 1e-9);
+          break;
+        case 'ground-cladding':
+          // Dark base band: street-face line, full face length, from ground level.
+          expect(placement.y).toBeCloseTo(FACADE_KIT_BASE_Y, 6);
+          expect(placement.scale[0]).toBeCloseTo(face.length, 6);
+          expect(placement.scale[1]).toBeCloseTo(3.0, 6);
+          expect(placement.x).toBeCloseTo(face.x, 6);
+          expect(placement.z).toBeCloseTo(face.z, 6);
+          break;
+        case 'crown-cladding':
+          // Parapet band: centred 0.9 m below the roof line, full face length.
+          expect(placement.y).toBeCloseTo(FACADE_KIT_BASE_Y + building.height - 0.9, 6);
+          expect(placement.scale[0]).toBeCloseTo(face.length, 6);
+          expect(placement.scale[1]).toBeCloseTo(1.8, 6);
+          expect(placement.x).toBeCloseTo(face.x, 6);
+          expect(placement.z).toBeCloseTo(face.z, 6);
           break;
         default:
           throw new Error(`unexpected building-side element: ${placement.element}`);
@@ -332,12 +371,13 @@ describe('Aohara facade kit', () => {
   });
 
   it('never stacks placements of the same element beyond their per-building design cap', () => {
-    // Most elements are at most one per building. Phase 8.3 exceptions: stacked balcony slabs
-    // (up to three floor lines), floor bands (up to three), corner reveals (two corners), and
-    // the tower's crown + mid glass bands (two per tower).
+    // Most elements are at most one per building. Phase 8.3/8.3b exceptions: stacked balcony
+    // slabs (up to three floor lines), floor bands (one per window floor, up to five on the
+    // tallest shells), corner reveals (two corners), and the tower's crown + mid glass bands
+    // (two per tower).
     const maxPerBuilding: Partial<Record<FacadeKitElement, number>> = {
       balcony: 3,
-      'floor-band': 3,
+      'floor-band': 5,
       'corner-reveal': 2,
       'glass-band': 2,
     };
@@ -369,8 +409,8 @@ describe('Aohara facade kit', () => {
       (child): child is InstancedMesh => child instanceof InstancedMesh,
     );
     expect(meshes.length).toBe(kit.root.children.length);
-    // Phase 8.3 raised the kit from seven to ten element kinds.
-    expect(meshes.length).toBeLessThanOrEqual(10);
+    // Phase 8.3 raised the kit from seven to ten element kinds; 8.3b adds two cladding bands.
+    expect(meshes.length).toBeLessThanOrEqual(12);
     const stats = kit.getContentStats();
     const counts = countByElement(kit.placements);
     expect(stats.facadeKitBalconies).toBe(counts.balcony);
@@ -383,6 +423,8 @@ describe('Aohara facade kit', () => {
     expect(stats.facadeKitFloorBands).toBe(counts['floor-band']);
     expect(stats.facadeKitCornerReveals).toBe(counts['corner-reveal']);
     expect(stats.facadeKitPenthouses).toBe(counts.penthouse);
+    expect(stats.facadeKitGroundCladding).toBe(counts['ground-cladding']);
+    expect(stats.facadeKitCrownCladding).toBe(counts['crown-cladding']);
     expect(stats.facadeKitBatches).toBe(meshes.length);
     for (const mesh of meshes) {
       expect(mesh.geometry.getAttribute('position')).toBeDefined();
@@ -428,7 +470,9 @@ describe('Aohara facade kit', () => {
       expect(stats.facadeKitFloorBands).toBeLessThanOrEqual(budget.floorBands);
       expect(stats.facadeKitCornerReveals).toBeLessThanOrEqual(budget.cornerReveals);
       expect(stats.facadeKitPenthouses).toBeLessThanOrEqual(budget.penthouses);
-      expect(stats.facadeKitBatches).toBeLessThanOrEqual(10);
+      expect(stats.facadeKitGroundCladding).toBeLessThanOrEqual(budget.groundCladding);
+      expect(stats.facadeKitCrownCladding).toBeLessThanOrEqual(budget.crownCladding);
+      expect(stats.facadeKitBatches).toBeLessThanOrEqual(12);
     } finally {
       city.dispose();
     }
@@ -523,12 +567,24 @@ describe('Aohara facade kit', () => {
     expect(num(a, 'facadeKitAwnings')).toBeGreaterThanOrEqual(Math.floor(shells * 0.1));
     // Both glass bands survive on every high-rise.
     expect(num(a, 'facadeKitGlassBands')).toBe(num(a, 'highRiseBuildings') * 2);
+    // Phase 8.3b: every street-facing shell gets a dark base and a parapet crown, and the
+    // facade window grid is dense enough to read as architecture (pool ≈ 24.6k candidates;
+    // tier A keeps well over half).
+    expect(num(a, 'facadeKitGroundCladding')).toBeGreaterThanOrEqual(shells);
+    expect(num(a, 'facadeKitCrownCladding')).toBeGreaterThanOrEqual(shells);
+    expect(num(a, 'facadeWindowInstances')).toBeGreaterThanOrEqual(12_000);
     // Strict density ordering on the real district.
+    expect(num(b, 'facadeKitBalconies')).toBeGreaterThan(num(c, 'facadeKitBalconies'));
+    expect(num(a, 'facadeKitBalconies')).toBeGreaterThan(num(b, 'facadeKitBalconies'));
     expect(num(b, 'facadeKitFloorBands')).toBeGreaterThan(num(c, 'facadeKitFloorBands'));
     expect(num(a, 'facadeKitFloorBands')).toBeGreaterThan(num(b, 'facadeKitFloorBands'));
     expect(num(b, 'facadeKitCornerReveals')).toBeGreaterThan(num(c, 'facadeKitCornerReveals'));
     expect(num(a, 'facadeKitCornerReveals')).toBeGreaterThan(num(b, 'facadeKitCornerReveals'));
     expect(num(b, 'facadeKitPenthouses')).toBeGreaterThan(num(c, 'facadeKitPenthouses'));
     expect(num(a, 'facadeKitPenthouses')).toBeGreaterThan(num(b, 'facadeKitPenthouses'));
+    expect(num(b, 'facadeKitGroundCladding')).toBeGreaterThan(num(c, 'facadeKitGroundCladding'));
+    expect(num(a, 'facadeKitGroundCladding')).toBeGreaterThan(num(b, 'facadeKitGroundCladding'));
+    expect(num(b, 'facadeKitCrownCladding')).toBeGreaterThan(num(c, 'facadeKitCrownCladding'));
+    expect(num(a, 'facadeKitCrownCladding')).toBeGreaterThan(num(b, 'facadeKitCrownCladding'));
   });
 });

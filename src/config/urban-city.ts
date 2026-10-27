@@ -147,8 +147,8 @@ export const URBAN_NIGHT_TIER_BUDGET: Readonly<Record<TierId, UrbanNightTierBudg
     pointLights: 6,
     streetPointLights: 4,
     architecturalPointLights: 2,
-    litWindowInstances: 160,
-    facadeWindowInstances: 2_400,
+    litWindowInstances: 240,
+    facadeWindowInstances: 4_800,
     facadeDetailInstances: 512,
     cardinalStarburst: 0.035,
     diagonalStarburst: 0,
@@ -157,8 +157,8 @@ export const URBAN_NIGHT_TIER_BUDGET: Readonly<Record<TierId, UrbanNightTierBudg
     pointLights: 8,
     streetPointLights: 6,
     architecturalPointLights: 2,
-    litWindowInstances: 320,
-    facadeWindowInstances: 4_800,
+    litWindowInstances: 480,
+    facadeWindowInstances: 9_600,
     facadeDetailInstances: 1_024,
     cardinalStarburst: 0.05,
     diagonalStarburst: 0.018,
@@ -167,8 +167,8 @@ export const URBAN_NIGHT_TIER_BUDGET: Readonly<Record<TierId, UrbanNightTierBudg
     pointLights: 12,
     streetPointLights: 8,
     architecturalPointLights: 4,
-    litWindowInstances: 512,
-    facadeWindowInstances: 7_200,
+    litWindowInstances: 900,
+    facadeWindowInstances: 14_400,
     facadeDetailInstances: 1_600,
     cardinalStarburst: 0.06,
     diagonalStarburst: 0.026,
@@ -214,6 +214,10 @@ export interface UrbanFacadeKitTierBudget {
   readonly cornerReveals: number;
   /** Phase 8.3: rooftop mechanical penthouses on flat roofs. */
   readonly penthouses: number;
+  /** Phase 8.3b: dark stone base band across the street face (ground floor). */
+  readonly groundCladding: number;
+  /** Phase 8.3b: lighter parapet band across the top of the street face. */
+  readonly crownCladding: number;
 }
 
 /**
@@ -223,40 +227,46 @@ export interface UrbanFacadeKitTierBudget {
  */
 export const URBAN_FACADE_KIT_TIER_BUDGET: Readonly<Record<TierId, UrbanFacadeKitTierBudget>> = {
   C: {
-    balconies: 20,
+    balconies: 50,
     verandas: 5,
     chimneys: 10,
     eaveTrims: 6,
     curtainFins: 24,
     glassBands: 36,
     awnings: 20,
-    floorBands: 700,
+    floorBands: 860,
     cornerReveals: 540,
     penthouses: 220,
+    groundCladding: 300,
+    crownCladding: 300,
   },
   B: {
-    balconies: 40,
+    balconies: 90,
     verandas: 8,
     chimneys: 14,
     eaveTrims: 10,
     curtainFins: 40,
     glassBands: 48,
     awnings: 26,
-    floorBands: 710,
+    floorBands: 866,
     cornerReveals: 548,
     penthouses: 224,
+    groundCladding: 300,
+    crownCladding: 300,
   },
   A: {
-    balconies: 72,
+    balconies: 150,
     verandas: 12,
     chimneys: 18,
     eaveTrims: 14,
     curtainFins: 56,
     glassBands: 64,
     awnings: 40,
-    floorBands: 720,
+    floorBands: 880,
     cornerReveals: 580,
     penthouses: 230,
+    groundCladding: 300,
+    crownCladding: 300,
   },
 };
 

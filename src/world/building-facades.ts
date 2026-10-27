@@ -25,6 +25,13 @@ import { createArchitecturalMaterial } from './architectural-materials';
  * facade (the strongest anti-box read), dark corner reveals at the two street corners, and
  * rooftop mechanical penthouses on flat roofs.
  *
+ * Phase 8.3b (second owner verdict: still boxes — the 8.3 rhythm was optically too faint at
+ * driving distance at night) makes the rhythm bold and adds two-tone massing: the slab lines
+ * move to the true 2.6 m window-floor rhythm and thicken to 0.34 m, corner pilasters widen to
+ * 0.3 m, penthouses grow, balcony budgets triple, and two full-face cladding bands split every
+ * street facade into base / body / crown (dark stone ground floor behind the glazing plane,
+ * light parapet crown) — the tonal contrast carries the read at 30 m in the night mood.
+ *
  * Elements protrude at most ~1.3 m from a wall face and sit above the car body height where
  * relevant, so the existing static building colliders (which bound the shell) remain the single
  * collision authority. No new physics, lights, or texture assets are introduced.
@@ -40,7 +47,9 @@ export type FacadeKitElement =
   | 'awning'
   | 'floor-band'
   | 'corner-reveal'
-  | 'penthouse';
+  | 'penthouse'
+  | 'ground-cladding'
+  | 'crown-cladding';
 
 /** Mirrors `CityBuildingKind` in `urban-night.ts`; kept structural to avoid an import cycle. */
 export type FacadeKitBuildingKind =
@@ -211,6 +220,8 @@ export function generateFacadeKitPlacements(
     'floor-band': [],
     'corner-reveal': [],
     penthouse: [],
+    'ground-cladding': [],
+    'crown-cladding': [],
   };
 
   buildings.forEach((building, buildingIndex) => {
@@ -329,19 +340,18 @@ export function generateFacadeKitPlacements(
       });
     }
 
-    // Phase 8.3 floor bands: per-floor slab reveals across the street facade — the strongest
-    // anti-box read. One candidate per floor line, up to three; the tier budget trims the rest.
-    for (let band = 1; band <= 3; band += 1) {
-      if (FACADE_KIT_BASE_Y + 3.15 * band + 0.2 > FACADE_KIT_BASE_Y + building.height - 0.9) {
-        break;
-      }
+    // Phase 8.3b floor bands: per-floor slab lines across the street facade, one per window
+    // floor (slab just above the window head, 2.6 m pitch) — the strongest anti-box read.
+    for (let floor = 0; ; floor += 1) {
+      const bandY = 2.97 + 2.6 * floor;
+      if (bandY + 0.17 > building.height - 0.6) break;
       candidates['floor-band'].push({
-        rank: stableUnit(buildingIndex, 2001 + band, 2013),
+        rank: stableUnit(buildingIndex, 2001 + floor, 2013),
         placement: {
           element: 'floor-band',
           buildingIndex,
           x: faceBand.x,
-          y: FACADE_KIT_BASE_Y + 3.15 * band,
+          y: FACADE_KIT_BASE_Y + bandY,
           z: faceBand.z,
           yaw: faceBand.yaw,
           scale: [faceBand.length, 1, 1],
@@ -354,8 +364,9 @@ export function generateFacadeKitPlacements(
     streetFaceCorners(building).forEach(([cornerX, cornerZ], cornerIndex) => {
       const cos = Math.cos(yaw);
       const sin = Math.sin(yaw);
-      const localX = cornerX * (building.width / 2 - 0.07);
-      const localZ = cornerZ * (building.depth / 2 - 0.07);
+      // 0.3 m section, outer face 0.03 m proud of the wall, clear of the window margin.
+      const localX = cornerX * (building.width / 2 - 0.12);
+      const localZ = cornerZ * (building.depth / 2 - 0.12);
       candidates['corner-reveal'].push({
         rank: stableUnit(buildingIndex, 2101 + cornerIndex, 2113),
         placement: {
@@ -380,7 +391,7 @@ export function generateFacadeKitPlacements(
       const localZ =
         -lz * building.depth * 0.15 +
         (stableUnit(buildingIndex, 2202, 2211) - 0.5) * building.depth * 0.2;
-      const penthouseHeight = 1.5 + stableUnit(buildingIndex, 2203, 2213) * 0.9;
+      const penthouseHeight = 1.8 + stableUnit(buildingIndex, 2203, 2213) * 0.9;
       candidates.penthouse.push({
         rank: stableUnit(buildingIndex, 2204, 2217),
         placement: {
@@ -391,10 +402,46 @@ export function generateFacadeKitPlacements(
           z: building.z - sin * localX + cos * localZ,
           yaw,
           scale: [
-            Math.min(building.width * 0.4, 6),
+            Math.min(building.width * 0.5, 7),
             penthouseHeight,
-            Math.min(building.depth * 0.34, 6),
+            Math.min(building.depth * 0.4, 7),
           ],
+        },
+      });
+    }
+
+    // Phase 8.3b ground cladding: a dark stone base band across the whole street face
+    // (behind the window plane, so storefront glazing reads proud of it).
+    if (building.height >= 4.5) {
+      const face = streetFacePlacement(building, 0.05);
+      candidates['ground-cladding'].push({
+        rank: stableUnit(buildingIndex, 2301, 2311),
+        placement: {
+          element: 'ground-cladding',
+          buildingIndex,
+          x: face.x,
+          y: FACADE_KIT_BASE_Y,
+          z: face.z,
+          yaw: face.yaw,
+          scale: [face.length, 3.0, 1],
+        },
+      });
+    }
+
+    // Phase 8.3b crown cladding: a lighter band across the top 1.8 m of the street face,
+    // separating the parapet from the body of the wall.
+    if (building.height >= 4.5) {
+      const face = streetFacePlacement(building, 0.05);
+      candidates['crown-cladding'].push({
+        rank: stableUnit(buildingIndex, 2401, 2411),
+        placement: {
+          element: 'crown-cladding',
+          buildingIndex,
+          x: face.x,
+          y: FACADE_KIT_BASE_Y + building.height - 0.9,
+          z: face.z,
+          yaw: face.yaw,
+          scale: [face.length, 1.8, 1],
         },
       });
     }
@@ -480,6 +527,8 @@ export function generateFacadeKitPlacements(
     'floor-band': budget.floorBands,
     'corner-reveal': budget.cornerReveals,
     penthouse: budget.penthouses,
+    'ground-cladding': budget.groundCladding,
+    'crown-cladding': budget.crownCladding,
   };
   for (const element of Object.keys(candidates) as FacadeKitElement[]) {
     const ranked = [...candidates[element]].sort(
@@ -565,12 +614,13 @@ function mergedKitGeometry(element: FacadeKitElement): BufferGeometry {
       ];
       break;
     case 'floor-band':
-      // Unit-width precast slab reveal; scaled along the face length per placement.
-      parts = [boxPart([1, 0.16, 0.12], [0, 0, 0.04])];
+      // Unit-width precast slab line; scaled along the face length per placement. The slab lip
+      // sits just in front of the window head so window tops tuck under the floor line.
+      parts = [boxPart([1, 0.34, 0.12], [0, 0, 0.14])];
       break;
     case 'corner-reveal':
-      // Unit-height corner pilaster strip; scaled to the wall height per placement.
-      parts = [boxPart([0.14, 1, 0.14], [0, 0.5, 0])];
+      // Unit-height corner pilaster (0.3 m section, 0.03 m proud); scaled to the wall height.
+      parts = [boxPart([0.3, 1, 0.3], [0, 0.5, 0.03])];
       break;
     case 'penthouse':
       // Unit rooftop mechanical room: box, parapet lip, and a service door.
@@ -579,6 +629,15 @@ function mergedKitGeometry(element: FacadeKitElement): BufferGeometry {
         boxPart([1.08, 0.1, 1.08], [0, 1.05, 0]),
         boxPart([0.34, 0.62, 0.05], [0.2, 0.31, 0.5]),
       ];
+      break;
+    case 'ground-cladding':
+      // Unit-width dark stone base band, 3 m tall; scaled along the face length. Kept behind
+      // the window plane (front at 0.09 m vs window rear at 0.1125 m) so glazing reads proud.
+      parts = [boxPart([1, 3, 0.08], [0, 1.5, 0.05])];
+      break;
+    case 'crown-cladding':
+      // Unit-width lighter parapet band, 1.8 m tall, centred on the placement point.
+      parts = [boxPart([1, 1.8, 0.08], [0, 0, 0.05])];
       break;
   }
   const merged = mergeGeometries(parts, false);
@@ -721,6 +780,30 @@ const KIT_MATERIALS: Readonly<
     },
     castShadow: true,
   },
+  'ground-cladding': {
+    options: {
+      name: 'aohara-ground-floor-stone-cladding-pbr',
+      colorHex: 0x2f3338,
+      roughness: 0.85,
+      metalness: 0.05,
+      detailAmplitude: 0.03,
+      clearcoat: 0.05,
+      clearcoatRoughness: 0.5,
+    },
+    castShadow: false,
+  },
+  'crown-cladding': {
+    options: {
+      name: 'aohara-parapet-crown-cladding-pbr',
+      colorHex: 0x9aa0a8,
+      roughness: 0.7,
+      metalness: 0.1,
+      detailAmplitude: 0.02,
+      clearcoat: 0.12,
+      clearcoatRoughness: 0.35,
+    },
+    castShadow: false,
+  },
 };
 
 const KIT_ELEMENTS: readonly FacadeKitElement[] = [
@@ -734,6 +817,8 @@ const KIT_ELEMENTS: readonly FacadeKitElement[] = [
   'floor-band',
   'corner-reveal',
   'penthouse',
+  'ground-cladding',
+  'crown-cladding',
 ];
 
 /** Tier-bounded instanced facade-kit content; one batch per element kind, deterministic per city. */
@@ -767,6 +852,8 @@ export class FacadeKitWorld {
       'floor-band': 0,
       'corner-reveal': 0,
       penthouse: 0,
+      'ground-cladding': 0,
+      'crown-cladding': 0,
     };
 
     for (const element of KIT_ELEMENTS) {
@@ -806,6 +893,8 @@ export class FacadeKitWorld {
       facadeKitFloorBands: counts['floor-band'],
       facadeKitCornerReveals: counts['corner-reveal'],
       facadeKitPenthouses: counts.penthouse,
+      facadeKitGroundCladding: counts['ground-cladding'],
+      facadeKitCrownCladding: counts['crown-cladding'],
       facadeKitBatches: this.#meshes.length,
       facadeKitBudgetBalconies: URBAN_FACADE_KIT_TIER_BUDGET[tier].balconies,
       facadeKitBudgetCurtainFins: URBAN_FACADE_KIT_TIER_BUDGET[tier].curtainFins,
