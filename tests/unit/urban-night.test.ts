@@ -1068,11 +1068,11 @@ describe('Aohara city night-lighting rules', () => {
     city.dispose();
   });
 
-  it('crowns every generated high-rise and masses the low-rise stock', () => {
-    // Phase 8.3f: the boxy verdict — the 24 grid high-rises render as a body plus a centred
-    // set-back crown (the 8 authored lookdev towers stay single volumes), and the setback
-    // massing now reaches the infill and most frontage shells too, so the low-rise facade
-    // batches carry more instances than buildings.
+  it('crowns every high-rise and masses the low-rise stock', () => {
+    // Phase 8.3f/g: the boxy verdict — every high-rise (the 24 grid towers and the 8
+    // authored lookdev anchors) renders as a body plus a set-back crown (centred,
+    // corner-shifted or shallow), and the setback massing now reaches the infill and most
+    // frontage shells too, so the low-rise facade batches carry more instances than buildings.
     const position = [AOHARA_DISTRICT_CONFIG.centerX, 12, AOHARA_DISTRICT_CONFIG.centerZ] as const;
     const roadNetwork = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG).roadNetwork;
     if (roadNetwork === undefined) {
@@ -1090,7 +1090,8 @@ describe('Aohara city night-lighting rules', () => {
           0,
         );
       expect(stats.highRiseBuildings).toBe(32);
-      expect(sumByPrefix('aohara-high-rise-facades-')).toBe(32 + 24);
+      // 32 bodies + 32 crowns (every tower carries one since 8.3g).
+      expect(sumByPrefix('aohara-high-rise-facades-')).toBe(32 * 2);
       // Each facade box gets exactly one roof cap (terrace + crown cap when crowned).
       expect(sumByPrefix('aohara-rooftop-caps')).toBe(sumByPrefix('aohara-high-rise-facades-'));
       const totalBuildings =

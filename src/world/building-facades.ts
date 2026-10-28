@@ -126,8 +126,14 @@ export interface FacadeKitTowerRef {
   readonly width: number;
   readonly depth: number;
   readonly height: number;
-  /** Phase 8.3f: centred set-back crown on top of the tower body. */
-  readonly crown?: { readonly width: number; readonly depth: number; readonly height: number };
+  /** Phase 8.3f: set-back crown on top of the tower body (8.3g: may be offset from centre). */
+  readonly crown?: {
+    readonly width: number;
+    readonly depth: number;
+    readonly height: number;
+    readonly offsetX?: number;
+    readonly offsetZ?: number;
+  };
 }
 
 export interface FacadeKitPlacement {
@@ -666,7 +672,9 @@ export function generateFacadeKitPlacements(
       });
     }
     // Crown glass band marks the curtain-wall head against the rooftop — on the set-back
-    // crown face when the tower carries one.
+    // crown face (and its offset) when the tower carries one.
+    const crownCenterX = tower.x + (tower.crown?.offsetX ?? 0);
+    const crownCenterZ = tower.z + (tower.crown?.offsetZ ?? 0);
     const bandWidth = tower.crown ? tower.crown.width + 0.12 : tower.width + 0.12;
     const bandDepth = tower.crown ? tower.crown.depth + 0.12 : tower.depth + 0.12;
     candidates['glass-band'].push({
@@ -675,9 +683,9 @@ export function generateFacadeKitPlacements(
         element: 'glass-band',
         buildingIndex: -1,
         towerIndex,
-        x: tower.x,
+        x: tower.crown ? crownCenterX : tower.x,
         y: FACADE_KIT_BASE_Y + tower.height - 2.2,
-        z: tower.z,
+        z: tower.crown ? crownCenterZ : tower.z,
         yaw: 0,
         scale: [bandWidth, 1.3, bandDepth],
       },
@@ -699,6 +707,8 @@ export function generateFacadeKitPlacements(
     });
     // Phase 8.3d: a rooftop mast on every tower — the skyline needs verticals, and a thin
     // pole does not repeat the box-on-box read the penthouses did.
+    const mastCenterX = tower.crown ? crownCenterX : tower.x;
+    const mastCenterZ = tower.crown ? crownCenterZ : tower.z;
     const mastWidth = tower.crown ? tower.crown.width : tower.width;
     const mastDepth = tower.crown ? tower.crown.depth : tower.depth;
     candidates.mast.push({
@@ -707,9 +717,9 @@ export function generateFacadeKitPlacements(
         element: 'mast',
         buildingIndex: -1,
         towerIndex,
-        x: tower.x + (stableUnit(towerIndex, 2201, 2209) - 0.5) * mastWidth * 0.4,
+        x: mastCenterX + (stableUnit(towerIndex, 2201, 2209) - 0.5) * mastWidth * 0.4,
         y: FACADE_KIT_BASE_Y + tower.height,
-        z: tower.z + (stableUnit(towerIndex, 2202, 2211) - 0.5) * mastDepth * 0.4,
+        z: mastCenterZ + (stableUnit(towerIndex, 2202, 2211) - 0.5) * mastDepth * 0.4,
         yaw: 0,
         scale: [1, Math.max(3, tower.height * 0.05), 1],
       },

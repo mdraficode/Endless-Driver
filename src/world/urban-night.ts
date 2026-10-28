@@ -88,22 +88,95 @@ interface TowerSpec {
   readonly height: number;
   readonly color: number;
   /**
-   * Phase 8.3f: a centred set-back crown volume on top of the tower body (the tower is
-   * rendered as a body box up to `height - crown.height` plus the crown box).
+   * Phase 8.3f: a set-back crown volume on top of the tower body (the tower is rendered as a
+   * body box up to `height - crown.height` plus the crown box). Phase 8.3g: crowns may be
+   * offset from the body centre (`offsetX`/`offsetZ`, default 0) for corner-shifted silhouettes.
    */
-  readonly crown?: { readonly width: number; readonly depth: number; readonly height: number };
+  readonly crown?: {
+    readonly width: number;
+    readonly depth: number;
+    readonly height: number;
+    readonly offsetX?: number;
+    readonly offsetZ?: number;
+  };
 }
 
 /** Compact skyline retained by the standalone night-lighting look-dev block. */
+// Phase 8.3g: the authored skyline anchors get varied crowns too — centred, corner-shifted
+// and shallow wide, so the original district breaks its flat-prism read.
 const LOOKDEV_TOWERS: readonly TowerSpec[] = [
-  { x: -31, z: -57, width: 22, depth: 26, height: 58, color: 0x27333e },
-  { x: -31, z: -30, width: 22, depth: 22, height: 82, color: 0x202b36 },
-  { x: -31, z: 30, width: 23, depth: 22, height: 68, color: 0x30343e },
-  { x: -31, z: 57, width: 24, depth: 27, height: 100, color: 0x202b36 },
-  { x: 31, z: -57, width: 23, depth: 26, height: 74, color: 0x27333e },
-  { x: 31, z: -30, width: 25, depth: 24, height: 96, color: 0x202b36 },
-  { x: 31, z: 30, width: 22, depth: 22, height: 54, color: 0x30343e },
-  { x: 31, z: 57, width: 24, depth: 28, height: 86, color: 0x27333e },
+  {
+    x: -31,
+    z: -57,
+    width: 22,
+    depth: 26,
+    height: 58,
+    color: 0x27333e,
+    crown: { width: 14, depth: 16, height: 12 },
+  },
+  {
+    x: -31,
+    z: -30,
+    width: 22,
+    depth: 22,
+    height: 82,
+    color: 0x202b36,
+    crown: { width: 13, depth: 14, height: 20, offsetX: 4.5, offsetZ: 3 },
+  },
+  {
+    x: -31,
+    z: 30,
+    width: 23,
+    depth: 22,
+    height: 68,
+    color: 0x30343e,
+    crown: { width: 19, depth: 18, height: 9 },
+  },
+  {
+    x: -31,
+    z: 57,
+    width: 24,
+    depth: 27,
+    height: 100,
+    color: 0x202b36,
+    crown: { width: 15, depth: 17, height: 24 },
+  },
+  {
+    x: 31,
+    z: -57,
+    width: 23,
+    depth: 26,
+    height: 74,
+    color: 0x27333e,
+    crown: { width: 14, depth: 16, height: 16, offsetX: -4.5, offsetZ: 3.5 },
+  },
+  {
+    x: 31,
+    z: -30,
+    width: 25,
+    depth: 24,
+    height: 96,
+    color: 0x202b36,
+    crown: { width: 16, depth: 14, height: 22 },
+  },
+  {
+    x: 31,
+    z: 30,
+    width: 22,
+    depth: 22,
+    height: 54,
+    color: 0x30343e,
+    crown: { width: 18, depth: 18, height: 8 },
+  },
+  {
+    x: 31,
+    z: 57,
+    width: 24,
+    depth: 28,
+    height: 86,
+    color: 0x27333e,
+    crown: { width: 15, depth: 17, height: 18, offsetX: 5, offsetZ: -4 },
+  },
 ];
 
 const SIGNAL_ASPECTS: readonly TrafficSignalAspect[] = ['red', 'amber', 'green'];
@@ -461,8 +534,44 @@ function buildAoharaTowerSpecs(): readonly TowerSpec[] {
         const towerWidth = 28 + stableUnit(seed, side, 191) * 8;
         const towerDepth = 30 + stableUnit(seed, side, 211) * 10;
         const towerHeight = CITY_TOWER_HEIGHTS[heightIndex] ?? CITY_TOWER_HEIGHTS[0];
-        // Phase 8.3f: a centred set-back crown breaks the skyline — a flat glass box at this
-        // scale reads as a box from the street.
+        // Phase 8.3f/g: a set-back crown breaks the skyline — a flat glass box at this scale
+        // reads as a box from the street. Three styles keep the skyline from repeating:
+        // centred (50%), corner-shifted (25%, flush on two sides) and shallow wide (25%).
+        const crownStyle = stableUnit(seed, side, 1121);
+        const crown: {
+          readonly width: number;
+          readonly depth: number;
+          readonly height: number;
+          readonly offsetX?: number;
+          readonly offsetZ?: number;
+        } =
+          crownStyle < 0.5
+            ? {
+                width: towerWidth * (0.58 + 0.22 * stableUnit(seed, side, 1113)),
+                depth: towerDepth * (0.58 + 0.22 * stableUnit(seed, side, 1115)),
+                height: Math.max(10, towerHeight * (0.15 + 0.1 * stableUnit(seed, side, 1117))),
+              }
+            : crownStyle < 0.75
+              ? {
+                  width: towerWidth * (0.5 + 0.18 * stableUnit(seed, side, 1113)),
+                  depth: towerDepth * (0.5 + 0.18 * stableUnit(seed, side, 1115)),
+                  height: Math.max(10, towerHeight * (0.15 + 0.1 * stableUnit(seed, side, 1117))),
+                  offsetX:
+                    (stableUnit(seed, side, 1123) < 0.5 ? -1 : 1) *
+                    towerWidth *
+                    0.25 *
+                    stableUnit(seed, side, 1129),
+                  offsetZ:
+                    (stableUnit(seed, side, 1127) < 0.5 ? -1 : 1) *
+                    towerDepth *
+                    0.25 *
+                    stableUnit(seed, side, 1131),
+                }
+              : {
+                  width: towerWidth * (0.8 + 0.1 * stableUnit(seed, side, 1113)),
+                  depth: towerDepth * (0.8 + 0.1 * stableUnit(seed, side, 1115)),
+                  height: 8 + 4 * stableUnit(seed, side, 1117),
+                };
         towers.push({
           x: blockCenterX + side * 35 + xJitter,
           z: blockCenterZ + zJitter,
@@ -470,11 +579,7 @@ function buildAoharaTowerSpecs(): readonly TowerSpec[] {
           depth: towerDepth,
           height: towerHeight,
           color: CITY_FACADE_PALETTE[colorIndex] ?? CITY_FACADE_PALETTE[0],
-          crown: {
-            width: towerWidth * (0.58 + 0.22 * stableUnit(seed, side, 1113)),
-            depth: towerDepth * (0.58 + 0.22 * stableUnit(seed, side, 1115)),
-            height: Math.max(10, towerHeight * (0.15 + 0.1 * stableUnit(seed, side, 1117))),
-          },
+          crown,
         });
       }
     }
@@ -1036,7 +1141,7 @@ function buildWindowCandidates(
     // crown's base sit on the crown's faces instead of the body's.
     const crown = tower.crown;
     const crownStart = crown ? tower.height - crown.height : tower.height;
-    const facesFor = (width: number, depth: number) => {
+    const facesFor = (centerX: number, centerZ: number, width: number, depth: number) => {
       const xColumns = Math.max(
         2,
         Math.floor((depth - 2 * facadeMarginMeters) / columnSpacingMeters),
@@ -1047,32 +1152,32 @@ function buildWindowCandidates(
       );
       return [
         {
-          x: tower.x - width / 2 - 0.1,
-          z: tower.z,
+          x: centerX - width / 2 - 0.1,
+          z: centerZ,
           yaw: Math.PI,
           columns: xColumns,
           along: 'z' as const,
           length: depth,
         },
         {
-          x: tower.x + width / 2 + 0.1,
-          z: tower.z,
+          x: centerX + width / 2 + 0.1,
+          z: centerZ,
           yaw: 0,
           columns: xColumns,
           along: 'z' as const,
           length: depth,
         },
         {
-          x: tower.x,
-          z: tower.z - depth / 2 - 0.1,
+          x: centerX,
+          z: centerZ - depth / 2 - 0.1,
           yaw: Math.PI / 2,
           columns: zColumns,
           along: 'x' as const,
           length: width,
         },
         {
-          x: tower.x,
-          z: tower.z + depth / 2 + 0.1,
+          x: centerX,
+          z: centerZ + depth / 2 + 0.1,
           yaw: -Math.PI / 2,
           columns: zColumns,
           along: 'x' as const,
@@ -1080,8 +1185,15 @@ function buildWindowCandidates(
         },
       ];
     };
-    const bodyFaces = facesFor(tower.width, tower.depth);
-    const crownFaces = crown ? facesFor(crown.width, crown.depth) : null;
+    const bodyFaces = facesFor(tower.x, tower.z, tower.width, tower.depth);
+    const crownFaces = crown
+      ? facesFor(
+          tower.x + (crown.offsetX ?? 0),
+          tower.z + (crown.offsetZ ?? 0),
+          crown.width,
+          crown.depth,
+        )
+      : null;
     // Phase 8.3d: per-tower occupancy — some towers glow after hours, others sit dark.
     const towerLitness = 0.35 + 0.5 * stableUnit(towerIndex, 613, 701);
     const towerTone: 'warm' | 'cool' = stableUnit(towerIndex, 719, 823) < 0.6 ? 'cool' : 'warm';
@@ -2701,9 +2813,9 @@ export class UrbanNightWorld implements SceneContent {
         mesh.setMatrixAt(instanceIndex++, transform.matrix);
         if (tower.crown) {
           transform.position.set(
-            tower.x,
+            tower.x + (tower.crown.offsetX ?? 0),
             WORLD_BASE_Y + tower.height - tower.crown.height / 2,
-            tower.z,
+            tower.z + (tower.crown.offsetZ ?? 0),
           );
           transform.scale.set(tower.crown.width, tower.crown.height, tower.crown.depth);
           transform.updateMatrix();
@@ -2741,7 +2853,11 @@ export class UrbanNightWorld implements SceneContent {
         transform.rotation.set(0, 0, 0);
         transform.updateMatrix();
         roofs.setMatrixAt(capIndex++, transform.matrix);
-        transform.position.set(tower.x, WORLD_BASE_Y + tower.height + 0.35, tower.z);
+        transform.position.set(
+          tower.x + (tower.crown.offsetX ?? 0),
+          WORLD_BASE_Y + tower.height + 0.35,
+          tower.z + (tower.crown.offsetZ ?? 0),
+        );
         transform.scale.set(tower.crown.width + 0.5, 0.7, tower.crown.depth + 0.5);
         transform.updateMatrix();
         roofs.setMatrixAt(capIndex++, transform.matrix);
@@ -2796,11 +2912,19 @@ export class UrbanNightWorld implements SceneContent {
           scale: [0.16, stripHeight, 0.12],
         });
       }
+      // The top band rides the crown's front face — an offset crown may sit behind the body
+      // front, and a band there would float in mid-air.
+      const crownCenterX = tower.x + (tower.crown?.offsetX ?? 0);
+      const crownFrontZ =
+        tower.z +
+        (tower.crown?.offsetZ ?? 0) +
+        (tower.crown ? tower.crown.depth : tower.depth) / 2 +
+        0.1;
       const bandWidth = (tower.crown ? tower.crown.width : tower.width) * 0.78;
       addTransform(towerGroups, color, {
-        x: tower.x,
+        x: tower.crown ? crownCenterX : tower.x,
         y: WORLD_BASE_Y + tower.height - 0.7,
-        z: frontZ,
+        z: tower.crown ? crownFrontZ : frontZ,
         scale: [bandWidth, 0.14, 0.12],
       });
     });
