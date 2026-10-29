@@ -76,6 +76,67 @@ const AOHARA_GRID_NODES: readonly RoadNodeConfig[] = AOHARA_GRID_ROWS.flatMap((r
   })),
 );
 
+/**
+ * Phase 8.4b — the grand boulevard.
+ *
+ * A 20 m wide (10 m half) arterial that runs through the district on a 23°
+ * diagonal, from the south-east corner node `aohara-south-outer-east-outer`
+ * (offset (330, 310)) to a new node `aohara-boulevard-west-outer` 21.5 m
+ * north of the western gateway (offset (-350, 21.515)). In offset coordinates
+ * the centreline is `z = 170 + (14/33) * x` — it passes exactly through the
+ * existing corner node `aohara-south-center` (0, 170), so only the three
+ * vertical street crossings become new junction nodes; every node stays inside
+ * the flat terrain core.
+ */
+const AOHARA_BOULEVARD_SLOPE = 14 / 33;
+const AOHARA_BOULEVARD_INTERCEPT = 170;
+
+/** Centreline z offset (metres) for a given x offset along the boulevard. */
+function aoharaBoulevardZOffset(xOffsetMeters: number): number {
+  return AOHARA_BOULEVARD_SLOPE * xOffsetMeters + AOHARA_BOULEVARD_INTERCEPT;
+}
+
+/**
+ * Signed perpendicular distance (metres, positive south of the centreline)
+ * from a world point to the grand boulevard centreline. Used to keep alley
+ * facade walls and props clear of the avenue's right-of-way.
+ */
+export function aoharaBoulevardDistanceMeters(x: number, z: number): number {
+  const xOffset = x - AOHARA_DISTRICT_CONFIG.centerX;
+  const zOffset = z - AOHARA_DISTRICT_CONFIG.centerZ;
+  return (
+    (AOHARA_BOULEVARD_SLOPE * xOffset - zOffset + AOHARA_BOULEVARD_INTERCEPT) /
+    Math.hypot(AOHARA_BOULEVARD_SLOPE, 1)
+  );
+}
+
+/** The three street crossings where the boulevard meets the grid. */
+export const AOHARA_BOULEVARD_JUNCTIONS: readonly {
+  readonly columnId: string;
+  readonly id: string;
+  readonly x: number;
+  readonly z: number;
+}[] = [
+  {
+    columnId: 'west-outer',
+    id: 'aohara-boulevard-west-outer',
+    x: AOHARA_DISTRICT_CONFIG.centerX - 350,
+    z: AOHARA_DISTRICT_CONFIG.centerZ + aoharaBoulevardZOffset(-350),
+  },
+  {
+    columnId: 'west',
+    id: 'aohara-boulevard-west',
+    x: AOHARA_DISTRICT_CONFIG.centerX - 200,
+    z: AOHARA_DISTRICT_CONFIG.centerZ + aoharaBoulevardZOffset(-200),
+  },
+  {
+    columnId: 'east',
+    id: 'aohara-boulevard-east',
+    x: AOHARA_DISTRICT_CONFIG.centerX + 190,
+    z: AOHARA_DISTRICT_CONFIG.centerZ + aoharaBoulevardZOffset(190),
+  },
+];
+
 const localStreet = (from: string, to: string): RoadEdgeConfig => ({
   from,
   to,
@@ -160,7 +221,7 @@ function splitGridEdge(
   return nodes.slice(0, -1).map((node, index) => createEdge(node.id, nodes[index + 1]!.id));
 }
 
-const AOHARA_GRID_EDGES: readonly RoadEdgeConfig[] = [
+const AOHARA_BASE_GRID_EDGES: readonly RoadEdgeConfig[] = [
   ...AOHARA_GRID_ROWS.flatMap((row, rowIndex) =>
     AOHARA_GRID_COLUMNS.slice(0, -1).flatMap((column, columnIndex) => {
       const nextColumn = AOHARA_GRID_COLUMNS[columnIndex + 1]!;
@@ -185,6 +246,83 @@ const AOHARA_GRID_EDGES: readonly RoadEdgeConfig[] = [
       );
     }),
   ),
+];
+
+/**
+ * Split the grid street segments that the grand boulevard crosses. The
+ * crossing point becomes a junction node so paint trims, crosswalks and
+ * routing treat the at-grade crossing as a real intersection.
+ */
+const AOHARA_GRID_NODE_LOOKUP: ReadonlyMap<string, { readonly x: number; readonly z: number }> =
+  new Map(
+    [
+      ...AOHARA_GRID_NODES,
+      ...AOHARA_BACKSTREET_ACCESS_NODES,
+    ].map((node) => [node.id, node] as const),
+  );
+
+const AOHARA_GRID_EDGES: readonly RoadEdgeConfig[] = AOHARA_BASE_GRID_EDGES.flatMap(
+  (edge) => {
+    const from = AOHARA_GRID_NODE_LOOKUP.get(edge.from);
+    const to = AOHARA_GRID_NODE_LOOKUP.get(edge.to);
+    if (!from || !to) {
+      return [edge];
+    }
+    if (Math.abs(from.x - to.x) < 1e-9) {
+      // Vertical street: the boulevard crosses it at a fixed x offset.
+      const xOffset = from.x - AOHARA_DISTRICT_CONFIG.centerX;
+      const column = AOHARA_GRID_COLUMNS.find(
+        (candidate) => candidate.offsetMeters === xOffset,
+      );
+      const junction = column
+        ? AOHARA_BOULEVARD_JUNCTIONS.find((candidate) => candidate.columnId === column.id)
+        : undefined;
+      if (!junction) {
+        return [edge];
+      }
+      const lo = Math.min(from.z, to.z) + 0.5;
+      const hi = Math.max(from.z, to.z) - 0.5;
+      if (junction.z <= lo || junction.z >= hi) {
+        return [edge];
+      }
+      return [
+        { ...edge, to: junction.id },
+        { ...edge, from: junction.id, to: edge.to },
+      ];
+    }
+    return [edge];
+  },
+);
+
+export const AOHARA_BOULEVARD_EDGES: readonly RoadEdgeConfig[] = [
+  {
+    from: 'aohara-south-outer-east-outer',
+    to: 'aohara-boulevard-east',
+    roadClass: 'urban-arterial',
+    halfWidthMeters: AOHARA_DISTRICT_CONFIG.arterialHalfWidthMeters,
+    shoulderMeters: AOHARA_DISTRICT_CONFIG.shoulderMeters,
+  },
+  {
+    from: 'aohara-boulevard-east',
+    to: 'aohara-south-center',
+    roadClass: 'urban-arterial',
+    halfWidthMeters: AOHARA_DISTRICT_CONFIG.arterialHalfWidthMeters,
+    shoulderMeters: AOHARA_DISTRICT_CONFIG.shoulderMeters,
+  },
+  {
+    from: 'aohara-south-center',
+    to: 'aohara-boulevard-west',
+    roadClass: 'urban-arterial',
+    halfWidthMeters: AOHARA_DISTRICT_CONFIG.arterialHalfWidthMeters,
+    shoulderMeters: AOHARA_DISTRICT_CONFIG.shoulderMeters,
+  },
+  {
+    from: 'aohara-boulevard-west',
+    to: 'aohara-boulevard-west-outer',
+    roadClass: 'urban-arterial',
+    halfWidthMeters: AOHARA_DISTRICT_CONFIG.arterialHalfWidthMeters,
+    shoulderMeters: AOHARA_DISTRICT_CONFIG.shoulderMeters,
+  },
 ];
 
 function createBackstreetSpoke(
@@ -265,6 +403,7 @@ export const ROAD_NETWORK_CONFIG: RoadNetworkConfig = {
     ...AOHARA_GRID_NODES,
     ...AOHARA_BACKSTREET_ACCESS_NODES,
     ...AOHARA_BACKSTREET_INTERNAL_NODES,
+    ...AOHARA_BOULEVARD_JUNCTIONS,
   ],
   edges: [
     { from: 'spawn-junction', to: 'north-bend', via: [[-30, -360]] },
@@ -321,6 +460,7 @@ export const ROAD_NETWORK_CONFIG: RoadNetworkConfig = {
       shoulderMeters: AOHARA_DISTRICT_CONFIG.shoulderMeters,
     },
     ...AOHARA_GRID_EDGES,
+    ...AOHARA_BOULEVARD_EDGES,
     ...AOHARA_BACKSTREET_EDGES,
   ],
 };
