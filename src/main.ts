@@ -193,10 +193,7 @@ declare global {
 let canvas = document.querySelector<HTMLCanvasElement>('#viewport-canvas');
 const appRoot = document.querySelector<HTMLElement>('#app');
 const loadingRoot = document.querySelector<HTMLElement>('#loading-screen');
-const loadingScreen =
-  loadingRoot === null
-    ? null
-    : new LoadingScreen(loadingRoot, () => drivingApplication?.startDeferredAssetLoading());
+const loadingScreen = loadingRoot === null ? null : new LoadingScreen(loadingRoot);
 
 // Show the deployed bundle tag on the loading screen (it stays visible on the error state too).
 // Device reports can then be matched to the exact build — this is how a stale cached bundle

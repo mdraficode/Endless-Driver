@@ -8,6 +8,7 @@ import {
   WebGPURenderer,
   type Camera,
   type DirectionalLight,
+  type Object3D,
   type Scene,
 } from 'three/webgpu';
 import { scaleBaseline } from '../environment/daylight-levels';
@@ -105,6 +106,13 @@ export type ContextHandler = () => void;
  * from a frame handler, which keeps ownership explicit. `render` returns whether the frame was
  * actually submitted, so a caller can tell a real first frame from a silent no-op.
  */
+/**
+ * Pre-warm render/await cycles before the first visible frame. Two consecutive renders that draw
+ * the identical workload mean no pipeline is left to create; the cap bounds a pathological device
+ * where the workload keeps growing (each cycle is bounded by the awaits, so it cannot hang).
+ */
+const PREWARM_MAX_ITERATIONS = 8;
+
 /** Reads the renderer's counters into the shape the HUD and the tests use. */
 function readStatistics(info: {
   render: { calls: number; drawCalls?: number; triangles: number };
@@ -578,6 +586,75 @@ export class Engine {
       return true;
     }
     this.#renderer.render(scene, camera);
+    return true;
+  }
+
+  /**
+   * Brings the full frame graph to a warm state: builds the post chain, renders real frames, and
+   * waits until every GPU pipeline those frames use is ready. Call it while the loading screen is
+   * still up — the first visible frame must never pay pipeline-creation cost.
+   *
+   * Why the material pre-compile alone is not enough: it covers the scene objects as drawn plain.
+   * The real frame draws the scene through the post chain's scene pass (with its extra MRT
+   * attachments — a different pipeline variant of every object), through the chain's own
+   * full-screen program, and behind both, the shadow maps' depth pipelines. Until a pipeline
+   * exists the renderer silently skips the object that would use it, so the first visible frame
+   * would otherwise spend the first seconds of gameplay assembling the image — the post-start
+   * freeze. Awaiting the scene at the scene pass's own render target and MRT (the exact context
+   * the real pass renders in) plus the chain's full-screen quad covers the two big groups
+   * deterministically; the render-until-stable loop below catches the rest (shadow depth, nested
+   * effect passes) by observing the drawn workload stop growing.
+   */
+  async prewarm(scene: Scene, camera: Camera): Promise<boolean> {
+    if (this.#disposed || this.#contextLost || !this.#initialized) {
+      return false;
+    }
+    // First real frame: builds the chain (scene pass target, MRT attachments, full-screen graph)
+    // and kicks off creation of every pipeline in it.
+    if (!this.render(scene, camera)) {
+      return false;
+    }
+    const chain = this.#chain;
+    const scenePass = chain?.scenePass ?? null;
+    const quadMesh =
+      chain === null
+        ? null
+        : ((chain.pipeline as unknown as { _quadMesh?: Object3D })._quadMesh ?? null);
+
+    let stableFrames = 0;
+    let previousDrawCalls = -1;
+    let previousTriangles = -1;
+    for (
+      let iteration = 0;
+      iteration < PREWARM_MAX_ITERATIONS && stableFrames < 2;
+      iteration += 1
+    ) {
+      // Await the scene's scene-pass variant in the pass's own context: PassNode.compileAsync
+      // renders the scene at the pass's render target and MRT attachments, so the created
+      // pipelines are exactly the ones the real frame will draw with.
+      if (scenePass !== null) {
+        await scenePass.compileAsync(this.#renderer);
+      }
+      // Await the chain's own program (the entire post graph in one full-screen material).
+      if (quadMesh !== null) {
+        await this.#renderer.compile(quadMesh, camera);
+      }
+      // Render again so shadow maps and nested effect passes create (and eventually draw) their
+      // pipelines; not-ready objects are skipped, so the drawn workload grows until it is stable.
+      // The counters reset per render because this engine disables three's auto reset (the frame
+      // loop owns it), and prewarm runs several renders in a row.
+      this.#renderer.info.reset();
+      if (!this.render(scene, camera)) {
+        return false;
+      }
+      const stats = readStatistics(this.#renderer.info);
+      stableFrames =
+        stats.drawCalls === previousDrawCalls && stats.triangles === previousTriangles
+          ? stableFrames + 1
+          : 0;
+      previousDrawCalls = stats.drawCalls;
+      previousTriangles = stats.triangles;
+    }
     return true;
   }
 

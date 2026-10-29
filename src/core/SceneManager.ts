@@ -604,12 +604,12 @@ export class SceneManager {
     this.#content.setVegetationStateProvider?.(provider);
   }
 
-  /** Loads optional content surfaces after the loading overlay clears. */
+  /** Loads the scanned road/terrain surface maps (called during loading, before the compiles). */
   async loadContentSurfaces(): Promise<void> {
     await this.#content.loadSurfaces?.();
   }
 
-  /** Loads optional scanned models after the loading overlay clears. */
+  /** Loads the scanned vegetation models (called during loading, before the compiles). */
   async loadDeferredContentAssets(): Promise<void> {
     await this.#content.loadDeferredAssets?.();
   }
