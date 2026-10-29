@@ -192,6 +192,14 @@ const FIRST_FRAME_WATCHDOG_TIMEOUT_MS = 30_000;
 const HERO_CAR_READY_TIMEOUT_MS = 60_000;
 
 /**
+ * How long the loading bar waits for the visual upgrades (environment, look, surfaces, scanned
+ * vegetation) before starting on the authored materials. Generous on purpose: the download is
+ * ~28 MB, so a slow first-time connection can legitimately need a couple of minutes — but a dead
+ * network must never park the player at 92% forever.
+ */
+const UPGRADES_READY_TIMEOUT_MS = 150_000;
+
+/**
  * After the first frame, a WebGL2 context loss usually restores within a second or two. If the
  * browser never does, this grace period turns the silent freeze into a recoverable retry screen.
  * (A WebGPU device loss has no restore event at all and is surfaced immediately.)
@@ -664,65 +672,74 @@ export class Application {
       // Visual upgrades come next, still under the loading bar: environment lighting, the colour
       // look, the scanned road/terrain surfaces and the scanned vegetation. Every one of these
       // swaps materials (new textures, new model programs), so doing them here means the compile
-      // passes below bake the FINAL materials — and no recompile or texture upload lands on the
+      // pass below bakes the FINAL materials — and no recompile or texture upload lands on the
       // first seconds of gameplay. The old "after the overlay clears" waves were the post-start
-      // lag: two full material re-variants plus model decode while the player is driving.
+      // lag: two full material re-variants plus model decode while the player is driving. The
+      // download is bounded: a network stalled this long gets the game on the authored
+      // materials rather than no game at all.
       await this.#awaitWarmupIndefinite(
         (async () => {
-          await Promise.all([
-            this.#loadEnvironment(),
-            this.#loadLook(),
-            this.#scene.loadContentSurfaces().catch((error: unknown) => {
-              console.warn('surface upgrades unavailable; keeping authored materials:', error);
-            }),
-            this.#scene.loadDeferredContentAssets().catch((error: unknown) => {
-              console.warn('scanned vegetation unavailable:', error);
-            }),
-          ]);
+          await waitForWithinBudget(
+            Promise.all([
+              this.#loadEnvironment(),
+              this.#loadLook(),
+              this.#scene.loadContentSurfaces().catch((error: unknown) => {
+                console.warn('surface upgrades unavailable; keeping authored materials:', error);
+              }),
+              this.#scene.loadDeferredContentAssets().catch((error: unknown) => {
+                console.warn('scanned vegetation unavailable:', error);
+              }),
+            ]),
+            UPGRADES_READY_TIMEOUT_MS,
+          );
         })(),
         0.88,
         0.92,
         'Preparing the road surfaces, lighting and vegetation…',
       );
-      // Pre-compile the scene's materials while the loading screen is still up, and *wait for
-      // it in full*. The shaders can only compile here or during gameplay — starting the frame
-      // loop over an unready pipeline is exactly the post-start freeze the owner reported (a
-      // weak GPU needs one to three minutes for the full scene, and a bounded budget just moves
-      // the stall into the first frames). `compile` is asynchronous in the renderer, so it
-      // yields to the loading UI instead of stalling it.
+      // Build the frame graph and kick off creation of every pipeline in the real frame's
+      // context, before the compile: the main compile below then produces exactly the
+      // pipelines the first frame draws with — one full-scene compile, never two.
       this.#reportLoadingProgress(0.92, 'Warming up the graphics pipeline (first run is slower)…');
-      const worldCompile = this.#beginGraphicsCompile();
-      // The main pre-compile must finish before the first frame (see the constant's comment).
-      // Asymptotic progress keeps the bar visibly creeping for however long a weak GPU needs.
+      if (!this.#engine.prepareFrameGraph(this.#scene.scene, this.#activeCamera())) {
+        this.#reportLoadingError(
+          'The graphics pipeline could not be prepared; the game cannot start.',
+        );
+        return;
+      }
+      // The main pre-compile is awaited in full: the shaders can only compile here or during
+      // gameplay, and a weak GPU needs one to three minutes for the full scene. It compiles at
+      // the scene pass's own render target and attachments (the variant the first frame draws
+      // with) plus the post chain's full-screen program. Asymptotic progress keeps the bar
+      // visibly creeping for however long the GPU needs.
       await this.#awaitWarmupIndefinite(
-        worldCompile,
+        this.#engine.compileFrameGraph(this.#scene.scene, this.#activeCamera()),
         0.92,
         0.97,
         'Warming up the graphics pipeline (first run is slower)…',
       );
       this.#warmupComplete = true;
-      // Second pass: picks up the hero car's materials (its download landed during the main
-      // pass) and anything the first pass missed. Same freeze logic: it is waited on in full.
+      // Second pass: picks up the hero car's materials and anything the first pass missed;
+      // everything else is a cache hit, so this pass is short.
       await this.#awaitWarmupIndefinite(
-        this.#beginGraphicsCompile(),
+        this.#engine.compileFrameGraph(this.#scene.scene, this.#activeCamera()),
         0.97,
         0.985,
         'Warming up the car and effects…',
       );
-      // Full-frame pre-warm: build the post chain and wait until every GPU pipeline the real
-      // frame uses exists — the scene-pass MRT variants, the chain's own program, shadow depth.
-      // `renderer.compile` alone misses all of them (it draws the scene plain), and the first
-      // visible frame paying that creation cost live is the post-start freeze.
-      const prewarm = this.#engine.prewarm(this.#scene.scene, this.#activeCamera());
+      // Settle: render until the drawn workload is stable — the shadow depth programs and the
+      // nested effect passes (SSAO/SSR internal quads) only an actual render creates land here,
+      // bounded so a pathological device starts the drive instead of parking at 99%.
+      const settle = this.#engine.prewarmSettle(this.#scene.scene, this.#activeCamera());
       await this.#awaitWarmupIndefinite(
-        prewarm.then(() => undefined),
+        settle.then(() => undefined),
         0.985,
         0.99,
         'Finishing the first view…',
       );
-      if ((await prewarm) === false) {
-        // The pre-warm render was a no-op (context lost mid-loading): the watchdog below
-        // reports the stalled first frame rather than starting a loop that cannot draw.
+      if ((await settle) === false) {
+        // The settle render was a no-op (context lost mid-loading): report it rather than
+        // starting a loop that cannot draw.
         this.#reportLoadingError(
           'The graphics pipeline could not be prepared; the game cannot start.',
         );
@@ -731,6 +748,15 @@ export class Application {
       this.#reportLoadingProgress(0.99, 'Starting the simulation…');
     }
 
+    // Pre-build the whole physics window under the loading bar: the per-frame budget otherwise
+    // builds it one chunk per frame, hitching the first seconds of driving while the ground
+    // appears around the car.
+    const settledPose = this.#car.getInterpolatedPose(0);
+    this.#physics.syncTerrain({
+      x: settledPose.position.x + this.#origin.offset.x,
+      y: settledPose.position.y,
+      z: settledPose.position.z + this.#origin.offset.z,
+    });
     // A few simulation steps under the loading bar: the first gameplay step must not also build
     // the physics broad phase over the whole city. Traffic drifts a couple of frames — invisible.
     const preWarmPosition = { x: this.#car.position.x, z: this.#car.position.z };
@@ -1464,22 +1490,6 @@ export class Application {
     this.#onGraphicsLost?.(
       'The game stopped because the graphics context was lost. Retry reloads the page.',
     );
-  }
-
-  /**
-   * Starts one full-scene material pre-compile pass and returns a promise that never rejects.
-   * The pass runs on the GPU while the loading bar reports steady progress; already-compiled
-   * programs make a second pass cheap (it only compiles what the first one missed).
-   */
-  #beginGraphicsCompile(): Promise<void> {
-    return this.#engine.renderer
-      .compile(this.#scene.scene, this.#activeCamera())
-      .catch((error: unknown) => {
-        console.warn(
-          'graphics warm-up pass failed; remaining materials will compile on first use:',
-          error,
-        );
-      });
   }
 
   /**

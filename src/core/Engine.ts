@@ -107,11 +107,18 @@ export type ContextHandler = () => void;
  * actually submitted, so a caller can tell a real first frame from a silent no-op.
  */
 /**
- * Pre-warm render/await cycles before the first visible frame. Two consecutive renders that draw
- * the identical workload mean no pipeline is left to create; the cap bounds a pathological device
- * where the workload keeps growing (each cycle is bounded by the awaits, so it cannot hang).
+ * Settle renders before the first visible frame, after the awaited compiles. Two consecutive
+ * renders that draw the identical workload mean no pipeline is left to create; the caps bound a
+ * pathological device — it gets a warm-enough start (small remaining pipelines land over the
+ * first seconds) instead of a ten-minute load.
  */
-const PREWARM_MAX_ITERATIONS = 8;
+const PREWARM_SETTLE_MAX_RENDERS = 12;
+
+/** Wall-clock budget for the settle phase, whatever it is still creating. */
+const PREWARM_SETTLE_BUDGET_MS = 60_000;
+
+/** Real-time yield between settle renders so in-flight pipeline creation gets to progress. */
+const PREWARM_SETTLE_YIELD_MS = 100;
 
 /** Reads the renderer's counters into the shape the HUD and the tests use. */
 function readStatistics(info: {
@@ -590,59 +597,88 @@ export class Engine {
   }
 
   /**
-   * Brings the full frame graph to a warm state: builds the post chain, renders real frames, and
-   * waits until every GPU pipeline those frames use is ready. Call it while the loading screen is
-   * still up — the first visible frame must never pay pipeline-creation cost.
-   *
-   * Why the material pre-compile alone is not enough: it covers the scene objects as drawn plain.
-   * The real frame draws the scene through the post chain's scene pass (with its extra MRT
-   * attachments — a different pipeline variant of every object), through the chain's own
-   * full-screen program, and behind both, the shadow maps' depth pipelines. Until a pipeline
-   * exists the renderer silently skips the object that would use it, so the first visible frame
-   * would otherwise spend the first seconds of gameplay assembling the image — the post-start
-   * freeze. Awaiting the scene at the scene pass's own render target and MRT (the exact context
-   * the real pass renders in) plus the chain's full-screen quad covers the two big groups
-   * deterministically; the render-until-stable loop below catches the rest (shadow depth, nested
-   * effect passes) by observing the drawn workload stop growing.
+   * Builds the post chain and renders one kick-off frame before any pipeline exists. After this
+   * call the scene pass's render target is configured and every pipeline the real frame uses —
+   * the scene at the pass's MRT attachments, the chain's full-screen program, the shadow maps'
+   * depth programs, the nested effect passes — has started creating, in the exact context the
+   * frame will draw in. Returns `true` when the kick-off frame was submitted.
    */
-  async prewarm(scene: Scene, camera: Camera): Promise<boolean> {
+  prepareFrameGraph(scene: Scene, camera: Camera): boolean {
     if (this.#disposed || this.#contextLost || !this.#initialized) {
       return false;
     }
-    // First real frame: builds the chain (scene pass target, MRT attachments, full-screen graph)
-    // and kicks off creation of every pipeline in it.
-    if (!this.render(scene, camera)) {
+    this.#updatePipeline(scene, camera);
+    return this.render(scene, camera);
+  }
+
+  /**
+   * Awaits the GPU pipelines the real first frame draws with — the startup equivalent of "one
+   * full-scene compile", and the only one:
+   *
+   * - the scene objects at the scene pass's own render target and MRT attachments
+   *   (`PassNode.compileAsync`, the supported pre-compile for a pass). A plain
+   *   `renderer.compile` would build a different pipeline variant (without the extra
+   *   attachments) that the first frame never draws — compiling that one and then having the
+   *   first frame compile the real one is a second full-scene compile paid live, and it is
+   *   what turned the post-start freeze into a ten-minute load;
+   * - the chain's own full-screen program (the entire post graph in one material).
+   *
+   * With post-processing disabled it falls back to the plain scene compile.
+   */
+  async compileFrameGraph(scene: Scene, camera: Camera): Promise<void> {
+    if (this.#disposed || this.#contextLost || !this.#initialized) {
+      return;
+    }
+    try {
+      const chain = this.#chain;
+      if (chain === null) {
+        await this.#renderer.compile(scene, camera);
+        return;
+      }
+      await chain.scenePass.compileAsync(this.#renderer);
+      const quadMesh = (chain.pipeline as unknown as { _quadMesh?: Object3D })._quadMesh;
+      if (quadMesh !== null && quadMesh !== undefined) {
+        await this.#renderer.compile(quadMesh, camera);
+      }
+    } catch (error) {
+      // A compile failure must not kill the boot: the game starts and the remaining
+      // pipelines compile on first use (a stutter), never a dead retry loop.
+      console.warn(
+        'Endless Driver: the frame-graph compile pass failed; the remainder compiles on first use:',
+        error,
+      );
+    }
+  }
+
+  /**
+   * Settle phase: render until the drawn workload is stable for two consecutive frames. The
+   * awaited compiles cover the scene and the chain program; this catches the rest — the shadow
+   * maps' depth programs and the nested effect passes (SSAO/SSR internal quads), which only an
+   * actual render creates. Not-ready objects are skipped by the renderer, so the drawn workload
+   * grows as pipelines finish and is stable exactly when nothing is left to create. Bounded by
+   * render count and wall clock: a pathological device starts the drive rather than parking at
+   * 99%, paying the remainder as a short pop-in over the first seconds.
+   *
+   * Call it while the loading screen is still up — the first visible frame must not pay
+   * pipeline-creation cost (that is the post-start freeze, and its stuttering residue).
+   */
+  async prewarmSettle(scene: Scene, camera: Camera): Promise<boolean> {
+    if (this.#disposed || this.#contextLost || !this.#initialized) {
       return false;
     }
-    const chain = this.#chain;
-    const scenePass = chain?.scenePass ?? null;
-    const quadMesh =
-      chain === null
-        ? null
-        : ((chain.pipeline as unknown as { _quadMesh?: Object3D })._quadMesh ?? null);
-
+    const startedAt = performance.now();
     let stableFrames = 0;
     let previousDrawCalls = -1;
     let previousTriangles = -1;
-    for (
-      let iteration = 0;
-      iteration < PREWARM_MAX_ITERATIONS && stableFrames < 2;
-      iteration += 1
-    ) {
-      // Await the scene's scene-pass variant in the pass's own context: PassNode.compileAsync
-      // renders the scene at the pass's render target and MRT attachments, so the created
-      // pipelines are exactly the ones the real frame will draw with.
-      if (scenePass !== null) {
-        await scenePass.compileAsync(this.#renderer);
+    for (let iteration = 0; iteration < PREWARM_SETTLE_MAX_RENDERS; iteration += 1) {
+      if (performance.now() - startedAt >= PREWARM_SETTLE_BUDGET_MS) {
+        console.warn(
+          'Endless Driver: the frame-graph settle budget ran out; the remaining small pipelines land over the first seconds of gameplay.',
+        );
+        break;
       }
-      // Await the chain's own program (the entire post graph in one full-screen material).
-      if (quadMesh !== null) {
-        await this.#renderer.compile(quadMesh, camera);
-      }
-      // Render again so shadow maps and nested effect passes create (and eventually draw) their
-      // pipelines; not-ready objects are skipped, so the drawn workload grows until it is stable.
-      // The counters reset per render because this engine disables three's auto reset (the frame
-      // loop owns it), and prewarm runs several renders in a row.
+      // The counters reset per render because this engine disables three's auto reset (the
+      // frame loop owns it), and the settle runs several renders in a row.
       this.#renderer.info.reset();
       if (!this.render(scene, camera)) {
         return false;
@@ -654,6 +690,11 @@ export class Engine {
           : 0;
       previousDrawCalls = stats.drawCalls;
       previousTriangles = stats.triangles;
+      if (stableFrames >= 2) {
+        break;
+      }
+      // Yield so in-flight pipeline creation progresses between renders.
+      await new Promise<void>((resolve) => setTimeout(resolve, PREWARM_SETTLE_YIELD_MS));
     }
     return true;
   }
