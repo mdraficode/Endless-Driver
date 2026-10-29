@@ -3005,6 +3005,7 @@ _Rendering — bounded polish within budgets:_ tier C SSR `resolutionScale 0.33�
 **Validation:** full `npm run check` passed at `876050e`: Prettier, ESLint, GLSL guard, both TypeScript checks, **94 test files / 673 tests**, 20 verified assets / 47,814,431 bytes, production build. Validate #499 / Pages Deploy #488 green; the live bundle (`index-BgGXEL4-.js`) verified to contain the plaza markers (`aohara-plaza-paving`, `aohara-plaza-flagpole`), the grid offsets (`offsetMeters:-350/190/330`) and the plaza colour literals. No device visual acceptance — the owner's drive is the gate.
 
 **Next:** verdict round (build tag `BgGXEL4-`). If "better" again, proceed to 8.4b (the diagonal through-boulevard), then 9.1 → 7.2 → 7.3.
+
 ## 153. Phase 8.4b: the diagonal grand boulevard (2026-10-29)
 
 **Owner decision:** the 8.4a verdict returned "better" (fifth in a row), and the selected option's stated consequence: next is 8.4b — the diagonal through-boulevard — then 9.1 → 7.2 → 7.3.
