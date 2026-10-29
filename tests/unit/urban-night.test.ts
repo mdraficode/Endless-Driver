@@ -958,16 +958,19 @@ describe('Aohara city night-lighting rules', () => {
       activePointLights: URBAN_NIGHT_TIER_BUDGET.B.pointLights,
     });
     expect(URBAN_CITY_CONFIG.streetLamp.spacingMeters).toBe(40);
-    expect(city.getContentStats().streetLightPoles).toBe(240);
-    expect(city.getContentStats().districtBanners).toBe(60);
-    expect(city.getContentStats().streetLightBollards).toBe(30);
-    expect(city.getContentStats().nightMoodLightCandidates).toBe(15);
+    // Phase 8.4a: the re-planned (wider) grid adds street length: +12 poles, +3 banners,
+    // +2 bollards and one more mood-light candidate.
+    expect(city.getContentStats().streetLightPoles).toBe(252);
+    expect(city.getContentStats().districtBanners).toBe(63);
+    expect(city.getContentStats().streetLightBollards).toBe(32);
+    expect(city.getContentStats().nightMoodLightCandidates).toBe(16);
     expect(city.getContentStats().highRiseNightAccentInstances).toBe(33);
     const cityStats = city.getContentStats();
-    // Phase 8.3c massing: the perimeter rows open where the alley mouths cross them
-    // (29 of the 240 candidates are clearance-rejected at the real district origin).
-    expect(cityStats.frontageBuildings).toBeGreaterThanOrEqual(200);
-    expect(cityStats.frontageBuildings).toBeLessThanOrEqual(240);
+    // Phase 8.4a massing: 240 street-row candidates (15 blocks × 4 sides × 4 shells); the row
+    // opens at the passage mouths (2.75 m clearance), at block corners, and where the avenue
+    // towers flank the narrow-block rows — 52 of 240 are clearance-rejected.
+    expect(cityStats.frontageBuildings).toBeGreaterThanOrEqual(180);
+    expect(cityStats.frontageBuildings).toBeLessThanOrEqual(196);
     expect(cityStats.shops).toBeGreaterThan(4);
     expect(cityStats.billboards).toBe(cityStats.shops! + 14);
     expect(cityStats.storefrontNightAccentInstances).toBe((cityStats.shops! + 2) * 3);
@@ -1258,14 +1261,15 @@ describe('Aohara city night-lighting rules', () => {
     const buildings = city.getStaticBuildingFootprints();
     const facadeFootprints = city.getBackstreetFacadeFootprints();
     const facadePropFootprints = city.getBackstreetFacadePropFootprints();
-    const placements = generateAoharaAlleyPropPlacements(
-      network,
-      'B',
-      buildings,
-      facadePropFootprints,
-    );
+    const placements = generateAoharaAlleyPropPlacements(network, 'B', buildings, [
+      ...facadeFootprints,
+      ...facadePropFootprints,
+    ]);
     expect(placements).toEqual(
-      generateAoharaAlleyPropPlacements(network, 'B', buildings, facadePropFootprints),
+      generateAoharaAlleyPropPlacements(network, 'B', buildings, [
+        ...facadeFootprints,
+        ...facadePropFootprints,
+      ]),
     );
     expect(placements).toHaveLength(URBAN_ACTIVITY_TIER_BUDGET.B.alleyProps);
     expect(new Set(placements.map((placement) => placement.id)).size).toBe(placements.length);

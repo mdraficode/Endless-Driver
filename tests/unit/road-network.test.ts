@@ -13,6 +13,8 @@ import {
   AOHARA_DISTRICT_CONFIG,
   AOHARA_GRID_COLUMNS,
   AOHARA_GRID_ROWS,
+  aoharaColumnOffsetMeters,
+  aoharaRowOffsetMeters,
 } from '../../src/config/urban-district';
 import { EnvironmentClock } from '../../src/environment/EnvironmentClock';
 import { roadInfluence } from '../../src/world/road-network';
@@ -68,7 +70,9 @@ describe('road network graph', () => {
         expect(edge.lengthMeters).toBeGreaterThan(7);
         expect(edge.points.length).toBeGreaterThan(1);
       } else {
-        expect(edge.lengthMeters).toBeGreaterThan(50);
+        // Phase 8.4a: street edges are split by the passage mouths at the thirds of each block
+        // face; the middle third of the shortest (140 m) blocks is 46.7 m long.
+        expect(edge.lengthMeters).toBeGreaterThan(45);
         expect(edge.points.length).toBeGreaterThan(
           edge.roadClass === 'urban-local' || edge.roadClass === 'urban-arterial' ? 1 : 10,
         );
@@ -120,17 +124,19 @@ describe('road network graph', () => {
     const westGateway = network.nodeById('aohara-middle-west-outer');
     const access = network.edges.find((edge) => edge.roadClass === 'city-access');
 
-    expect(AOHARA_BACKSTREET_BLOCKS).toHaveLength(16);
-    expect(aoharaNodes).toHaveLength(119);
+    // Phase 8.4a: the 4×4 block grid loses one block to the central plaza, and the plaza's
+    // passage mouths coincide with the surviving neighbours' access nodes on shared streets.
+    expect(AOHARA_BACKSTREET_BLOCKS).toHaveLength(15);
+    expect(aoharaNodes).toHaveLength(114);
     expect(gridNodes).toHaveLength(25);
-    expect(accessNodes).toHaveLength(62);
-    expect(internalNodes).toHaveLength(32);
-    expect(urbanEdges).toHaveLength(102);
-    expect(arterialEdges).toHaveLength(22);
-    expect(localEdges).toHaveLength(80);
-    expect(alleyEdges).toHaveLength(80);
+    expect(accessNodes).toHaveLength(59);
+    expect(internalNodes).toHaveLength(30);
+    expect(urbanEdges).toHaveLength(99);
+    expect(arterialEdges).toHaveLength(21);
+    expect(localEdges).toHaveLength(78);
+    expect(alleyEdges).toHaveLength(75);
     expect(westGateway).toMatchObject({
-      x: AOHARA_DISTRICT_CONFIG.centerX - 2 * AOHARA_DISTRICT_CONFIG.gridSpacingMeters,
+      x: AOHARA_DISTRICT_CONFIG.centerX + aoharaColumnOffsetMeters(0),
       z: AOHARA_DISTRICT_CONFIG.centerZ,
     });
     expect(access?.from).toBe('east-plain');
@@ -184,8 +190,8 @@ describe('road network graph', () => {
       ).id,
     ).toBe('gravel');
     const local = world.roadAt?.(
-      AOHARA_DISTRICT_CONFIG.centerX - AOHARA_DISTRICT_CONFIG.gridSpacingMeters / 2,
-      AOHARA_DISTRICT_CONFIG.centerZ - AOHARA_DISTRICT_CONFIG.gridSpacingMeters,
+      AOHARA_DISTRICT_CONFIG.centerX - 80,
+      AOHARA_DISTRICT_CONFIG.centerZ + aoharaRowOffsetMeters(1),
     );
     expect(local?.roadClass).toBe('urban-local');
     expect(local?.halfWidthMeters).toBe(AOHARA_DISTRICT_CONFIG.localStreetHalfWidthMeters);
@@ -205,7 +211,8 @@ describe('road network graph', () => {
     const roads = new RoadWorld(network);
     const stats = roads.getStats();
     expect(stats.roadMeshes).toBeLessThanOrEqual(8);
-    expect(stats.urbanSidewalkEdges).toBe(102);
+    // Phase 8.4a: one fewer block (the plaza) removes three sidewalk edges from the 4×4 grid.
+    expect(stats.urbanSidewalkEdges).toBe(99);
     expect(stats.urbanCrosswalkIntersections).toBe(25);
     expect(roads.object.getObjectByName('aohara-sidewalks')).not.toBeNull();
     expect(roads.object.getObjectByName('aohara-crosswalks-and-stop-lines')).not.toBeNull();

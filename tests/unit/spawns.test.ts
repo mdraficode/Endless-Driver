@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
-import { AOHARA_DISTRICT_CONFIG } from '../../src/config/urban-district';
+import { AOHARA_DISTRICT_CONFIG, aoharaRowOffsetMeters } from '../../src/config/urban-district';
 import { DEFAULT_SPAWN_ID, SPAWN_POINTS, resolveSpawnPoint } from '../../src/config/spawns';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
 import { terrainSurfaceWeights } from '../../src/world/terrain-height';
@@ -55,7 +55,7 @@ describe('session spawn points', () => {
     expect(road?.roadClass).toBe('urban-arterial');
     expect(
       Math.hypot(city.x - AOHARA_DISTRICT_CONFIG.centerX, city.z - AOHARA_DISTRICT_CONFIG.centerZ),
-    ).toBeCloseTo(AOHARA_DISTRICT_CONFIG.gridSpacingMeters / 2, 5);
+    ).toBeCloseTo(Math.abs(aoharaRowOffsetMeters(1)) / 2, 5);
   });
 
   describe('spawn views contain no snow ground', () => {

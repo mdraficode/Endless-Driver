@@ -71,8 +71,8 @@ function aoharaNodeId(rowId: string, columnId: string): string {
 const AOHARA_GRID_NODES: readonly RoadNodeConfig[] = AOHARA_GRID_ROWS.flatMap((row) =>
   AOHARA_GRID_COLUMNS.map((column) => ({
     id: aoharaNodeId(row.id, column.id),
-    x: AOHARA_DISTRICT_CONFIG.centerX + column.offset * AOHARA_DISTRICT_CONFIG.gridSpacingMeters,
-    z: AOHARA_DISTRICT_CONFIG.centerZ + row.offset * AOHARA_DISTRICT_CONFIG.gridSpacingMeters,
+    x: AOHARA_DISTRICT_CONFIG.centerX + column.offsetMeters,
+    z: AOHARA_DISTRICT_CONFIG.centerZ + row.offsetMeters,
   })),
 );
 

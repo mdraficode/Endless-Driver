@@ -1,4 +1,21 @@
-import { AOHARA_DISTRICT_CONFIG, AOHARA_GRID_COLUMNS, AOHARA_GRID_ROWS } from './urban-district';
+import {
+  AOHARA_DISTRICT_CONFIG,
+  AOHARA_GRID_COLUMNS,
+  AOHARA_GRID_ROWS,
+  aoharaBlockLocal,
+} from './urban-district';
+
+/**
+ * Phase 8.4a: the southwest inner block (south of the main avenue, west of the cross street)
+ * is an open plaza instead of a built block — no frontage, no infill, no winding passages.
+ * The traffic/pedestrian loop corner cuts through its centre, which reads as a street
+ * crossing into the square.
+ */
+export const AOHARA_PLAZA_BLOCK = { rowIndex: 2, columnIndex: 1 } as const;
+
+export function isAoharaPlazaBlock(rowIndex: number, columnIndex: number): boolean {
+  return rowIndex === AOHARA_PLAZA_BLOCK.rowIndex && columnIndex === AOHARA_PLAZA_BLOCK.columnIndex;
+}
 
 export type AoharaBackstreetSide = 'north' | 'east' | 'south' | 'west';
 export type AoharaAccessThird = 1 | 2;
@@ -129,8 +146,13 @@ function makeAccess(
   side: AoharaBackstreetSide,
   fractionThirds: AoharaAccessThird,
 ): AoharaBackstreetAccess {
-  const grid = AOHARA_DISTRICT_CONFIG.gridSpacingMeters;
-  const along = (fractionThirds / 3 - 0.5) * grid;
+  // Phase 8.4a: the block is no longer square — the mouth sits a third/two-thirds along the
+  // actual edge length and on the actual edge line.
+  const block = aoharaBlockLocal(rowIndex, columnIndex);
+  const edgeLength = side === 'north' || side === 'south' ? block.widthMeters : block.depthMeters;
+  const halfWidth = block.widthMeters / 2;
+  const halfDepth = block.depthMeters / 2;
+  const along = (fractionThirds / 3 - 0.5) * edgeLength;
   let localX: number;
   let localZ: number;
   let inwardX: number;
@@ -142,7 +164,7 @@ function makeAccess(
   switch (side) {
     case 'north':
       localX = centerLocalX + along;
-      localZ = centerLocalZ - grid / 2;
+      localZ = centerLocalZ - halfDepth;
       inwardX = 0;
       inwardZ = 1;
       nodeId = aoharaHorizontalAccessNodeId(rowIndex, columnIndex, fractionThirds);
@@ -152,7 +174,7 @@ function makeAccess(
       break;
     case 'south':
       localX = centerLocalX + along;
-      localZ = centerLocalZ + grid / 2;
+      localZ = centerLocalZ + halfDepth;
       inwardX = 0;
       inwardZ = -1;
       nodeId = aoharaHorizontalAccessNodeId(rowIndex + 1, columnIndex, fractionThirds);
@@ -161,7 +183,7 @@ function makeAccess(
       gridColumnIndex = columnIndex;
       break;
     case 'west':
-      localX = centerLocalX - grid / 2;
+      localX = centerLocalX - halfWidth;
       localZ = centerLocalZ + along;
       inwardX = 1;
       inwardZ = 0;
@@ -171,7 +193,7 @@ function makeAccess(
       gridColumnIndex = columnIndex;
       break;
     case 'east':
-      localX = centerLocalX + grid / 2;
+      localX = centerLocalX + halfWidth;
       localZ = centerLocalZ + along;
       inwardX = -1;
       inwardZ = 0;
@@ -201,15 +223,13 @@ function makeAccess(
 
 function buildBlocks(): readonly AoharaBackstreetBlock[] {
   const blocks: AoharaBackstreetBlock[] = [];
-  const grid = AOHARA_DISTRICT_CONFIG.gridSpacingMeters;
   for (let rowIndex = 0; rowIndex < AOHARA_GRID_ROWS.length - 1; rowIndex += 1) {
-    const row = AOHARA_GRID_ROWS[rowIndex]!;
-    const nextRow = AOHARA_GRID_ROWS[rowIndex + 1]!;
     for (let columnIndex = 0; columnIndex < AOHARA_GRID_COLUMNS.length - 1; columnIndex += 1) {
-      const column = AOHARA_GRID_COLUMNS[columnIndex]!;
-      const nextColumn = AOHARA_GRID_COLUMNS[columnIndex + 1]!;
-      const centerLocalX = ((column.offset + nextColumn.offset) / 2) * grid;
-      const centerLocalZ = ((row.offset + nextRow.offset) / 2) * grid;
+      // Phase 8.4a: the plaza block stays an open square — no passages, no frontage, no infill.
+      if (isAoharaPlazaBlock(rowIndex, columnIndex)) {
+        continue;
+      }
+      const { centerLocalX, centerLocalZ } = aoharaBlockLocal(rowIndex, columnIndex);
       const horizontalNorthBase = horizontalBaseFraction(rowIndex, columnIndex);
       const horizontalSouthBase = horizontalBaseFraction(rowIndex + 1, columnIndex);
       const verticalWestBase = verticalBaseFraction(rowIndex, columnIndex);

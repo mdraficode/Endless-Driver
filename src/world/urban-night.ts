@@ -51,11 +51,17 @@ import {
   URBAN_NIGHT_TIER_BUDGET,
   type TrafficSignalAspect,
 } from '../config/urban-city';
-import { AOHARA_BACKSTREET_BLOCKS, AOHARA_BACKSTREET_CONFIG } from '../config/aohara-backstreets';
 import {
-  AOHARA_DISTRICT_CONFIG,
+  AOHARA_BACKSTREET_BLOCKS,
+  AOHARA_BACKSTREET_CONFIG,
+  AOHARA_PLAZA_BLOCK,
+  isAoharaPlazaBlock,
+} from '../config/aohara-backstreets';
+import {
   AOHARA_GRID_COLUMNS,
   AOHARA_GRID_ROWS,
+  aoharaBlockLocal,
+  aoharaRowOffsetMeters,
 } from '../config/urban-district';
 import type { TierId } from '../config/tiers';
 import { configureTiledSurface, SurfaceTextureLibrary } from '../assets/SurfaceTextureLibrary';
@@ -512,27 +518,31 @@ const CITY_TOWER_HEIGHTS = [34, 44, 58, 72, 90, 116, 142] as const;
 function buildAoharaTowerSpecs(): readonly TowerSpec[] {
   const towers: TowerSpec[] = [...LOOKDEV_TOWERS];
   for (let rowIndex = 0; rowIndex < AOHARA_GRID_ROWS.length - 1; rowIndex += 1) {
-    const row = AOHARA_GRID_ROWS[rowIndex]!;
-    const nextRow = AOHARA_GRID_ROWS[rowIndex + 1]!;
     for (let columnIndex = 0; columnIndex < AOHARA_GRID_COLUMNS.length - 1; columnIndex += 1) {
       // The four central blocks already carry the original eight authored high-rises.
       if ((rowIndex === 1 || rowIndex === 2) && (columnIndex === 1 || columnIndex === 2)) {
         continue;
       }
-      const column = AOHARA_GRID_COLUMNS[columnIndex]!;
-      const nextColumn = AOHARA_GRID_COLUMNS[columnIndex + 1]!;
-      const blockCenterX =
-        ((column.offset + nextColumn.offset) / 2) * AOHARA_DISTRICT_CONFIG.gridSpacingMeters;
-      const blockCenterZ =
-        ((row.offset + nextRow.offset) / 2) * AOHARA_DISTRICT_CONFIG.gridSpacingMeters;
+      const {
+        centerLocalX: blockCenterX,
+        centerLocalZ: blockCenterZ,
+        depthMeters: blockDepth,
+      } = aoharaBlockLocal(rowIndex, columnIndex);
+      // The offset (35 m) and jitter clear the hub/courtyard band (2.6 m) and the alley
+      // straight runs; narrow blocks resolve the street-row overlap by opening the row at the
+      // tower, as the clearance selector does everywhere else. The z offset stays centred
+      // (no jitter): the deep box (30–40 m) must keep its faces 5 m off the passage straight
+      // runs at ±depth/6, which a ±4 m jitter would violate on 150 m blocks.
       for (const side of [-1, 1] as const) {
         const seed = rowIndex * 37 + columnIndex * 11;
         const xJitter = (stableUnit(seed, side, 109) - 0.5) * 6;
-        const zJitter = (stableUnit(seed, side, 127) - 0.5) * 8;
+        const zJitter = 0;
         const heightIndex = Math.floor(stableUnit(seed, side, 149) * CITY_TOWER_HEIGHTS.length);
         const colorIndex = Math.floor(stableUnit(seed, side, 173) * CITY_FACADE_PALETTE.length);
         const towerWidth = 28 + stableUnit(seed, side, 191) * 8;
-        const towerDepth = 30 + stableUnit(seed, side, 211) * 10;
+        // The deepest boxes must keep their faces 4.45 m (road half-width + shoulder) off the
+        // passage straight runs at ±depth/6 from the block centre.
+        const towerDepth = Math.min(30 + stableUnit(seed, side, 211) * 10, blockDepth / 3 - 8.9);
         const towerHeight = CITY_TOWER_HEIGHTS[heightIndex] ?? CITY_TOWER_HEIGHTS[0];
         // Phase 8.3f/g: a set-back crown breaks the skyline — a flat glass box at this scale
         // reads as a box from the street. Three styles keep the skyline from repeating:
@@ -721,6 +731,17 @@ function buildAoharaInfillBuildingCandidates(): readonly CityBuildingSpec[] {
   const candidates: { readonly rank: number; readonly building: CityBuildingSpec }[] = [];
 
   AOHARA_BACKSTREET_BLOCKS.forEach((block, blockIndex) => {
+    // Phase 8.4a: narrow blocks pull the infill corner boxes inward so they keep the street
+    // rows' inner faces (24.75 m off the block edge) plus clearance.
+    const { widthMeters: blockWidth, depthMeters: blockDepth } = aoharaBlockLocal(
+      block.rowIndex,
+      block.columnIndex,
+    );
+    const cornerOffset = Math.min(
+      AOHARA_BACKSTREET_CONFIG.innerBuildingCornerOffsetMeters,
+      blockWidth / 2 - 24.75 - 8.4 - 1.55,
+      blockDepth / 2 - 24.75 - 8.4 - 1.55,
+    );
     cornerSigns.forEach((zSign, zIndex) => {
       cornerSigns.forEach((xSign, xIndex) => {
         const cornerIndex = zIndex * 2 + xIndex;
@@ -756,10 +777,8 @@ function buildAoharaInfillBuildingCandidates(): readonly CityBuildingSpec[] {
           rank: stableUnit(blockIndex, cornerIndex, 827),
           building: {
             kind: 'infill',
-            x:
-              block.centerLocalX + xSign * AOHARA_BACKSTREET_CONFIG.innerBuildingCornerOffsetMeters,
-            z:
-              block.centerLocalZ + zSign * AOHARA_BACKSTREET_CONFIG.innerBuildingCornerOffsetMeters,
+            x: block.centerLocalX + xSign * cornerOffset,
+            z: block.centerLocalZ + zSign * cornerOffset,
             width,
             depth,
             height,
@@ -785,6 +804,30 @@ function applyInfillRoofMix(buildings: readonly CityBuildingSpec[]): readonly Ci
   }));
 }
 
+/**
+ * Phase 8.4a: tangent positions of the street-row shells along a street edge of any length.
+ * Four close-packed shells per side (the 8.3 character), opening exactly at the two passage
+ * mouths (±edge/6):
+ *  - the inner pair clears each mouth by 2.6 m (alley half-width + wall clearance);
+ *  - the outer pair is pulled in on short edges so its corner end stays 26.3 m from the
+ *    adjacent street row (24.75 m row band + 1.55 m clearance), which is what lets the block
+ *    corners breathe instead of the shell colliding with the neighbouring side's outer shell.
+ * Each position carries the maximum street span it can take at that tangent offset.
+ */
+function frontageTangentRun(edgeLengthMeters: number): readonly (readonly [number, number])[] {
+  const mouth = edgeLengthMeters / 6;
+  const innerCenter = Math.min(13, mouth - 10.75);
+  const innerSpan = Math.min(24, 2 * (mouth - 2.75 - innerCenter));
+  const outerSpan = Math.min(24, edgeLengthMeters / 3 - 29.4);
+  const outerCenter = Math.min(mouth + 19, edgeLengthMeters / 2 - 26.3 - outerSpan / 2);
+  return [
+    [-outerCenter, outerSpan],
+    [-innerCenter, innerSpan],
+    [innerCenter, innerSpan],
+    [outerCenter, outerSpan],
+  ];
+}
+
 function buildAoharaFrontageBuildingSpecs(): readonly CityBuildingSpec[] {
   // Phase 8.3h: per-block material families — warm plaster, cool panel, concrete and dark
   // stone. A real night street is a patchwork of facade materials, and a few bright enough
@@ -797,10 +840,13 @@ function buildAoharaFrontageBuildingSpecs(): readonly CityBuildingSpec[] {
   ] as const;
   const roofPalette = [0x3b4149, 0x39464d, 0x4a423a, 0x53463f, 0x454a52, 0x594a42] as const;
   const sides = ['north', 'east', 'south', 'west'] as const;
-  const grid = AOHARA_DISTRICT_CONFIG.gridSpacingMeters;
   const frontages: CityBuildingSpec[] = [];
 
   AOHARA_BACKSTREET_BLOCKS.forEach((block, blockIndex) => {
+    // Phase 8.4a: the plaza block is an open square — no street row in front of it.
+    if (isAoharaPlazaBlock(block.rowIndex, block.columnIndex)) {
+      return;
+    }
     const shopSide = Math.floor(stableUnit(block.rowIndex, block.columnIndex, 1901) * sides.length);
     const shopPosition = Math.floor(stableUnit(block.rowIndex, block.columnIndex, 1913) * 4);
     // Phase 8.3c massing: each block side takes a street character — a contiguous run of
@@ -819,18 +865,26 @@ function buildAoharaFrontageBuildingSpecs(): readonly CityBuildingSpec[] {
       wallFamilies[
         Math.floor(stableUnit(block.rowIndex, block.columnIndex, 2003) * wallFamilies.length)
       ] ?? wallFamilies[0];
+    // Phase 8.4a: blocks are no longer square — the radial inset comes from the actual edge
+    // distance and the street row adapts its building count to the edge length.
+    const blockLocal = aoharaBlockLocal(block.rowIndex, block.columnIndex);
     sides.forEach((side, sideIndex) => {
       const characterRoll = stableUnit(blockIndex, sideIndex, 1953);
       const character: 'low' | 'mid' | 'high' =
         isEdgeBlock && characterRoll < 0.2 ? 'high' : characterRoll < 0.45 ? 'low' : 'mid';
-      AOHARA_BACKSTREET_CONFIG.frontagePositionsMeters.forEach((tangentOffset, positionIndex) => {
+      const tangentEdge =
+        side === 'north' || side === 'south' ? blockLocal.widthMeters : blockLocal.depthMeters;
+      const radialEdge =
+        side === 'north' || side === 'south' ? blockLocal.depthMeters : blockLocal.widthMeters;
+      const radialInset = radialEdge / 2 - AOHARA_BACKSTREET_CONFIG.frontageBuildingInsetMeters;
+      frontageTangentRun(tangentEdge).forEach((tangentAndSpan, positionIndex) => {
+        const [tangentOffset, maxSpan] = tangentAndSpan;
         const paletteIndex = Math.floor(
           stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1931) * wallFamily.length,
         );
         const roofIndex = Math.floor(
           stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1937) * roofPalette.length,
         );
-        const radialInset = grid / 2 - AOHARA_BACKSTREET_CONFIG.frontageBuildingInsetMeters;
         const heightJitter = stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1949);
         const height =
           character === 'low'
@@ -840,8 +894,10 @@ function buildAoharaFrontageBuildingSpecs(): readonly CityBuildingSpec[] {
               : 18 + heightJitter * 8.0;
         const roofRoll = stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1951);
         const hippedChance = character === 'low' ? 0.45 : character === 'mid' ? 0.15 : 0;
-        // Tangential street span 16–24 m: varied building lengths along the street.
-        const streetSpan = 16 + stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1963) * 8;
+        // Tangential street span 16–24 m: varied building lengths along the street, capped
+        // per position so the shell keeps its mouth and corner clearances (Phase 8.4a).
+        let streetSpan = 16 + stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1963) * 8;
+        streetSpan = Math.min(streetSpan, maxSpan);
         // Phase 8.3e setback massing: a full-footprint podium plus a set-back upper volume,
         // so the row reads as composed volumes instead of coplanar prisms. The insets open
         // toward the street face (local +X); the collider keeps the full bounding box. The
@@ -1924,6 +1980,9 @@ export class UrbanNightWorld implements SceneContent {
       : [];
     const additionalBuildings = [...existingBuildings, ...frontageBuildings, ...infillBuildings];
     const typologyCounts = this.#buildCityTypologies(additionalBuildings);
+    if (this.#networkIntegrated) {
+      this.#buildPlaza();
+    }
     this.#facadeKit = new FacadeKitWorld(tier, additionalBuildings, this.#towers, [
       originX,
       originY,
@@ -1944,7 +2003,14 @@ export class UrbanNightWorld implements SceneContent {
             options.roadNetwork,
             this.#buildingColliders,
             [originX, originY, originZ],
-            this.#backstreetFrontages?.propClearanceFootprints ?? [],
+            // Phase 8.4a: the re-planned block sizes shift the alley bends; keep clutter clear of
+            // the full wall collision boxes as well as the compact prop-clearance proxies.
+            this.#backstreetFrontages === null
+              ? []
+              : [
+                  ...this.#backstreetFrontages.collisionBoxes,
+                  ...this.#backstreetFrontages.propClearanceFootprints,
+                ],
           )
         : null;
     if (this.#backstreetProps !== null) {
@@ -3194,6 +3260,163 @@ export class UrbanNightWorld implements SceneContent {
     return structural.length + selectedRoof.length;
   }
 
+  /**
+   * Phase 8.4a: the open plaza block — dark paving to the sidewalks, a flagpole with the
+   * district flag, benches facing the avenue and planters. The traffic/pedestrian loop corner
+   * cuts through its centre, so the furniture stays clear of the loop lines (|x+100| and
+   * |z-85| keep a 12 m margin). No buildings, no collider: the car can cross the square.
+   */
+  #buildPlaza(): void {
+    const { centerLocalX, centerLocalZ, widthMeters, depthMeters } = aoharaBlockLocal(
+      AOHARA_PLAZA_BLOCK.rowIndex,
+      AOHARA_PLAZA_BLOCK.columnIndex,
+    );
+    const pavingMaterial = createArchitecturalMaterial({
+      name: 'aohara-plaza-paving-pbr',
+      colorHex: 0x2b3036,
+      roughness: 0.9,
+      metalness: 0.04,
+      detailAmplitude: 0.03,
+      clearcoat: 0.05,
+      clearcoatRoughness: 0.5,
+    });
+    const paving = addInstancedBoxes(
+      this.root,
+      new BoxGeometry(1, 1, 1),
+      pavingMaterial,
+      [
+        {
+          x: centerLocalX,
+          y: WORLD_BASE_Y + 0.07,
+          z: centerLocalZ,
+          scale: [widthMeters - 8, 0.14, depthMeters - 8],
+        },
+      ],
+      'aohara-plaza-paving',
+    );
+    paving.receiveShadow = true;
+
+    const steel = createArchitecturalMaterial({
+      name: 'aohara-plaza-steel-pbr',
+      colorHex: 0x3a3f45,
+      roughness: 0.5,
+      metalness: 0.6,
+      detailAmplitude: 0.01,
+      clearcoat: 0.2,
+      clearcoatRoughness: 0.3,
+    });
+    const pole = new Mesh(new CylinderGeometry(0.12, 0.16, 12, 10), steel);
+    pole.name = 'aohara-plaza-flagpole';
+    pole.position.set(centerLocalX - 70, WORLD_BASE_Y + 6, centerLocalZ + 45);
+    pole.castShadow = true;
+    this.root.add(pole);
+
+    const flagCloth = new Mesh(
+      new BoxGeometry(2.6, 1.7, 0.06),
+      createArchitecturalMaterial({
+        name: 'aohara-plaza-flag-cloth-pbr',
+        colorHex: 0xf2f0ea,
+        roughness: 0.85,
+        metalness: 0,
+        detailAmplitude: 0.01,
+      }),
+    );
+    flagCloth.name = 'aohara-plaza-flag';
+    flagCloth.position.set(centerLocalX - 69, WORLD_BASE_Y + 10.6, centerLocalZ + 45);
+    this.root.add(flagCloth);
+    const flagDisc = new Mesh(
+      new BoxGeometry(1.05, 1.05, 0.05),
+      createArchitecturalMaterial({
+        name: 'aohara-plaza-flag-disc-pbr',
+        colorHex: 0xb03030,
+        roughness: 0.85,
+        metalness: 0,
+        detailAmplitude: 0.01,
+      }),
+    );
+    flagDisc.name = 'aohara-plaza-flag-disc';
+    flagDisc.position.set(centerLocalX - 69, WORLD_BASE_Y + 10.6, centerLocalZ + 45.05);
+    this.root.add(flagDisc);
+
+    const wood = createArchitecturalMaterial({
+      name: 'aohara-plaza-bench-pbr',
+      colorHex: 0x6b5a44,
+      roughness: 0.8,
+      metalness: 0.05,
+      detailAmplitude: 0.02,
+    });
+    const bench = new BoxGeometry(1, 1, 1);
+    const benches = new InstancedMesh(bench, wood, 6);
+    benches.name = 'aohara-plaza-benches';
+    benches.castShadow = true;
+    benches.receiveShadow = true;
+    const benchSpots: readonly (readonly [number, number])[] = [
+      [centerLocalX - 60, centerLocalZ - 65],
+      [centerLocalX - 30, centerLocalZ - 65],
+      [centerLocalX + 30, centerLocalZ - 65],
+      [centerLocalX + 60, centerLocalZ - 65],
+      [centerLocalX - 85, centerLocalZ - 45],
+      [centerLocalX - 85, centerLocalZ + 25],
+    ];
+    const benchTransform = new Object3D();
+    benchSpots.forEach(([x, z], index) => {
+      benchTransform.position.set(x, WORLD_BASE_Y + 0.25, z);
+      benchTransform.scale.set(2.2, 0.5, 0.55);
+      benchTransform.rotation.set(0, 0, 0);
+      benchTransform.updateMatrix();
+      benches.setMatrixAt(index, benchTransform.matrix);
+    });
+    benches.instanceMatrix.needsUpdate = true;
+    this.root.add(benches);
+
+    const planterBox = createArchitecturalMaterial({
+      name: 'aohara-plaza-planter-pbr',
+      colorHex: 0x4a4f55,
+      roughness: 0.85,
+      metalness: 0.1,
+      detailAmplitude: 0.02,
+    });
+    const planterGreen = createArchitecturalMaterial({
+      name: 'aohara-plaza-planter-green-pbr',
+      colorHex: 0x3f5a3a,
+      roughness: 0.95,
+      metalness: 0,
+      detailAmplitude: 0.05,
+    });
+    const planterSpots: readonly (readonly [number, number])[] = [
+      [centerLocalX - 85, centerLocalZ - 68],
+      [centerLocalX - 85, centerLocalZ + 68],
+      [centerLocalX + 65, centerLocalZ + 68],
+      [centerLocalX + 65, centerLocalZ - 68],
+    ];
+    const boxes = addInstancedBoxes(
+      this.root,
+      new BoxGeometry(1, 1, 1),
+      planterBox,
+      planterSpots.map(([x, z]) => ({
+        x,
+        y: WORLD_BASE_Y + 0.35,
+        z,
+        scale: [1.2, 0.7, 1.2] as const,
+      })),
+      'aohara-plaza-planters',
+    );
+    boxes.castShadow = true;
+    const greens = addInstancedBoxes(
+      this.root,
+      new BoxGeometry(1, 1, 1),
+      planterGreen,
+      planterSpots.map(([x, z]) => ({
+        x,
+        y: WORLD_BASE_Y + 0.95,
+        z,
+        scale: [0.95, 0.5, 0.95] as const,
+      })),
+      'aohara-plaza-planter-greens',
+    );
+    greens.castShadow = true;
+  }
+
   #buildCityTypologies(buildings: readonly CityBuildingSpec[]): CityTypologyStats {
     const unitBox = new BoxGeometry(1, 1, 1);
     const wallGroups = new Map<number, TransformSpec[]>();
@@ -3851,7 +4074,8 @@ export class UrbanNightWorld implements SceneContent {
       bollards.receiveShadow = false;
     }
 
-    const defaultSpawnZ = -AOHARA_DISTRICT_CONFIG.gridSpacingMeters / 2;
+    // Phase 8.4a: the spawn sits on the cross street midway to the north street (non-uniform grid).
+    const defaultSpawnZ = aoharaRowOffsetMeters(1) / 2;
     const budgetedPositions = this.#networkIntegrated
       ? selectNearestStreetLights(bulbPositions, pointLightBudget, 0, defaultSpawnZ)
       : bulbPositions.slice(0, pointLightBudget);
@@ -3889,7 +4113,7 @@ export class UrbanNightWorld implements SceneContent {
   }
 
   #buildArchitecturalLights(pointLightBudget: number): void {
-    const focusZ = this.#networkIntegrated ? -AOHARA_DISTRICT_CONFIG.gridSpacingMeters / 2 : 0;
+    const focusZ = this.#networkIntegrated ? aoharaRowOffsetMeters(1) / 2 : 0;
     this.#updateArchitecturalLightSelection(0, focusZ, 1);
     this.#activeArchitecturalCandidates.forEach((candidate, index) => {
       const light = new PointLight(

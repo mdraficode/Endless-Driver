@@ -34,8 +34,9 @@ describe('Aohara driving-world integration', () => {
       distantMountainVertices: 4 * 73 * 15,
       highRiseBuildings: 32,
       frontageBuildings: expect.any(Number),
-      streetLightPoles: 240,
-      districtBanners: 60,
+      // Phase 8.4a: the re-planned (wider) grid adds street length: +12 poles, +3 banners.
+      streetLightPoles: 252,
+      districtBanners: 63,
       stadiums: 1,
       casinos: 2,
       mansions: 4,
@@ -53,7 +54,8 @@ describe('Aohara driving-world integration', () => {
       urbanAlleyFacadeDoors: expect.any(Number),
       urbanAlleyFacadeWallRuns: expect.any(Number),
       urbanAlleyFacadeBatches: 5,
-      urbanSidewalkEdges: 102,
+      // Phase 8.4a: one fewer block (the plaza) removes three sidewalk edges from the 4×4 grid.
+      urbanSidewalkEdges: 99,
       urbanCrosswalkIntersections: 25,
       urbanWetLook: 0.85,
       roadMeshes: 8,
@@ -62,9 +64,11 @@ describe('Aohara driving-world integration', () => {
     if (stats === undefined) {
       throw new Error('the driving world should expose integrated enrichment diagnostics');
     }
-    // Phase 8.3c massing: the perimeter rows open where the alley mouths cross them.
-    expect(stats.frontageBuildings).toBeGreaterThanOrEqual(200);
-    expect(stats.frontageBuildings).toBeLessThanOrEqual(240);
+    // Phase 8.4a massing: 240 street-row candidates (15 blocks × 4 sides × 4 shells); the row
+    // opens at the passage mouths, block corners, and where avenue towers flank narrow-block
+    // rows — 52 of 240 are clearance-rejected.
+    expect(stats.frontageBuildings).toBeGreaterThanOrEqual(180);
+    expect(stats.frontageBuildings).toBeLessThanOrEqual(196);
     expect(stats.urbanAlleyFacadeBuildings).toBeGreaterThan(0);
     expect(stats.urbanAlleyFacadeWindows).toBeGreaterThan(0);
     expect(stats.urbanAlleyFacadeDoors).toBeGreaterThan(0);

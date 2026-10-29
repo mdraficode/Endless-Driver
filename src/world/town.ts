@@ -232,6 +232,12 @@ export function generateRoadPoles(sampler: TerrainSampler, network: RoadNetwork)
       if (nearNode || sampler.normalAt(px, pz).y < 0.82) {
         continue;
       }
+      // Phase 8.4a: the re-planned outer street ring can run close to the rural roads; a pole
+      // must still belong to the road it was marched along, not end up inside a neighbour.
+      const nearestRoad = sampler.roadAt?.(px, pz);
+      if (nearestRoad !== null && nearestRoad !== undefined && nearestRoad.edgeId !== edge.id) {
+        continue;
+      }
       poles.push({
         key: `p${edge.id}:${poleIndex}`,
         x: px,

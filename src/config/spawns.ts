@@ -8,7 +8,7 @@
  * road carve has already flattened to a drivable grade.
  */
 import { HINODE_TOUGE_START } from './roads';
-import { AOHARA_DISTRICT_CONFIG } from './urban-district';
+import { AOHARA_DISTRICT_CONFIG, aoharaRowOffsetMeters } from './urban-district';
 
 export const DEFAULT_SPAWN_ID = 'aohara-city';
 
@@ -40,7 +40,8 @@ export const SPAWN_POINTS: readonly SpawnPoint[] = [
     id: 'aohara-city',
     label: 'Aohara Metropolis — Central Avenue',
     x: AOHARA_DISTRICT_CONFIG.centerX,
-    z: AOHARA_DISTRICT_CONFIG.centerZ - AOHARA_DISTRICT_CONFIG.gridSpacingMeters / 2,
+    // Midway along the cross street between the central intersection and the north street.
+    z: AOHARA_DISTRICT_CONFIG.centerZ + aoharaRowOffsetMeters(1) / 2,
     yaw: 0,
   },
 ];

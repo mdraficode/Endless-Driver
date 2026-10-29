@@ -30,7 +30,11 @@ import {
   type TrafficSignalAspect,
 } from '../config/urban-city';
 import type { TrafficIntensity } from '../config/game-preferences';
-import { AOHARA_DISTRICT_CONFIG } from '../config/urban-district';
+import {
+  AOHARA_DISTRICT_CONFIG,
+  aoharaColumnOffsetMeters,
+  aoharaRowOffsetMeters,
+} from '../config/urban-district';
 import type { TierId } from '../config/tiers';
 import { clamp } from '../shared/math';
 import { yawFromQuat } from '../shared/vector';
@@ -445,10 +449,18 @@ function sampleRoute(route: UrbanRoute, distance: number, pose: RoutePose): void
 }
 
 function buildTrafficRoutes(): readonly UrbanRoute[] {
-  const halfGrid = AOHARA_DISTRICT_CONFIG.gridSpacingMeters;
-  const outerLane = halfGrid + LANE_OFFSET_METERS;
+  // Phase 8.4a: the central block is no longer square — each loop side reaches the centre of
+  // its block, so the west/east/north/south extents differ.
+  const west = Math.abs(aoharaColumnOffsetMeters(1)) / 2;
+  const east = aoharaColumnOffsetMeters(2) / 2;
+  const north = Math.abs(aoharaRowOffsetMeters(1)) / 2;
+  const south = aoharaRowOffsetMeters(2) / 2;
+  const westLane = west + LANE_OFFSET_METERS;
+  const eastLane = east + LANE_OFFSET_METERS;
+  const northLane = north + LANE_OFFSET_METERS;
+  const southLane = south + LANE_OFFSET_METERS;
   const { stopLineOffsetMeters } = URBAN_CITY_CONFIG.trafficSignal;
-  const stopDistance = halfGrid - stopLineOffsetMeters;
+  const stopDistance = Math.min(west, east, north, south) - stopLineOffsetMeters;
   const lane = LANE_OFFSET_METERS;
 
   // Two deterministic one-way loops put opposing lanes on opposite sides of the centreline.
@@ -456,27 +468,27 @@ function buildTrafficRoutes(): readonly UrbanRoute[] {
   return [
     createRoute(
       [
-        [-halfGrid, -lane],
-        [halfGrid, -lane],
-        [outerLane, 0],
-        [outerLane, halfGrid],
-        [halfGrid, outerLane],
-        [-halfGrid, outerLane],
-        [-outerLane, halfGrid],
-        [-outerLane, 0],
+        [-west, -lane],
+        [east, -lane],
+        [eastLane, 0],
+        [eastLane, south],
+        [east, southLane],
+        [-west, southLane],
+        [-westLane, south],
+        [-westLane, 0],
       ],
       stopDistance,
     ),
     createRoute(
       [
-        [halfGrid, lane],
-        [-halfGrid, lane],
-        [-outerLane, 0],
-        [-outerLane, -halfGrid],
-        [-halfGrid, -outerLane],
-        [halfGrid, -outerLane],
-        [outerLane, -halfGrid],
-        [outerLane, 0],
+        [east, lane],
+        [-west, lane],
+        [-westLane, 0],
+        [-westLane, -north],
+        [-west, -northLane],
+        [east, -northLane],
+        [eastLane, -north],
+        [eastLane, 0],
       ],
       stopDistance,
     ),
@@ -490,15 +502,21 @@ function buildSidewalkRoutes(): readonly UrbanRoute[] {
     localStreetHalfWidthMeters + shoulderMeters + URBAN_CITY_CONFIG.sidewalk.widthMeters / 2;
   const arterialOffset =
     arterialHalfWidthMeters + shoulderMeters + URBAN_CITY_CONFIG.sidewalk.widthMeters / 2;
-  const halfGrid = AOHARA_DISTRICT_CONFIG.gridSpacingMeters;
+  // Phase 8.4a: per-side distances on the non-uniform grid (west/east/north/south halves).
+  const west = Math.abs(aoharaColumnOffsetMeters(1)) / 2;
+  const east = aoharaColumnOffsetMeters(2) / 2;
+  const north = Math.abs(aoharaRowOffsetMeters(1)) / 2;
+  const south = aoharaRowOffsetMeters(2) / 2;
   const routes: UrbanRoute[] = [];
 
   for (const xSide of [-1, 1] as const) {
     for (const zSide of [-1, 1] as const) {
+      const blockHalfX = xSide === -1 ? west : east;
+      const blockHalfZ = zSide === -1 ? north : south;
       const innerX = xSide * arterialOffset;
-      const outerX = xSide * (halfGrid - localOffset);
+      const outerX = xSide * (blockHalfX - localOffset);
       const innerZ = zSide * arterialOffset;
-      const outerZ = zSide * (halfGrid - localOffset);
+      const outerZ = zSide * (blockHalfZ - localOffset);
       const minX = Math.min(innerX, outerX);
       const maxX = Math.max(innerX, outerX);
       const minZ = Math.min(innerZ, outerZ);
