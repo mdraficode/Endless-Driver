@@ -1104,6 +1104,19 @@ describe('Aohara city night-lighting rules', () => {
         (stats.casinos ?? 0) +
         (stats.stadiums ?? 0);
       expect(sumByPrefix('aohara-low-rise-facades-')).toBeGreaterThanOrEqual(totalBuildings + 100);
+      // Phase 8.3h: the street reads as a patchwork of facade materials — per-block material
+      // families (warm plaster / cool panel / concrete / dark stone) produce many distinct
+      // colour batches, and some facades are bright enough to catch the streetlight glow.
+      const lowRiseFacades = city.root.children.filter(
+        (child): child is InstancedMesh =>
+          child.name.startsWith('aohara-low-rise-facades-') && child instanceof InstancedMesh,
+      );
+      expect(lowRiseFacades.length).toBeGreaterThanOrEqual(20);
+      expect(
+        lowRiseFacades.some(
+          (mesh) => (mesh.material as MeshPhysicalNodeMaterial).color.getHex() >= 0x900000,
+        ),
+      ).toBe(true);
     } finally {
       city.dispose();
     }

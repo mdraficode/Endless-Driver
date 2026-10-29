@@ -786,7 +786,15 @@ function applyInfillRoofMix(buildings: readonly CityBuildingSpec[]): readonly Ci
 }
 
 function buildAoharaFrontageBuildingSpecs(): readonly CityBuildingSpec[] {
-  const wallPalette = [0x71685d, 0x566167, 0x6c7469, 0x735d55, 0x596479, 0x83765f] as const;
+  // Phase 8.3h: per-block material families — warm plaster, cool panel, concrete and dark
+  // stone. A real night street is a patchwork of facade materials, and a few bright enough
+  // to catch the streetlight glow; a monolith of dark grey reads as one big box.
+  const wallFamilies = [
+    [0x9a8f7d, 0x938672, 0xa0957f],
+    [0x7d8a94, 0x74828e, 0x86959f],
+    [0x8a8a84, 0x80817b, 0x92928a],
+    [0x71685d, 0x566167, 0x6c7469, 0x735d55, 0x596479, 0x83765f],
+  ] as const;
   const roofPalette = [0x3b4149, 0x39464d, 0x4a423a, 0x53463f, 0x454a52, 0x594a42] as const;
   const sides = ['north', 'east', 'south', 'west'] as const;
   const grid = AOHARA_DISTRICT_CONFIG.gridSpacingMeters;
@@ -805,13 +813,22 @@ function buildAoharaFrontageBuildingSpecs(): readonly CityBuildingSpec[] {
       block.rowIndex === blockRows - 1 ||
       block.columnIndex === 0 ||
       block.columnIndex === blockCols - 1;
+    // Phase 8.3h: the whole block takes one material family — the block reads as one
+    // facade material, and neighbouring blocks differ.
+    const wallFamily =
+      wallFamilies[
+        Math.floor(stableUnit(block.rowIndex, block.columnIndex, 2003) * wallFamilies.length)
+      ] ?? wallFamilies[0];
     sides.forEach((side, sideIndex) => {
       const characterRoll = stableUnit(blockIndex, sideIndex, 1953);
       const character: 'low' | 'mid' | 'high' =
         isEdgeBlock && characterRoll < 0.2 ? 'high' : characterRoll < 0.45 ? 'low' : 'mid';
       AOHARA_BACKSTREET_CONFIG.frontagePositionsMeters.forEach((tangentOffset, positionIndex) => {
         const paletteIndex = Math.floor(
-          stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1931) * wallPalette.length,
+          stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1931) * wallFamily.length,
+        );
+        const roofIndex = Math.floor(
+          stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1937) * roofPalette.length,
         );
         const radialInset = grid / 2 - AOHARA_BACKSTREET_CONFIG.frontageBuildingInsetMeters;
         const heightJitter = stableUnit(blockIndex, sideIndex * 4 + positionIndex, 1949);
@@ -881,8 +898,8 @@ function buildAoharaFrontageBuildingSpecs(): readonly CityBuildingSpec[] {
           width: AOHARA_BACKSTREET_CONFIG.frontageBuildingDepthMeters,
           depth: streetSpan,
           height,
-          color: wallPalette[paletteIndex] ?? wallPalette[0],
-          roofColor: roofPalette[paletteIndex] ?? roofPalette[0],
+          color: wallFamily[paletteIndex] ?? wallFamily[0],
+          roofColor: roofPalette[roofIndex] ?? roofPalette[0],
           roofStyle: roofRoll < hippedChance ? 'hipped' : 'flat',
           yaw:
             side === 'north'
