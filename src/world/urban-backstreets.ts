@@ -10,12 +10,15 @@ import {
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-import { URBAN_ACTIVITY_TIER_BUDGET } from '../config/urban-city';
+import { URBAN_ACTIVITY_TIER_BUDGET, URBAN_CITY_CONFIG } from '../config/urban-city';
 import { AOHARA_BACKSTREET_BLOCKS } from '../config/aohara-backstreets';
+import { AOHARA_DISTRICT_CONFIG } from '../config/urban-district';
+import { aoharaBoulevardDistanceMeters } from '../config/roads';
 import type { TierId } from '../config/tiers';
 import { DEFAULT_SPAWN_ID, SPAWN_POINTS } from '../config/spawns';
 import type { RoadNetwork } from './road-network';
 import type { StaticBuildingBox } from './static-building-collision';
+import { CAR_CIRCLE_RADIUS_METERS } from './static-building-collision';
 
 export type UrbanAlleyPropKind =
   'waste-bin' | 'dumpster' | 'cardboard-stack' | 'hand-cart' | 'crate-stack' | 'pallet';
@@ -245,6 +248,21 @@ function isPlacementClear(
     road !== null &&
     road.distance - road.halfWidthMeters - road.shoulderMeters <
       candidate.widthMeters / 2 + ALLEY_PROP_ROAD_CLEARANCE_METERS
+  ) {
+    return false;
+  }
+  // The grand boulevard is a real street: its full right-of-way (asphalt + shoulder +
+  // sidewalk half) plus a car circle must stay free of props, even though the nearest
+  // probed road here is only the alley.
+  const boulevardClearanceMeters =
+    AOHARA_DISTRICT_CONFIG.arterialHalfWidthMeters +
+    AOHARA_DISTRICT_CONFIG.shoulderMeters +
+    URBAN_CITY_CONFIG.sidewalk.widthMeters / 2 +
+    CAR_CIRCLE_RADIUS_METERS +
+    0.3 +
+    candidate.widthMeters / 2;
+  if (
+    Math.abs(aoharaBoulevardDistanceMeters(candidate.x, candidate.z)) < boulevardClearanceMeters
   ) {
     return false;
   }

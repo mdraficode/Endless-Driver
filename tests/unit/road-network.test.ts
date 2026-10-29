@@ -72,7 +72,9 @@ describe('road network graph', () => {
       } else {
         // Phase 8.4a: street edges are split by the passage mouths at the thirds of each block
         // face; the middle third of the shortest (140 m) blocks is 46.7 m long.
-        expect(edge.lengthMeters).toBeGreaterThan(45);
+        // Phase 8.4b: the boulevard's crossings split the streets it meets, leaving a short
+        // 12.7 m stub where a passage mouth sits just past an avenue junction.
+        expect(edge.lengthMeters).toBeGreaterThan(edge.roadClass === 'urban-local' ? 12 : 45);
         expect(edge.points.length).toBeGreaterThan(
           edge.roadClass === 'urban-local' || edge.roadClass === 'urban-arterial' ? 1 : 10,
         );
@@ -126,15 +128,33 @@ describe('road network graph', () => {
 
     // Phase 8.4a: the 4×4 block grid loses one block to the central plaza, and the plaza's
     // passage mouths coincide with the surviving neighbours' access nodes on shared streets.
+    // Phase 8.4b: the diagonal grand boulevard adds three crossing nodes and four arterial
+    // edges, and closes the two passage mouths it would swallow.
     expect(AOHARA_BACKSTREET_BLOCKS).toHaveLength(15);
-    expect(aoharaNodes).toHaveLength(114);
+    expect(aoharaNodes).toHaveLength(115);
     expect(gridNodes).toHaveLength(25);
-    expect(accessNodes).toHaveLength(59);
+    expect(accessNodes).toHaveLength(57);
     expect(internalNodes).toHaveLength(30);
-    expect(urbanEdges).toHaveLength(99);
-    expect(arterialEdges).toHaveLength(21);
-    expect(localEdges).toHaveLength(78);
-    expect(alleyEdges).toHaveLength(75);
+    expect(urbanEdges).toHaveLength(104);
+    expect(arterialEdges).toHaveLength(25);
+    expect(localEdges).toHaveLength(79);
+    expect(alleyEdges).toHaveLength(73);
+    expect(
+      network.edges.filter(
+        (edge) =>
+          edge.roadClass === 'urban-arterial' &&
+          (edge.from.startsWith('aohara-boulevard-') || edge.to.startsWith('aohara-boulevard-')),
+      ),
+    ).toHaveLength(4);
+    // The mouths the avenue crosses are closed so the street rows run past it unbroken.
+    const r3c2 = AOHARA_BACKSTREET_BLOCKS.find(
+      (block) => block.rowIndex === 3 && block.columnIndex === 2,
+    )!;
+    const r3c3 = AOHARA_BACKSTREET_BLOCKS.find(
+      (block) => block.rowIndex === 3 && block.columnIndex === 3,
+    )!;
+    expect(r3c2.accesses.north).toBeUndefined();
+    expect(r3c3.accesses.west).toBeUndefined();
     expect(westGateway).toMatchObject({
       x: AOHARA_DISTRICT_CONFIG.centerX + aoharaColumnOffsetMeters(0),
       z: AOHARA_DISTRICT_CONFIG.centerZ,
@@ -149,9 +169,14 @@ describe('road network graph', () => {
       const courtyard = network.nodeById(block.courtyardNodeId);
       expect(hub).not.toBeNull();
       expect(courtyard).not.toBeNull();
-      expect(network.neighboursOf(block.hubNodeId)).toHaveLength(5);
+      // Phase 8.4b: a hub has the courtyard plus one spoke per open mouth; the grand
+      // boulevard closes the mouths it would swallow.
+      const openMouths = Object.values(block.accesses).filter(
+        (access): access is NonNullable<typeof access> => access !== undefined,
+      );
+      expect(network.neighboursOf(block.hubNodeId)).toHaveLength(openMouths.length + 1);
       expect(network.neighboursOf(block.hubNodeId)).toContain(block.courtyardNodeId);
-      for (const access of Object.values(block.accesses)) {
+      for (const access of openMouths) {
         expect(network.neighboursOf(access.nodeId)).toContain(block.hubNodeId);
         const alley = network.edges.find(
           (edge) =>
@@ -212,8 +237,10 @@ describe('road network graph', () => {
     const stats = roads.getStats();
     expect(stats.roadMeshes).toBeLessThanOrEqual(8);
     // Phase 8.4a: one fewer block (the plaza) removes three sidewalk edges from the 4×4 grid.
-    expect(stats.urbanSidewalkEdges).toBe(99);
-    expect(stats.urbanCrosswalkIntersections).toBe(25);
+    // Phase 8.4b: the boulevard's four arterial edges and its street splits add sidewalks,
+    // and its crossings join the counted intersections.
+    expect(stats.urbanSidewalkEdges).toBe(104);
+    expect(stats.urbanCrosswalkIntersections).toBe(28);
     expect(roads.object.getObjectByName('aohara-sidewalks')).not.toBeNull();
     expect(roads.object.getObjectByName('aohara-crosswalks-and-stop-lines')).not.toBeNull();
     const urbanAsphalt = roads.object.getObjectByName('road-urban-asphalt');
@@ -274,6 +301,11 @@ describe('road network graph', () => {
     }
     for (const edge of network.edges) {
       if (edge.roadClass === 'urban-alley') {
+        continue;
+      }
+      // Phase 8.4b: the boulevard crossings leave a 12.7 m stub shorter than two trim
+      // windows; its paint is withheld entirely.
+      if (edge.lengthMeters <= ROAD_MARKING_JUNCTION_CLEARANCE_METERS * 2) {
         continue;
       }
       const clipped = trimRoadEdge(

@@ -57,7 +57,9 @@ import {
   AOHARA_PLAZA_BLOCK,
   isAoharaPlazaBlock,
 } from '../config/aohara-backstreets';
+import { AOHARA_BOULEVARD_SLOPE, aoharaBoulevardDistanceMeters } from '../config/roads';
 import {
+  AOHARA_DISTRICT_CONFIG,
   AOHARA_GRID_COLUMNS,
   AOHARA_GRID_ROWS,
   aoharaBlockLocal,
@@ -68,6 +70,7 @@ import { configureTiledSurface, SurfaceTextureLibrary } from '../assets/SurfaceT
 import type { MaterialTextureSet } from '../assets/AssetManifest';
 import type { DaylightState } from '../environment/EnvironmentClock';
 import {
+  CAR_CIRCLE_RADIUS_METERS,
   collideCarWithStaticBoxes,
   testCarCirclesVsCircle,
   type CarCircleContact,
@@ -296,13 +299,42 @@ function pointToFootprintDistance(x: number, z: number, footprint: StaticBuildin
   );
 }
 
-function buildAoharaAlleyClearanceSamples(
-  network: RoadNetwork | undefined,
-): readonly { readonly x: number; readonly z: number; readonly halfWidth: number }[] {
+/**
+ * Per-sample building clearance: narrow alleys only need a wall gap, while the arterial
+ * avenues (main avenue + grand boulevard) must keep a full car circle plus shoulder and
+ * sidewalk half clear of any building volume.
+ */
+function roadClearanceMeters(roadClass: RoadNetwork['edges'][number]['roadClass']): number {
+  if (roadClass === 'urban-alley') {
+    return AOHARA_BACKSTREET_CONFIG.alleyWallClearanceMeters;
+  }
+  if (roadClass === 'urban-arterial') {
+    return (
+      AOHARA_DISTRICT_CONFIG.shoulderMeters +
+      URBAN_CITY_CONFIG.sidewalk.widthMeters / 2 +
+      CAR_CIRCLE_RADIUS_METERS +
+      0.3
+    );
+  }
+  return 0;
+}
+
+function buildAoharaAlleyClearanceSamples(network: RoadNetwork | undefined): readonly {
+  readonly x: number;
+  readonly z: number;
+  readonly halfWidth: number;
+  readonly clearanceMeters: number;
+}[] {
   if (network === undefined) return [];
-  const samples: { readonly x: number; readonly z: number; readonly halfWidth: number }[] = [];
+  const samples: {
+    readonly x: number;
+    readonly z: number;
+    readonly halfWidth: number;
+    readonly clearanceMeters: number;
+  }[] = [];
   for (const edge of network.edges) {
-    if (edge.roadClass !== 'urban-alley') continue;
+    const clearanceMeters = roadClearanceMeters(edge.roadClass);
+    if (clearanceMeters <= 0) continue;
     for (let index = 0; index + 1 < edge.points.length; index += 1) {
       const start = edge.points[index]!;
       const end = edge.points[index + 1]!;
@@ -314,6 +346,7 @@ function buildAoharaAlleyClearanceSamples(
           x: start.x + (end.x - start.x) * t,
           z: start.z + (end.z - start.z) * t,
           halfWidth: edge.halfWidthMeters,
+          clearanceMeters,
         });
       }
     }
@@ -437,7 +470,7 @@ function selectClearCityBuildings(
       alleySamples.some(
         (sample) =>
           pointToFootprintDistance(sample.x, sample.z, footprint) <
-          sample.halfWidth + AOHARA_BACKSTREET_CONFIG.alleyWallClearanceMeters,
+          sample.halfWidth + sample.clearanceMeters,
       )
     ) {
       continue;
@@ -594,7 +627,21 @@ function buildAoharaTowerSpecs(): readonly TowerSpec[] {
       }
     }
   }
-  return towers;
+  // Phase 8.4b: the grand boulevard is a real street. Tower specs are block-local, so convert
+  // to world coordinates before keeping only the volumes that clear the avenue's asphalt and
+  // shoulder.
+  const normalScale = 1 / Math.hypot(AOHARA_BOULEVARD_SLOPE, 1);
+  const avenueReach =
+    AOHARA_DISTRICT_CONFIG.arterialHalfWidthMeters + AOHARA_DISTRICT_CONFIG.shoulderMeters;
+  return towers.filter((tower) => {
+    const signedDistance = aoharaBoulevardDistanceMeters(
+      AOHARA_DISTRICT_CONFIG.centerX + tower.x,
+      AOHARA_DISTRICT_CONFIG.centerZ + tower.z,
+    );
+    const reach =
+      normalScale * AOHARA_BOULEVARD_SLOPE * (tower.width / 2) + normalScale * (tower.depth / 2);
+    return Math.abs(signedDistance) - reach >= avenueReach;
+  });
 }
 
 const AOHARA_CITY_TOWERS = buildAoharaTowerSpecs();
@@ -3267,7 +3314,7 @@ export class UrbanNightWorld implements SceneContent {
    * |z-85| keep a 12 m margin). No buildings, no collider: the car can cross the square.
    */
   #buildPlaza(): void {
-    const { centerLocalX, centerLocalZ, widthMeters, depthMeters } = aoharaBlockLocal(
+    const { centerLocalX, centerLocalZ, widthMeters } = aoharaBlockLocal(
       AOHARA_PLAZA_BLOCK.rowIndex,
       AOHARA_PLAZA_BLOCK.columnIndex,
     );
@@ -3280,6 +3327,11 @@ export class UrbanNightWorld implements SceneContent {
       clearcoat: 0.05,
       clearcoatRoughness: 0.5,
     });
+    // Phase 8.4b: the grand boulevard crosses the plaza's west edge (its 'west' junction sits
+    // on the x = -200 street), so one slab would pave right under the avenue's asphalt and
+    // crossing paint. Two slabs keep 13 m (asphalt + shoulder + margin) off the centreline:
+    // a full-width south slab and a north slab that tapers off where the avenue band reaches
+    // the plaza's north edge.
     const paving = addInstancedBoxes(
       this.root,
       new BoxGeometry(1, 1, 1),
@@ -3288,8 +3340,14 @@ export class UrbanNightWorld implements SceneContent {
         {
           x: centerLocalX,
           y: WORLD_BASE_Y + 0.07,
-          z: centerLocalZ,
-          scale: [widthMeters - 8, 0.14, depthMeters - 8],
+          z: centerLocalZ - 47.5,
+          scale: [widthMeters - 8, 0.14, 67],
+        },
+        {
+          x: centerLocalX - 21,
+          y: WORLD_BASE_Y + 0.07,
+          z: centerLocalZ + 49.5,
+          scale: [150, 0.14, 63],
         },
       ],
       'aohara-plaza-paving',
@@ -3383,11 +3441,12 @@ export class UrbanNightWorld implements SceneContent {
       metalness: 0,
       detailAmplitude: 0.05,
     });
+    // The north-east corner planter would sit on bare ground between the two slabs, so the
+    // planted row follows the paving: south-west, south-east and north-west.
     const planterSpots: readonly (readonly [number, number])[] = [
       [centerLocalX - 85, centerLocalZ - 68],
-      [centerLocalX - 85, centerLocalZ + 68],
-      [centerLocalX + 65, centerLocalZ + 68],
       [centerLocalX + 65, centerLocalZ - 68],
+      [centerLocalX - 85, centerLocalZ + 68],
     ];
     const boxes = addInstancedBoxes(
       this.root,

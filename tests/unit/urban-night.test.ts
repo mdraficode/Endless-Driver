@@ -922,7 +922,9 @@ describe('Aohara city night-lighting rules', () => {
     expect(nightStats.urbanEasterEggs).toBe(URBAN_STREET_LIFE_TIER_BUDGET.B.easterEggs);
     expect(nightStats).toMatchObject({
       cityBlocks: 16,
-      highRiseBuildings: 32,
+      // Phase 8.4b: three of the grid towers would sit on the grand boulevard's right-of-way
+      // and are dropped, leaving 24 grid towers and the 8 lookdev anchors.
+      highRiseBuildings: 29,
       infillBuildings: URBAN_ACTIVITY_TIER_BUDGET.B.infillBuildings,
       infillHippedRoofs: 4,
       infillFlatRoofs: 8,
@@ -958,19 +960,20 @@ describe('Aohara city night-lighting rules', () => {
       activePointLights: URBAN_NIGHT_TIER_BUDGET.B.pointLights,
     });
     expect(URBAN_CITY_CONFIG.streetLamp.spacingMeters).toBe(40);
-    // Phase 8.4a: the re-planned (wider) grid adds street length: +12 poles, +3 banners,
-    // +2 bollards and one more mood-light candidate.
-    expect(city.getContentStats().streetLightPoles).toBe(252);
-    expect(city.getContentStats().districtBanners).toBe(63);
-    expect(city.getContentStats().streetLightBollards).toBe(32);
-    expect(city.getContentStats().nightMoodLightCandidates).toBe(16);
-    expect(city.getContentStats().highRiseNightAccentInstances).toBe(33);
+    // Phase 8.4a: the re-planned (wider) grid adds street length; 8.4b's grand boulevard
+    // adds four arterial approaches (+34 poles, +9 banners, +4 bollards, +2 mood candidates).
+    expect(city.getContentStats().streetLightPoles).toBe(286);
+    expect(city.getContentStats().districtBanners).toBe(72);
+    expect(city.getContentStats().streetLightBollards).toBe(36);
+    expect(city.getContentStats().nightMoodLightCandidates).toBe(18);
+    expect(city.getContentStats().highRiseNightAccentInstances).toBe(30);
     const cityStats = city.getContentStats();
     // Phase 8.4a massing: 240 street-row candidates (15 blocks × 4 sides × 4 shells); the row
     // opens at the passage mouths (2.75 m clearance), at block corners, and where the avenue
-    // towers flank the narrow-block rows — 52 of 240 are clearance-rejected.
-    expect(cityStats.frontageBuildings).toBeGreaterThanOrEqual(180);
-    expect(cityStats.frontageBuildings).toBeLessThanOrEqual(196);
+    // towers flank the narrow-block rows. 8.4b trims the shells the grand boulevard's
+    // right-of-way would cut through.
+    expect(cityStats.frontageBuildings).toBeGreaterThanOrEqual(172);
+    expect(cityStats.frontageBuildings).toBeLessThanOrEqual(184);
     expect(cityStats.shops).toBeGreaterThan(4);
     expect(cityStats.billboards).toBe(cityStats.shops! + 14);
     expect(cityStats.storefrontNightAccentInstances).toBe((cityStats.shops! + 2) * 3);
@@ -1092,9 +1095,9 @@ describe('Aohara city night-lighting rules', () => {
               : total,
           0,
         );
-      expect(stats.highRiseBuildings).toBe(32);
-      // 32 bodies + 32 crowns (every tower carries one since 8.3g).
-      expect(sumByPrefix('aohara-high-rise-facades-')).toBe(32 * 2);
+      expect(stats.highRiseBuildings).toBe(29);
+      // 29 bodies + 29 crowns (every tower carries one since 8.3g).
+      expect(sumByPrefix('aohara-high-rise-facades-')).toBe(29 * 2);
       // Each facade box gets exactly one roof cap (terrace + crown cap when crowned).
       expect(sumByPrefix('aohara-rooftop-caps')).toBe(sumByPrefix('aohara-high-rise-facades-'));
       const totalBuildings =
@@ -1136,8 +1139,9 @@ describe('Aohara city night-lighting rules', () => {
       networkIntegrated: true,
     });
     const footprints = city.getStaticBuildingFootprints();
+    // 52 = the 29 boulevard-cleared grid towers plus the 23 authored city volumes.
     expect(footprints).toHaveLength(
-      55 + city.getContentStats().frontageBuildings! + URBAN_ACTIVITY_TIER_BUDGET.B.infillBuildings,
+      52 + city.getContentStats().frontageBuildings! + URBAN_ACTIVITY_TIER_BUDGET.B.infillBuildings,
     );
 
     for (let first = 0; first < footprints.length; first += 1) {
@@ -1204,8 +1208,10 @@ describe('Aohara city night-lighting rules', () => {
       }
     }
     expect(clearFrontageMeters).toBeLessThan(plannedFrontageMeters);
-    // Preserve rows across most of each passage while masking the parts with no safe road-edge gap.
-    expect(clearFrontageMeters / plannedFrontageMeters).toBeGreaterThan(0.74);
+    // Preserve rows across most of each passage while masking the parts with no safe road-edge
+    // gap. Phase 8.4b: the grand boulevard's right-of-way trims the shells it would cut,
+    // which lowers the floor from the 8.4a 0.74 to 0.70.
+    expect(clearFrontageMeters / plannedFrontageMeters).toBeGreaterThan(0.7);
 
     const city = new UrbanNightWorld('B', {
       position: [AOHARA_DISTRICT_CONFIG.centerX, 0, AOHARA_DISTRICT_CONFIG.centerZ],

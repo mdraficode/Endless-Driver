@@ -32,11 +32,12 @@ describe('Aohara driving-world integration', () => {
       cityBlocks: 16,
       distantMountainRanges: 4,
       distantMountainVertices: 4 * 73 * 15,
-      highRiseBuildings: 32,
+      highRiseBuildings: 29,
       frontageBuildings: expect.any(Number),
-      // Phase 8.4a: the re-planned (wider) grid adds street length: +12 poles, +3 banners.
-      streetLightPoles: 252,
-      districtBanners: 63,
+      // Phase 8.4a: the re-planned (wider) grid adds street length; 8.4b's grand boulevard
+      // adds four arterial approaches of its own (+34 poles, +9 banners over 8.4a).
+      streetLightPoles: 286,
+      districtBanners: 72,
       stadiums: 1,
       casinos: 2,
       mansions: 4,
@@ -54,9 +55,10 @@ describe('Aohara driving-world integration', () => {
       urbanAlleyFacadeDoors: expect.any(Number),
       urbanAlleyFacadeWallRuns: expect.any(Number),
       urbanAlleyFacadeBatches: 5,
-      // Phase 8.4a: one fewer block (the plaza) removes three sidewalk edges from the 4×4 grid.
-      urbanSidewalkEdges: 99,
-      urbanCrosswalkIntersections: 25,
+      // Phase 8.4a: one fewer block (the plaza) removes three sidewalk edges from the 4×4 grid;
+      // 8.4b's boulevard crossings add five edges and three counted intersections.
+      urbanSidewalkEdges: 104,
+      urbanCrosswalkIntersections: 28,
       urbanWetLook: 0.85,
       roadMeshes: 8,
     });
@@ -66,9 +68,9 @@ describe('Aohara driving-world integration', () => {
     }
     // Phase 8.4a massing: 240 street-row candidates (15 blocks × 4 sides × 4 shells); the row
     // opens at the passage mouths, block corners, and where avenue towers flank narrow-block
-    // rows — 52 of 240 are clearance-rejected.
-    expect(stats.frontageBuildings).toBeGreaterThanOrEqual(180);
-    expect(stats.frontageBuildings).toBeLessThanOrEqual(196);
+    // rows. 8.4b trims the shells the grand boulevard's right-of-way would cut through.
+    expect(stats.frontageBuildings).toBeGreaterThanOrEqual(172);
+    expect(stats.frontageBuildings).toBeLessThanOrEqual(184);
     expect(stats.urbanAlleyFacadeBuildings).toBeGreaterThan(0);
     expect(stats.urbanAlleyFacadeWindows).toBeGreaterThan(0);
     expect(stats.urbanAlleyFacadeDoors).toBeGreaterThan(0);

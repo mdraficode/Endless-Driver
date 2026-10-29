@@ -78,9 +78,7 @@ export interface AoharaBackstreetBlock {
    * boulevard crosses the block corner (Phase 8.4b), keeping the street row
    * continuous past the avenue.
    */
-  readonly accesses: Readonly<
-    Record<AoharaBackstreetSide, AoharaBackstreetAccess | undefined>
-  >;
+  readonly accesses: Readonly<Record<AoharaBackstreetSide, AoharaBackstreetAccess | undefined>>;
 }
 
 /**
@@ -262,17 +260,10 @@ function buildBlocks(): readonly AoharaBackstreetBlock[] {
         side: AoharaBackstreetSide,
         fraction: AoharaAccessThird,
       ): AoharaBackstreetAccess | undefined =>
-        isBoulevardClosedMouth(blockId, side) ? undefined : makeAccess(
-          rowIndex,
-          columnIndex,
-          centerLocalX,
-          centerLocalZ,
-          side,
-          fraction,
-        );
-      const accesses: Readonly<
-        Record<AoharaBackstreetSide, AoharaBackstreetAccess | undefined>
-      > = {
+        isBoulevardClosedMouth(blockId, side)
+          ? undefined
+          : makeAccess(rowIndex, columnIndex, centerLocalX, centerLocalZ, side, fraction);
+      const accesses: Readonly<Record<AoharaBackstreetSide, AoharaBackstreetAccess | undefined>> = {
         // Opposite thirds normally avoid face-to-face entrances; central tower-safe mouths align.
         // Phase 8.4b: the grand boulevard closes the mouths it would swallow (see above).
         north: makeSide('north', horizontalNorthBase),
@@ -297,13 +288,19 @@ function buildBlocks(): readonly AoharaBackstreetBlock[] {
             [0, 1],
             [0, -1],
           ] as const);
-      // Phase 8.4b: the grand boulevard sweeps across the south part of this
-      // block, so the courtyard branch keeps its north side — the yard node
-      // then clears the avenue's junction paint clearance.
-      const courtyardDirection =
+      // Phase 8.4b: the grand boulevard cuts both (r3,c3) and (r3,c2) block corners, so their
+      // courtyard branches point away from it — (r3,c3) keeps its north yard, (r3,c2) keeps
+      // its south yard — keeping every yard node clear of the avenue's painted edge.
+      const boulevardYardSide =
         rowIndex === 3 && columnIndex === 3
-          ? courtyardOffsets.findIndex(([dx, dz]) => dx === 0 && dz === -1)
-          : Math.floor(stableUnit(rowIndex, columnIndex, 1249) * courtyardOffsets.length);
+          ? -1
+          : rowIndex === 3 && columnIndex === 2
+            ? 1
+            : undefined;
+      const courtyardDirection =
+        boulevardYardSide === undefined
+          ? Math.floor(stableUnit(rowIndex, columnIndex, 1249) * courtyardOffsets.length)
+          : courtyardOffsets.findIndex(([dx, dz]) => dx === 0 && dz === boulevardYardSide);
       const courtyardDistance = 8 + stableUnit(rowIndex, columnIndex, 1261) * 3;
       const [courtyardDX, courtyardDZ] = courtyardOffsets[courtyardDirection]!;
       const courtyardNodeId = `${blockId}-yard`;

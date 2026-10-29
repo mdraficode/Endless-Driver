@@ -12,6 +12,7 @@ import {
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 
 import type { TierId } from '../config/tiers';
+import { aoharaBoulevardDistanceMeters } from '../config/roads';
 import type { RoadEdge, RoadNetwork } from './road-network';
 import { collideCarWithStaticBoxes, type StaticBuildingBox } from './static-building-collision';
 import type { TownCarProbe, TownHit } from './town';
@@ -23,6 +24,10 @@ const FACADE_COLLISION_SEGMENT_METERS = 2;
 const FACADE_PROP_CLEARANCE_SEGMENT_METERS = 6;
 const FACADE_ROAD_SAMPLE_METERS = 0.1;
 const FACADE_MIN_ROAD_CLEARANCE_METERS = 2.55;
+// Perpendicular distance a facade must keep from the grand boulevard's centerline:
+// the avenue's paint (centerline + 17 m of junction trim) plus a car circle plus margin,
+// so no street row stops at the avenue's asphalt.
+const FACADE_BOULEVARD_CLEARANCE_METERS = 15.3;
 const FACADE_MODULE_MAX_ADJUSTMENT_METERS = 2;
 const FACADE_MODULE_ADJUSTMENT_STEP_METERS = 0.25;
 const FACADE_BUILDING_DEPTH_METERS = 6.8;
@@ -124,11 +129,17 @@ function roadFrameAt(edge: RoadEdge, distanceMeters: number): RoadFrame {
 
 function hasFacadeRoadClearance(network: RoadNetwork, x: number, z: number): boolean {
   const nearestRoad = network.sample(x, z);
-  return (
-    nearestRoad === null ||
-    nearestRoad.distance - nearestRoad.halfWidthMeters - nearestRoad.shoulderMeters >=
+  if (
+    nearestRoad !== null &&
+    nearestRoad.distance - nearestRoad.halfWidthMeters - nearestRoad.shoulderMeters <
       FACADE_MIN_ROAD_CLEARANCE_METERS
-  );
+  ) {
+    return false;
+  }
+  // The grand boulevard is a real street; facades must clear its full right-of-way
+  // (halfwidth + shoulder + sidewalk half + car circle + margin) even where the
+  // nearest probed road is only the local street.
+  return Math.abs(aoharaBoulevardDistanceMeters(x, z)) >= FACADE_BOULEVARD_CLEARANCE_METERS;
 }
 
 function hasFacadeOffsetTransitionClearance(

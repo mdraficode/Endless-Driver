@@ -23,7 +23,7 @@ import type { RoadNetwork } from './road-network';
 import {
   buildDashGeometry,
   buildRibbonGeometry,
-  ROAD_MARKING_JUNCTION_CLEARANCE_METERS,
+  markingTrimsForEdge,
   trimRoadEdge,
 } from './road-geometry';
 
@@ -74,6 +74,8 @@ interface MarkingTransform {
   readonly z: number;
   readonly width: number;
   readonly depth: number;
+  /** Yaw for crossings on angled roads (the grand boulevard); 0 keeps the classic layout. */
+  readonly yaw?: number;
 }
 
 function isUrbanRoad(edge: RoadNetwork['edges'][number]): boolean {
@@ -90,11 +92,15 @@ function createUrbanIntersectionMarkings(
   const markings: MarkingTransform[] = [];
   let intersectionCount = 0;
 
-  for (const node of network.nodes) {
-    let horizontalHalfWidth: number | null = null;
-    let verticalHalfWidth: number | null = null;
+  /** One travel axis at a node: the grand boulevard counts as its own diagonal axis. */
+  const collectRoadAxes = (nodeId: string) => {
+    const axes: {
+      x: number;
+      z: number;
+      halfWidthMeters: number;
+    }[] = [];
     for (const edge of network.edges) {
-      if (!isUrbanRoad(edge) || (edge.from !== node.id && edge.to !== node.id)) {
+      if (!isUrbanRoad(edge) || (edge.from !== nodeId && edge.to !== nodeId)) {
         continue;
       }
       const from = network.nodeById(edge.from);
@@ -102,47 +108,80 @@ function createUrbanIntersectionMarkings(
       if (from === null || to === null) {
         continue;
       }
-      if (Math.abs(to.x - from.x) >= Math.abs(to.z - from.z)) {
-        horizontalHalfWidth = Math.max(horizontalHalfWidth ?? 0, edge.halfWidthMeters);
+      const length = Math.hypot(to.x - from.x, to.z - from.z) || 1;
+      const x = (to.x - from.x) / length;
+      const z = (to.z - from.z) / length;
+      const match = axes.find((axis) => Math.abs(axis.x * x + axis.z * z) > 0.985);
+      if (match === undefined) {
+        axes.push({ x, z, halfWidthMeters: edge.halfWidthMeters });
       } else {
-        verticalHalfWidth = Math.max(verticalHalfWidth ?? 0, edge.halfWidthMeters);
+        match.halfWidthMeters = Math.max(match.halfWidthMeters, edge.halfWidthMeters);
       }
     }
-    if (horizontalHalfWidth === null || verticalHalfWidth === null) {
+    return axes;
+  };
+
+  for (const node of network.nodes) {
+    const axes = collectRoadAxes(node.id);
+    if (axes.length < 2) {
       continue;
     }
     intersectionCount += 1;
 
-    const addCrosswalk = (
-      acrossWidth: number,
-      center: readonly [number, number],
-      acrossX: boolean,
-    ): void => {
-      const usableWidth = Math.max(6, acrossWidth - 2.8);
+    let horizontalHalfWidth: number | null = null;
+    let verticalHalfWidth: number | null = null;
+    for (const axis of axes) {
+      if (Math.abs(axis.x) >= Math.abs(axis.z)) {
+        horizontalHalfWidth = Math.max(horizontalHalfWidth ?? 0, axis.halfWidthMeters);
+      } else {
+        verticalHalfWidth = Math.max(verticalHalfWidth ?? 0, axis.halfWidthMeters);
+      }
+    }
+
+    for (const axis of axes) {
+      const usableWidth = Math.max(6, axis.halfWidthMeters * 2 - 2.8);
+      const normalX = axis.z;
+      const normalZ = -axis.x;
+      // The zebra's inner rows meet the crossing road's corner the way the classic
+      // orthogonal layout does (2.3 m of the zone on the crossing asphalt): the approach
+      // distance is the crossing road's asphalt width projected onto this axis. Where the
+      // grand boulevard crosses at an angle that projection is longer, so the crossing
+      // moves out with it instead of landing on the avenue's asphalt.
+      let approachMeters = 0;
+      for (const other of axes) {
+        if (other === axis) {
+          continue;
+        }
+        const cross = Math.abs(axis.x * other.z - axis.z * other.x);
+        if (cross < 0.15) {
+          continue;
+        }
+        approachMeters = Math.max(approachMeters, other.halfWidthMeters / cross);
+      }
+      const offsetMeters = approachMeters + usableWidth / 2 - 2.3;
       const stripeCount = Math.max(6, Math.floor(usableWidth / stripePitch));
       const start = -((stripeCount - 1) * stripePitch) / 2;
-      for (let stripe = 0; stripe < stripeCount; stripe += 1) {
-        const offset = start + stripe * stripePitch;
-        markings.push({
-          x: node.x + center[0] + (acrossX ? 0 : offset),
-          y: node.y + PAINT_LIFT,
-          z: node.z + center[1] + (acrossX ? offset : 0),
-          width: acrossX ? usableWidth : stripeWidth,
-          depth: acrossX ? stripeWidth : usableWidth,
-        });
+      const yaw = Math.atan2(-normalZ, normalX);
+      for (const side of [-1, 1] as const) {
+        for (let stripe = 0; stripe < stripeCount; stripe += 1) {
+          const along = side * offsetMeters + start + stripe * stripePitch;
+          markings.push({
+            x: node.x + axis.x * along,
+            y: node.y + PAINT_LIFT,
+            z: node.z + axis.z * along,
+            width: usableWidth,
+            depth: stripeWidth,
+            yaw,
+          });
+        }
       }
-    };
-
-    const verticalApproachOffset = horizontalHalfWidth + 3.8;
-    const horizontalApproachOffset = verticalHalfWidth + 3.8;
-    for (const side of [-1, 1]) {
-      addCrosswalk(verticalHalfWidth * 2, [0, side * verticalApproachOffset], true);
-      addCrosswalk(horizontalHalfWidth * 2, [side * horizontalApproachOffset, 0], false);
     }
 
     // Only the signalized central junction has stop bars; the other intersections
     // receive zebra crossings but no misleading stop-line-only controls.
-    if (node.id === 'aohara-center') {
+    if (node.id === 'aohara-center' && horizontalHalfWidth !== null && verticalHalfWidth !== null) {
+      const verticalApproachOffset = horizontalHalfWidth + 3.8;
+      const horizontalApproachOffset = verticalHalfWidth + 3.8;
       for (const side of [-1, 1]) {
         markings.push(
           {
@@ -175,7 +214,7 @@ function createUrbanIntersectionMarkings(
   markings.forEach((marking, index) => {
     transform.position.set(marking.x, marking.y, marking.z);
     transform.scale.set(marking.width, 1, marking.depth);
-    transform.rotation.set(0, 0, 0);
+    transform.rotation.set(0, marking.yaw ?? 0, 0);
     transform.updateMatrix();
     mesh.setMatrixAt(index, transform.matrix);
   });
@@ -338,11 +377,16 @@ export class RoadWorld {
       const markingEdge =
         edge.roadClass === 'urban-alley'
           ? null
-          : trimRoadEdge(
-              edge,
-              ROAD_MARKING_JUNCTION_CLEARANCE_METERS,
-              ROAD_MARKING_JUNCTION_CLEARANCE_METERS,
-            );
+          : (() => {
+              // Phase 8.4b: the avenue crossing corners need a wider paint gap than the flat
+              // clearance; everything else keeps the established 14 m.
+              const { startMeters, endMeters } = markingTrimsForEdge(
+                network,
+                edge,
+                halfWidthMeters - 0.45,
+              );
+              return trimRoadEdge(edge, startMeters, endMeters);
+            })();
       if (markingEdge !== null) {
         for (const side of [-1, 1] as const) {
           markingGeometries.push(

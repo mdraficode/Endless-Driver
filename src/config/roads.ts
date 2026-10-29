@@ -88,7 +88,7 @@ const AOHARA_GRID_NODES: readonly RoadNodeConfig[] = AOHARA_GRID_ROWS.flatMap((r
  * vertical street crossings become new junction nodes; every node stays inside
  * the flat terrain core.
  */
-const AOHARA_BOULEVARD_SLOPE = 14 / 33;
+export const AOHARA_BOULEVARD_SLOPE = 14 / 33;
 const AOHARA_BOULEVARD_INTERCEPT = 170;
 
 /** Centreline z offset (metres) for a given x offset along the boulevard. */
@@ -259,44 +259,39 @@ const AOHARA_BASE_GRID_EDGES: readonly RoadEdgeConfig[] = [
  */
 const AOHARA_GRID_NODE_LOOKUP: ReadonlyMap<string, { readonly x: number; readonly z: number }> =
   new Map(
-    [
-      ...AOHARA_GRID_NODES,
-      ...AOHARA_BACKSTREET_ACCESS_NODES,
-    ].map((node) => [node.id, node] as const),
+    [...AOHARA_GRID_NODES, ...AOHARA_BACKSTREET_ACCESS_NODES].map(
+      (node) => [node.id, node] as const,
+    ),
   );
 
-const AOHARA_GRID_EDGES: readonly RoadEdgeConfig[] = AOHARA_BASE_GRID_EDGES.flatMap(
-  (edge) => {
-    const from = AOHARA_GRID_NODE_LOOKUP.get(edge.from);
-    const to = AOHARA_GRID_NODE_LOOKUP.get(edge.to);
-    if (!from || !to) {
+const AOHARA_GRID_EDGES: readonly RoadEdgeConfig[] = AOHARA_BASE_GRID_EDGES.flatMap((edge) => {
+  const from = AOHARA_GRID_NODE_LOOKUP.get(edge.from);
+  const to = AOHARA_GRID_NODE_LOOKUP.get(edge.to);
+  if (!from || !to) {
+    return [edge];
+  }
+  if (Math.abs(from.x - to.x) < 1e-9) {
+    // Vertical street: the boulevard crosses it at a fixed x offset.
+    const xOffset = from.x - AOHARA_DISTRICT_CONFIG.centerX;
+    const column = AOHARA_GRID_COLUMNS.find((candidate) => candidate.offsetMeters === xOffset);
+    const junction = column
+      ? AOHARA_BOULEVARD_JUNCTIONS.find((candidate) => candidate.columnId === column.id)
+      : undefined;
+    if (!junction) {
       return [edge];
     }
-    if (Math.abs(from.x - to.x) < 1e-9) {
-      // Vertical street: the boulevard crosses it at a fixed x offset.
-      const xOffset = from.x - AOHARA_DISTRICT_CONFIG.centerX;
-      const column = AOHARA_GRID_COLUMNS.find(
-        (candidate) => candidate.offsetMeters === xOffset,
-      );
-      const junction = column
-        ? AOHARA_BOULEVARD_JUNCTIONS.find((candidate) => candidate.columnId === column.id)
-        : undefined;
-      if (!junction) {
-        return [edge];
-      }
-      const lo = Math.min(from.z, to.z) + 0.5;
-      const hi = Math.max(from.z, to.z) - 0.5;
-      if (junction.z <= lo || junction.z >= hi) {
-        return [edge];
-      }
-      return [
-        { ...edge, to: junction.id },
-        { ...edge, from: junction.id, to: edge.to },
-      ];
+    const lo = Math.min(from.z, to.z) + 0.5;
+    const hi = Math.max(from.z, to.z) - 0.5;
+    if (junction.z <= lo || junction.z >= hi) {
+      return [edge];
     }
-    return [edge];
-  },
-);
+    return [
+      { ...edge, to: junction.id },
+      { ...edge, from: junction.id, to: edge.to },
+    ];
+  }
+  return [edge];
+});
 
 export const AOHARA_BOULEVARD_EDGES: readonly RoadEdgeConfig[] = [
   {
