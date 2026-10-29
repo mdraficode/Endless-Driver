@@ -73,7 +73,28 @@ export interface AoharaBackstreetBlock {
   readonly courtyardNodeId: string;
   readonly courtyardWorldX: number;
   readonly courtyardWorldZ: number;
-  readonly accesses: Readonly<Record<AoharaBackstreetSide, AoharaBackstreetAccess>>;
+  /**
+   * One mouth per street-facing side; a side is `undefined` where the grand
+   * boulevard crosses the block corner (Phase 8.4b), keeping the street row
+   * continuous past the avenue.
+   */
+  readonly accesses: Readonly<
+    Record<AoharaBackstreetSide, AoharaBackstreetAccess | undefined>
+  >;
+}
+
+/**
+ * Phase 8.4b: the grand boulevard sweeps across two block corners whose passage
+ * mouths would run straight into its right-of-way; those mouths stay closed so
+ * the street row runs continuously past the avenue.
+ */
+const BOULEVARD_CLOSED_MOUTHS: ReadonlySet<string> = new Set([
+  'aohara-backstreet-r3-c2:north',
+  'aohara-backstreet-r3-c3:west',
+]);
+
+function isBoulevardClosedMouth(blockId: string, side: AoharaBackstreetSide): boolean {
+  return BOULEVARD_CLOSED_MOUTHS.has(`${blockId}:${side}`);
 }
 
 function stableUnit(a: number, b: number, salt: number): number {
@@ -236,42 +257,29 @@ function buildBlocks(): readonly AoharaBackstreetBlock[] {
       const verticalEastBase = verticalBaseFraction(rowIndex, columnIndex + 1);
       const verticalWestSafe = centralTowerSafeVerticalFraction(rowIndex, columnIndex);
       const verticalEastSafe = centralTowerSafeVerticalFraction(rowIndex, columnIndex + 1);
-      const accesses: Readonly<Record<AoharaBackstreetSide, AoharaBackstreetAccess>> = {
-        // Opposite thirds normally avoid face-to-face entrances; central tower-safe mouths align.
-        north: makeAccess(
-          rowIndex,
-          columnIndex,
-          centerLocalX,
-          centerLocalZ,
-          'north',
-          horizontalNorthBase,
-        ),
-        east: makeAccess(
-          rowIndex,
-          columnIndex,
-          centerLocalX,
-          centerLocalZ,
-          'east',
-          verticalEastSafe ?? verticalEastBase,
-        ),
-        south: makeAccess(
-          rowIndex,
-          columnIndex,
-          centerLocalX,
-          centerLocalZ,
-          'south',
-          oppositeFraction(horizontalSouthBase),
-        ),
-        west: makeAccess(
-          rowIndex,
-          columnIndex,
-          centerLocalX,
-          centerLocalZ,
-          'west',
-          verticalWestSafe ?? oppositeFraction(verticalWestBase),
-        ),
-      };
       const blockId = `aohara-backstreet-r${rowIndex}-c${columnIndex}`;
+      const makeSide = (
+        side: AoharaBackstreetSide,
+        fraction: AoharaAccessThird,
+      ): AoharaBackstreetAccess | undefined =>
+        isBoulevardClosedMouth(blockId, side) ? undefined : makeAccess(
+          rowIndex,
+          columnIndex,
+          centerLocalX,
+          centerLocalZ,
+          side,
+          fraction,
+        );
+      const accesses: Readonly<
+        Record<AoharaBackstreetSide, AoharaBackstreetAccess | undefined>
+      > = {
+        // Opposite thirds normally avoid face-to-face entrances; central tower-safe mouths align.
+        // Phase 8.4b: the grand boulevard closes the mouths it would swallow (see above).
+        north: makeSide('north', horizontalNorthBase),
+        east: makeSide('east', verticalEastSafe ?? verticalEastBase),
+        south: makeSide('south', oppositeFraction(horizontalSouthBase)),
+        west: makeSide('west', verticalWestSafe ?? oppositeFraction(verticalWestBase)),
+      };
       const hubLocalX = centerLocalX + (stableUnit(rowIndex, columnIndex, 1229) - 0.5) * 14;
       const hubLocalZ = centerLocalZ + (stableUnit(rowIndex, columnIndex, 1237) - 0.5) * 14;
       // Outer blocks have paired towers flanking east/west, so keep their short courtyard branches
@@ -289,9 +297,13 @@ function buildBlocks(): readonly AoharaBackstreetBlock[] {
             [0, 1],
             [0, -1],
           ] as const);
-      const courtyardDirection = Math.floor(
-        stableUnit(rowIndex, columnIndex, 1249) * courtyardOffsets.length,
-      );
+      // Phase 8.4b: the grand boulevard sweeps across the south part of this
+      // block, so the courtyard branch keeps its north side — the yard node
+      // then clears the avenue's junction paint clearance.
+      const courtyardDirection =
+        rowIndex === 3 && columnIndex === 3
+          ? courtyardOffsets.findIndex(([dx, dz]) => dx === 0 && dz === -1)
+          : Math.floor(stableUnit(rowIndex, columnIndex, 1249) * courtyardOffsets.length);
       const courtyardDistance = 8 + stableUnit(rowIndex, columnIndex, 1261) * 3;
       const [courtyardDX, courtyardDZ] = courtyardOffsets[courtyardDirection]!;
       const courtyardNodeId = `${blockId}-yard`;

@@ -274,14 +274,16 @@ export function generateAoharaAlleyPropPlacements(
   AOHARA_BACKSTREET_BLOCKS.forEach((block, blockIndex) => {
     const target = basePerBlock + (blockIndex < remainder ? 1 : 0);
     const blockEdges = [
-      ...Object.values(block.accesses).map((access) =>
-        network.edges.find(
-          (edge) =>
-            edge.roadClass === 'urban-alley' &&
-            ((edge.from === access.nodeId && edge.to === block.hubNodeId) ||
-              (edge.to === access.nodeId && edge.from === block.hubNodeId)),
+      ...Object.values(block.accesses)
+        .filter((access): access is NonNullable<typeof access> => access !== undefined)
+        .map((access) =>
+          network.edges.find(
+            (edge) =>
+              edge.roadClass === 'urban-alley' &&
+              ((edge.from === access.nodeId && edge.to === block.hubNodeId) ||
+                (edge.to === access.nodeId && edge.from === block.hubNodeId)),
+          ),
         ),
-      ),
       network.edges.find(
         (edge) =>
           edge.roadClass === 'urban-alley' &&

@@ -168,7 +168,11 @@ const touge = (
 });
 
 const AOHARA_BACKSTREET_ACCESSES: readonly AoharaBackstreetAccess[] =
-  AOHARA_BACKSTREET_BLOCKS.flatMap((block) => Object.values(block.accesses));
+  AOHARA_BACKSTREET_BLOCKS.flatMap((block) =>
+    Object.values(block.accesses).filter(
+      (access): access is AoharaBackstreetAccess => access !== undefined,
+    ),
+  );
 
 const AOHARA_BACKSTREET_ACCESS_NODES: readonly RoadNodeConfig[] = [
   ...new Map(
@@ -366,7 +370,9 @@ function createBackstreetSpoke(
 
 const AOHARA_BACKSTREET_EDGES: readonly RoadEdgeConfig[] = AOHARA_BACKSTREET_BLOCKS.flatMap(
   (block) => [
-    ...Object.values(block.accesses).map((access) => createBackstreetSpoke(block, access)),
+    ...Object.values(block.accesses)
+      .filter((access): access is AoharaBackstreetAccess => access !== undefined)
+      .map((access) => createBackstreetSpoke(block, access)),
     {
       from: block.hubNodeId,
       to: block.courtyardNodeId,
