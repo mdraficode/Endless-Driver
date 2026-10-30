@@ -113,7 +113,24 @@ export interface MaterialTextureSet {
   dispose(): void;
 }
 
+/**
+ * The manifest is 80 KB and every loader (each model, each texture set, the HDRI, the LUT) used
+ * to fetch and re-parse it on boot — thirty-plus round trips for the same bytes. It is
+ * page-immutable, so one fetch per URL feeds every caller.
+ */
+const manifestCache = new Map<string, Promise<AssetManifest>>();
+
 export async function readAssetManifest(url: string = ASSET_MANIFEST_URL): Promise<AssetManifest> {
+  const cached = manifestCache.get(url);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const request = readAssetManifestFresh(url);
+  manifestCache.set(url, request);
+  return request;
+}
+
+async function readAssetManifestFresh(url: string): Promise<AssetManifest> {
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`failed to read ${url}: ${response.status} ${response.statusText}`);
@@ -123,6 +140,11 @@ export async function readAssetManifest(url: string = ASSET_MANIFEST_URL): Promi
     throw new Error(`${url} does not contain an assets array`);
   }
   return manifest;
+}
+
+/** Test hook: forgets the cached manifest promise(s). */
+export function resetAssetManifestCache(): void {
+  manifestCache.clear();
 }
 
 /** Finds the HDRI entry for an environment configuration, or `null` when it is not published. */

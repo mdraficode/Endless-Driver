@@ -166,6 +166,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
         console.warn('scanned vegetation unavailable:', (error as Error).message);
       }
     },
+    sampleHeight: (x, z) => terrainSampler.heightAt(x, z),
     getContentStats: () => {
       const terrainStats = terrain.getContentStats();
       const mountainStats = distantMountains.getContentStats();

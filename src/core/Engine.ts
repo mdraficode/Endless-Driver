@@ -15,6 +15,7 @@ import { scaleBaseline } from '../environment/daylight-levels';
 import { buildPostChain, type PostEffectName } from '../shaders/post-chain';
 import { DynamicResolutionController } from './DynamicResolution';
 import { supportsScenePassResolutionScale } from './RenderScalePolicy';
+import type { PrewarmView } from './settle-views';
 import { writeLookTable } from '../shaders/lut-identity';
 import {
   RENDER_CONFIG,
@@ -111,8 +112,22 @@ export type ContextHandler = () => void;
  * renders that draw the identical workload mean no pipeline is left to create; the caps bound a
  * pathological device — it gets a warm-enough start (small remaining pipelines land over the
  * first seconds) instead of a ten-minute load.
+ *
+ * 16 covers the full sweep: up to 3 spawn-context renders, one per sweep view (10 in the
+ * driving world: 8 ring + 2 high), and the final closing spawn render.
  */
-const PREWARM_SETTLE_MAX_RENDERS = 12;
+const PREWARM_SETTLE_MAX_RENDERS = 16;
+
+/**
+ * The off-screen warm-up views the settle sweeps, and the caller's hook to move the scene's
+ * shadow focus and sky into each view's context before its render (the CSM follows the view,
+ * exactly as it follows the car in gameplay — that is what makes each view's shadow pass
+ * compile the casters it covers).
+ */
+export interface PrewarmSettleOptions {
+  readonly views?: readonly PrewarmView[];
+  readonly prepareView?: (view: PrewarmView) => void;
+}
 
 /** Wall-clock budget for the settle phase, whatever it is still creating. */
 const PREWARM_SETTLE_BUDGET_MS = 60_000;
@@ -651,50 +666,118 @@ export class Engine {
   }
 
   /**
-   * Settle phase: render until the drawn workload is stable for two consecutive frames. The
-   * awaited compiles cover the scene and the chain program; this catches the rest — the shadow
-   * maps' depth programs and the nested effect passes (SSAO/SSR internal quads), which only an
-   * actual render creates. Not-ready objects are skipped by the renderer, so the drawn workload
-   * grows as pipelines finish and is stable exactly when nothing is left to create. Bounded by
-   * render count and wall clock: a pathological device starts the drive rather than parking at
-   * 99%, paying the remainder as a short pop-in over the first seconds.
+   * Settle phase: render until the drawn workload is stable, then sweep the bounded set of
+   * off-screen warm-up views, then close in the real first-frame context.
+   *
+   * The awaited compiles cover the scene and the chain program; only an actual render creates
+   * the rest — the shadow maps' depth programs and the nested effect passes (SSAO/SSR internal
+   * quads). Not-ready objects are skipped by the renderer, so the drawn workload grows as
+   * pipelines finish and is stable exactly when nothing is left to create.
+   *
+   * The sweep is what kills the *driving* stutter: the spawn-only settle leaves every pipeline
+   * that first becomes visible while driving (the far blocks, the tower faces, the casters that
+   * only enter the shadow frustum from another angle) to compile on its first gameplay frame.
+   * `options.views` renders each view once — one render per view is enough because the next
+   * frame from the same view would be a pipeline cache hit — and `prepareView` is the caller's
+   * hook to move the shadow focus and sky to that view before its render.
+   *
+   * Bounded by render count and wall clock: a pathological device starts the drive rather than
+   * parking at 99%, paying the remainder as a short pop-in over the first seconds.
    *
    * Call it while the loading screen is still up — the first visible frame must not pay
    * pipeline-creation cost (that is the post-start freeze, and its stuttering residue).
    */
-  async prewarmSettle(scene: Scene, camera: Camera): Promise<boolean> {
+  async prewarmSettle(
+    scene: Scene,
+    camera: Camera,
+    options?: PrewarmSettleOptions,
+  ): Promise<boolean> {
     if (this.#disposed || this.#contextLost || !this.#initialized) {
       return false;
     }
+    const views = options?.views ?? [];
+    const prepareView = options?.prepareView;
     const startedAt = performance.now();
+    let renders = 0;
+    let budgetExhausted = false;
     let stableFrames = 0;
     let previousDrawCalls = -1;
     let previousTriangles = -1;
-    for (let iteration = 0; iteration < PREWARM_SETTLE_MAX_RENDERS; iteration += 1) {
-      if (performance.now() - startedAt >= PREWARM_SETTLE_BUDGET_MS) {
-        console.warn(
-          'Endless Driver: the frame-graph settle budget ran out; the remaining small pipelines land over the first seconds of gameplay.',
-        );
-        break;
+    let previousPrograms = -1;
+
+    /**
+     * One settle render. `view` null means the spawn (real first-frame) context; a view moves
+     * the shadow focus and sky there via `prepareView` first. The counters reset per render
+     * because this engine disables three's auto reset (the frame loop owns it). Returns false
+     * only when the frame could not be submitted at all (context lost mid-settle).
+     */
+    const renderSettleView = async (view: PrewarmView | null): Promise<boolean> => {
+      if (
+        performance.now() - startedAt >= PREWARM_SETTLE_BUDGET_MS ||
+        renders >= PREWARM_SETTLE_MAX_RENDERS
+      ) {
+        budgetExhausted = true;
+        return true;
       }
-      // The counters reset per render because this engine disables three's auto reset (the
-      // frame loop owns it), and the settle runs several renders in a row.
+      if (view !== null && prepareView !== undefined) {
+        prepareView(view);
+      }
       this.#renderer.info.reset();
       if (!this.render(scene, camera)) {
         return false;
       }
+      renders += 1;
       const stats = readStatistics(this.#renderer.info);
+      // The program count is the creation signal the draw counters miss: a view can draw the
+      // same object count as the last one while still compiling new material programs.
+      const programs = this.#renderer.info.memory.programs;
       stableFrames =
-        stats.drawCalls === previousDrawCalls && stats.triangles === previousTriangles
+        stats.drawCalls === previousDrawCalls &&
+        stats.triangles === previousTriangles &&
+        programs === previousPrograms
           ? stableFrames + 1
           : 0;
       previousDrawCalls = stats.drawCalls;
       previousTriangles = stats.triangles;
-      if (stableFrames >= 2) {
-        break;
-      }
+      previousPrograms = programs;
       // Yield so in-flight pipeline creation progresses between renders.
       await new Promise<void>((resolve) => setTimeout(resolve, PREWARM_SETTLE_YIELD_MS));
+      return true;
+    };
+
+    // 1. Spawn view: the original settle — render until the drawn workload is stable, which is
+    //    exactly "nothing left to create for the first frame".
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (!(await renderSettleView(null))) {
+        return false;
+      }
+      if (stableFrames >= 2 || budgetExhausted) {
+        break;
+      }
+    }
+
+    // 2. Sweep views: one render each, in the view's own shadow/sky context.
+    for (const view of views) {
+      if (budgetExhausted) {
+        break;
+      }
+      if (!(await renderSettleView(view))) {
+        return false;
+      }
+    }
+
+    // 3. Close in the real first-frame context: the last thing the GPU built is what frame one
+    //    draws, and its stability read is the one that reports done.
+    if (!budgetExhausted) {
+      if (!(await renderSettleView(null))) {
+        return false;
+      }
+    }
+
+    if (budgetExhausted) {
+      console.warn(
+        'Endless Driver: the frame-graph settle budget ran out; the remaining small pipelines land over the first seconds of gameplay.',
+      );
     }
     return true;
   }

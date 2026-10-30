@@ -70,6 +70,12 @@ export interface SceneContent {
   loadSurfaces?(): Promise<void>;
   /** Optional model/visual upgrades that must not block the first playable frame. */
   loadDeferredAssets?(): Promise<void>;
+  /**
+   * Terrain height (metres) at a world XZ. The startup settle uses it to place its off-screen
+   * warm-up views above the ground; content without a height authority (rural fixtures) omits
+   * it and the settle falls back to the spawn altitude.
+   */
+  sampleHeight?(x: number, z: number): number;
   /** Flat numeric stats merged into scene diagnostics (chunk counts, triangles, budget). */
   getContentStats?(): Readonly<Record<string, number>>;
   /** Releases geometries, materials, and textures the content created. */

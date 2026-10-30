@@ -58,6 +58,9 @@ export {
 } from './vegetation-placement';
 import { TREE_COLLISION } from '../config/districts';
 import { VEGETATION_SPECIES } from './districts';
+import { getAssetBytes } from '../assets/AssetBytes';
+import { listModelAssets } from '../assets/ModelAsset';
+import { readAssetManifest } from '../assets/AssetManifest';
 import { loadScannedSpecies, type ScannedSpecies } from './scanned-vegetation';
 import type { TreeHitEvent, TreeVisualState } from './tree-collision';
 import type { TerrainSampler } from './terrain-height';
@@ -550,17 +553,45 @@ export class VegetationWorld {
       speciesLoads.set(assetId, pending);
       return pending;
     };
-    const [results, stump] = await Promise.all([
-      Promise.all(
-        SCANNED_FOR.map(async (entry) => ({
-          key: entry.key,
-          species: await loadSpecies(entry.assetId),
-        })),
-      ),
-      // The stump is only a fallback for future tree destruction, so load it concurrently rather
-      // than serially after all standing species; it is not part of the first-view scatter.
-      loadSpecies('model-tree-stump-01'),
-    ]);
+    // The network and the CPU are kept apart, on purpose. Every species file was prefetched at
+    // t=0 (`AssetBytes`), so the loads below are parse-only — but `GLTFLoader.parse` is a
+    // main-thread spike per tree (meshopt decode plus the LOD mesh construction), and loading
+    // them all concurrently let the spikes stack into multi-second blocks under the loading bar.
+    // Any bytes still in flight are joined here first (concurrently), then the parses run one
+    // per 16 ms slice so no single block costs more than one tree and the loading screen stays
+    // responsive between them.
+    const manifest = await readAssetManifest().catch(() => null);
+    if (manifest !== null) {
+      const filesByAssetId = new Map(
+        listModelAssets(manifest).map((model) => [model.id, model.file]),
+      );
+      const pendingBytes = [
+        ...SCANNED_FOR.map((entry) => filesByAssetId.get(entry.assetId)),
+        filesByAssetId.get('model-tree-stump-01'),
+      ]
+        .filter((file): file is string => file !== undefined)
+        .map((file) => getAssetBytes(file));
+      await Promise.all(pendingBytes);
+    }
+    const results: { key: string; species: ScannedSpecies | null }[] = [];
+    for (const entry of SCANNED_FOR) {
+      if (this.#disposed) {
+        return;
+      }
+      const species = await loadSpecies(entry.assetId);
+      results.push({ key: entry.key, species });
+      if (this.#disposed) {
+        return;
+      }
+      // One 16 ms slice between parses: a paint and a timer window for the loading screen.
+      await new Promise<void>((resolve) => setTimeout(resolve, 16));
+    }
+    if (this.#disposed) {
+      return;
+    }
+    // The stump is only a fallback for future tree destruction; it is not part of the
+    // first-view scatter, so it parses last rather than holding a slot in the loop.
+    const stump = await loadSpecies('model-tree-stump-01');
     const foliageMaterials = new Map<Material, Material>();
     for (const { key, species: loadedSpecies } of results) {
       if (loadedSpecies === null || this.#scanned.has(key)) {

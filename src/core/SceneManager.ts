@@ -609,6 +609,11 @@ export class SceneManager {
     await this.#content.loadSurfaces?.();
   }
 
+  /** Terrain height (metres) at a world XZ, or `null` when the content has no height authority. */
+  sampleHeight(x: number, z: number): number | null {
+    return this.#content.sampleHeight?.(x, z) ?? null;
+  }
+
   /** Loads the scanned vegetation models (called during loading, before the compiles). */
   async loadDeferredContentAssets(): Promise<void> {
     await this.#content.loadDeferredAssets?.();

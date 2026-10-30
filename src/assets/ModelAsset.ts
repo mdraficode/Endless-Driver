@@ -9,9 +9,10 @@ import {
   type Object3D,
   type Texture,
 } from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { getAssetBytes, releaseAssetBytes } from './AssetBytes';
 import { readAssetManifest, type AssetManifest, type AssetManifestEntry } from './AssetManifest';
 import { selectLodLevel, type LodLevel } from './LodSelection';
 
@@ -137,6 +138,21 @@ export interface LoadModelOptions {
   readonly assetId?: string;
   /** Manifest URL override, for tests. */
   readonly url?: string;
+  /**
+   * The model file's bytes, when the caller already has them:
+   *
+   * - an `ArrayBuffer` parses directly from it (`GLTFLoader.parse`);
+   * - `null` skips the shared byte cache and fetches `asset.file` as usual;
+   * - omitted consults the shared byte cache first — a startup prefetch may already hold the
+   *   file, in which case the parse runs on those bytes and no second download happens.
+   *
+   * The split matters on mobile: the download and the parse have different costs. The 2.9 MB
+   * hero coupé downloads beside the terrain, but `GLTFLoader.parse` is a main-thread spike
+   * (meshopt decode plus ~114k triangles of mesh construction), and it used to land whenever
+   * the download happened to finish — mid-terrain-stage, freezing the loading screen at ~59%.
+   * Holding the bytes lets the owning stage (the hero gate) schedule the parse.
+   */
+  readonly bytes?: ArrayBuffer | null;
 }
 
 /**
@@ -166,12 +182,66 @@ export async function loadModelAsset(options: LoadModelOptions): Promise<LoadedM
   const loader = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
 
   try {
-    const gltf = await loader.loadAsync(asset.file);
+    const gltf = await loadGltfFromBytesOrUrl(loader, asset.file, options.bytes);
     return createLoadedModel(asset, gltf.scene, ktx2);
   } catch (error) {
     ktx2.dispose();
     throw new Error(`failed to load model "${asset.id}" from ${asset.file}`, { cause: error });
   }
+}
+
+/**
+ * The bytes-or-url branch of a model load: explicit bytes parse directly; an explicit `null`
+ * (or a byte-cache miss) fetches by URL; an omitted option consults the shared byte cache so a
+ * startup prefetch is never downloaded twice.
+ */
+async function loadGltfFromBytesOrUrl(
+  loader: GLTFLoader,
+  file: string,
+  bytes: ArrayBuffer | null | undefined,
+): Promise<GLTF> {
+  if (bytes === null) {
+    return loader.loadAsync(file);
+  }
+  const fromCache = bytes === undefined;
+  const cachedBytes = bytes ?? (await getAssetBytes(file));
+  if (cachedBytes === null) {
+    return loader.loadAsync(file);
+  }
+  try {
+    return await parseGltfBytes(loader, cachedBytes, file);
+  } finally {
+    // The parse owns cache-sourced data from here; the cache must not keep the payload alive
+    // alongside the decoded geometry. Explicit bytes are the caller's to retain.
+    if (fromCache) {
+      releaseAssetBytes(file);
+    }
+  }
+}
+
+/** `GLTFLoader.parse` is callback-shaped; this wraps it as a promise. */
+function parseGltfBytes(loader: GLTFLoader, bytes: ArrayBuffer, file: string): Promise<GLTF> {
+  return new Promise<GLTF>((resolve, reject) => {
+    loader.parse(
+      bytes,
+      file,
+      (gltf) => resolve(gltf),
+      (error: unknown) =>
+        reject(new Error(`model parse failed for ${file}: ${describeParseError(error)}`)),
+    );
+  });
+}
+
+function describeParseError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  // GLTFLoader reports parse failures as ErrorEvent-like objects on some three versions.
+  const nested = (error as { error?: unknown } | null)?.error;
+  if (nested instanceof Error) {
+    return nested.message;
+  }
+  return String(error);
 }
 
 /**

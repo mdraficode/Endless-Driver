@@ -48,7 +48,7 @@ import {
 import { InputManager } from '../input/InputManager';
 import { OrbitGesture } from '../input/orbit-gesture';
 import { TouchControls } from '../input/TouchControls';
-import type { PerspectiveCamera } from 'three';
+import { PerspectiveCamera } from 'three';
 import { DaylightController } from '../environment/DaylightController';
 import { applyNightMoodToClock } from '../environment/night-mood';
 import {
@@ -64,6 +64,10 @@ import {
 } from '../environment/EnvironmentClock';
 import { Engine, type FrameState } from './Engine';
 import { loadLutAsset } from '../assets/LutAsset';
+import { prefetchAssetBytes, warmAssetHttpCache } from '../assets/AssetBytes';
+import { readAssetManifest } from '../assets/AssetManifest';
+import { AOHARA_DISTRICT_CONFIG } from '../config/urban-district';
+import { buildSettleViews, type PrewarmView } from './settle-views';
 import { applyTier, type TierResolution } from './QualityTier';
 import { PerformanceMonitor } from './PerformanceMonitor';
 import { SceneManager } from './SceneManager';
@@ -218,7 +222,6 @@ export class Application {
   #carVisual: PlayerCarVisual;
   #carModelLoadTask: Promise<boolean> | null = null;
   #carModelLoadVisual: PlayerCarVisual | null = null;
-  #heroPreloadStarted = false;
   /** True once the main material pre-compile finished before the first frame. */
   #warmupComplete = false;
   readonly #carEffects: CarEffects;
@@ -270,6 +273,11 @@ export class Application {
   #environmentLoaded = false;
   #shadowCamera: PerspectiveCamera | null = null;
   #shadowCameraFieldOfView = 0;
+  /**
+   * The settle sweep's temporary camera: the CSM and sky are pointed at it per view, and it is
+   * discarded when the sweep finishes. Null until the sweep creates it.
+   */
+  #settleCamera: PerspectiveCamera | null = null;
   #disposed = false;
   /**
    * Floating origin: world coordinates are eternal, physics/render coordinates are
@@ -609,6 +617,15 @@ export class Application {
    * a stall — the first visible frame pays no pipeline-creation cost (the post-start freeze).
    */
   async start(): Promise<void> {
+    // The network must not stack on top of the GPU. Everything the first drive can need — the
+    // hero car and tree models (bytes kept, so their parse is scheduled, not accidental), the
+    // road/terrain surfaces, the HDRIs, the LUT (bodies fetched and discarded, priming the
+    // browser's HTTP cache for the loaders' own URL fetches) — starts downloading now, beside
+    // terrain generation and the renderer init, instead of serially after the hero gate. On a
+    // slow mobile link that is the difference between a load that is network-bound once and a
+    // load that is network-bound three times in a row. Idempotent: the byte cache dedupes.
+    void this.#prefetchStartupAssets();
+
     if (!this.#engine.isInitialized) {
       this.#reportLoadingProgress(0.2, 'Preparing the renderer…');
       await this.#engine.init();
@@ -626,13 +643,6 @@ export class Application {
       };
       this.#setStatus('Preparing the nearby road and terrain…');
       this.#reportLoadingProgress(0.55, 'Preparing the playable area…');
-      // Kick the hero model fetch early so it downloads while terrain builds; the first frame
-      // then waits for it within HERO_CAR_READY_TIMEOUT_MS (see the gate below).
-      let heroPreload: Promise<boolean> | null = null;
-      if (!this.#heroPreloadStarted && this.#carVisual.model === 'generic-sport-coupe') {
-        this.#heroPreloadStarted = true;
-        heroPreload = this.#loadCarModel(this.#carVisual).catch(() => false);
-      }
       await this.#scene.prepareInitialContent(
         worldFocus,
         {
@@ -650,13 +660,21 @@ export class Application {
         },
       );
       // Gate the first frame on the selected hero car (bounded). The authored fallback is a
-      // roadster and stays hidden while the 2.9 MB coupé downloads, so the first frame never
-      // shows the wrong car — the "Roadster, then Generic Sports Car" report. The download
-      // already overlapped terrain prep, so this usually settles immediately; on a very slow
-      // connection the budget expires and the roadster is revealed as the fail-soft car.
-      if (heroPreload !== null) {
+      // roadster and stays hidden while the 2.9 MB coupé loads, so the first frame never shows
+      // the wrong car — the "Roadster, then Generic Sports Car" report.
+      //
+      // The bytes were already downloading beside the terrain (the t=0 asset prefetch), so this
+      // phase is parse-only in the common case: `#loadCarModel` -> `loadModelAsset` finds the
+      // bytes in the shared cache and parses them HERE. That is the deliberate fix for the
+      // mid-terrain freeze — `GLTFLoader.parse` is a main-thread spike (meshopt decode plus
+      // ~114k triangles), and it used to land whenever the download happened to finish, which
+      // on mobile was in the middle of the 55-85% stage. The gate owns its parse now: one
+      // bounded spike under a label that says what it is doing. On a very slow connection the
+      // budget expires and the roadster is revealed as the fail-soft car; the parse then runs
+      // on arrival and the model swaps in over the first seconds, as before.
+      if (this.#carVisual.model === 'generic-sport-coupe') {
         const heroReady = await this.#awaitWarmupProgress(
-          heroPreload,
+          this.#loadCarModel(this.#carVisual),
           HERO_CAR_READY_TIMEOUT_MS,
           0.85,
           0.88,
@@ -727,10 +745,19 @@ export class Application {
         0.985,
         'Warming up the car and effects…',
       );
-      // Settle: render until the drawn workload is stable — the shadow depth programs and the
-      // nested effect passes (SSAO/SSR internal quads) only an actual render creates land here,
-      // bounded so a pathological device starts the drive instead of parking at 99%.
-      const settle = this.#engine.prewarmSettle(this.#scene.scene, this.#activeCamera());
+      // Settle: render until the drawn workload is stable, then sweep the bounded off-screen
+      // views of the playable area, then close back in the spawn context. The shadow depth
+      // programs and the nested effect passes (SSAO/SSR internal quads) only an actual render
+      // creates; the sweep makes the render cover the whole area the player can first drive
+      // through, so nothing that becomes visible while driving compiles on its first gameplay
+      // frame (the "stutter while driving a bit" residue). Bounded by render count and wall
+      // clock so a pathological device starts the drive instead of parking at 99%.
+      const spawnPose = this.#car.getInterpolatedPose(0);
+      const settleViews = this.#buildSettleViews(spawnPose);
+      const settle = this.#engine.prewarmSettle(this.#scene.scene, this.#activeCamera(), {
+        views: settleViews,
+        prepareView: (view) => this.#prepareSettleView(view, spawnPose),
+      });
       await this.#awaitWarmupIndefinite(
         settle.then(() => undefined),
         0.985,
@@ -745,6 +772,7 @@ export class Application {
         );
         return;
       }
+      this.#endSettleSweep(spawnPose);
       this.#reportLoadingProgress(0.99, 'Starting the simulation…');
     }
 
@@ -1407,6 +1435,115 @@ export class Application {
     this.#shadowCamera = camera;
     this.#shadowCameraFieldOfView = camera.fov;
     this.#scene.setShadowCamera(camera);
+  }
+
+  /**
+   * Starts every asset download the first drive can need, at t=0. Model files keep their bytes
+   * (the parse is a scheduled main-thread spike, not an accidental one); everything else primes
+   * the HTTP cache. Fail-soft and idempotent — the loaders' own fetches are the fallback, and
+   * the byte cache dedupes.
+   */
+  async #prefetchStartupAssets(): Promise<void> {
+    try {
+      const manifest = await readAssetManifest();
+      const modelFiles: string[] = [];
+      const urlFiles: string[] = [];
+      for (const asset of manifest.assets) {
+        for (const file of asset.files) {
+          if (asset.kind === 'model') {
+            modelFiles.push(file.path);
+          } else {
+            urlFiles.push(file.path);
+          }
+        }
+      }
+      prefetchAssetBytes(modelFiles);
+      warmAssetHttpCache(urlFiles);
+    } catch (error) {
+      // A missing manifest is an operator problem (stale checkout); the loaders report it
+      // per-asset when they hit the same wall, and the game starts on authored assets.
+      console.warn('asset prefetch unavailable; loaders fetch on demand:', error);
+    }
+  }
+
+  /**
+   * The off-screen warm-up views, in WORLD coordinates: a ring around the spawn (every side the
+   * player can first approach the district from) plus high views over Aohara (the tower tops
+   * and far-block casters no low view sees). The terrain sampler and the district config are
+   * world-coordinate authorities, so the views are built in world space and converted to scene
+   * coordinates (world minus the floating-origin offset) when they are placed.
+   */
+  #buildSettleViews(spawnPose: VehiclePose): readonly PrewarmView[] {
+    const spawn = spawnPose.position;
+    const heightAt = (x: number, z: number): number => {
+      const height = this.#scene.sampleHeight(x, z);
+      return height === null ? spawn.y : height;
+    };
+    return buildSettleViews({
+      spawn: {
+        x: spawn.x + this.#origin.offset.x,
+        y: spawn.y,
+        z: spawn.z + this.#origin.offset.z,
+      },
+      districtCenter: {
+        x: AOHARA_DISTRICT_CONFIG.centerX,
+        z: AOHARA_DISTRICT_CONFIG.centerZ,
+      },
+      heightAt,
+    });
+  }
+
+  /**
+   * Points the settle sweep's scene state at one view: a dedicated camera (the chase camera
+   * keeps its own state), the CSM following it — the same focus behaviour gameplay uses, so the
+   * view's shadow pass compiles the casters it covers — and the sky/moon centred on it. The
+   * view is world-space; the scene, camera and sun focus are scene-space (the floating-origin
+   * offset is horizontal, so heights pass through).
+   */
+  #prepareSettleView(view: PrewarmView, spawnPose: VehiclePose): void {
+    if (this.#disposed) {
+      return;
+    }
+    const offset = this.#origin.offset;
+    const active = this.#activeCamera();
+    if (this.#settleCamera === null) {
+      this.#settleCamera = new PerspectiveCamera(
+        active.fov,
+        active.aspect,
+        active.near,
+        active.far,
+      );
+    }
+    const camera = this.#settleCamera;
+    camera.position.set(view.position[0] - offset.x, view.position[1], view.position[2] - offset.z);
+    camera.up.set(0, 1, 0);
+    camera.lookAt(view.lookAt[0] - offset.x, view.lookAt[1], view.lookAt[2] - offset.z);
+    this.#syncShadowCamera(camera);
+    // World XZ straight into the height query; the sun focus takes scene coordinates.
+    const groundY =
+      this.#scene.sampleHeight(view.lookAt[0], view.lookAt[2]) ?? spawnPose.position.y;
+    this.#scene.focusSun({
+      x: view.lookAt[0] - offset.x,
+      y: groundY,
+      z: view.lookAt[2] - offset.z,
+    });
+    this.#scene.followCamera(camera.position);
+  }
+
+  /**
+   * Restores the scene state the sweep moved: the CSM back on the real camera and the spawn
+   * focus, the sky back on the spawn, and the sweep camera released. (The first gameplay frame
+   * re-syncs all of this anyway; this keeps the closing settle render — and any diagnostic read
+   * between settle and start — in the true first-frame context.)
+   */
+  #endSettleSweep(spawnPose: VehiclePose): void {
+    const active = this.#activeCamera();
+    this.#syncShadowCamera(active);
+    // Scene coordinates, exactly as the frame loop feeds focusSun.
+    this.#scene.focusSun(spawnPose.position);
+    this.#scene.followCamera(active.position);
+    this.#settleCamera?.dispose();
+    this.#settleCamera = null;
   }
 
   #activeCamera(): PerspectiveCamera {
