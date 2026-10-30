@@ -1920,6 +1920,573 @@
           "format": "jpg"
         }
       ]
+    },
+    {
+      "id": "tex-asphalt-03-512",
+      "kind": "texture",
+      "name": "Asphalt 03 — 512px PBR set",
+      "assetClass": "material-surface",
+      "source": {
+        "url": "https://polyhaven.com/a/asphalt_03",
+        "creator": "Dario Barresi, Charlotte Baglioni",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-21",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/asphalt_03"
+      },
+      "role": "Tier-C budget derivation of \"tex-asphalt-03-1k\": the same CC0 scan resampled to 512 px for phone loads (the tier-C asset budget). Derived from the committed 1K files by scripts/build-tier-c-textures.mjs; tiers B and A load the 1K set.",
+      "pipeline": {
+        "resolution": "512",
+        "sourceAsset": "tex-asphalt-03-1k",
+        "jpegQuality": 80,
+        "notes": "Resampled from the committed 1K derivation (itself pinned to the Poly Haven publication); reproducible without network access."
+      },
+      "files": [
+        {
+          "slot": "diffuse",
+          "path": "assets/textures/asphalt_03_512_diff_512.jpg",
+          "bytes": 15388,
+          "sha256": "e7455526ed15f8685cbb1634d15a9696551448a5752bf6abd907ccb6a4e61490",
+          "colourSpace": "srgb",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "normal",
+          "path": "assets/textures/asphalt_03_512_nor_gl_512.jpg",
+          "bytes": 12454,
+          "sha256": "3fdba2776686a424c79667676a5e1366f5bfe1850aaee9eeb17c511bc5bc83ca",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "roughness",
+          "path": "assets/textures/asphalt_03_512_rough_512.jpg",
+          "bytes": 7476,
+          "sha256": "a2eb5e3feda8d4512fc5c1884ebefae579e875c75c05c29281a0d91ae5f679c8",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "arm",
+          "path": "assets/textures/asphalt_03_512_arm_512.jpg",
+          "bytes": 28855,
+          "sha256": "2e692444e2ac75161d74598522a3931cd2c261982442fb87df1442889ad5404d",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        }
+      ]
+    },
+    {
+      "id": "tex-brown-mud-dry-512",
+      "kind": "texture",
+      "name": "Brown Mud Dry — 512px PBR set",
+      "assetClass": "material-surface",
+      "source": {
+        "url": "https://polyhaven.com/a/brown_mud_dry",
+        "creator": "Rob Tuytel",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-21",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/brown_mud_dry"
+      },
+      "role": "Tier-C budget derivation of \"tex-brown-mud-dry-1k\": the same CC0 scan resampled to 512 px for phone loads (the tier-C asset budget). Derived from the committed 1K files by scripts/build-tier-c-textures.mjs; tiers B and A load the 1K set.",
+      "pipeline": {
+        "resolution": "512",
+        "sourceAsset": "tex-brown-mud-dry-1k",
+        "jpegQuality": 80,
+        "notes": "Resampled from the committed 1K derivation (itself pinned to the Poly Haven publication); reproducible without network access."
+      },
+      "files": [
+        {
+          "slot": "diffuse",
+          "path": "assets/textures/brown_mud_dry_512_diff_512.jpg",
+          "bytes": 74594,
+          "sha256": "699f931b206b9f09bf3c7c57690e94cd2d1902bacddf5cefbda88351f1c06fef",
+          "colourSpace": "srgb",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "normal",
+          "path": "assets/textures/brown_mud_dry_512_nor_gl_512.jpg",
+          "bytes": 89396,
+          "sha256": "f4cca2851f9c7c696045f78067513c3ff44231fbf8201babaa912374e68c47a9",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "roughness",
+          "path": "assets/textures/brown_mud_dry_512_rough_512.jpg",
+          "bytes": 34017,
+          "sha256": "8cb8618306ed8a5cd23ba25a1b708539f5e7da04d0a920064df57335e8c1940a",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "arm",
+          "path": "assets/textures/brown_mud_dry_512_arm_512.jpg",
+          "bytes": 42932,
+          "sha256": "db93b12559c4497534a5af4dd14adbabfb08e9192e71615aca034c826dc67576",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "height",
+          "path": "assets/textures/brown_mud_dry_512_disp_512.jpg",
+          "bytes": 28464,
+          "sha256": "2466e84384e73c14ef5df19fc4b6dcd016f0245f49296d3698f19ee93c3d4aa0",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        }
+      ]
+    },
+    {
+      "id": "tex-concrete-wall-009-512",
+      "kind": "texture",
+      "name": "Concrete Wall 009 — 512px PBR set",
+      "assetClass": "material-surface",
+      "source": {
+        "url": "https://polyhaven.com/a/concrete_wall_009",
+        "creator": "Charlotte Baglioni",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-21",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/concrete_wall_009"
+      },
+      "role": "Tier-C budget derivation of \"tex-concrete-wall-009-1k\": the same CC0 scan resampled to 512 px for phone loads (the tier-C asset budget). Derived from the committed 1K files by scripts/build-tier-c-textures.mjs; tiers B and A load the 1K set.",
+      "pipeline": {
+        "resolution": "512",
+        "sourceAsset": "tex-concrete-wall-009-1k",
+        "jpegQuality": 80,
+        "notes": "Resampled from the committed 1K derivation (itself pinned to the Poly Haven publication); reproducible without network access."
+      },
+      "files": [
+        {
+          "slot": "diffuse",
+          "path": "assets/textures/concrete_wall_009_512_diff_512.jpg",
+          "bytes": 17821,
+          "sha256": "6c99dec2b74897131c0fdb9bfe48b764cd2b82ef71f0b95a147465c2d990af55",
+          "colourSpace": "srgb",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "normal",
+          "path": "assets/textures/concrete_wall_009_512_nor_gl_512.jpg",
+          "bytes": 4283,
+          "sha256": "8f7862d8ef2956ce785ddde2039fd47122419b38cb5e3b2408b75831774ddb92",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "roughness",
+          "path": "assets/textures/concrete_wall_009_512_rough_512.jpg",
+          "bytes": 41655,
+          "sha256": "6e62e5373040e704954f0fb8697b79351838af0f2cf00c197c92309541d07666",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "arm",
+          "path": "assets/textures/concrete_wall_009_512_arm_512.jpg",
+          "bytes": 35217,
+          "sha256": "ecb9086feec5872bb702f2111c5b3817461df38efc9f3d55f14b14a8a0143d9f",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        }
+      ]
+    },
+    {
+      "id": "tex-gravel-concrete-03-512",
+      "kind": "texture",
+      "name": "Gravel Concrete 03 — 512px PBR set",
+      "assetClass": "material-surface",
+      "source": {
+        "url": "https://polyhaven.com/a/gravel_concrete_03",
+        "creator": "Charlotte Baglioni",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-21",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/gravel_concrete_03"
+      },
+      "role": "Tier-C budget derivation of \"tex-gravel-concrete-03-1k\": the same CC0 scan resampled to 512 px for phone loads (the tier-C asset budget). Derived from the committed 1K files by scripts/build-tier-c-textures.mjs; tiers B and A load the 1K set.",
+      "pipeline": {
+        "resolution": "512",
+        "sourceAsset": "tex-gravel-concrete-03-1k",
+        "jpegQuality": 80,
+        "notes": "Resampled from the committed 1K derivation (itself pinned to the Poly Haven publication); reproducible without network access."
+      },
+      "files": [
+        {
+          "slot": "diffuse",
+          "path": "assets/textures/gravel_concrete_03_512_diff_512.jpg",
+          "bytes": 31888,
+          "sha256": "5f9861e0211bf4c005bc68eab796c4accb0ea67e84fc860f0c2fcebcb0f823ea",
+          "colourSpace": "srgb",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "normal",
+          "path": "assets/textures/gravel_concrete_03_512_nor_gl_512.jpg",
+          "bytes": 8898,
+          "sha256": "52fe6e924b5852f530f647c65d1bade8802b69bd9ddc31f8d2241d17c30a84c1",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "roughness",
+          "path": "assets/textures/gravel_concrete_03_512_rough_512.jpg",
+          "bytes": 1686,
+          "sha256": "e52d2605df0271d9c5acf00eb34b6b7a31a8ef3b06891eeb867b3d13b5bf09ff",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "arm",
+          "path": "assets/textures/gravel_concrete_03_512_arm_512.jpg",
+          "bytes": 1625,
+          "sha256": "a3df2ad9c34e4a76dfd15fb4437def98b0212cd3562b0e243a626385d1171742",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        }
+      ]
+    },
+    {
+      "id": "tex-japanese-cedar-planks-512",
+      "kind": "texture",
+      "name": "Japanese Cedar Planks — 512px PBR set",
+      "assetClass": "material-surface",
+      "source": {
+        "url": "https://polyhaven.com/a/japanese_cedar_planks",
+        "creator": "Rob Tuytel",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-21",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/japanese_cedar_planks"
+      },
+      "role": "Tier-C budget derivation of \"tex-japanese-cedar-planks-1k\": the same CC0 scan resampled to 512 px for phone loads (the tier-C asset budget). Derived from the committed 1K files by scripts/build-tier-c-textures.mjs; tiers B and A load the 1K set.",
+      "pipeline": {
+        "resolution": "512",
+        "sourceAsset": "tex-japanese-cedar-planks-1k",
+        "jpegQuality": 80,
+        "notes": "Resampled from the committed 1K derivation (itself pinned to the Poly Haven publication); reproducible without network access."
+      },
+      "files": [
+        {
+          "slot": "diffuse",
+          "path": "assets/textures/japanese_cedar_planks_512_diff_512.jpg",
+          "bytes": 28980,
+          "sha256": "bfaaceccea72d0bda7daae46b951616fccc444f87da9a45244914de6ed43b2d0",
+          "colourSpace": "srgb",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "normal",
+          "path": "assets/textures/japanese_cedar_planks_512_nor_gl_512.jpg",
+          "bytes": 7106,
+          "sha256": "27030ab29a8627b1d65cb940d78c98ba84949bc9c0640e6b3cfb58bf93f43552",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "roughness",
+          "path": "assets/textures/japanese_cedar_planks_512_rough_512.jpg",
+          "bytes": 22932,
+          "sha256": "d687b893910bde0719c1b5e158c42719f429c0b03c802d5a13f785af9692ed42",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "arm",
+          "path": "assets/textures/japanese_cedar_planks_512_arm_512.jpg",
+          "bytes": 18069,
+          "sha256": "380ca96836e095a9b312b4d7f7dcf13dfa1783989055acb2e83c422859af74bb",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        }
+      ]
+    },
+    {
+      "id": "tex-leafy-grass-512",
+      "kind": "texture",
+      "name": "Leafy Grass — 512px PBR set",
+      "assetClass": "material-surface",
+      "source": {
+        "url": "https://polyhaven.com/a/leafy_grass",
+        "creator": "Charlotte Baglioni",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-21",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/leafy_grass"
+      },
+      "role": "Tier-C budget derivation of \"tex-leafy-grass-1k\": the same CC0 scan resampled to 512 px for phone loads (the tier-C asset budget). Derived from the committed 1K files by scripts/build-tier-c-textures.mjs; tiers B and A load the 1K set.",
+      "pipeline": {
+        "resolution": "512",
+        "sourceAsset": "tex-leafy-grass-1k",
+        "jpegQuality": 80,
+        "notes": "Resampled from the committed 1K derivation (itself pinned to the Poly Haven publication); reproducible without network access."
+      },
+      "files": [
+        {
+          "slot": "diffuse",
+          "path": "assets/textures/leafy_grass_512_diff_512.jpg",
+          "bytes": 62280,
+          "sha256": "fe0adec0a4a88fa41c5cb6be42173e4b73d26113bc2fa0a7d63d7e073bed86f3",
+          "colourSpace": "srgb",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "normal",
+          "path": "assets/textures/leafy_grass_512_nor_gl_512.jpg",
+          "bytes": 74590,
+          "sha256": "05bd8dd1910660b48547a1b3cc8b6984e7291c084d8d20da811bf0e63529d8af",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "roughness",
+          "path": "assets/textures/leafy_grass_512_rough_512.jpg",
+          "bytes": 11603,
+          "sha256": "0205304c65b816eb0b86379552eeaa084776e19fc6de119eec151329581abca7",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "arm",
+          "path": "assets/textures/leafy_grass_512_arm_512.jpg",
+          "bytes": 38997,
+          "sha256": "e2462b0d5580d4b8bc86d3f4f2d78525601ac6edb4ab6262bec8010858a96de8",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "height",
+          "path": "assets/textures/leafy_grass_512_disp_512.jpg",
+          "bytes": 46872,
+          "sha256": "4e53270dd1835dc6f9681778ab865f58ca5ca97e3e1c4a6431472854bfd67e48",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        }
+      ]
+    },
+    {
+      "id": "tex-rock-face-03-512",
+      "kind": "texture",
+      "name": "Rock Face 03 — 512px PBR set",
+      "assetClass": "material-surface",
+      "source": {
+        "url": "https://polyhaven.com/a/rock_face_03",
+        "creator": "Dario Barresi, Rico Cilliers",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-21",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_face_03"
+      },
+      "role": "Tier-C budget derivation of \"tex-rock-face-03-1k\": the same CC0 scan resampled to 512 px for phone loads (the tier-C asset budget). Derived from the committed 1K files by scripts/build-tier-c-textures.mjs; tiers B and A load the 1K set.",
+      "pipeline": {
+        "resolution": "512",
+        "sourceAsset": "tex-rock-face-03-1k",
+        "jpegQuality": 80,
+        "notes": "Resampled from the committed 1K derivation (itself pinned to the Poly Haven publication); reproducible without network access."
+      },
+      "files": [
+        {
+          "slot": "diffuse",
+          "path": "assets/textures/rock_face_03_512_diff_512.jpg",
+          "bytes": 39796,
+          "sha256": "9aec494eee97eea1bca040460785c2e9cee9130b03c71ba6e1689f7949b0543e",
+          "colourSpace": "srgb",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "normal",
+          "path": "assets/textures/rock_face_03_512_nor_gl_512.jpg",
+          "bytes": 59138,
+          "sha256": "8cc83e453a9b695263f6b26319d9350861178ca03bd92e719932f5e35498b182",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "roughness",
+          "path": "assets/textures/rock_face_03_512_rough_512.jpg",
+          "bytes": 27127,
+          "sha256": "0572b05f4c1dda3e723c74adf446bc2d3b86b93ef722daa77a6f9b948585ada8",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "arm",
+          "path": "assets/textures/rock_face_03_512_arm_512.jpg",
+          "bytes": 26888,
+          "sha256": "346b4aec40d8e48f02fae08e7a530229f13ac93e81ffaaa86b14866678f381ce",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "height",
+          "path": "assets/textures/rock_face_03_512_disp_512.jpg",
+          "bytes": 16643,
+          "sha256": "c817067dfc686aa40661182760de20134e8e1928bf2d32f64983287cb92f4be2",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        }
+      ]
+    },
+    {
+      "id": "tex-sandy-gravel-512",
+      "kind": "texture",
+      "name": "Sandy Gravel — 512px PBR set",
+      "assetClass": "material-surface",
+      "source": {
+        "url": "https://polyhaven.com/a/sandy_gravel",
+        "creator": "Charlotte Baglioni",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-21",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/sandy_gravel"
+      },
+      "role": "Tier-C budget derivation of \"tex-sandy-gravel-1k\": the same CC0 scan resampled to 512 px for phone loads (the tier-C asset budget). Derived from the committed 1K files by scripts/build-tier-c-textures.mjs; tiers B and A load the 1K set.",
+      "pipeline": {
+        "resolution": "512",
+        "sourceAsset": "tex-sandy-gravel-1k",
+        "jpegQuality": 80,
+        "notes": "Resampled from the committed 1K derivation (itself pinned to the Poly Haven publication); reproducible without network access."
+      },
+      "files": [
+        {
+          "slot": "diffuse",
+          "path": "assets/textures/sandy_gravel_512_diff_512.jpg",
+          "bytes": 17385,
+          "sha256": "825e9e88608d271a864dd4f87a5137c018e6f445121d3e5c6d07c76ced3cee9c",
+          "colourSpace": "srgb",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "normal",
+          "path": "assets/textures/sandy_gravel_512_nor_gl_512.jpg",
+          "bytes": 32272,
+          "sha256": "b09496760e8800e2cccf6900571d9cf626ffce34ad6553f26d1e838013b6ee87",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "roughness",
+          "path": "assets/textures/sandy_gravel_512_rough_512.jpg",
+          "bytes": 1463,
+          "sha256": "bc8f484988e0bff07b4edd10110d2a01bce2071ca8f73bdebc8a1fb355ddf6fc",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "arm",
+          "path": "assets/textures/sandy_gravel_512_arm_512.jpg",
+          "bytes": 18853,
+          "sha256": "3990c9018f6b018ea57ce5341eca0d67f3eebe5bfadd3a79eca59106cb0fed60",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        }
+      ]
+    },
+    {
+      "id": "tex-snow-01-512",
+      "kind": "texture",
+      "name": "Snow 01 — 512px PBR set",
+      "assetClass": "material-surface",
+      "source": {
+        "url": "https://polyhaven.com/a/snow_01",
+        "creator": "Rob Tuytel",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-21",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/snow_01"
+      },
+      "role": "Tier-C budget derivation of \"tex-snow-01-1k\": the same CC0 scan resampled to 512 px for phone loads (the tier-C asset budget). Derived from the committed 1K files by scripts/build-tier-c-textures.mjs; tiers B and A load the 1K set.",
+      "pipeline": {
+        "resolution": "512",
+        "sourceAsset": "tex-snow-01-1k",
+        "jpegQuality": 80,
+        "notes": "Resampled from the committed 1K derivation (itself pinned to the Poly Haven publication); reproducible without network access."
+      },
+      "files": [
+        {
+          "slot": "diffuse",
+          "path": "assets/textures/snow_01_512_diff_512.jpg",
+          "bytes": 27799,
+          "sha256": "f4649e80611afb30f4b1bad85d3ccfb744c2db383c48379085c141e68a0d7e5c",
+          "colourSpace": "srgb",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "normal",
+          "path": "assets/textures/snow_01_512_nor_gl_512.jpg",
+          "bytes": 74245,
+          "sha256": "680b22b5eccb4d2e6b3939f34e5c42198c058fba348326e7b130ac193fcc6f53",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "roughness",
+          "path": "assets/textures/snow_01_512_rough_512.jpg",
+          "bytes": 16527,
+          "sha256": "c7bcf1ce628bccc75b88f55d2d574703a79f0c389a87072ca22560fff1cfd37c",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "arm",
+          "path": "assets/textures/snow_01_512_arm_512.jpg",
+          "bytes": 22961,
+          "sha256": "28f0f698980cee6b94d0f51759b5dcff9f29e5a8cc4f5033e5418a1c2a1f2d9a",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "height",
+          "path": "assets/textures/snow_01_512_disp_512.jpg",
+          "bytes": 29051,
+          "sha256": "4d1dd669ec92f241732c56ced51d34a66e8c0ce9792c306e2d079c72882899bf",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        }
+      ]
     }
   ],
   "updated": "2026-10-23"

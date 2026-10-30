@@ -24,6 +24,7 @@
     "check": "npm run format:check && npm run lint && npm run guard:glsl && npm run typecheck && npm run test && npm run assets:verify && npm run build",
     "assets:fetch": "node scripts/fetch-assets.mjs",
     "assets:models": "node scripts/build-models.mjs",
+    "assets:tier-c": "node scripts/build-tier-c-textures.mjs",
     "assets:hero": "node scripts/build-hero-car.mjs",
     "assets:lut": "node scripts/build-lut.mjs",
     "assets:verify": "node scripts/verify-assets.mjs",
