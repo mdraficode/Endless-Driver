@@ -366,6 +366,12 @@ const args = new Set(process.argv.slice(2));
 const FORCE = args.has('--force');
 const onlyIndex = process.argv.indexOf('--only');
 const ONLY = onlyIndex >= 0 ? process.argv[onlyIndex + 1] : null;
+// The tier-C budget: re-derive the same models with 512-px textures and attach the files to the
+// existing manifest entries (a `resolution: '512'` sibling of the 1K file) instead of replacing
+// them — the runtime picks the file per tier (`src/config/asset-resolution.ts`), and the 1K file
+// stays `files[0]` so the CI model check keeps verifying the full-quality derivation.
+const VARIANT_512 = args.has('--variant-512');
+const TEXTURE_MAX = VARIANT_512 ? 512 : MODEL_TEXTURE.maxSize;
 
 const sha256 = (buffer) => createHash('sha256').update(buffer).digest('hex');
 
@@ -841,7 +847,7 @@ async function derive(io, sources, entry, budget, variant = { meshIndex: 0 }) {
     weld(),
     textureCompress({
       encoder: sharp,
-      resize: [MODEL_TEXTURE.maxSize, MODEL_TEXTURE.maxSize],
+      resize: [TEXTURE_MAX, TEXTURE_MAX],
       targetFormat: 'jpeg',
       quality: MODEL_TEXTURE.intermediateJpegQuality,
     }),
@@ -1196,9 +1202,10 @@ async function main() {
     const outputDirectory = join(PUBLIC_DIR, 'assets', 'models');
     const pathFor = (variantEntry) => {
       const slug = variantEntry.id.replace(/^model-/, '');
+      const fileName = VARIANT_512 ? `${slug}_512.glb` : `${slug}.glb`;
       return {
-        outputPath: join(outputDirectory, `${slug}.glb`),
-        relativePath: `assets/models/${slug}.glb`,
+        outputPath: join(outputDirectory, fileName),
+        relativePath: `assets/models/${fileName}`,
       };
     };
     const pending = variants
@@ -1304,7 +1311,23 @@ async function main() {
         ].join(' '),
       );
       const existing = assets.findIndex((candidate) => candidate.id === manifestEntry.id);
-      if (existing >= 0) {
+      if (VARIANT_512) {
+        // Attach the 512 file to the 1K entry: same id, same source, one sibling file. The 1K
+        // file stays first — the CI model check verifies files[0], the full-quality derivation.
+        if (existing < 0) {
+          throw new Error(
+            `${manifestEntry.id}: no 1K manifest entry to attach the 512 file to — build the 1K model first`,
+          );
+        }
+        const target = assets[existing];
+        target.files = [
+          ...target.files.filter((candidate) => candidate.resolution !== '512'),
+          { ...file, resolution: '512' },
+        ];
+        console.log(
+          `  manifest: ${manifestEntry.id} now ships a 512-px file (${formatBytes(file.bytes)})`,
+        );
+      } else if (existing >= 0) {
         assets[existing] = manifestEntry;
       } else {
         assets.push(manifestEntry);

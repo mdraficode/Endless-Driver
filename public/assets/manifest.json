@@ -597,6 +597,16 @@
           "format": "glb",
           "triangles": 54138,
           "textures": 3
+        },
+        {
+          "slot": "model",
+          "path": "assets/models/boulder-01_512.glb",
+          "bytes": 1081012,
+          "sha256": "d763dc4eaa5a4dd5af2789370f4999323def9d8ec8facf8aed2e76b8c21e9d66",
+          "format": "glb",
+          "triangles": 54138,
+          "textures": 3,
+          "resolution": "512"
         }
       ],
       "verification": {
@@ -1291,6 +1301,16 @@
           "format": "glb",
           "triangles": 10655,
           "textures": 9
+        },
+        {
+          "slot": "model",
+          "path": "assets/models/island-tree-01_512.glb",
+          "bytes": 1322324,
+          "sha256": "d94b0e73643786b7eb04561c3ee9f1750ac464e402d350c4470490814ea7d418",
+          "format": "glb",
+          "triangles": 10655,
+          "textures": 9,
+          "resolution": "512"
         }
       ],
       "verification": {
@@ -1400,6 +1420,16 @@
           "format": "glb",
           "triangles": 32836,
           "textures": 3
+        },
+        {
+          "slot": "model",
+          "path": "assets/models/tree-stump-01_512.glb",
+          "bytes": 564008,
+          "sha256": "ca67969996439bcb9e32fa869552f88ae915d83bd4a84f9587383daedfddbac9",
+          "format": "glb",
+          "triangles": 32836,
+          "textures": 3,
+          "resolution": "512"
         }
       ],
       "verification": {
@@ -1466,6 +1496,65 @@
       ]
     },
     {
+      "id": "tex-asphalt-03-512",
+      "kind": "texture",
+      "name": "Asphalt 03 — 512px PBR set",
+      "assetClass": "material-surface",
+      "source": {
+        "url": "https://polyhaven.com/a/asphalt_03",
+        "creator": "Dario Barresi, Charlotte Baglioni",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-21",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/asphalt_03"
+      },
+      "role": "Tier-C budget derivation of \"tex-asphalt-03-1k\": the same CC0 scan resampled to 512 px for phone loads (the tier-C asset budget). Derived from the committed 1K files by scripts/build-tier-c-textures.mjs; tiers B and A load the 1K set.",
+      "pipeline": {
+        "resolution": "512",
+        "sourceAsset": "tex-asphalt-03-1k",
+        "jpegQuality": 80,
+        "notes": "Resampled from the committed 1K derivation (itself pinned to the Poly Haven publication); reproducible without network access."
+      },
+      "files": [
+        {
+          "slot": "diffuse",
+          "path": "assets/textures/asphalt_03_512_diff_512.jpg",
+          "bytes": 15388,
+          "sha256": "e7455526ed15f8685cbb1634d15a9696551448a5752bf6abd907ccb6a4e61490",
+          "colourSpace": "srgb",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "normal",
+          "path": "assets/textures/asphalt_03_512_nor_gl_512.jpg",
+          "bytes": 12454,
+          "sha256": "3fdba2776686a424c79667676a5e1366f5bfe1850aaee9eeb17c511bc5bc83ca",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "roughness",
+          "path": "assets/textures/asphalt_03_512_rough_512.jpg",
+          "bytes": 7476,
+          "sha256": "a2eb5e3feda8d4512fc5c1884ebefae579e875c75c05c29281a0d91ae5f679c8",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        },
+        {
+          "slot": "arm",
+          "path": "assets/textures/asphalt_03_512_arm_512.jpg",
+          "bytes": 28855,
+          "sha256": "2e692444e2ac75161d74598522a3931cd2c261982442fb87df1442889ad5404d",
+          "colourSpace": "linear",
+          "format": "jpg",
+          "resolution": "512"
+        }
+      ]
+    },
+    {
       "id": "tex-brown-mud-dry-1k",
       "kind": "texture",
       "name": "Brown Mud Dry — 1K PBR set",
@@ -1523,460 +1612,6 @@
           "sha256": "b903d2b713606b6b5cb5c21628f40399f2be58b4a63ee7b87896138c7a486465",
           "colourSpace": "linear",
           "format": "jpg"
-        }
-      ]
-    },
-    {
-      "id": "tex-concrete-wall-009-1k",
-      "kind": "texture",
-      "name": "Concrete Wall 009 — 1K PBR set",
-      "assetClass": "material-surface",
-      "source": {
-        "url": "https://polyhaven.com/a/concrete_wall_009",
-        "creator": "Charlotte Baglioni",
-        "licence": "CC0-1.0",
-        "attribution": "",
-        "retrieved": "2026-10-21",
-        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/concrete_wall_009"
-      },
-      "role": "CC0 cast-concrete scan for opaque city and rural building walls; albedo, normal and packed AO/roughness/metalness maps.",
-      "pipeline": {
-        "resolution": "1024",
-        "notes": "Runtime variant selected at fetch time; KTX2/Basis transcoding is applied when the KTX-Software toolchain is available in the build environment (recorded per asset when it happens)."
-      },
-      "files": [
-        {
-          "slot": "diffuse",
-          "path": "assets/textures/concrete_wall_009_1k_diff_1k.jpg",
-          "bytes": 626688,
-          "sha256": "59811fad71658323462287b072eef22ebb857c13bba63eeff34842a4d4dba8fe",
-          "colourSpace": "srgb",
-          "format": "jpg"
-        },
-        {
-          "slot": "normal",
-          "path": "assets/textures/concrete_wall_009_1k_nor_gl_1k.jpg",
-          "bytes": 518536,
-          "sha256": "0caa2f8681b5c81de775d32deb6ad0644e9f943015faf42e1e7cccfbd6c5c04f",
-          "colourSpace": "linear",
-          "format": "jpg"
-        },
-        {
-          "slot": "roughness",
-          "path": "assets/textures/concrete_wall_009_1k_rough_1k.jpg",
-          "bytes": 766943,
-          "sha256": "109424f91c6c385b7c2b5791e2d9f8c9d082d9d5665dae42c35df96410ea05d1",
-          "colourSpace": "linear",
-          "format": "jpg"
-        },
-        {
-          "slot": "arm",
-          "path": "assets/textures/concrete_wall_009_1k_arm_1k.jpg",
-          "bytes": 896679,
-          "sha256": "e8c5155a2bd11734143b659b727304ed3a5afaae9e82f379dfc0833728d5fbc4",
-          "colourSpace": "linear",
-          "format": "jpg"
-        }
-      ]
-    },
-    {
-      "id": "tex-gravel-concrete-03-1k",
-      "kind": "texture",
-      "name": "Gravel Concrete 03 — 1K PBR set",
-      "assetClass": "material-surface",
-      "source": {
-        "url": "https://polyhaven.com/a/gravel_concrete_03",
-        "creator": "Charlotte Baglioni",
-        "licence": "CC0-1.0",
-        "attribution": "",
-        "retrieved": "2026-10-21",
-        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/gravel_concrete_03"
-      },
-      "role": "CC0 aggregate concrete for sidewalks and concrete street furniture; albedo, normal and packed AO/roughness/metalness maps.",
-      "pipeline": {
-        "resolution": "1024",
-        "notes": "Runtime variant selected at fetch time; KTX2/Basis transcoding is applied when the KTX-Software toolchain is available in the build environment (recorded per asset when it happens)."
-      },
-      "files": [
-        {
-          "slot": "diffuse",
-          "path": "assets/textures/gravel_concrete_03_1k_diff_1k.jpg",
-          "bytes": 858933,
-          "sha256": "ba89e69d3eaf9e4568d5ae62171f042d1ca20f8b500e1d7ff293a99fb4e7cb8d",
-          "colourSpace": "srgb",
-          "format": "jpg"
-        },
-        {
-          "slot": "normal",
-          "path": "assets/textures/gravel_concrete_03_1k_nor_gl_1k.jpg",
-          "bytes": 790467,
-          "sha256": "a2340aa024cd6c0cf8779eddabcf859effd52303073848225e654d106279accc",
-          "colourSpace": "linear",
-          "format": "jpg"
-        },
-        {
-          "slot": "roughness",
-          "path": "assets/textures/gravel_concrete_03_1k_rough_1k.jpg",
-          "bytes": 355734,
-          "sha256": "e285f57403a21a39ee5ee00eb91e01dc1de43b2601f5fcec1e5a247f40a6f603",
-          "colourSpace": "linear",
-          "format": "jpg"
-        },
-        {
-          "slot": "arm",
-          "path": "assets/textures/gravel_concrete_03_1k_arm_1k.jpg",
-          "bytes": 384514,
-          "sha256": "8ef171f563ed92742117f022f633624b0bf493f003a96d5c422d2231d10a0f38",
-          "colourSpace": "linear",
-          "format": "jpg"
-        }
-      ]
-    },
-    {
-      "id": "tex-japanese-cedar-planks-1k",
-      "kind": "texture",
-      "name": "Japanese Cedar Planks — 1K PBR set",
-      "assetClass": "material-surface",
-      "source": {
-        "url": "https://polyhaven.com/a/japanese_cedar_planks",
-        "creator": "Rob Tuytel",
-        "licence": "CC0-1.0",
-        "attribution": "",
-        "retrieved": "2026-10-21",
-        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/japanese_cedar_planks"
-      },
-      "role": "Scanned CC0 cedar surface for the material library, studio validation grid and wooden Aohara bench boards.",
-      "pipeline": {
-        "resolution": "1024",
-        "notes": "Runtime variant selected at fetch time; KTX2/Basis transcoding is applied when the KTX-Software toolchain is available in the build environment (recorded per asset when it happens)."
-      },
-      "files": [
-        {
-          "slot": "diffuse",
-          "path": "assets/textures/japanese_cedar_planks_1k_diff_1k.jpg",
-          "bytes": 704030,
-          "sha256": "cce8e8c5e5e6ba7956a6edf9fa6121c57fa2bfab0ebd672951bede9e053cbec4",
-          "colourSpace": "srgb",
-          "format": "jpg"
-        },
-        {
-          "slot": "normal",
-          "path": "assets/textures/japanese_cedar_planks_1k_nor_gl_1k.jpg",
-          "bytes": 745514,
-          "sha256": "2537ec9d8589caf8a89ef4e733d015318030d9ee9e2c2fdfa1471154770ebbea",
-          "colourSpace": "linear",
-          "format": "jpg"
-        },
-        {
-          "slot": "roughness",
-          "path": "assets/textures/japanese_cedar_planks_1k_rough_1k.jpg",
-          "bytes": 679485,
-          "sha256": "494826e6d014fd7098eed24ff8b342ea8b3c83281e290ac5c2eacef4c9f3a424",
-          "colourSpace": "linear",
-          "format": "jpg"
-        },
-        {
-          "slot": "arm",
-          "path": "assets/textures/japanese_cedar_planks_1k_arm_1k.jpg",
-          "bytes": 692510,
-          "sha256": "b58d152975965c71dfc9b219c6a80b4d2718b7d6c144682d794dd6a11061cfb4",
-          "colourSpace": "linear",
-          "format": "jpg"
-        }
-      ]
-    },
-    {
-      "id": "tex-leafy-grass-1k",
-      "kind": "texture",
-      "name": "Leafy Grass — 1K PBR set",
-      "assetClass": "material-surface",
-      "source": {
-        "url": "https://polyhaven.com/a/leafy_grass",
-        "creator": "Charlotte Baglioni",
-        "licence": "CC0-1.0",
-        "attribution": "",
-        "retrieved": "2026-10-21",
-        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/leafy_grass"
-      },
-      "role": "Terrain splat diffuse/normal/roughness/AO for grass lowlands (Phase 4 realism pass).",
-      "pipeline": {
-        "resolution": "1024",
-        "notes": "Runtime variant selected at fetch time; KTX2/Basis transcoding is applied when the KTX-Software toolchain is available in the build environment (recorded per asset when it happens)."
-      },
-      "files": [
-        {
-          "slot": "diffuse",
-          "path": "assets/textures/leafy_grass_1k_diff_1k.jpg",
-          "bytes": 1195394,
-          "sha256": "cfa40bc9d9417d1852db8753a8d5917f110c40101179f63543c382e39bc05e4a",
-          "colourSpace": "srgb",
-          "format": "jpg"
-        },
-        {
-          "slot": "normal",
-          "path": "assets/textures/leafy_grass_1k_nor_gl_1k.jpg",
-          "bytes": 1466049,
-          "sha256": "832328216adc0a7e1f70a31d5ee48c9ab7f2152d83816122736cf42ac4b2ebd6",
-          "colourSpace": "linear",
-          "format": "jpg"
-        },
-        {
-          "slot": "roughness",
-          "path": "assets/textures/leafy_grass_1k_rough_1k.jpg",
-          "bytes": 511385,
-          "sha256": "0c2a1d91aacb8e54a496051b59854e51e456fe858abeade778e308359ef16463",
-          "colourSpace": "linear",
-          "format": "jpg"
-        },
-        {
-          "slot": "arm",
-          "path": "assets/textures/leafy_grass_1k_arm_1k.jpg",
-          "bytes": 1010081,
-          "sha256": "95432451cb2693794459fe7ea339ea9ffdb5959c40373740f80a4aa1703f089d",
-          "colourSpace": "linear",
-          "format": "jpg"
-        },
-        {
-          "slot": "height",
-          "path": "assets/textures/leafy_grass_1k_disp_1k.jpg",
-          "bytes": 742755,
-          "sha256": "3c78000885796046cc90cec2a61abea0f65cd8fb6585ac2a7b5987f73c5aa98e",
-          "colourSpace": "linear",
-          "format": "jpg"
-        }
-      ]
-    },
-    {
-      "id": "tex-rock-face-03-1k",
-      "kind": "texture",
-      "name": "Rock Face 03 — 1K PBR set",
-      "assetClass": "material-surface",
-      "source": {
-        "url": "https://polyhaven.com/a/rock_face_03",
-        "creator": "Dario Barresi, Rico Cilliers",
-        "licence": "CC0-1.0",
-        "attribution": "",
-        "retrieved": "2026-10-21",
-        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_face_03"
-      },
-      "role": "Terrain splat diffuse/normal/roughness/AO for steep rock and cliffs (Phase 4 realism pass).",
-      "pipeline": {
-        "resolution": "1024",
-        "notes": "Runtime variant selected at fetch time; KTX2/Basis transcoding is applied when the KTX-Software toolchain is available in the build environment (recorded per asset when it happens)."
-      },
-      "files": [
-        {
-          "slot": "diffuse",
-          "path": "assets/textures/rock_face_03_1k_diff_1k.jpg",
-          "bytes": 927082,
-          "sha256": "ea48e0e47ad42c8bd312476178b1248ec66f0eb19156a26a1c222f2a40caaf2d",
-          "colourSpace": "srgb",
-          "format": "jpg"
-        },
-        {
-          "slot": "normal",
-          "path": "assets/textures/rock_face_03_1k_nor_gl_1k.jpg",
-          "bytes": 1146788,
-          "sha256": "c6423169583f31715cf0636954bad524e806848a5f2861fcea6794275f726ff0",
-          "colourSpace": "linear",
-          "format": "jpg"
-        },
-        {
-          "slot": "roughness",
-          "path": "assets/textures/rock_face_03_1k_rough_1k.jpg",
-          "bytes": 638904,
-          "sha256": "9e3d9a2fd75244892e7acb6bab2eaed1279299510a7970672c0ee27ff1c19fea",
-          "colourSpace": "linear",
-          "format": "jpg"
-        },
-        {
-          "slot": "arm",
-          "path": "assets/textures/rock_face_03_1k_arm_1k.jpg",
-          "bytes": 793241,
-          "sha256": "a1f8e60eaf4f119071840e36e165d3a9185be62bd3ac7068ab6d886aa639d29f",
-          "colourSpace": "linear",
-          "format": "jpg"
-        },
-        {
-          "slot": "height",
-          "path": "assets/textures/rock_face_03_1k_disp_1k.jpg",
-          "bytes": 264231,
-          "sha256": "fb053bfd46cef976da9cfee67f045367469cddd69469dcacd67d3fca4bd41545",
-          "colourSpace": "linear",
-          "format": "jpg"
-        }
-      ]
-    },
-    {
-      "id": "tex-sandy-gravel-1k",
-      "kind": "texture",
-      "name": "Sandy Gravel — 1K PBR set",
-      "assetClass": "material-surface",
-      "source": {
-        "url": "https://polyhaven.com/a/sandy_gravel",
-        "creator": "Charlotte Baglioni",
-        "licence": "CC0-1.0",
-        "attribution": "",
-        "retrieved": "2026-10-21",
-        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/sandy_gravel"
-      },
-      "role": "Road shoulder diffuse/normal/roughness/AO for the Phase 4 spline road network.",
-      "pipeline": {
-        "resolution": "1024",
-        "notes": "Runtime variant selected at fetch time; KTX2/Basis transcoding is applied when the KTX-Software toolchain is available in the build environment (recorded per asset when it happens)."
-      },
-      "files": [
-        {
-          "slot": "diffuse",
-          "path": "assets/textures/sandy_gravel_1k_diff_1k.jpg",
-          "bytes": 795227,
-          "sha256": "38829e669dc246e86b7ce94c4141485709988450b13f82cfc4bc6067dd69ed48",
-          "colourSpace": "srgb",
-          "format": "jpg"
-        },
-        {
-          "slot": "normal",
-          "path": "assets/textures/sandy_gravel_1k_nor_gl_1k.jpg",
-          "bytes": 1159620,
-          "sha256": "f2a4c48f31cd5ad5e2b0488e89c94d284c5a2acd4367bec49a5f48f832b7e3da",
-          "colourSpace": "linear",
-          "format": "jpg"
-        },
-        {
-          "slot": "roughness",
-          "path": "assets/textures/sandy_gravel_1k_rough_1k.jpg",
-          "bytes": 396818,
-          "sha256": "dce2344c2a2be905f88b18497911e3e324b741c0fced19623659b44fb76b3d22",
-          "colourSpace": "linear",
-          "format": "jpg"
-        },
-        {
-          "slot": "arm",
-          "path": "assets/textures/sandy_gravel_1k_arm_1k.jpg",
-          "bytes": 765219,
-          "sha256": "ae13c0de981ab78abc39e3bec6147a06448e0865f4162cd57d54ada411df0de7",
-          "colourSpace": "linear",
-          "format": "jpg"
-        }
-      ]
-    },
-    {
-      "id": "tex-snow-01-1k",
-      "kind": "texture",
-      "name": "Snow 01 — 1K PBR set",
-      "assetClass": "material-surface",
-      "source": {
-        "url": "https://polyhaven.com/a/snow_01",
-        "creator": "Rob Tuytel",
-        "licence": "CC0-1.0",
-        "attribution": "",
-        "retrieved": "2026-10-21",
-        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/snow_01"
-      },
-      "role": "Terrain splat diffuse/normal/roughness/AO above the snowline (Phase 4 realism pass).",
-      "pipeline": {
-        "resolution": "1024",
-        "notes": "Runtime variant selected at fetch time; KTX2/Basis transcoding is applied when the KTX-Software toolchain is available in the build environment (recorded per asset when it happens)."
-      },
-      "files": [
-        {
-          "slot": "diffuse",
-          "path": "assets/textures/snow_01_1k_diff_1k.jpg",
-          "bytes": 356249,
-          "sha256": "bf71d93b7e47fe29bfb6ae11626439535b647da041b979ba5303ce8b0a862d53",
-          "colourSpace": "srgb",
-          "format": "jpg"
-        },
-        {
-          "slot": "normal",
-          "path": "assets/textures/snow_01_1k_nor_gl_1k.jpg",
-          "bytes": 1370735,
-          "sha256": "ce806bc45cae729a211b16c94239018d58570b9a796a8cc890cf8cbce2c8f050",
-          "colourSpace": "linear",
-          "format": "jpg"
-        },
-        {
-          "slot": "roughness",
-          "path": "assets/textures/snow_01_1k_rough_1k.jpg",
-          "bytes": 195503,
-          "sha256": "c008cd329bda1127d8c6ff2ed8772e563419fbfb836648b2f05e07ab893be1aa",
-          "colourSpace": "linear",
-          "format": "jpg"
-        },
-        {
-          "slot": "arm",
-          "path": "assets/textures/snow_01_1k_arm_1k.jpg",
-          "bytes": 141532,
-          "sha256": "6e25d932538b97dbccf3c6f267588cc59cb749e6845dcde74441a9c58fd615ce",
-          "colourSpace": "linear",
-          "format": "jpg"
-        },
-        {
-          "slot": "height",
-          "path": "assets/textures/snow_01_1k_disp_1k.jpg",
-          "bytes": 234435,
-          "sha256": "042965c95de9420ec28af9d1af7b308185139ed69483214fb77d621c0b984db0",
-          "colourSpace": "linear",
-          "format": "jpg"
-        }
-      ]
-    },
-    {
-      "id": "tex-asphalt-03-512",
-      "kind": "texture",
-      "name": "Asphalt 03 — 512px PBR set",
-      "assetClass": "material-surface",
-      "source": {
-        "url": "https://polyhaven.com/a/asphalt_03",
-        "creator": "Dario Barresi, Charlotte Baglioni",
-        "licence": "CC0-1.0",
-        "attribution": "",
-        "retrieved": "2026-10-21",
-        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/asphalt_03"
-      },
-      "role": "Tier-C budget derivation of \"tex-asphalt-03-1k\": the same CC0 scan resampled to 512 px for phone loads (the tier-C asset budget). Derived from the committed 1K files by scripts/build-tier-c-textures.mjs; tiers B and A load the 1K set.",
-      "pipeline": {
-        "resolution": "512",
-        "sourceAsset": "tex-asphalt-03-1k",
-        "jpegQuality": 80,
-        "notes": "Resampled from the committed 1K derivation (itself pinned to the Poly Haven publication); reproducible without network access."
-      },
-      "files": [
-        {
-          "slot": "diffuse",
-          "path": "assets/textures/asphalt_03_512_diff_512.jpg",
-          "bytes": 15388,
-          "sha256": "e7455526ed15f8685cbb1634d15a9696551448a5752bf6abd907ccb6a4e61490",
-          "colourSpace": "srgb",
-          "format": "jpg",
-          "resolution": "512"
-        },
-        {
-          "slot": "normal",
-          "path": "assets/textures/asphalt_03_512_nor_gl_512.jpg",
-          "bytes": 12454,
-          "sha256": "3fdba2776686a424c79667676a5e1366f5bfe1850aaee9eeb17c511bc5bc83ca",
-          "colourSpace": "linear",
-          "format": "jpg",
-          "resolution": "512"
-        },
-        {
-          "slot": "roughness",
-          "path": "assets/textures/asphalt_03_512_rough_512.jpg",
-          "bytes": 7476,
-          "sha256": "a2eb5e3feda8d4512fc5c1884ebefae579e875c75c05c29281a0d91ae5f679c8",
-          "colourSpace": "linear",
-          "format": "jpg",
-          "resolution": "512"
-        },
-        {
-          "slot": "arm",
-          "path": "assets/textures/asphalt_03_512_arm_512.jpg",
-          "bytes": 28855,
-          "sha256": "2e692444e2ac75161d74598522a3931cd2c261982442fb87df1442889ad5404d",
-          "colourSpace": "linear",
-          "format": "jpg",
-          "resolution": "512"
         }
       ]
     },
@@ -2049,6 +1684,59 @@
       ]
     },
     {
+      "id": "tex-concrete-wall-009-1k",
+      "kind": "texture",
+      "name": "Concrete Wall 009 — 1K PBR set",
+      "assetClass": "material-surface",
+      "source": {
+        "url": "https://polyhaven.com/a/concrete_wall_009",
+        "creator": "Charlotte Baglioni",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-21",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/concrete_wall_009"
+      },
+      "role": "CC0 cast-concrete scan for opaque city and rural building walls; albedo, normal and packed AO/roughness/metalness maps.",
+      "pipeline": {
+        "resolution": "1024",
+        "notes": "Runtime variant selected at fetch time; KTX2/Basis transcoding is applied when the KTX-Software toolchain is available in the build environment (recorded per asset when it happens)."
+      },
+      "files": [
+        {
+          "slot": "diffuse",
+          "path": "assets/textures/concrete_wall_009_1k_diff_1k.jpg",
+          "bytes": 626688,
+          "sha256": "59811fad71658323462287b072eef22ebb857c13bba63eeff34842a4d4dba8fe",
+          "colourSpace": "srgb",
+          "format": "jpg"
+        },
+        {
+          "slot": "normal",
+          "path": "assets/textures/concrete_wall_009_1k_nor_gl_1k.jpg",
+          "bytes": 518536,
+          "sha256": "0caa2f8681b5c81de775d32deb6ad0644e9f943015faf42e1e7cccfbd6c5c04f",
+          "colourSpace": "linear",
+          "format": "jpg"
+        },
+        {
+          "slot": "roughness",
+          "path": "assets/textures/concrete_wall_009_1k_rough_1k.jpg",
+          "bytes": 766943,
+          "sha256": "109424f91c6c385b7c2b5791e2d9f8c9d082d9d5665dae42c35df96410ea05d1",
+          "colourSpace": "linear",
+          "format": "jpg"
+        },
+        {
+          "slot": "arm",
+          "path": "assets/textures/concrete_wall_009_1k_arm_1k.jpg",
+          "bytes": 896679,
+          "sha256": "e8c5155a2bd11734143b659b727304ed3a5afaae9e82f379dfc0833728d5fbc4",
+          "colourSpace": "linear",
+          "format": "jpg"
+        }
+      ]
+    },
+    {
       "id": "tex-concrete-wall-009-512",
       "kind": "texture",
       "name": "Concrete Wall 009 — 512px PBR set",
@@ -2104,6 +1792,59 @@
           "colourSpace": "linear",
           "format": "jpg",
           "resolution": "512"
+        }
+      ]
+    },
+    {
+      "id": "tex-gravel-concrete-03-1k",
+      "kind": "texture",
+      "name": "Gravel Concrete 03 — 1K PBR set",
+      "assetClass": "material-surface",
+      "source": {
+        "url": "https://polyhaven.com/a/gravel_concrete_03",
+        "creator": "Charlotte Baglioni",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-21",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/gravel_concrete_03"
+      },
+      "role": "CC0 aggregate concrete for sidewalks and concrete street furniture; albedo, normal and packed AO/roughness/metalness maps.",
+      "pipeline": {
+        "resolution": "1024",
+        "notes": "Runtime variant selected at fetch time; KTX2/Basis transcoding is applied when the KTX-Software toolchain is available in the build environment (recorded per asset when it happens)."
+      },
+      "files": [
+        {
+          "slot": "diffuse",
+          "path": "assets/textures/gravel_concrete_03_1k_diff_1k.jpg",
+          "bytes": 858933,
+          "sha256": "ba89e69d3eaf9e4568d5ae62171f042d1ca20f8b500e1d7ff293a99fb4e7cb8d",
+          "colourSpace": "srgb",
+          "format": "jpg"
+        },
+        {
+          "slot": "normal",
+          "path": "assets/textures/gravel_concrete_03_1k_nor_gl_1k.jpg",
+          "bytes": 790467,
+          "sha256": "a2340aa024cd6c0cf8779eddabcf859effd52303073848225e654d106279accc",
+          "colourSpace": "linear",
+          "format": "jpg"
+        },
+        {
+          "slot": "roughness",
+          "path": "assets/textures/gravel_concrete_03_1k_rough_1k.jpg",
+          "bytes": 355734,
+          "sha256": "e285f57403a21a39ee5ee00eb91e01dc1de43b2601f5fcec1e5a247f40a6f603",
+          "colourSpace": "linear",
+          "format": "jpg"
+        },
+        {
+          "slot": "arm",
+          "path": "assets/textures/gravel_concrete_03_1k_arm_1k.jpg",
+          "bytes": 384514,
+          "sha256": "8ef171f563ed92742117f022f633624b0bf493f003a96d5c422d2231d10a0f38",
+          "colourSpace": "linear",
+          "format": "jpg"
         }
       ]
     },
@@ -2167,6 +1908,59 @@
       ]
     },
     {
+      "id": "tex-japanese-cedar-planks-1k",
+      "kind": "texture",
+      "name": "Japanese Cedar Planks — 1K PBR set",
+      "assetClass": "material-surface",
+      "source": {
+        "url": "https://polyhaven.com/a/japanese_cedar_planks",
+        "creator": "Rob Tuytel",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-21",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/japanese_cedar_planks"
+      },
+      "role": "Scanned CC0 cedar surface for the material library, studio validation grid and wooden Aohara bench boards.",
+      "pipeline": {
+        "resolution": "1024",
+        "notes": "Runtime variant selected at fetch time; KTX2/Basis transcoding is applied when the KTX-Software toolchain is available in the build environment (recorded per asset when it happens)."
+      },
+      "files": [
+        {
+          "slot": "diffuse",
+          "path": "assets/textures/japanese_cedar_planks_1k_diff_1k.jpg",
+          "bytes": 704030,
+          "sha256": "cce8e8c5e5e6ba7956a6edf9fa6121c57fa2bfab0ebd672951bede9e053cbec4",
+          "colourSpace": "srgb",
+          "format": "jpg"
+        },
+        {
+          "slot": "normal",
+          "path": "assets/textures/japanese_cedar_planks_1k_nor_gl_1k.jpg",
+          "bytes": 745514,
+          "sha256": "2537ec9d8589caf8a89ef4e733d015318030d9ee9e2c2fdfa1471154770ebbea",
+          "colourSpace": "linear",
+          "format": "jpg"
+        },
+        {
+          "slot": "roughness",
+          "path": "assets/textures/japanese_cedar_planks_1k_rough_1k.jpg",
+          "bytes": 679485,
+          "sha256": "494826e6d014fd7098eed24ff8b342ea8b3c83281e290ac5c2eacef4c9f3a424",
+          "colourSpace": "linear",
+          "format": "jpg"
+        },
+        {
+          "slot": "arm",
+          "path": "assets/textures/japanese_cedar_planks_1k_arm_1k.jpg",
+          "bytes": 692510,
+          "sha256": "b58d152975965c71dfc9b219c6a80b4d2718b7d6c144682d794dd6a11061cfb4",
+          "colourSpace": "linear",
+          "format": "jpg"
+        }
+      ]
+    },
+    {
       "id": "tex-japanese-cedar-planks-512",
       "kind": "texture",
       "name": "Japanese Cedar Planks — 512px PBR set",
@@ -2222,6 +2016,67 @@
           "colourSpace": "linear",
           "format": "jpg",
           "resolution": "512"
+        }
+      ]
+    },
+    {
+      "id": "tex-leafy-grass-1k",
+      "kind": "texture",
+      "name": "Leafy Grass — 1K PBR set",
+      "assetClass": "material-surface",
+      "source": {
+        "url": "https://polyhaven.com/a/leafy_grass",
+        "creator": "Charlotte Baglioni",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-21",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/leafy_grass"
+      },
+      "role": "Terrain splat diffuse/normal/roughness/AO for grass lowlands (Phase 4 realism pass).",
+      "pipeline": {
+        "resolution": "1024",
+        "notes": "Runtime variant selected at fetch time; KTX2/Basis transcoding is applied when the KTX-Software toolchain is available in the build environment (recorded per asset when it happens)."
+      },
+      "files": [
+        {
+          "slot": "diffuse",
+          "path": "assets/textures/leafy_grass_1k_diff_1k.jpg",
+          "bytes": 1195394,
+          "sha256": "cfa40bc9d9417d1852db8753a8d5917f110c40101179f63543c382e39bc05e4a",
+          "colourSpace": "srgb",
+          "format": "jpg"
+        },
+        {
+          "slot": "normal",
+          "path": "assets/textures/leafy_grass_1k_nor_gl_1k.jpg",
+          "bytes": 1466049,
+          "sha256": "832328216adc0a7e1f70a31d5ee48c9ab7f2152d83816122736cf42ac4b2ebd6",
+          "colourSpace": "linear",
+          "format": "jpg"
+        },
+        {
+          "slot": "roughness",
+          "path": "assets/textures/leafy_grass_1k_rough_1k.jpg",
+          "bytes": 511385,
+          "sha256": "0c2a1d91aacb8e54a496051b59854e51e456fe858abeade778e308359ef16463",
+          "colourSpace": "linear",
+          "format": "jpg"
+        },
+        {
+          "slot": "arm",
+          "path": "assets/textures/leafy_grass_1k_arm_1k.jpg",
+          "bytes": 1010081,
+          "sha256": "95432451cb2693794459fe7ea339ea9ffdb5959c40373740f80a4aa1703f089d",
+          "colourSpace": "linear",
+          "format": "jpg"
+        },
+        {
+          "slot": "height",
+          "path": "assets/textures/leafy_grass_1k_disp_1k.jpg",
+          "bytes": 742755,
+          "sha256": "3c78000885796046cc90cec2a61abea0f65cd8fb6585ac2a7b5987f73c5aa98e",
+          "colourSpace": "linear",
+          "format": "jpg"
         }
       ]
     },
@@ -2294,6 +2149,67 @@
       ]
     },
     {
+      "id": "tex-rock-face-03-1k",
+      "kind": "texture",
+      "name": "Rock Face 03 — 1K PBR set",
+      "assetClass": "material-surface",
+      "source": {
+        "url": "https://polyhaven.com/a/rock_face_03",
+        "creator": "Dario Barresi, Rico Cilliers",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-21",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_face_03"
+      },
+      "role": "Terrain splat diffuse/normal/roughness/AO for steep rock and cliffs (Phase 4 realism pass).",
+      "pipeline": {
+        "resolution": "1024",
+        "notes": "Runtime variant selected at fetch time; KTX2/Basis transcoding is applied when the KTX-Software toolchain is available in the build environment (recorded per asset when it happens)."
+      },
+      "files": [
+        {
+          "slot": "diffuse",
+          "path": "assets/textures/rock_face_03_1k_diff_1k.jpg",
+          "bytes": 927082,
+          "sha256": "ea48e0e47ad42c8bd312476178b1248ec66f0eb19156a26a1c222f2a40caaf2d",
+          "colourSpace": "srgb",
+          "format": "jpg"
+        },
+        {
+          "slot": "normal",
+          "path": "assets/textures/rock_face_03_1k_nor_gl_1k.jpg",
+          "bytes": 1146788,
+          "sha256": "c6423169583f31715cf0636954bad524e806848a5f2861fcea6794275f726ff0",
+          "colourSpace": "linear",
+          "format": "jpg"
+        },
+        {
+          "slot": "roughness",
+          "path": "assets/textures/rock_face_03_1k_rough_1k.jpg",
+          "bytes": 638904,
+          "sha256": "9e3d9a2fd75244892e7acb6bab2eaed1279299510a7970672c0ee27ff1c19fea",
+          "colourSpace": "linear",
+          "format": "jpg"
+        },
+        {
+          "slot": "arm",
+          "path": "assets/textures/rock_face_03_1k_arm_1k.jpg",
+          "bytes": 793241,
+          "sha256": "a1f8e60eaf4f119071840e36e165d3a9185be62bd3ac7068ab6d886aa639d29f",
+          "colourSpace": "linear",
+          "format": "jpg"
+        },
+        {
+          "slot": "height",
+          "path": "assets/textures/rock_face_03_1k_disp_1k.jpg",
+          "bytes": 264231,
+          "sha256": "fb053bfd46cef976da9cfee67f045367469cddd69469dcacd67d3fca4bd41545",
+          "colourSpace": "linear",
+          "format": "jpg"
+        }
+      ]
+    },
+    {
       "id": "tex-rock-face-03-512",
       "kind": "texture",
       "name": "Rock Face 03 — 512px PBR set",
@@ -2362,6 +2278,59 @@
       ]
     },
     {
+      "id": "tex-sandy-gravel-1k",
+      "kind": "texture",
+      "name": "Sandy Gravel — 1K PBR set",
+      "assetClass": "material-surface",
+      "source": {
+        "url": "https://polyhaven.com/a/sandy_gravel",
+        "creator": "Charlotte Baglioni",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-21",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/sandy_gravel"
+      },
+      "role": "Road shoulder diffuse/normal/roughness/AO for the Phase 4 spline road network.",
+      "pipeline": {
+        "resolution": "1024",
+        "notes": "Runtime variant selected at fetch time; KTX2/Basis transcoding is applied when the KTX-Software toolchain is available in the build environment (recorded per asset when it happens)."
+      },
+      "files": [
+        {
+          "slot": "diffuse",
+          "path": "assets/textures/sandy_gravel_1k_diff_1k.jpg",
+          "bytes": 795227,
+          "sha256": "38829e669dc246e86b7ce94c4141485709988450b13f82cfc4bc6067dd69ed48",
+          "colourSpace": "srgb",
+          "format": "jpg"
+        },
+        {
+          "slot": "normal",
+          "path": "assets/textures/sandy_gravel_1k_nor_gl_1k.jpg",
+          "bytes": 1159620,
+          "sha256": "f2a4c48f31cd5ad5e2b0488e89c94d284c5a2acd4367bec49a5f48f832b7e3da",
+          "colourSpace": "linear",
+          "format": "jpg"
+        },
+        {
+          "slot": "roughness",
+          "path": "assets/textures/sandy_gravel_1k_rough_1k.jpg",
+          "bytes": 396818,
+          "sha256": "dce2344c2a2be905f88b18497911e3e324b741c0fced19623659b44fb76b3d22",
+          "colourSpace": "linear",
+          "format": "jpg"
+        },
+        {
+          "slot": "arm",
+          "path": "assets/textures/sandy_gravel_1k_arm_1k.jpg",
+          "bytes": 765219,
+          "sha256": "ae13c0de981ab78abc39e3bec6147a06448e0865f4162cd57d54ada411df0de7",
+          "colourSpace": "linear",
+          "format": "jpg"
+        }
+      ]
+    },
+    {
       "id": "tex-sandy-gravel-512",
       "kind": "texture",
       "name": "Sandy Gravel — 512px PBR set",
@@ -2417,6 +2386,67 @@
           "colourSpace": "linear",
           "format": "jpg",
           "resolution": "512"
+        }
+      ]
+    },
+    {
+      "id": "tex-snow-01-1k",
+      "kind": "texture",
+      "name": "Snow 01 — 1K PBR set",
+      "assetClass": "material-surface",
+      "source": {
+        "url": "https://polyhaven.com/a/snow_01",
+        "creator": "Rob Tuytel",
+        "licence": "CC0-1.0",
+        "attribution": "",
+        "retrieved": "2026-10-21",
+        "pinnedUrl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/snow_01"
+      },
+      "role": "Terrain splat diffuse/normal/roughness/AO above the snowline (Phase 4 realism pass).",
+      "pipeline": {
+        "resolution": "1024",
+        "notes": "Runtime variant selected at fetch time; KTX2/Basis transcoding is applied when the KTX-Software toolchain is available in the build environment (recorded per asset when it happens)."
+      },
+      "files": [
+        {
+          "slot": "diffuse",
+          "path": "assets/textures/snow_01_1k_diff_1k.jpg",
+          "bytes": 356249,
+          "sha256": "bf71d93b7e47fe29bfb6ae11626439535b647da041b979ba5303ce8b0a862d53",
+          "colourSpace": "srgb",
+          "format": "jpg"
+        },
+        {
+          "slot": "normal",
+          "path": "assets/textures/snow_01_1k_nor_gl_1k.jpg",
+          "bytes": 1370735,
+          "sha256": "ce806bc45cae729a211b16c94239018d58570b9a796a8cc890cf8cbce2c8f050",
+          "colourSpace": "linear",
+          "format": "jpg"
+        },
+        {
+          "slot": "roughness",
+          "path": "assets/textures/snow_01_1k_rough_1k.jpg",
+          "bytes": 195503,
+          "sha256": "c008cd329bda1127d8c6ff2ed8772e563419fbfb836648b2f05e07ab893be1aa",
+          "colourSpace": "linear",
+          "format": "jpg"
+        },
+        {
+          "slot": "arm",
+          "path": "assets/textures/snow_01_1k_arm_1k.jpg",
+          "bytes": 141532,
+          "sha256": "6e25d932538b97dbccf3c6f267588cc59cb749e6845dcde74441a9c58fd615ce",
+          "colourSpace": "linear",
+          "format": "jpg"
+        },
+        {
+          "slot": "height",
+          "path": "assets/textures/snow_01_1k_disp_1k.jpg",
+          "bytes": 234435,
+          "sha256": "042965c95de9420ec28af9d1af7b308185139ed69483214fb77d621c0b984db0",
+          "colourSpace": "linear",
+          "format": "jpg"
         }
       ]
     },
@@ -2489,5 +2519,5 @@
       ]
     }
   ],
-  "updated": "2026-10-23"
+  "updated": "2026-10-30"
 }

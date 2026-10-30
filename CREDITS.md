@@ -31,7 +31,7 @@ Each entry is listed under its own licence. CC0 assets require no attribution, b
 - **Hinode Film** — Endless Driver project (generated) — [source](https://github.com/mdraficode/Endless-Driver/blob/main/scripts/build-lut.mjs) — Project-Generated
   - file: `assets/luts/hinode-film-17.cube`
 - **Boulder 01 — 1K scanned prop** — James Ray Cock — [source](https://polyhaven.com/a/boulder_01) — CC0-1.0
-  - file: `assets/models/boulder-01.glb`
+  - file: `assets/models/boulder-01.glb`, `assets/models/boulder-01_512.glb`
 - **Fir Tree 01 — 1K scanned conifer — variant A** — Rob Tuytel, Rico Cilliers — [source](https://polyhaven.com/a/fir_tree_01) — CC0-1.0
   - file: `assets/models/fir-tree-01-a.glb`
 - **Fir Tree 01 — 1K scanned conifer — variant B** — Rob Tuytel, Rico Cilliers — [source](https://polyhaven.com/a/fir_tree_01) — CC0-1.0
@@ -39,26 +39,44 @@ Each entry is listed under its own licence. CC0 assets require no attribution, b
 - **Fir Tree 01 — 1K scanned conifer — variant C** — Rob Tuytel, Rico Cilliers — [source](https://polyhaven.com/a/fir_tree_01) — CC0-1.0
   - file: `assets/models/fir-tree-01-c.glb`
 - **Island Tree 01 — 1K scanned broadleaf** — Rob Tuytel, Rico Cilliers — [source](https://polyhaven.com/a/island_tree_01) — CC0-1.0
-  - file: `assets/models/island-tree-01.glb`
+  - file: `assets/models/island-tree-01.glb`, `assets/models/island-tree-01_512.glb`
 - **Tree Stump 01 — 1K scanned stump** — Rob Tuytel — [source](https://polyhaven.com/a/tree_stump_01) — CC0-1.0
-  - file: `assets/models/tree-stump-01.glb`
+  - file: `assets/models/tree-stump-01.glb`, `assets/models/tree-stump-01_512.glb`
 - **Asphalt 03 — 1K PBR set** — Dario Barresi, Charlotte Baglioni — [source](https://polyhaven.com/a/asphalt_03) — CC0-1.0
   - file: `assets/textures/asphalt_03_1k_diff_1k.jpg`, `assets/textures/asphalt_03_1k_nor_gl_1k.jpg`, `assets/textures/asphalt_03_1k_rough_1k.jpg`, `assets/textures/asphalt_03_1k_arm_1k.jpg`
+- **Asphalt 03 — 512px PBR set** — Dario Barresi, Charlotte Baglioni — [source](https://polyhaven.com/a/asphalt_03) — CC0-1.0
+  - file: `assets/textures/asphalt_03_512_diff_512.jpg`, `assets/textures/asphalt_03_512_nor_gl_512.jpg`, `assets/textures/asphalt_03_512_rough_512.jpg`, `assets/textures/asphalt_03_512_arm_512.jpg`
 - **Brown Mud Dry — 1K PBR set** — Rob Tuytel — [source](https://polyhaven.com/a/brown_mud_dry) — CC0-1.0
   - file: `assets/textures/brown_mud_dry_1k_diff_1k.jpg`, `assets/textures/brown_mud_dry_1k_nor_gl_1k.jpg`, `assets/textures/brown_mud_dry_1k_rough_1k.jpg`, `assets/textures/brown_mud_dry_1k_arm_1k.jpg`, `assets/textures/brown_mud_dry_1k_disp_1k.jpg`
+- **Brown Mud Dry — 512px PBR set** — Rob Tuytel — [source](https://polyhaven.com/a/brown_mud_dry) — CC0-1.0
+  - file: `assets/textures/brown_mud_dry_512_diff_512.jpg`, `assets/textures/brown_mud_dry_512_nor_gl_512.jpg`, `assets/textures/brown_mud_dry_512_rough_512.jpg`, `assets/textures/brown_mud_dry_512_arm_512.jpg`, `assets/textures/brown_mud_dry_512_disp_512.jpg`
 - **Concrete Wall 009 — 1K PBR set** — Charlotte Baglioni — [source](https://polyhaven.com/a/concrete_wall_009) — CC0-1.0
   - file: `assets/textures/concrete_wall_009_1k_diff_1k.jpg`, `assets/textures/concrete_wall_009_1k_nor_gl_1k.jpg`, `assets/textures/concrete_wall_009_1k_rough_1k.jpg`, `assets/textures/concrete_wall_009_1k_arm_1k.jpg`
+- **Concrete Wall 009 — 512px PBR set** — Charlotte Baglioni — [source](https://polyhaven.com/a/concrete_wall_009) — CC0-1.0
+  - file: `assets/textures/concrete_wall_009_512_diff_512.jpg`, `assets/textures/concrete_wall_009_512_nor_gl_512.jpg`, `assets/textures/concrete_wall_009_512_rough_512.jpg`, `assets/textures/concrete_wall_009_512_arm_512.jpg`
 - **Gravel Concrete 03 — 1K PBR set** — Charlotte Baglioni — [source](https://polyhaven.com/a/gravel_concrete_03) — CC0-1.0
   - file: `assets/textures/gravel_concrete_03_1k_diff_1k.jpg`, `assets/textures/gravel_concrete_03_1k_nor_gl_1k.jpg`, `assets/textures/gravel_concrete_03_1k_rough_1k.jpg`, `assets/textures/gravel_concrete_03_1k_arm_1k.jpg`
+- **Gravel Concrete 03 — 512px PBR set** — Charlotte Baglioni — [source](https://polyhaven.com/a/gravel_concrete_03) — CC0-1.0
+  - file: `assets/textures/gravel_concrete_03_512_diff_512.jpg`, `assets/textures/gravel_concrete_03_512_nor_gl_512.jpg`, `assets/textures/gravel_concrete_03_512_rough_512.jpg`, `assets/textures/gravel_concrete_03_512_arm_512.jpg`
 - **Japanese Cedar Planks — 1K PBR set** — Rob Tuytel — [source](https://polyhaven.com/a/japanese_cedar_planks) — CC0-1.0
   - file: `assets/textures/japanese_cedar_planks_1k_diff_1k.jpg`, `assets/textures/japanese_cedar_planks_1k_nor_gl_1k.jpg`, `assets/textures/japanese_cedar_planks_1k_rough_1k.jpg`, `assets/textures/japanese_cedar_planks_1k_arm_1k.jpg`
+- **Japanese Cedar Planks — 512px PBR set** — Rob Tuytel — [source](https://polyhaven.com/a/japanese_cedar_planks) — CC0-1.0
+  - file: `assets/textures/japanese_cedar_planks_512_diff_512.jpg`, `assets/textures/japanese_cedar_planks_512_nor_gl_512.jpg`, `assets/textures/japanese_cedar_planks_512_rough_512.jpg`, `assets/textures/japanese_cedar_planks_512_arm_512.jpg`
 - **Leafy Grass — 1K PBR set** — Charlotte Baglioni — [source](https://polyhaven.com/a/leafy_grass) — CC0-1.0
   - file: `assets/textures/leafy_grass_1k_diff_1k.jpg`, `assets/textures/leafy_grass_1k_nor_gl_1k.jpg`, `assets/textures/leafy_grass_1k_rough_1k.jpg`, `assets/textures/leafy_grass_1k_arm_1k.jpg`, `assets/textures/leafy_grass_1k_disp_1k.jpg`
+- **Leafy Grass — 512px PBR set** — Charlotte Baglioni — [source](https://polyhaven.com/a/leafy_grass) — CC0-1.0
+  - file: `assets/textures/leafy_grass_512_diff_512.jpg`, `assets/textures/leafy_grass_512_nor_gl_512.jpg`, `assets/textures/leafy_grass_512_rough_512.jpg`, `assets/textures/leafy_grass_512_arm_512.jpg`, `assets/textures/leafy_grass_512_disp_512.jpg`
 - **Rock Face 03 — 1K PBR set** — Dario Barresi, Rico Cilliers — [source](https://polyhaven.com/a/rock_face_03) — CC0-1.0
   - file: `assets/textures/rock_face_03_1k_diff_1k.jpg`, `assets/textures/rock_face_03_1k_nor_gl_1k.jpg`, `assets/textures/rock_face_03_1k_rough_1k.jpg`, `assets/textures/rock_face_03_1k_arm_1k.jpg`, `assets/textures/rock_face_03_1k_disp_1k.jpg`
+- **Rock Face 03 — 512px PBR set** — Dario Barresi, Rico Cilliers — [source](https://polyhaven.com/a/rock_face_03) — CC0-1.0
+  - file: `assets/textures/rock_face_03_512_diff_512.jpg`, `assets/textures/rock_face_03_512_nor_gl_512.jpg`, `assets/textures/rock_face_03_512_rough_512.jpg`, `assets/textures/rock_face_03_512_arm_512.jpg`, `assets/textures/rock_face_03_512_disp_512.jpg`
 - **Sandy Gravel — 1K PBR set** — Charlotte Baglioni — [source](https://polyhaven.com/a/sandy_gravel) — CC0-1.0
   - file: `assets/textures/sandy_gravel_1k_diff_1k.jpg`, `assets/textures/sandy_gravel_1k_nor_gl_1k.jpg`, `assets/textures/sandy_gravel_1k_rough_1k.jpg`, `assets/textures/sandy_gravel_1k_arm_1k.jpg`
+- **Sandy Gravel — 512px PBR set** — Charlotte Baglioni — [source](https://polyhaven.com/a/sandy_gravel) — CC0-1.0
+  - file: `assets/textures/sandy_gravel_512_diff_512.jpg`, `assets/textures/sandy_gravel_512_nor_gl_512.jpg`, `assets/textures/sandy_gravel_512_rough_512.jpg`, `assets/textures/sandy_gravel_512_arm_512.jpg`
 - **Snow 01 — 1K PBR set** — Rob Tuytel — [source](https://polyhaven.com/a/snow_01) — CC0-1.0
   - file: `assets/textures/snow_01_1k_diff_1k.jpg`, `assets/textures/snow_01_1k_nor_gl_1k.jpg`, `assets/textures/snow_01_1k_rough_1k.jpg`, `assets/textures/snow_01_1k_arm_1k.jpg`, `assets/textures/snow_01_1k_disp_1k.jpg`
+- **Snow 01 — 512px PBR set** — Rob Tuytel — [source](https://polyhaven.com/a/snow_01) — CC0-1.0
+  - file: `assets/textures/snow_01_512_diff_512.jpg`, `assets/textures/snow_01_512_nor_gl_512.jpg`, `assets/textures/snow_01_512_rough_512.jpg`, `assets/textures/snow_01_512_arm_512.jpg`, `assets/textures/snow_01_512_disp_512.jpg`
 
 `retrieved`, source hashes, and runtime SHA-256 values are recorded in `public/assets/manifest.json`.
