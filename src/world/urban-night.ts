@@ -67,6 +67,8 @@ import {
 } from '../config/urban-district';
 import type { TierId } from '../config/tiers';
 import { configureTiledSurface, SurfaceTextureLibrary } from '../assets/SurfaceTextureLibrary';
+import type { AssetResolution } from '../assets/AssetManifest';
+import { surfaceAssetIdAtResolution } from '../config/asset-resolution';
 import type { MaterialTextureSet } from '../assets/AssetManifest';
 import type { DaylightState } from '../environment/EnvironmentClock';
 import {
@@ -2150,16 +2152,20 @@ export class UrbanNightWorld implements SceneContent {
   }
 
   /** Binds shared CC0 maps to opaque city surfaces; glass, emitters and mixed-metal kits stay distinct. */
-  async loadSurfaces(): Promise<void> {
+  async loadSurfaces(resolution: AssetResolution = '1k'): Promise<void> {
     if (this.#disposed || this.#surfacesBound) {
       return;
     }
     const [asphalt, sidewalk, concrete] = await Promise.all([
-      this.#surfaceTextures.load('tex-asphalt-03-1k'),
-      this.#surfaceTextures.load('tex-gravel-concrete-03-1k'),
-      this.#surfaceTextures.load('tex-concrete-wall-009-1k'),
+      this.#surfaceTextures.load(surfaceAssetIdAtResolution('tex-asphalt-03-1k', resolution)),
+      this.#surfaceTextures.load(
+        surfaceAssetIdAtResolution('tex-gravel-concrete-03-1k', resolution),
+      ),
+      this.#surfaceTextures.load(
+        surfaceAssetIdAtResolution('tex-concrete-wall-009-1k', resolution),
+      ),
     ]);
-    await this.#streetFurniture.loadSurfaces();
+    await this.#streetFurniture.loadSurfaces(resolution);
     if (this.#disposed) {
       return;
     }

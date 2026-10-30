@@ -13,6 +13,8 @@ import { float, mix, mrt, positionLocal, sin, texture, uniform, uv, vec2, vec4 }
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { configureTiledSurface, SurfaceTextureLibrary } from '../assets/SurfaceTextureLibrary';
+import type { AssetResolution } from '../assets/AssetManifest';
+import { surfaceAssetIdAtResolution } from '../config/asset-resolution';
 import { createArchitecturalMaterial } from './architectural-materials';
 import { bindScannedPbrMaps } from './scanned-pbr';
 import { createRoadWetPatchMaskTexture, createRoadWetnessNode } from './road-wet-patches';
@@ -520,15 +522,17 @@ export class RoadWorld {
    * Async CC0 surfaces: scanned asphalt, sandy gravel and aggregate concrete at 1k. Until they
    * arrive the roads render with their authored fallback materials; failures are non-fatal.
    */
-  async loadSurfaces(): Promise<void> {
+  async loadSurfaces(resolution: AssetResolution = '1k'): Promise<void> {
     if (this.#disposed || (this.#surfacesLoaded === 1 && this.#sidewalkSurfaceBound)) {
       return;
     }
 
     const [asphalt, gravel, concrete] = await Promise.all([
-      this.#surfaceTextures.load('tex-asphalt-03-1k'),
-      this.#surfaceTextures.load('tex-sandy-gravel-1k'),
-      this.#surfaceTextures.load('tex-gravel-concrete-03-1k'),
+      this.#surfaceTextures.load(surfaceAssetIdAtResolution('tex-asphalt-03-1k', resolution)),
+      this.#surfaceTextures.load(surfaceAssetIdAtResolution('tex-sandy-gravel-1k', resolution)),
+      this.#surfaceTextures.load(
+        surfaceAssetIdAtResolution('tex-gravel-concrete-03-1k', resolution),
+      ),
     ]);
     if (this.#disposed) {
       return;

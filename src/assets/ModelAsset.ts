@@ -13,7 +13,12 @@ import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { getAssetBytes, releaseAssetBytes } from './AssetBytes';
-import { readAssetManifest, type AssetManifest, type AssetManifestEntry } from './AssetManifest';
+import {
+  readAssetManifest,
+  type AssetManifest,
+  type AssetManifestEntry,
+  type AssetResolution,
+} from './AssetManifest';
 import { selectLodLevel, type LodLevel } from './LodSelection';
 
 /**
@@ -80,17 +85,29 @@ export interface LoadedModel {
   dispose(): void;
 }
 
-/** Every model the manifest publishes. */
-export function listModelAssets(manifest: AssetManifest): readonly ModelAsset[] {
+/** Every model the manifest publishes, at the given pixel budget (tier C loads the 512-px files). */
+export function listModelAssets(
+  manifest: AssetManifest,
+  resolution: AssetResolution = '1k',
+): readonly ModelAsset[] {
   return manifest.assets
     .filter((asset) => asset.kind === 'model')
-    .map((asset) => resolveModelAsset(asset))
+    .map((asset) => resolveModelAsset(asset, resolution))
     .filter((asset): asset is ModelAsset => asset !== null);
 }
 
 /** Resolves one manifest entry into a model description, or `null` when it is not a usable model. */
-export function resolveModelAsset(entry: AssetManifestEntry): ModelAsset | null {
-  const file = entry.files.find((candidate) => candidate.slot === 'model') ?? entry.files[0];
+export function resolveModelAsset(
+  entry: AssetManifestEntry,
+  resolution: AssetResolution = '1k',
+): ModelAsset | null {
+  // A derived model may ship one file per pixel budget (the tier-C 512 files). Pick the file for
+  // the requested budget and fall back to the first 'model' file when the budget has not been
+  // derived for this model: the 512 budget covers only part of the catalog, and the rest must
+  // still load (on the 1K file).
+  const modelFiles = entry.files.filter((candidate) => candidate.slot === 'model');
+  const file =
+    modelFiles.find((candidate) => (candidate.resolution ?? '1k') === resolution) ?? modelFiles[0];
   if (!file) {
     return null;
   }
@@ -136,6 +153,11 @@ export interface LoadModelOptions {
   readonly decoderPath?: string;
   /** Manifest id to load. Defaults to the first model in the manifest. */
   readonly assetId?: string;
+  /**
+   * Pixel budget for the model file (tier C loads the 512-px derivations when the catalog has
+   * them). Defaults to the 1K file, which every model in the catalog has.
+   */
+  readonly resolution?: AssetResolution;
   /** Manifest URL override, for tests. */
   readonly url?: string;
   /**
@@ -164,7 +186,7 @@ export interface LoadModelOptions {
  */
 export async function loadModelAsset(options: LoadModelOptions): Promise<LoadedModel | null> {
   const manifest = await readAssetManifest(options.url);
-  const models = listModelAssets(manifest);
+  const models = listModelAssets(manifest, options.resolution ?? '1k');
   const asset =
     options.assetId === undefined
       ? models[0]

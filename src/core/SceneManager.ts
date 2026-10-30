@@ -19,6 +19,7 @@ import { MeshBasicNodeMaterial } from 'three/webgpu';
 import {
   loadEnvironmentAsset,
   loadHdrTexture,
+  type AssetResolution,
   type EnvironmentAsset,
 } from '../assets/AssetManifest';
 import type { RenderConfig } from '../config/render';
@@ -604,9 +605,12 @@ export class SceneManager {
     this.#content.setVegetationStateProvider?.(provider);
   }
 
-  /** Loads the scanned road/terrain surface maps (called during loading, before the compiles). */
-  async loadContentSurfaces(): Promise<void> {
-    await this.#content.loadSurfaces?.();
+  /**
+   * Loads the scanned road/terrain surface maps (called during loading, before the compiles).
+   * The pixel budget picks the files a tier-C load reads (the 512-px sets where they exist).
+   */
+  async loadContentSurfaces(resolution?: AssetResolution): Promise<void> {
+    await this.#content.loadSurfaces?.(resolution);
   }
 
   /** Terrain height (metres) at a world XZ, or `null` when the content has no height authority. */
@@ -614,9 +618,12 @@ export class SceneManager {
     return this.#content.sampleHeight?.(x, z) ?? null;
   }
 
-  /** Loads the scanned vegetation models (called during loading, before the compiles). */
-  async loadDeferredContentAssets(): Promise<void> {
-    await this.#content.loadDeferredAssets?.();
+  /**
+   * Loads the scanned vegetation models (called during loading, before the compiles). The pixel
+   * budget picks the model files a tier-C load reads (512-px derivations where they exist).
+   */
+  async loadDeferredContentAssets(resolution?: AssetResolution): Promise<void> {
+    await this.#content.loadDeferredAssets?.(resolution);
   }
 
   getDiagnostics(): SceneDiagnostics {

@@ -13,6 +13,8 @@ import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { uv, vertexColor } from 'three/tsl';
 
 import { configureTiledSurface, SurfaceTextureLibrary } from '../assets/SurfaceTextureLibrary';
+import type { AssetResolution } from '../assets/AssetManifest';
+import { surfaceAssetIdAtResolution } from '../config/asset-resolution';
 import { bindScannedPbrMaps } from './scanned-pbr';
 
 import {
@@ -766,13 +768,17 @@ export class UrbanStreetFurniture {
   }
 
   /** Applies scans only to the wooden bench boards and concrete planter shell. */
-  async loadSurfaces(): Promise<void> {
+  async loadSurfaces(resolution: AssetResolution = '1k'): Promise<void> {
     if (this.#placements.length === 0 || this.#disposed) {
       return;
     }
     const [wood, concrete] = await Promise.all([
-      this.#surfaceTextures.load('tex-japanese-cedar-planks-1k'),
-      this.#surfaceTextures.load('tex-gravel-concrete-03-1k'),
+      this.#surfaceTextures.load(
+        surfaceAssetIdAtResolution('tex-japanese-cedar-planks-1k', resolution),
+      ),
+      this.#surfaceTextures.load(
+        surfaceAssetIdAtResolution('tex-gravel-concrete-03-1k', resolution),
+      ),
     ]);
     if (this.#disposed) {
       return;

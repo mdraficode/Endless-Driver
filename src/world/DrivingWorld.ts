@@ -9,6 +9,7 @@ import { TerrainWorld } from './TerrainWorld';
 import { HinodeTougeWorld } from './hinode-touge';
 import { TownWorld } from './town';
 import { VegetationWorld } from './vegetation';
+import type { AssetResolution } from '../assets/AssetManifest';
 import type { SceneContent, SceneContentContext } from './WorldContent';
 
 /**
@@ -147,21 +148,21 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
     setVegetationStateProvider: (provider) => {
       vegetation.setStateProvider(provider);
     },
-    loadSurfaces: async () => {
+    loadSurfaces: async (resolution?: AssetResolution) => {
       await Promise.all([
-        terrain.loadSurfaces(),
-        roads === null ? Promise.resolve() : roads.loadSurfaces(),
-        town.loadSurfaces(),
-        aohara === null ? Promise.resolve() : aohara.loadSurfaces(),
+        terrain.loadSurfaces(resolution),
+        roads === null ? Promise.resolve() : roads.loadSurfaces(resolution),
+        town.loadSurfaces(resolution),
+        aohara === null ? Promise.resolve() : aohara.loadSurfaces(resolution),
       ]);
     },
-    loadDeferredAssets: async () => {
+    loadDeferredAssets: async (resolution?: AssetResolution) => {
       if (scannedAssetsStarted || context.renderer === undefined) {
         return;
       }
       scannedAssetsStarted = true;
       try {
-        await vegetation.adoptScanned(context.renderer);
+        await vegetation.adoptScanned(context.renderer, resolution);
       } catch (error) {
         console.warn('scanned vegetation unavailable:', (error as Error).message);
       }

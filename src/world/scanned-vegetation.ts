@@ -1,6 +1,7 @@
 import type { BufferGeometry, Material, Mesh } from 'three';
 
 import { loadModelAsset } from '../assets/ModelAsset';
+import type { AssetResolution } from '../assets/AssetManifest';
 
 /**
  * The scanned-vegetation bridge (Phase 5): turns a derived runtime model into the part lists the
@@ -44,8 +45,9 @@ export interface ScannedSpecies {
 export async function loadScannedSpecies(
   renderer: object,
   assetId: string,
+  resolution: AssetResolution = '1k',
 ): Promise<ScannedSpecies | null> {
-  const loaded = await loadModelAsset({ renderer, assetId });
+  const loaded = await loadModelAsset({ renderer, assetId, resolution });
   if (loaded === null) {
     return null;
   }

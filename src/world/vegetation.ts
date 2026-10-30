@@ -60,7 +60,7 @@ import { TREE_COLLISION } from '../config/districts';
 import { VEGETATION_SPECIES } from './districts';
 import { getAssetBytes } from '../assets/AssetBytes';
 import { listModelAssets } from '../assets/ModelAsset';
-import { readAssetManifest } from '../assets/AssetManifest';
+import { readAssetManifest, type AssetResolution } from '../assets/AssetManifest';
 import { loadScannedSpecies, type ScannedSpecies } from './scanned-vegetation';
 import type { TreeHitEvent, TreeVisualState } from './tree-collision';
 import type { TerrainSampler } from './terrain-height';
@@ -536,7 +536,7 @@ export class VegetationWorld {
    * them per rebuild leaked a mesh per window slide, and sharing one instanceMatrix across the
    * parts of a tree painted every material with the first part's geometry.
    */
-  async adoptScanned(renderer: object): Promise<void> {
+  async adoptScanned(renderer: object, resolution: AssetResolution = '1k'): Promise<void> {
     if (this.#disposed) {
       return;
     }
@@ -546,7 +546,7 @@ export class VegetationWorld {
       if (existing !== undefined) {
         return existing;
       }
-      const pending = loadScannedSpecies(renderer, assetId).catch((error: unknown) => {
+      const pending = loadScannedSpecies(renderer, assetId, resolution).catch((error: unknown) => {
         console.warn(`scanned vegetation unavailable for ${assetId}: ${(error as Error).message}`);
         return null;
       });
@@ -563,7 +563,7 @@ export class VegetationWorld {
     const manifest = await readAssetManifest().catch(() => null);
     if (manifest !== null) {
       const filesByAssetId = new Map(
-        listModelAssets(manifest).map((model) => [model.id, model.file]),
+        listModelAssets(manifest, resolution).map((model) => [model.id, model.file]),
       );
       const pendingBytes = [
         ...SCANNED_FOR.map((entry) => filesByAssetId.get(entry.assetId)),

@@ -71,6 +71,11 @@ import { Engine, type FrameState } from './Engine';
 import { loadLutAsset } from '../assets/LutAsset';
 import { prefetchAssetBytes, warmAssetHttpCache } from '../assets/AssetBytes';
 import { readAssetManifest } from '../assets/AssetManifest';
+import { listModelAssets } from '../assets/ModelAsset';
+import {
+  assetResolutionForTier,
+  textureSetEntryServesResolution,
+} from '../config/asset-resolution';
 import { AOHARA_DISTRICT_CONFIG } from '../config/urban-district';
 import { buildSettleViews, type PrewarmView } from './settle-views';
 import { applyTier, type TierResolution } from './QualityTier';
@@ -708,6 +713,11 @@ export class Application {
         }
       }
       mark('car');
+      // The pixel budget this load reads from the manifest: tier C (phones) takes the 512-px
+      // derivations where the catalog has them, B/A the full 1K files. Both the download below
+      // and the t=0 prefetch key off the same value, so a load never fetches the budget it will
+      // not sample.
+      const assetResolution = assetResolutionForTier(this.#tier.id);
       // Visual upgrades come next, still under the loading bar: environment lighting, the colour
       // look, the scanned road/terrain surfaces and the scanned vegetation. Every one of these
       // swaps materials (new textures, new model programs), so doing them here means the compile
@@ -722,10 +732,10 @@ export class Application {
             Promise.all([
               this.#loadEnvironment(),
               this.#loadLook(),
-              this.#scene.loadContentSurfaces().catch((error: unknown) => {
+              this.#scene.loadContentSurfaces(assetResolution).catch((error: unknown) => {
                 console.warn('surface upgrades unavailable; keeping authored materials:', error);
               }),
-              this.#scene.loadDeferredContentAssets().catch((error: unknown) => {
+              this.#scene.loadDeferredContentAssets(assetResolution).catch((error: unknown) => {
                 console.warn('scanned vegetation unavailable:', error);
               }),
             ]),
@@ -1509,25 +1519,48 @@ export class Application {
   async #prefetchStartupAssets(): Promise<void> {
     try {
       const manifest = await readAssetManifest();
+      // The pixel budget this load will read (tier C → the 512-px files). Model files are picked
+      // per budget here — the byte cache is keyed by file path, so prefetching the 1K model when
+      // the load will parse the 512 one would warm a file nothing ever reads.
+      const resolution = assetResolutionForTier(this.#tier.id);
+      const modelFileById = new Map(
+        listModelAssets(manifest, resolution).map((model) => [model.id, model.file]),
+      );
       const heroModelFiles: string[] = [];
       const modelFiles: string[] = [];
       const lutFiles: string[] = [];
       const surfaceFiles: string[] = [];
+      // The snow set is a gated Phase 7 feature: nothing in the current build ever samples it, so
+      // its files queue last — the cache still warms when bandwidth remains, but they can never
+      // displace a file the first frame reads.
+      const deferredSurfaceFiles: string[] = [];
       const environmentFiles: string[] = [];
       for (const asset of manifest.assets) {
-        for (const file of asset.files) {
-          if (asset.kind === 'model') {
-            (asset.id === PLAYER_HERO_CAR_ASSET_ID ? heroModelFiles : modelFiles).push(file.path);
-          } else if (asset.kind === 'lut') {
+        if (asset.kind === 'model') {
+          const file = modelFileById.get(asset.id);
+          if (file === undefined) {
+            continue;
+          }
+          (asset.id === PLAYER_HERO_CAR_ASSET_ID ? heroModelFiles : modelFiles).push(file);
+        } else if (asset.kind === 'lut') {
+          for (const file of asset.files) {
             lutFiles.push(file.path);
-          } else if (asset.kind === 'hdri') {
-            // Only the IBL the game actually lights itself with. The other presets belong to the
-            // studio switcher — they must not hold a mobile connection at t=0.
-            if (asset.id === this.#config.environment.assetId) {
+          }
+        } else if (asset.kind === 'hdri') {
+          // Only the IBL the game actually lights itself with. The other presets belong to the
+          // studio switcher — they must not hold a mobile connection at t=0.
+          if (asset.id === this.#config.environment.assetId) {
+            for (const file of asset.files) {
               environmentFiles.push(file.path);
             }
-          } else {
-            surfaceFiles.push(file.path);
+          }
+        } else if (textureSetEntryServesResolution(asset.id, resolution)) {
+          // A load fetches the sets of its own budget only: a tier-C load would waste its six
+          // connections on the 1K sets it never samples, and a B/A load on the 512 sets that
+          // exist to spare the phone.
+          const bucket = asset.id.startsWith('tex-snow') ? deferredSurfaceFiles : surfaceFiles;
+          for (const file of asset.files) {
+            bucket.push(file.path);
           }
         }
       }
@@ -1535,7 +1568,12 @@ export class Application {
       // the hero gate (0.85) is the first stage that needs model bytes, so it queues first,
       // then the upgrades-phase models, the small LUT, the surfaces and the environment.
       prefetchAssetBytes([...heroModelFiles, ...modelFiles]);
-      warmAssetHttpCache([...lutFiles, ...surfaceFiles, ...environmentFiles]);
+      warmAssetHttpCache([
+        ...lutFiles,
+        ...surfaceFiles,
+        ...deferredSurfaceFiles,
+        ...environmentFiles,
+      ]);
     } catch (error) {
       // A missing manifest is an operator problem (stale checkout); the loaders report it
       // per-asset when they hit the same wall, and the game starts on authored assets.

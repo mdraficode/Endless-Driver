@@ -1,4 +1,5 @@
 import type { Object3D } from 'three';
+import type { AssetResolution } from '../assets/AssetManifest';
 import type { RenderConfig } from '../config/render';
 import type { DaylightState } from '../environment/EnvironmentClock';
 import type { SurfaceState } from '../environment/SurfaceState';
@@ -65,11 +66,15 @@ export interface SceneContent {
   ): void;
   /**
    * Async surface/texture loading. Content renders acceptably with authored fallback materials;
-   * the application starts these optional downloads after the loading overlay has cleared.
+   * the application starts these optional downloads after the loading overlay has cleared. The
+   * pixel budget (tier C reads the 512-px sets) selects which files the loader fetches.
    */
-  loadSurfaces?(): Promise<void>;
-  /** Optional model/visual upgrades that must not block the first playable frame. */
-  loadDeferredAssets?(): Promise<void>;
+  loadSurfaces?(resolution?: AssetResolution): Promise<void>;
+  /**
+   * Optional model/visual upgrades that must not block the first playable frame. The pixel budget
+   * picks the model files a tier-C load should read (512-px derivations where they exist).
+   */
+  loadDeferredAssets?(resolution?: AssetResolution): Promise<void>;
   /**
    * Terrain height (metres) at a world XZ. The startup settle uses it to place its off-screen
    * warm-up views above the ground; content without a height authority (rural fixtures) omits

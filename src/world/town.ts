@@ -17,6 +17,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { BUILDING_ARCHETYPES, TOWN_CONFIG } from '../config/town';
 import { configureTiledSurface, SurfaceTextureLibrary } from '../assets/SurfaceTextureLibrary';
+import type { AssetResolution } from '../assets/AssetManifest';
+import { surfaceAssetIdAtResolution } from '../config/asset-resolution';
 import { DISTRICTS } from '../config/districts';
 import type { TerrainSampler } from './terrain-height';
 import type { RoadNetwork } from './road-network';
@@ -732,11 +734,13 @@ export class TownWorld {
   }
 
   /** Loads CC0 cast-concrete maps for plaster/concrete wall bodies; trim, signage, roofs and glazing stay separate. */
-  async loadSurfaces(): Promise<void> {
+  async loadSurfaces(resolution: AssetResolution = '1k'): Promise<void> {
     if (this.#disposed || this.#wallSurfaceBound || this.buildings.length === 0) {
       return;
     }
-    const concrete = await this.#surfaceTextures.load('tex-concrete-wall-009-1k');
+    const concrete = await this.#surfaceTextures.load(
+      surfaceAssetIdAtResolution('tex-concrete-wall-009-1k', resolution),
+    );
     if (this.#disposed || concrete === null) {
       return;
     }

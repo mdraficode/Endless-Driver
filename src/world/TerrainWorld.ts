@@ -21,7 +21,12 @@ import {
 } from 'three/tsl';
 
 import { ACTIVE_TERRAIN_SURFACE_ASSETS, type TerrainConfig } from '../config/terrain';
-import { loadMaterialTextureSet, type MaterialTextureSet } from '../assets/AssetManifest';
+import {
+  loadMaterialTextureSet,
+  type AssetResolution,
+  type MaterialTextureSet,
+} from '../assets/AssetManifest';
+import { surfaceAssetIdAtResolution } from '../config/asset-resolution';
 import type { TerrainSampler } from './terrain-height';
 import type { SceneContent } from './WorldContent';
 import { ChunkGenerator } from './chunk-generator';
@@ -215,9 +220,11 @@ export class TerrainWorld implements SceneContent {
    * load; failures keep the flat material and are reported, never thrown — the game must
    * boot on a partial asset set.
    */
-  async loadSurfaces(): Promise<void> {
+  async loadSurfaces(resolution: AssetResolution = '1k'): Promise<void> {
     const sets = await Promise.all(
-      ACTIVE_TERRAIN_SURFACE_ASSETS.map((id) => loadMaterialTextureSet(id)),
+      ACTIVE_TERRAIN_SURFACE_ASSETS.map((id) =>
+        loadMaterialTextureSet(surfaceAssetIdAtResolution(id, resolution)),
+      ),
     );
     if (sets.some((set) => set === null)) {
       for (const set of sets) {

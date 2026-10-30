@@ -15,6 +15,15 @@ import { TextureLoader } from 'three';
  * network host at runtime, and nothing may reference an asset that the manifest does not describe:
  * that is what keeps the licence register in `docs/ASSET_SOURCES.md` true.
  */
+/**
+ * The pixel budget a runtime asset was derived for.
+ *
+ * Tier C (phones) loads the 512-px derivations of the same sources — the tier-C asset budget,
+ * `docs/ASSET_SOURCES.md`. B and A keep the full 1K. A file without the field is the 1K file:
+ * the 1K derivations were the only ones for years before the 512 budget existed.
+ */
+export type AssetResolution = '512' | '1k';
+
 export interface AssetManifestFile {
   readonly slot: string;
   readonly path: string;
@@ -22,6 +31,8 @@ export interface AssetManifestFile {
   readonly sha256: string;
   readonly colourSpace: string;
   readonly format: string;
+  /** Which pixel budget this file was derived for. Absent = '1k'. */
+  readonly resolution?: AssetResolution;
 }
 
 export interface AssetManifestSource {
