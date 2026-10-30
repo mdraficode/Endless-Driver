@@ -293,4 +293,25 @@ describe('startup timing formatting', () => {
       ]),
     ).toBe('total 30s · terrain 2s · car 8s · surfaces 20s');
   });
+
+  it('appends the network bill: wire bytes, download window, and the implied rate', () => {
+    // 15.9 MB over 44 s — a throttled phone link: the rate is the number that says
+    // "the load is the link", not the GPU.
+    expect(
+      formatStartupTimings(
+        [
+          { stage: 'total', ms: 52_000 },
+          { stage: 'surfaces', ms: 40_000 },
+        ],
+        { bytes: 15.9 * 1024 * 1024, ms: 44_000 },
+      ),
+    ).toBe('total 52s · surfaces 40s · net 15.9 MB in 44s (0.36 MB/s)');
+  });
+
+  it('omits the network part when it is unavailable or the window is empty', () => {
+    const stages = [{ stage: 'total', ms: 12_000 }];
+    expect(formatStartupTimings(stages, null)).toBe('total 12s');
+    expect(formatStartupTimings(stages, undefined)).toBe('total 12s');
+    expect(formatStartupTimings(stages, { bytes: 1024 * 1024, ms: 0 })).toBe('total 12s');
+  });
 });

@@ -32,9 +32,12 @@ import {
 import { yawFromQuat, type Vec3 } from '../shared/vector';
 import {
   DiagnosticsOverlay,
+  formatStartupTimings,
   type DiagnosticsSnapshot,
+  type StartupNetwork,
   type StartupStage,
 } from '../ui/DiagnosticsOverlay';
+import { getStartupNetworkStats } from './startup-network';
 import type { LoadingProgress } from '../ui/LoadingScreen';
 import { PLAYER_HERO_CAR_ASSET_ID } from '../vehicles/PlayerCarVisual';
 import { Car } from '../vehicles/Car';
@@ -240,6 +243,8 @@ export class Application {
    * (car, surfaces) from the GPU-bound ones (compile, settle) so the next fix is aimed.
    */
   #startupTimings: readonly StartupStage[] | null = null;
+  /** The page's wire bytes + download window for the load (the Startup row's net part). */
+  #startupNetwork: StartupNetwork | null = null;
   readonly #carEffects: CarEffects;
   readonly #input: InputManager;
 
@@ -876,9 +881,14 @@ export class Application {
       },
       { stage: 'physics', ms: startupDone - (stageMarks['settle'] ?? startupClock) },
     ];
+    // The network bill, from the browser's own resource log: the wire bytes (compressed; cache
+    // hits count 0) of every file the page pulled — the JS bundle included — and the window they
+    // spanned. This is the split that answers "is the slow load a slow link or slow CPU/GPU work"
+    // that the stage wall clocks alone cannot.
+    this.#startupNetwork = getStartupNetworkStats();
     console.info(
       'Endless Driver startup timings:',
-      this.#startupTimings.map((t) => `${t.stage} ${(t.ms / 1000).toFixed(1)}s`).join(' · '),
+      formatStartupTimings(this.#startupTimings, this.#startupNetwork),
     );
     this.#engine.start();
     this.#armFirstFrameWatchdog();
@@ -1084,6 +1094,7 @@ export class Application {
       drawCalls: render.drawCalls,
       triangles: render.triangles,
       startup: this.#startupTimings ?? [],
+      startupNetwork: this.#startupNetwork,
       pixelRatio: viewport.pixelRatio,
       viewport: { width: viewport.width, height: viewport.height },
       cameraPosition: { x: cameraPosition.x, y: cameraPosition.y, z: cameraPosition.z },

@@ -22,12 +22,23 @@ export interface StartupStage {
   readonly ms: number;
 }
 
+/** The page's network bill while loading (wire bytes + download window). */
+export interface StartupNetwork {
+  readonly bytes: number;
+  readonly ms: number;
+}
+
 /**
  * The "Startup" row: where the first load's wall clock actually went. This is the instrument for
  * the "loading takes too long" reports — it separates the network-bound stages (car, surfaces)
  * from the GPU-bound ones (compile, settle) so the next fix can be aimed instead of guessed.
+ * The optional `network` part says how many wire bytes the page pulled and over how long a
+ * window — the split that decides whether a slow load is a slow link or slow CPU/GPU work.
  */
-export function formatStartupTimings(stages: readonly StartupStage[]): string {
+export function formatStartupTimings(
+  stages: readonly StartupStage[],
+  network?: StartupNetwork | null,
+): string {
   if (stages.length === 0) {
     return 'in progress…';
   }
@@ -55,6 +66,19 @@ export function formatStartupTimings(stages: readonly StartupStage[]): string {
     part('settle'),
     part('physics'),
   ].filter((p) => p !== '');
+  if (network !== null && network !== undefined && network.ms > 0) {
+    const megabytes = network.bytes / (1024 * 1024);
+    const seconds = network.ms / 1000;
+    const size = `${megabytes.toFixed(1)} MB`;
+    const time =
+      seconds >= 10
+        ? `${Math.round(seconds)}s`
+        : Number.isInteger(seconds)
+          ? `${seconds}s`
+          : `${seconds.toFixed(1)}s`;
+    const rate = megabytes / Math.max(seconds, 1 / 1000);
+    parts.push(`net ${size} in ${time} (${rate.toFixed(2)} MB/s)`);
+  }
   return parts.join(' · ');
 }
 
@@ -67,6 +91,8 @@ export interface DiagnosticsSnapshot {
   readonly triangles: number;
   /** Wall-clock milliseconds of each startup stage, in start() order. Empty while loading. */
   readonly startup: readonly StartupStage[];
+  /** The page's wire bytes + download window for the load; `null` where unavailable. */
+  readonly startupNetwork?: StartupNetwork | null;
   /** Quality tier this frame was rendered under; see `docs/VISUAL_TARGET.md` §3. */
   readonly qualityTier: TierId;
   /** Why that tier was chosen, so a quality report can explain itself. */
@@ -356,7 +382,7 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
   },
   {
     label: 'Startup',
-    format: (snapshot) => formatStartupTimings(snapshot.startup),
+    format: (snapshot) => formatStartupTimings(snapshot.startup, snapshot.startupNetwork),
   },
   {
     label: 'Frame errors',

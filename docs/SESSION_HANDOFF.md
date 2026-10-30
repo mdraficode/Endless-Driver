@@ -3121,3 +3121,19 @@ _Rendering — bounded polish within budgets:_ tier C SSR `resolutionScale 0.33�
 **Validation:** full `npm run check` green (90+ test files, asset verification 29 assets, production build). The device is still the final proof: on the owner's phone the **Startup row (F2/📊) should now show a much smaller `surfaces` stage** and a shorter `total`; the load should no longer sit in "Preparing the road surfaces…".
 
 **Queued next (unchanged):** the 8.4b verdict "still boxy" → one more bolder structural pass; then 9.1 → 7.2 → 7.3. The device pass still covers the pending `33102c9`/`c3aa0c2`/`8588589`/`dcc630b` expectations.
+
+## 159. Retest of the 512 budget: "about the same" — the Startup row grows a net part (2026-10-30)
+
+**Owner retest of `MiZPtiK4` (the tier-C 512 budget, §158): "about the same as before."** A 66 % cut to the phone first-frame download (40 → ~14 MB) should have been visible, so either (a) the phone ran a cached pre-deploy page (the build tag in the loading-screen corner must show `MiZPtiK4` or newer; the tier resolver was re-checked and **phones are always tier C** — mobile UA or viewport < 480 → C, and the desktop default is C too — so the 512 files are what a phone load requests), or (b) the owner's link is simply slow at any byte count, or (c) the load's wall clock is CPU-side (decode, GPU upload, terrain, compile), not download-side. The stage wall clocks alone cannot separate (b) from (c).
+
+**Shipped: the network bill in the Startup row.** New `src/core/startup-network.ts` (`getStartupNetworkStats`) reads the browser's own resource-timing log at the end of startup: the **wire bytes** of every file the page pulled (compressed; cache hits count 0 — a fast retest reporting few MB is the cache working, not a bug), spanning from the JS bundle to the last asset, and the **window** they occupied. The Startup row (F2/📊) and the console line now end with `net 15.9 MB in 44s (0.36 MB/s)`.
+
+**How to read the next retest (this is the decision table):**
+
+- `net` rate tiny (≤ ~0.5 MB/s) and `surfaces` ≈ `net` window → **the link is the load.** The 512 budget is doing its job; the only lever left is bytes (defer fir 512 in a higher-RAM environment; consider the HDRI).
+- `net` fast (≥ ~2 MB/s) but `total` still long → **CPU/GPU-bound.** The stage that owns the clock (likely `compile` or `terrain`) is the next target.
+- `net` reports far more than ~14 MB of assets + ~2.5 MB of code → the phone loaded more than the tier-C budget — check the build tag; a cached old page would show an old tag.
+
+**Retest instruction given to the owner:** completely close the game's tab, reopen it, and check the tag in the loading-screen corner before the load starts (it must not read `aHn2mvuE`/`CtGgADck`). The Startup row appears after load (F2 on desktop, 📊 button on the phone) and in the console.
+
+**Queue unchanged:** 8.4b "still boxy" → the bolder structural pass; then 9.1 → 7.2 → 7.3. The pending device pass still covers `33102c9`/`c3aa0c2`/`8588589`/`dcc630b`.
