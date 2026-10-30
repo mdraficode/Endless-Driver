@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { DiagnosticsOverlay, type DiagnosticsSnapshot } from '../../src/ui/DiagnosticsOverlay';
+import {
+  DiagnosticsOverlay,
+  formatStartupTimings,
+  type DiagnosticsSnapshot,
+} from '../../src/ui/DiagnosticsOverlay';
 
 class FakeElement {
   readonly children: FakeElement[] = [];
@@ -47,6 +51,16 @@ const SNAPSHOT = {
   p95FrameTimeMilliseconds: 31,
   drawCalls: 123,
   triangles: 456_789,
+  startup: [
+    { stage: 'total', ms: 94_000 },
+    { stage: 'terrain', ms: 2_000 },
+    { stage: 'car', ms: 5_400 },
+    { stage: 'surfaces', ms: 68_000 },
+    { stage: 'compile', ms: 9_000 },
+    { stage: 'carFX', ms: 1_200 },
+    { stage: 'settle', ms: 5_000 },
+    { stage: 'physics', ms: 3_400 },
+  ],
   qualityTier: 'C',
   tierReason: 'mobile',
   timeOfDay: '12:00',
@@ -136,7 +150,7 @@ describe('full-screen diagnostics report', () => {
     expect(panel.getAttribute('aria-label')).toBe('Live diagnostics report');
     expect(panel.getAttribute('aria-hidden')).toBe('false');
     expect(grid.className).toBe('diagnostics-grid');
-    expect(grid.children).toHaveLength(33);
+    expect(grid.children).toHaveLength(34);
     expect(grid.children.every((metric) => metric.children.length === 2)).toBe(true);
 
     const labels = grid.children.map((metric) => metric.children[0]?.textContent);
@@ -199,6 +213,12 @@ describe('full-screen diagnostics report', () => {
     );
     expect(lostReport.get('Graphics')).toBe('LOST — reload');
 
+    // The startup stage breakdown is the instrument for "loading takes too long" reports: it
+    // says whether the wall clock went to the network stages or the GPU stages.
+    expect(lostReport.get('Startup')).toBe(
+      'total 94s · terrain 2s · car 5.4s · surfaces 68s · compile 9s · carFX 1.2s · settle 5s · physics 3.4s',
+    );
+
     // A main compile pass that had to be cut off before the first frame is called out so a
     // returning device report can prove "the freeze is the warm-up running out of budget".
     expect(lostReport.get('Warmup')).toBe('done');
@@ -241,5 +261,36 @@ describe('full-screen diagnostics report', () => {
     expect(onClose).toHaveBeenCalledOnce();
 
     overlay.dispose();
+  });
+});
+
+describe('startup timing formatting', () => {
+  it('reads as total first, then the stages in start() order, with sub-10 s precision', () => {
+    expect(formatStartupTimings([])).toBe('in progress…');
+    expect(
+      formatStartupTimings([
+        { stage: 'total', ms: 12_300 },
+        { stage: 'terrain', ms: 900 },
+        { stage: 'car', ms: 1_200 },
+        { stage: 'surfaces', ms: 500 },
+        { stage: 'compile', ms: 11_000 },
+        { stage: 'carFX', ms: 1_000 },
+        { stage: 'settle', ms: 200 },
+        { stage: 'physics', ms: 100 },
+      ]),
+    ).toBe(
+      'total 12s · terrain 0.9s · car 1.2s · surfaces 0.5s · compile 11s · carFX 1s · settle 0.2s · physics 0.1s',
+    );
+  });
+
+  it('omits stages that were never reached (a failed startup)', () => {
+    expect(
+      formatStartupTimings([
+        { stage: 'total', ms: 30_000 },
+        { stage: 'terrain', ms: 2_000 },
+        { stage: 'car', ms: 8_000 },
+        { stage: 'surfaces', ms: 20_000 },
+      ]),
+    ).toBe('total 30s · terrain 2s · car 8s · surfaces 20s');
   });
 });

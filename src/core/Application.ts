@@ -30,8 +30,13 @@ import {
   waitForWithinBudget,
 } from '../shared/budget';
 import { yawFromQuat, type Vec3 } from '../shared/vector';
-import { DiagnosticsOverlay, type DiagnosticsSnapshot } from '../ui/DiagnosticsOverlay';
+import {
+  DiagnosticsOverlay,
+  type DiagnosticsSnapshot,
+  type StartupStage,
+} from '../ui/DiagnosticsOverlay';
 import type { LoadingProgress } from '../ui/LoadingScreen';
+import { PLAYER_HERO_CAR_ASSET_ID } from '../vehicles/PlayerCarVisual';
 import { Car } from '../vehicles/Car';
 import { CarEffects } from '../vehicles/CarEffects';
 import { NitroBoost, type NitroBoostState } from '../vehicles/NitroBoost';
@@ -224,6 +229,12 @@ export class Application {
   #carModelLoadVisual: PlayerCarVisual | null = null;
   /** True once the main material pre-compile finished before the first frame. */
   #warmupComplete = false;
+  /**
+   * Wall-clock milliseconds of each startup stage (the "Startup" diagnostics row): the
+   * instrument for "loading takes too long" reports — it separates the network-bound stages
+   * (car, surfaces) from the GPU-bound ones (compile, settle) so the next fix is aimed.
+   */
+  #startupTimings: readonly StartupStage[] | null = null;
   readonly #carEffects: CarEffects;
   readonly #input: InputManager;
 
@@ -626,9 +637,17 @@ export class Application {
     // load that is network-bound three times in a row. Idempotent: the byte cache dedupes.
     void this.#prefetchStartupAssets();
 
+    // Stage marks for the "Startup" diagnostics row: where the first load's wall clock went.
+    const startupClock = performance.now();
+    const stageMarks: Record<string, number> = {};
+    const mark = (stage: string): void => {
+      stageMarks[stage] = performance.now();
+    };
+
     if (!this.#engine.isInitialized) {
       this.#reportLoadingProgress(0.2, 'Preparing the renderer…');
       await this.#engine.init();
+      mark('init');
       this.#carEffects.configureBackend(this.#engine.backend, this.#engine.renderer);
       this.#shadowCamera = null;
       this.#syncShadowCamera(this.#activeCamera());
@@ -659,6 +678,7 @@ export class Application {
           );
         },
       );
+      mark('terrain');
       // Gate the first frame on the selected hero car (bounded). The authored fallback is a
       // roadster and stays hidden while the 2.9 MB coupé loads, so the first frame never shows
       // the wrong car — the "Roadster, then Generic Sports Car" report.
@@ -687,6 +707,7 @@ export class Application {
           );
         }
       }
+      mark('car');
       // Visual upgrades come next, still under the loading bar: environment lighting, the colour
       // look, the scanned road/terrain surfaces and the scanned vegetation. Every one of these
       // swaps materials (new textures, new model programs), so doing them here means the compile
@@ -715,6 +736,7 @@ export class Application {
         0.92,
         'Preparing the road surfaces, lighting and vegetation…',
       );
+      mark('surfaces');
       // Build the frame graph and kick off creation of every pipeline in the real frame's
       // context, before the compile: the main compile below then produces exactly the
       // pipelines the first frame draws with — one full-scene compile, never two.
@@ -736,6 +758,7 @@ export class Application {
         0.97,
         'Warming up the graphics pipeline (first run is slower)…',
       );
+      mark('compile');
       this.#warmupComplete = true;
       // Second pass: picks up the hero car's materials and anything the first pass missed;
       // everything else is a cache hit, so this pass is short.
@@ -745,6 +768,7 @@ export class Application {
         0.985,
         'Warming up the car and effects…',
       );
+      mark('carFX');
       // Settle: render until the drawn workload is stable, then sweep the bounded off-screen
       // views of the playable area, then close back in the spawn context. The shadow depth
       // programs and the nested effect passes (SSAO/SSR internal quads) only an actual render
@@ -773,6 +797,7 @@ export class Application {
         return;
       }
       this.#endSettleSweep(spawnPose);
+      mark('settle');
       this.#reportLoadingProgress(0.99, 'Starting the simulation…');
     }
 
@@ -808,6 +833,43 @@ export class Application {
     this.#physics.resetAccumulator();
     this.#input.reset();
     this.#driveInputActive = false;
+    // The startup timings land here, just before the first frame: the "Startup" diagnostics row
+    // (and the console line) show where the wall clock went — network-bound stages (car,
+    // surfaces) versus GPU-bound ones (compile, settle) — so a "loading takes too long" report
+    // says which side to fix next.
+    const startupDone = performance.now();
+    this.#startupTimings = [
+      { stage: 'total', ms: startupDone - startupClock },
+      {
+        stage: 'terrain',
+        ms: (stageMarks['terrain'] ?? startupClock) - (stageMarks['init'] ?? startupClock),
+      },
+      {
+        stage: 'car',
+        ms: (stageMarks['car'] ?? startupClock) - (stageMarks['terrain'] ?? startupClock),
+      },
+      {
+        stage: 'surfaces',
+        ms: (stageMarks['surfaces'] ?? startupClock) - (stageMarks['car'] ?? startupClock),
+      },
+      {
+        stage: 'compile',
+        ms: (stageMarks['compile'] ?? startupClock) - (stageMarks['surfaces'] ?? startupClock),
+      },
+      {
+        stage: 'carFX',
+        ms: (stageMarks['carFX'] ?? startupClock) - (stageMarks['compile'] ?? startupClock),
+      },
+      {
+        stage: 'settle',
+        ms: (stageMarks['settle'] ?? startupClock) - (stageMarks['carFX'] ?? startupClock),
+      },
+      { stage: 'physics', ms: startupDone - (stageMarks['settle'] ?? startupClock) },
+    ];
+    console.info(
+      'Endless Driver startup timings:',
+      this.#startupTimings.map((t) => `${t.stage} ${(t.ms / 1000).toFixed(1)}s`).join(' · '),
+    );
     this.#engine.start();
     this.#armFirstFrameWatchdog();
 
@@ -1011,6 +1073,7 @@ export class Application {
       p95FrameTimeMilliseconds: statistics.p95FrameTimeMilliseconds,
       drawCalls: render.drawCalls,
       triangles: render.triangles,
+      startup: this.#startupTimings ?? [],
       pixelRatio: viewport.pixelRatio,
       viewport: { width: viewport.width, height: viewport.height },
       cameraPosition: { x: cameraPosition.x, y: cameraPosition.y, z: cameraPosition.z },
@@ -1446,19 +1509,33 @@ export class Application {
   async #prefetchStartupAssets(): Promise<void> {
     try {
       const manifest = await readAssetManifest();
+      const heroModelFiles: string[] = [];
       const modelFiles: string[] = [];
-      const urlFiles: string[] = [];
+      const lutFiles: string[] = [];
+      const surfaceFiles: string[] = [];
+      const environmentFiles: string[] = [];
       for (const asset of manifest.assets) {
         for (const file of asset.files) {
           if (asset.kind === 'model') {
-            modelFiles.push(file.path);
+            (asset.id === PLAYER_HERO_CAR_ASSET_ID ? heroModelFiles : modelFiles).push(file.path);
+          } else if (asset.kind === 'lut') {
+            lutFiles.push(file.path);
+          } else if (asset.kind === 'hdri') {
+            // Only the IBL the game actually lights itself with. The other presets belong to the
+            // studio switcher — they must not hold a mobile connection at t=0.
+            if (asset.id === this.#config.environment.assetId) {
+              environmentFiles.push(file.path);
+            }
           } else {
-            urlFiles.push(file.path);
+            surfaceFiles.push(file.path);
           }
         }
       }
-      prefetchAssetBytes(modelFiles);
-      warmAssetHttpCache(urlFiles);
+      // Queue order is priority order on a connection-limited link (six connections per host):
+      // the hero gate (0.85) is the first stage that needs model bytes, so it queues first,
+      // then the upgrades-phase models, the small LUT, the surfaces and the environment.
+      prefetchAssetBytes([...heroModelFiles, ...modelFiles]);
+      warmAssetHttpCache([...lutFiles, ...surfaceFiles, ...environmentFiles]);
     } catch (error) {
       // A missing manifest is an operator problem (stale checkout); the loaders report it
       // per-asset when they hit the same wall, and the game starts on authored assets.

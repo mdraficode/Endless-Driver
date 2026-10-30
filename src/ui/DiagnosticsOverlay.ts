@@ -16,6 +16,48 @@ import type { WeatherPreset } from '../environment/SurfaceState';
  * occupies the full game surface above the minimap and touch HUD, lays every metric into a compact
  * responsive grid, and remains non-scrollable so a device capture includes the entire snapshot.
  */
+/** One wall-clock measurement of a startup stage (the "Startup" row). */
+export interface StartupStage {
+  readonly stage: string;
+  readonly ms: number;
+}
+
+/**
+ * The "Startup" row: where the first load's wall clock actually went. This is the instrument for
+ * the "loading takes too long" reports — it separates the network-bound stages (car, surfaces)
+ * from the GPU-bound ones (compile, settle) so the next fix can be aimed instead of guessed.
+ */
+export function formatStartupTimings(stages: readonly StartupStage[]): string {
+  if (stages.length === 0) {
+    return 'in progress…';
+  }
+  const part = (stage: string): string => {
+    const entry = stages.find((s) => s.stage === stage);
+    if (entry === undefined) {
+      return '';
+    }
+    const seconds = entry.ms / 1000;
+    const label =
+      seconds >= 10
+        ? `${Math.round(seconds)}s`
+        : Number.isInteger(seconds)
+          ? `${seconds}s`
+          : `${seconds.toFixed(1)}s`;
+    return `${entry.stage} ${label}`;
+  };
+  const parts = [
+    part('total'),
+    part('terrain'),
+    part('car'),
+    part('surfaces'),
+    part('compile'),
+    part('carFX'),
+    part('settle'),
+    part('physics'),
+  ].filter((p) => p !== '');
+  return parts.join(' · ');
+}
+
 export interface DiagnosticsSnapshot {
   readonly framesPerSecond: number;
   readonly minimumFramesPerSecond: number;
@@ -23,6 +65,8 @@ export interface DiagnosticsSnapshot {
   readonly p95FrameTimeMilliseconds: number;
   readonly drawCalls: number;
   readonly triangles: number;
+  /** Wall-clock milliseconds of each startup stage, in start() order. Empty while loading. */
+  readonly startup: readonly StartupStage[];
   /** Quality tier this frame was rendered under; see `docs/VISUAL_TARGET.md` §3. */
   readonly qualityTier: TierId;
   /** Why that tier was chosen, so a quality report can explain itself. */
@@ -309,6 +353,10 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
   {
     label: 'Warmup',
     format: (snapshot) => (snapshot.warmupComplete ? 'done' : 'partial — may jank'),
+  },
+  {
+    label: 'Startup',
+    format: (snapshot) => formatStartupTimings(snapshot.startup),
   },
   {
     label: 'Frame errors',
