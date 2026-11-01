@@ -1093,6 +1093,7 @@ export class Application {
       p95FrameTimeMilliseconds: statistics.p95FrameTimeMilliseconds,
       drawCalls: render.drawCalls,
       triangles: render.triangles,
+      programs: render.programs,
       startup: this.#startupTimings ?? [],
       startupNetwork: this.#startupNetwork,
       pixelRatio: viewport.pixelRatio,

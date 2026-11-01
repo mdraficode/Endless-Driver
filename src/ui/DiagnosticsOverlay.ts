@@ -89,6 +89,8 @@ export interface DiagnosticsSnapshot {
   readonly p95FrameTimeMilliseconds: number;
   readonly drawCalls: number;
   readonly triangles: number;
+  /** Distinct shader programs the backend has created (the `compile` stage's true cost). */
+  readonly programs: number;
   /** Wall-clock milliseconds of each startup stage, in start() order. Empty while loading. */
   readonly startup: readonly StartupStage[];
   /** The page's wire bytes + download window for the load; `null` where unavailable. */
@@ -354,6 +356,10 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
   },
   { label: 'Draw calls', format: (snapshot) => String(snapshot.drawCalls) },
   { label: 'Triangles', format: (snapshot) => snapshot.triangles.toLocaleString('en-US') },
+  // The program count is what a slow load is usually made of: each program is a full shader
+  // compile on the device's driver, and the number here is what the Startup row's `compile`
+  // stage was paying for.
+  { label: 'Programs', format: (snapshot) => String(snapshot.programs) },
   { label: 'Scene objects', format: (snapshot) => String(snapshot.sceneObjects) },
   {
     label: 'Terrain',

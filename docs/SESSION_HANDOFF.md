@@ -3137,3 +3137,19 @@ _Rendering — bounded polish within budgets:_ tier C SSR `resolutionScale 0.33�
 **Retest instruction given to the owner:** completely close the game's tab, reopen it, and check the tag in the loading-screen corner before the load starts (it must not read `aHn2mvuE`/`CtGgADck`). The Startup row appears after load (F2 on desktop, 📊 button on the phone) and in the console.
 
 **Queue unchanged:** 8.4b "still boxy" → the bolder structural pass; then 9.1 → 7.2 → 7.3. The pending device pass still covers `33102c9`/`c3aa0c2`/`8588589`/`dcc630b`.
+
+## 160. The owner's device report: compile is 82 s of an 87 s load — the Programs row lands (2026-11-01)
+
+**Owner screenshot of the 📊 panel (build `BxLC5Mrf`, night, Aohara spawn):** `TIER C · mobile`, viewport 960×432, `STARTUP total 87s · terrain 0.6s · car 0.5s · surfaces 1.1s · compile 82s · carFX 0.0s · settle 1.9s · physics 0.2s · net 0.0 MB in 4.0s (0.00 MB/s)`. FPS 26.8 avg, 1,798,097 triangles, 417 draw calls, 609 scene objects, 121/121 terrain chunks.
+
+**The diagnosis is now unambiguous:**
+
+- **94 % of the load is shader compilation** (82 s of 87 s). The 512 asset budget is confirmed working: `surfaces` is 1.1 s (it used to be the wall), `terrain`/`car` sub-second.
+- **`net 0.0 MB` = the retest ran fully from the phone's HTTP cache** (the previous test downloaded the 512 budget; wire bytes are zero for cache hits — exactly the instrument's documented behaviour). The download is no longer in the picture at all.
+- The v3 design (one full-scene compile in the real frame's context) is doing exactly its job: zero in-game stalls, 82 s up front. The lever is now the **number/complexity of the programs that compile must create**, not the network.
+
+**Audit done offline (no device needed):** POM is already tier-A-only (the phone's near-terrain program is the plain splat); world materials are shared singletons driving instanced meshes (no per-instance program blow-up — the 286 poles, 764 facade modules, billboards all share materials); the second `compileFrameGraph` pass is a cache hit (carFX 0.0 s); settle (shadow depth programs + SSR/AO internal quads) is 1.9 s. Scene program surface ≈ 35 world materials + ~10 car GLB materials + ~10 post passes + sky ≈ 60 materials, probably 60–110 programs → ~1 s/program on that driver. **The single structural lever without touching the owner's visual spec is the tier-C normal-buffer MRT target, which exists only for SSR + AO** — removing those two passes on phones deletes ~6–8 pass programs AND shrinks every scene program (no normal output) → likely the biggest compile cut available, at the cost of wet-road reflections and contact-shadow darkening on phone only. That is the owner's call; asked in plain terms with the before/after to be measured on their device via the row below.
+
+**Shipped:** the **Programs row** in the diagnostics (after Triangles): `info.memory.programs` — the distinct shader programs the backend has created, i.e. what the `compile` stage paid for. The next device screenshot reads the number that decides the next move: ~70–90 → the SSR/AO/normal-target cut is the lever; ~30–40 → the programs are few but heavy and the terrain splat / architectural shader graphs are the target.
+
+**Queue unchanged after the compile round:** 8.4b "still boxy" → the bolder structural pass; then 9.1 → 7.2 → 7.3.

@@ -61,6 +61,13 @@ export interface RenderStatistics {
   readonly triangles: number;
   readonly geometries: number;
   readonly textures: number;
+  /**
+   * Distinct shader programs the backend has created. On a phone this is the number behind a
+   * slow load: every program is a full driver compile, and the settle sweep already watches it
+   * stabilize — the HUD shows it so a "loading takes long" report can say whether the scene is
+   * compiling an unusual number of them.
+   */
+  readonly programs: number;
 }
 
 /**
@@ -138,13 +145,14 @@ const PREWARM_SETTLE_YIELD_MS = 100;
 /** Reads the renderer's counters into the shape the HUD and the tests use. */
 function readStatistics(info: {
   render: { calls: number; drawCalls?: number; triangles: number };
-  memory: { geometries: number; textures: number };
+  memory: { geometries: number; textures: number; programs: number };
 }): RenderStatistics {
   return {
     drawCalls: info.render.drawCalls ?? info.render.calls,
     triangles: info.render.triangles,
     geometries: info.memory.geometries,
     textures: info.memory.textures,
+    programs: info.memory.programs,
   };
 }
 
@@ -184,7 +192,13 @@ export class Engine {
   #disposed = false;
   #initialized = false;
   #backend: RendererBackendName | null = null;
-  #statistics: RenderStatistics = { drawCalls: 0, triangles: 0, geometries: 0, textures: 0 };
+  #statistics: RenderStatistics = {
+    drawCalls: 0,
+    triangles: 0,
+    geometries: 0,
+    textures: 0,
+    programs: 0,
+  };
 
   constructor(options: EngineOptions) {
     this.#canvas = options.canvas;
