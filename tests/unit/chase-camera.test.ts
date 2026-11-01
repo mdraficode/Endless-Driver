@@ -133,14 +133,18 @@ describe('chase camera', () => {
     const camera = new ChaseCamera(CHASE_CAMERA_CONFIG, 1);
     const stationary = pose();
     camera.snapTo(stationary);
-    expect(camera.fov).toBeCloseTo(CHASE_CAMERA_CONFIG.baseFov, 6);
+    const startDelta = camera.view.fovDelta;
+    // The speed-scaled band is at rest, but the active view's fov delta eases in over the
+    // FOV lag, so settle it before asserting the at-rest value.
+    advance(camera, 2, stationary, telemetry());
+    expect(camera.fov).toBeCloseTo(CHASE_CAMERA_CONFIG.baseFov + startDelta, 1);
 
     advance(camera, 3, stationary, telemetry({ speedMps: 60, speedKph: 216 }));
     expect(camera.fov).toBeGreaterThan(CHASE_CAMERA_CONFIG.baseFov + 8);
-    expect(camera.fov).toBeLessThanOrEqual(CHASE_CAMERA_CONFIG.maxFov + 1e-6);
+    expect(camera.fov).toBeLessThanOrEqual(CHASE_CAMERA_CONFIG.maxFov + startDelta + 1e-6);
 
     advance(camera, 5, stationary, telemetry());
-    expect(camera.fov).toBeLessThan(CHASE_CAMERA_CONFIG.baseFov + 2);
+    expect(camera.fov).toBeLessThan(CHASE_CAMERA_CONFIG.baseFov + 2 + startDelta);
   });
 
   it('keeps the camera above the ground plane', () => {
@@ -231,14 +235,14 @@ describe('chase camera', () => {
 });
 
 describe('chase camera distance views', () => {
-  it('starts on Far and cycles Far → Close → Normal → Far', () => {
+  it('starts on Close and cycles Close → Normal → Far → Close', () => {
     const camera = new ChaseCamera(CHASE_CAMERA_CONFIG, 16 / 9);
-    expect(camera.view.id).toBe('far');
-    expect(camera.cycleView().id).toBe('close');
+    expect(camera.view.id).toBe('close');
     expect(camera.cycleView().id).toBe('normal');
     expect(camera.cycleView().id).toBe('far');
+    expect(camera.cycleView().id).toBe('close');
     expect(camera.setView('nope')).toBe(false);
-    expect(camera.view.id).toBe('far');
+    expect(camera.view.id).toBe('close');
   });
 
   it('frames the car closer on Close and farther on Far', () => {

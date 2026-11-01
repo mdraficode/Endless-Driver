@@ -154,7 +154,9 @@ export interface ChaseCameraConfig {
 
 export const CHASE_CAMERA_CONFIG: ChaseCameraConfig = {
   views: CHASE_CAMERA_VIEWS,
-  defaultViewId: 'far',
+  // Owner default (2026-11-02): the chase camera starts on the Close view — the centred
+  // framing where the car is nearest; C / 📷 still cycles Close → Normal → Far in play.
+  defaultViewId: 'close',
   viewTransitionSeconds: 0.45,
   positionLagSeconds: 0.18,
   lookLagSeconds: 0.1,
