@@ -53,7 +53,7 @@ describe('persistent game preferences', () => {
     });
   });
 
-  it('defaults older preference records to daytime and rejects malformed night-mood values', () => {
+  it('defaults older preference records to the night default and rejects malformed night-mood values', () => {
     const storage = new MemoryStorage();
     storage.setItem(
       GAME_PREFERENCES_STORAGE_KEY,
@@ -62,7 +62,7 @@ describe('persistent game preferences', () => {
 
     expect(readGamePreferences(storage)).toMatchObject({
       graphicsTier: 'B',
-      nightMood: false,
+      nightMood: true,
     });
 
     storage.setItem(GAME_PREFERENCES_STORAGE_KEY, JSON.stringify({ nightMood: true }));
@@ -76,7 +76,7 @@ describe('persistent game preferences', () => {
       JSON.stringify({ touchSteeringMode: 'unknown', touchControlScalePercent: 156 }),
     );
     expect(readGamePreferences(storage)).toMatchObject({
-      touchSteeringMode: 'wheel',
+      touchSteeringMode: 'arrows',
       touchControlScalePercent: 140,
     });
 

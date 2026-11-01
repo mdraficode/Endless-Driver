@@ -32,15 +32,21 @@ export interface PreferenceStorage {
 
 export const GAME_PREFERENCES_STORAGE_KEY = 'endless-driver:game-preferences:v1';
 
+/**
+ * First-run defaults (owner direction, 2026-11-02): new devices start in the night mood with
+ * the relaxing drive setup — smooth steering, arrow buttons at 120 % size, the centred chase
+ * camera. Devices that already saved preferences keep exactly what they saved; only the
+ * missing fields fall back to these values.
+ */
 export const DEFAULT_GAME_PREFERENCES: Readonly<GamePreferences> = {
   graphicsTier: 'auto',
   trafficIntensity: 'standard',
   carModel: 'generic-sport-coupe',
   cameraMode: 'chase',
-  steeringSensitivity: 'standard',
-  touchSteeringMode: 'wheel',
-  touchControlScalePercent: 100,
-  nightMood: false,
+  steeringSensitivity: 'relaxed',
+  touchSteeringMode: 'arrows',
+  touchControlScalePercent: 120,
+  nightMood: true,
 };
 
 const TRAFFIC_INTENSITIES: readonly TrafficIntensity[] = ['off', 'light', 'standard', 'busy'];
