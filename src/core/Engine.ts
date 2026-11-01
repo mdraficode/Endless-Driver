@@ -24,6 +24,7 @@ import {
   type ToneMappingName,
 } from '../config/render';
 import { clampFrameDelta, resolvePixelRatio } from '../shared/math';
+import { analyzeProgramInventory, type ProgramInventory } from './program-inventory';
 
 /**
  * Bounds for the grade multiplier. A grade is a *look*, not a light: anything outside this band is a
@@ -805,6 +806,17 @@ export class Engine {
    */
   getRenderStatistics(): RenderStatistics {
     return this.#statistics;
+  }
+
+  /**
+   * The live shader-stage inventory, grouped by material: which materials own how many fragment
+   * programs, and what differs between a material's programs (inlined light counts, clearcoat,
+   * instancing, shadows, fog). `null` where the backend does not expose the internal stage map
+   * (the WebGPU path).
+   */
+  getProgramInventory(): ProgramInventory | null {
+    const info = this.#renderer.info as unknown as { memoryMap?: unknown } | undefined;
+    return analyzeProgramInventory(info?.memoryMap ?? null);
   }
 
   dispose(): void {

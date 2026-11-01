@@ -38,6 +38,7 @@ import {
   type StartupStage,
 } from '../ui/DiagnosticsOverlay';
 import { getStartupNetworkStats } from './startup-network';
+import type { ProgramInventory } from './program-inventory';
 import type { LoadingProgress } from '../ui/LoadingScreen';
 import { PLAYER_HERO_CAR_ASSET_ID } from '../vehicles/PlayerCarVisual';
 import { Car } from '../vehicles/Car';
@@ -245,6 +246,12 @@ export class Application {
   #startupTimings: readonly StartupStage[] | null = null;
   /** The page's wire bytes + download window for the load (the Startup row's net part). */
   #startupNetwork: StartupNetwork | null = null;
+  /**
+   * The shader-stage inventory captured once after the settle: which materials own how many
+   * fragment programs (the Programs row's "who"). Kept — not re-scanned per snapshot — because
+   * the steady-state set is what the load cost, and the settle is where it exists.
+   */
+  #programInventory: ProgramInventory | null = null;
   readonly #carEffects: CarEffects;
   readonly #input: InputManager;
 
@@ -886,6 +893,24 @@ export class Application {
     // spanned. This is the split that answers "is the slow load a slow link or slow CPU/GPU work"
     // that the stage wall clocks alone cannot.
     this.#startupNetwork = getStartupNetworkStats();
+    // The program inventory lands here, just after the settle, when every material the
+    // steady-state view uses exists: grouped by material it says which ones multiply the
+    // compiled program count and what differs between a material's programs (inlined light
+    // counts, instancing, shadows, fog). The console table is the full picture; the
+    // diagnostics Programs row carries the top groups.
+    this.#programInventory = this.#engine.getProgramInventory();
+    if (this.#programInventory !== null) {
+      const lines = this.#programInventory.groups.map(
+        (group, index) =>
+          `  ${String(index + 1).padStart(2)}. ${String(group.count).padStart(3)}x ` +
+          `${group.name || '(unnamed)'}  [${group.signature}]`,
+      );
+      console.info(
+        `Endless Driver program inventory: ${this.#programInventory.totalStages} stages ` +
+          `(${this.#programInventory.fragmentStages} fragment) — top groups:\n` +
+          lines.join('\n'),
+      );
+    }
     console.info(
       'Endless Driver startup timings:',
       formatStartupTimings(this.#startupTimings, this.#startupNetwork),
@@ -1094,6 +1119,7 @@ export class Application {
       drawCalls: render.drawCalls,
       triangles: render.triangles,
       programs: render.programs,
+      programInventory: this.#programInventory,
       startup: this.#startupTimings ?? [],
       startupNetwork: this.#startupNetwork,
       pixelRatio: viewport.pixelRatio,

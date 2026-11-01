@@ -2,6 +2,7 @@ import type { CameraMode } from '../config/camera';
 import type { AntiAliasingMode, RendererBackendName } from '../config/render';
 import type { TierId } from '../config/tiers';
 import type { TierReason } from '../core/QualityTier';
+import { formatProgramInventory, type ProgramInventory } from '../core/program-inventory';
 import type { WeatherPreset } from '../environment/SurfaceState';
 
 /**
@@ -91,6 +92,12 @@ export interface DiagnosticsSnapshot {
   readonly triangles: number;
   /** Distinct shader programs the backend has created (the `compile` stage's true cost). */
   readonly programs: number;
+  /**
+   * The shader-stage inventory captured after the settle (the Programs row's "who"): which
+   * materials own how many fragment programs. Absent on older snapshots and `null` where the
+   * backend does not expose the stage map.
+   */
+  readonly programInventory?: ProgramInventory | null;
   /** Wall-clock milliseconds of each startup stage, in start() order. Empty while loading. */
   readonly startup: readonly StartupStage[];
   /** The page's wire bytes + download window for the load; `null` where unavailable. */
@@ -359,7 +366,13 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
   // The program count is what a slow load is usually made of: each program is a full shader
   // compile on the device's driver, and the number here is what the Startup row's `compile`
   // stage was paying for.
-  { label: 'Programs', format: (snapshot) => String(snapshot.programs) },
+  {
+    label: 'Programs',
+    format: (snapshot) =>
+      snapshot.programInventory !== null && snapshot.programInventory !== undefined
+        ? formatProgramInventory(snapshot.programInventory)
+        : String(snapshot.programs),
+  },
   { label: 'Scene objects', format: (snapshot) => String(snapshot.sceneObjects) },
   {
     label: 'Terrain',
