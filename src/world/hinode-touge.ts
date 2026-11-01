@@ -40,8 +40,14 @@ export interface RockfallPlacement {
   readonly radius: number;
 }
 
-function material(color: number, roughness: number, metalness = 0): MeshStandardNodeMaterial {
+function material(
+  name: string,
+  color: number,
+  roughness: number,
+  metalness = 0,
+): MeshStandardNodeMaterial {
   const result = new MeshStandardNodeMaterial();
+  result.name = name;
   result.color.setHex(color);
   result.roughness = roughness;
   result.metalness = metalness;
@@ -140,12 +146,12 @@ export class HinodeTougeWorld {
     const rockGeometry = new IcosahedronGeometry(1, 1);
     const signBoardGeometry = new BoxGeometry(1, 1, 1);
     const signStripeGeometry = new BoxGeometry(1, 1, 1);
-    const postMaterial = material(0x535b5d, 0.55, 0.55);
-    const railMaterial = material(0x92999a, 0.42, 0.68);
-    const reflectorMaterial = material(0xe5c56e, 0.35, 0.1);
-    const rockMaterial = material(0x62635e, 0.96);
-    const signMaterial = material(0xdba83b, 0.62);
-    const stripeMaterial = material(0x202321, 0.78);
+    const postMaterial = material('hinode-touge-post', 0x535b5d, 0.55, 0.55);
+    const railMaterial = material('hinode-touge-rail', 0x92999a, 0.42, 0.68);
+    const reflectorMaterial = material('hinode-touge-reflector', 0xe5c56e, 0.35, 0.1);
+    const rockMaterial = material('hinode-touge-rock', 0x62635e, 0.96);
+    const signMaterial = material('hinode-touge-sign', 0xdba83b, 0.62);
+    const stripeMaterial = material('hinode-touge-stripe', 0x202321, 0.78);
 
     buildInstances(this.root, 'touge-guardrail-posts', postGeometry, postMaterial, postTransforms);
     // Two rails share one batched mesh; each section contributes an upper and a lower run.

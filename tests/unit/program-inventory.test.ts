@@ -148,6 +148,52 @@ describe('buildProgramReport', () => {
     expect(buildProgramReport(null)).toBeNull();
     expect(buildProgramReport({})).toBeNull();
   });
+
+  it('reports the vertex stage count and groups vertex programs by material name', () => {
+    const pipelines = pipelinesOf([
+      ['v1', vertex('aohara-facade')],
+      ['v2', { ...vertex('aohara-facade'), code: 'void main_vertex() { /* longer variant */ }' }],
+      ['v3', vertex('terrain-splat-far')],
+      ['f1', fragment('aohara-facade', 'plain-ish')],
+    ]);
+    const report = buildProgramReport(pipelines);
+    expect(report?.totalStages).toBe(4);
+    expect(report?.fragmentStages).toBe(1);
+    expect(report?.vertexStages).toBe(3);
+    expect(report?.vertexGroups).toEqual([
+      { name: 'aohara-facade', count: 2, codeLengths: [87, 43] },
+      { name: 'terrain-splat-far', count: 1, codeLengths: [87] },
+    ]);
+  });
+
+  it('samples distinct vertex codes for the biggest vertex groups, truncated to the budget', () => {
+    const long = `void main_vertex() { ${'x'.repeat(30_000)} }`;
+    const pipelines = pipelinesOf([
+      ['v1', { ...vertex('terrain-splat-far'), code: long }],
+      ['v2', { ...vertex('terrain-splat-far'), code: 'void main_vertex() { short }' }],
+      ['f1', fragment('terrain-splat-far', 'plain-ish')],
+    ]);
+    const report = buildProgramReport(pipelines);
+    expect(report?.vertexSamples).toHaveLength(2);
+    const [first, second] = report?.vertexSamples ?? [];
+    expect(first?.truncated).toBe(true);
+    expect(first?.code.length).toBe(12_000);
+    expect(second?.truncated).toBe(false);
+    // Sorted longest first, so the diff against the shorter variant is the interesting one.
+    expect(first?.code.startsWith(long.slice(0, 20))).toBe(true);
+  });
+
+  it('keeps the report bounded when the vertex registry is huge', () => {
+    const entries: Array<[string, FakeStage]> = [];
+    for (let i = 0; i < 40; i += 1) {
+      entries.push([`v${i}`, vertex(`mat-${i}`)]);
+    }
+    const report = buildProgramReport(pipelinesOf(entries));
+    expect(report?.vertexGroups).toHaveLength(30);
+    // Samples stay bounded to the biggest four groups, two codes each; these groups
+    // own one code apiece, so four.
+    expect(report?.vertexSamples).toHaveLength(4);
+  });
 });
 
 describe('formatProgramInventory', () => {

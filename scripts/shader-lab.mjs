@@ -344,6 +344,21 @@ function facadeBenchmarkScene(mode) {
   );
   floor.position.y = -0.1;
   scene.add(floor);
+  if (process.env.TRANSPARENT === '1') {
+    // Camera-dependent depth sort, like the phone's glazing/sprite pass.
+    const glassMat = new MeshStandardMaterial({
+      color: 0x223344,
+      roughness: 0.1,
+      metalness: 0.4,
+      transparent: true,
+      opacity: 0.35,
+    });
+    for (let i = 0; i < 12; i++) {
+      const pane = new Mesh(new BoxGeometry(2, 3, 0.1), glassMat);
+      pane.position.set(i * 3 - 16, 2, -6 + (i % 4) * 3);
+      scene.add(pane);
+    }
+  }
   return scene;
 }
 
@@ -384,6 +399,7 @@ const main = async () => {
     pipeline = new RenderPipeline(renderer, renderOutput(scenePass));
   }
   const counts = [];
+  const totalCodes = [];
   for (let i = 0; i < frames; i++) {
     // Simulate texture uploads landing mid-session: a version bump on a material's map forces
     // that material's node rebuild, interleaved with the shadow material's own builds.
@@ -407,10 +423,12 @@ const main = async () => {
       [...programs.fragment.values()].filter((s) => s.name === 'ShadowMaterial').map((s) => s.code),
     );
     counts.push(fragVariants.size);
+    totalCodes.push(programs.fragment.size + programs.vertex.size);
   }
   console.log(
     `lab: rendered ${frames} frames; ShadowMaterial fragment variants per frame: ${counts.join(',')}`,
   );
+  console.log(`lab: total stages (frag+vert) per frame: ${totalCodes.join(',')}`);
 
   // The same registry the device inventory reads.
 

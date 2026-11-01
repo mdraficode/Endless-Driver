@@ -397,6 +397,7 @@ export class VegetationWorld {
     this.root.name = 'VegetationWorld';
 
     const material = new MeshStandardNodeMaterial();
+    material.name = 'vegetation-foliage-shared';
     material.colorNode = vertexColor();
     material.emissiveNode = createFoliageEmissiveNode(
       attribute('foliageMask', 'float'),
@@ -434,6 +435,7 @@ export class VegetationWorld {
     // shader. Style capacities partition the same total per-tier pool; no new collision, texture,
     // or weather state is introduced. Stones carry a zero foliage mask and remain still.
     const groundCoverMaterial = new MeshStandardNodeMaterial();
+    groundCoverMaterial.name = 'vegetation-ground-cover';
     groundCoverMaterial.colorNode = vertexColor();
     groundCoverMaterial.emissiveNode = createFoliageEmissiveNode(
       attribute('foliageMask', 'float'),

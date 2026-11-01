@@ -283,11 +283,13 @@ export class RoadWorld {
     this.#urbanWetPatchMask = createRoadWetnessNode(this.#wetPatchMaskTexture, this.#urbanWetness);
 
     this.#asphaltMaterial = new MeshStandardNodeMaterial();
+    this.#asphaltMaterial.name = 'aohara-asphalt';
     this.#asphaltMaterial.color.set(0x35383d);
     this.#asphaltMaterial.roughness = 0.94;
     this.#asphaltMaterial.metalness = 0;
 
     this.#shoulderMaterial = new MeshStandardNodeMaterial();
+    this.#shoulderMaterial.name = 'aohara-shoulder';
     this.#shoulderMaterial.color.set(0x7a6c50);
     this.#shoulderMaterial.roughness = 1;
     this.#shoulderMaterial.metalness = 0;
@@ -328,11 +330,13 @@ export class RoadWorld {
     this.#urbanAsphaltMaterial.name = 'aohara-urban-asphalt-wet-look-clearcoat';
 
     const markingMaterial = new MeshStandardNodeMaterial();
+    markingMaterial.name = 'aohara-road-marking-paint';
     markingMaterial.color.set(0xe9e6da);
     markingMaterial.roughness = 0.55;
     markingMaterial.metalness = 0;
 
     const centerlineMaterial = new MeshStandardNodeMaterial();
+    centerlineMaterial.name = 'aohara-road-centerline-paint';
     centerlineMaterial.color.set(0xd9b65b);
     centerlineMaterial.roughness = 0.55;
     centerlineMaterial.metalness = 0;

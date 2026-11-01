@@ -110,11 +110,13 @@ function createRoad(route: RouteConfig): Group {
     roughness: 0.94,
     metalness: 0,
   });
+  surface.name = 'route-road-surface';
   const paint = new MeshStandardNodeMaterial({
     color: new Color(0xd8d5c8),
     roughness: 0.6,
     metalness: 0,
   });
+  paint.name = 'route-road-paint';
 
   const road = new Mesh(new PlaneGeometry(route.roadWidthMeters, route.lengthMeters), surface);
   road.rotation.x = -Math.PI / 2;
@@ -151,6 +153,7 @@ function createMarkers(route: RouteConfig): Mesh {
     roughness: 0.5,
     metalness: 0,
   });
+  material.name = 'route-road-marker';
   const parts: BufferGeometry[] = [];
   const edgeOffset = route.roadWidthMeters / 2 + 0.8;
   const count = Math.floor(route.lengthMeters / route.markerSpacingMeters);
@@ -186,6 +189,7 @@ function createCanopy(route: RouteConfig): Mesh {
     roughness: 0.85,
     metalness: 0,
   });
+  material.name = 'route-road-canopy';
   const parts: BufferGeometry[] = [];
   const postOffset = route.roadWidthMeters / 2 + 1.2;
   const start = route.canopyStartMeters;
@@ -221,6 +225,7 @@ function createBarriers(route: RouteConfig): Mesh {
     roughness: 0.8,
     metalness: 0,
   });
+  material.name = 'route-road-barrier';
   const parts: BufferGeometry[] = [];
   const offset = route.roadWidthMeters / 2 + 2.6;
   for (let section = 0; section < 8; section += 1) {

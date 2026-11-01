@@ -49,8 +49,21 @@ export interface ProgramCodeSample {
 export interface ProgramReport {
   readonly totalStages: number;
   readonly fragmentStages: number;
+  readonly vertexStages: number;
   readonly groups: readonly ProgramGroup[];
   readonly samples: readonly ProgramCodeSample[];
+  /** Vertex stages by material name, top groups first — the vertex side of the count. */
+  readonly vertexGroups: readonly ProgramVertexGroup[];
+  /** Actual vertex code for the biggest vertex groups, diffable like the fragment samples. */
+  readonly vertexSamples: readonly ProgramCodeSample[];
+}
+
+/** One vertex-stage group: how many distinct vertex programs a material name owns. */
+export interface ProgramVertexGroup {
+  readonly name: string;
+  readonly count: number;
+  /** Code lengths of the distinct programs (a quick fingerprint of what varies). */
+  readonly codeLengths: readonly number[];
 }
 
 interface ProgrammableStageLike {
@@ -105,6 +118,9 @@ const REPORT_GROUP_LIMIT = 200;
 const SAMPLE_GROUPS = 6;
 const SAMPLES_PER_GROUP = 2;
 const SAMPLE_CODE_BUDGET = 20_000;
+const VERTEX_GROUP_LIMIT = 30;
+const VERTEX_SAMPLE_GROUPS = 4;
+const VERTEX_SAMPLE_CODE_BUDGET = 12_000;
 
 /**
  * The raw walk of the stage registry, kept separate so the summary and the full report share
@@ -113,7 +129,9 @@ const SAMPLE_CODE_BUDGET = 20_000;
 function walkStageRegistry(pipelines: unknown): {
   totalStages: number;
   fragmentStages: number;
+  vertexStages: number;
   byName: Map<string, Map<string, ProgrammableStageLike[]>>; // name -> signature -> stages
+  vertexByName: Map<string, ProgrammableStageLike[]>; // name -> stages
 } | null {
   if (pipelines === null || typeof pipelines !== 'object') {
     return null;
@@ -132,10 +150,12 @@ function walkStageRegistry(pipelines: unknown): {
     return null;
   }
 
-  const vertexStages = mapSize(registry.vertex);
+  const vertexMap = registry.vertex;
   const computeStages = mapSize(registry.compute);
   const byName = new Map<string, Map<string, ProgrammableStageLike[]>>();
+  const vertexByName = new Map<string, ProgrammableStageLike[]>();
   let fragmentStages = 0;
+  let vertexStages = 0;
   for (const stage of (fragmentMap as { values(): Iterable<ProgrammableStageLike> }).values()) {
     if (stage === null || typeof stage !== 'object' || typeof stage.code !== 'string') {
       continue;
@@ -149,12 +169,28 @@ function walkStageRegistry(pipelines: unknown): {
     signatures.set(signature, stages);
     byName.set(name, signatures);
   }
+  if (
+    vertexMap !== null &&
+    typeof vertexMap === 'object' &&
+    typeof (vertexMap as { values?: unknown }).values === 'function'
+  ) {
+    for (const stage of (vertexMap as { values(): Iterable<ProgrammableStageLike> }).values()) {
+      if (stage === null || typeof stage !== 'object' || typeof stage.code !== 'string') {
+        continue;
+      }
+      vertexStages += 1;
+      const name = stage.name ?? '';
+      const stages = vertexByName.get(name) ?? [];
+      stages.push(stage);
+      vertexByName.set(name, stages);
+    }
+  }
 
   const totalStages = vertexStages + fragmentStages + computeStages;
   if (totalStages === 0) {
     return null;
   }
-  return { totalStages, fragmentStages, byName };
+  return { totalStages, fragmentStages, vertexStages, byName, vertexByName };
 }
 
 function toGroups(
@@ -244,11 +280,49 @@ export function buildProgramReport(pipelines: unknown): ProgramReport | null {
       });
     }
   }
+
+  // The vertex side: groups by name (every vertex program a material owns) + samples for the
+  // biggest groups. Registry entries are already distinct code strings, so two samples from a
+  // group are two genuinely different vertex programs — diffing them shows what varies
+  // (instancing, attributes, uniform-slot allocation).
+  const vertexGroups: ProgramVertexGroup[] = [];
+  for (const [name, stages] of walk.vertexByName) {
+    vertexGroups.push({
+      name,
+      count: stages.length,
+      codeLengths: stages
+        .map((stage) => stage.code?.length ?? 0)
+        .sort((a, b) => b - a)
+        .slice(0, 8),
+    });
+  }
+  vertexGroups.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+
+  const vertexSamples: ProgramCodeSample[] = [];
+  for (const group of vertexGroups.slice(0, VERTEX_SAMPLE_GROUPS)) {
+    const stages = (walk.vertexByName.get(group.name) ?? [])
+      .slice()
+      .sort((a, b) => (b.code?.length ?? 0) - (a.code?.length ?? 0));
+    for (const stage of stages.slice(0, SAMPLES_PER_GROUP)) {
+      const code = stage.code ?? '';
+      const truncated = code.length > VERTEX_SAMPLE_CODE_BUDGET;
+      vertexSamples.push({
+        name: group.name,
+        signature: `len${code.length}`,
+        code: truncated ? code.slice(0, VERTEX_SAMPLE_CODE_BUDGET) : code,
+        truncated,
+      });
+    }
+  }
+
   return {
     totalStages: walk.totalStages,
     fragmentStages: walk.fragmentStages,
+    vertexStages: walk.vertexStages,
     groups,
     samples,
+    vertexGroups: vertexGroups.slice(0, VERTEX_GROUP_LIMIT),
+    vertexSamples,
   };
 }
 

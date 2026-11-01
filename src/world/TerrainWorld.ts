@@ -187,12 +187,14 @@ export class TerrainWorld implements SceneContent {
     this.root.name = 'TerrainWorld';
 
     const material = new MeshStandardNodeMaterial();
+    material.name = 'terrain-splat-far';
     this.#applyFlatNodes(material);
     material.roughnessNode = float(0.96);
     material.metalnessNode = float(0);
     this.#material = material;
 
     const nearMaterial = new MeshStandardNodeMaterial();
+    nearMaterial.name = 'terrain-splat-near';
     this.#applyFlatNodes(nearMaterial);
     nearMaterial.roughnessNode = float(0.96);
     nearMaterial.metalnessNode = float(0);

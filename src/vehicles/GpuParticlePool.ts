@@ -130,6 +130,7 @@ export class GpuParticlePool {
       blending,
       toneMapped: blending !== AdditiveBlending,
     });
+    material.name = 'fx-particles';
     material.colorNode = vec4(attribute('particleColor', 'vec4').rgb.mul(sprite.rgb), float(1));
     material.opacityNode = attribute('particleOpacity', 'float').mul(sprite.a).mul(opacityScale);
     material.vertexNode = createParticleVertexNode(
