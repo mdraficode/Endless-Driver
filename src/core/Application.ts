@@ -961,7 +961,14 @@ export class Application {
     this.#programReportJson =
       programReport === null
         ? null
-        : JSON.stringify({ buildTag: this.#buildTag, tier: this.#tier.id, ...programReport });
+        : JSON.stringify({
+            buildTag: this.#buildTag,
+            tier: this.#tier.id,
+            // WHEN the programs are born (per startup stage) — the companion to the groups'
+            // "who", so a count cut can be aimed at the right phase.
+            programGrowth: this.#programGrowth,
+            ...programReport,
+          });
     console.info(
       'Endless Driver startup timings:',
       formatStartupTimings(this.#startupTimings, this.#startupNetwork),

@@ -432,9 +432,12 @@ async function startupSequence(backend) {
   };
 
   console.log(`step0 initial:        ${codes()}`);
-  await renderer.compileAsync(scene, cam);
+  const scenePassA = pass(scene, cam);
+  scenePassA.setMRT(mrt({ output, normal: normalView, wetRoadMask: float(0) }));
+  await scenePassA.compileAsync(renderer);
+  console.log(`step1 pass compile:   ${codes()}`);
   renderer.render(scene, cam);
-  console.log(`step1 plain render:   ${codes()}`);
+  console.log(`step1b plain render:  ${codes()}`);
 
   const scenePass = pass(scene, cam);
   scenePass.setMRT(mrt({ output, normal: normalView, wetRoadMask: float(0) }));
