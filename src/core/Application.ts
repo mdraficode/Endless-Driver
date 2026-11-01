@@ -259,6 +259,11 @@ export class Application {
   #programInventory: ProgramInventory | null = null;
   /** The deployed bundle tag for the Build diagnostics row (device reports name their build). */
   #buildTag: string | null = null;
+  /**
+   * The full program report as JSON (the "Save programs" download): every group + samples of
+   * the actual generated code for the biggest groups, captured once after the settle.
+   */
+  #programReportJson: string | null = null;
   readonly #carEffects: CarEffects;
   readonly #input: InputManager;
 
@@ -431,6 +436,16 @@ export class Application {
       ? new DiagnosticsOverlay({
           root: options.overlayRoot,
           initiallyVisible: this.#config.diagnostics.overlayEnabled,
+          programReport: () => {
+            const json = this.#programReportJson;
+            if (json === null) {
+              return null;
+            }
+            return {
+              blob: new Blob([json], { type: 'application/json' }),
+              filename: `endless-driver-programs-${this.#buildTag ?? 'unknown'}.json`,
+            };
+          },
         })
       : null;
     this.#statusElement = options.statusElement ?? null;
@@ -911,7 +926,8 @@ export class Application {
       const lines = this.#programInventory.groups.map(
         (group, index) =>
           `  ${String(index + 1).padStart(2)}. ${String(group.count).padStart(3)}x ` +
-          `${group.name || '(unnamed)'}  [${group.signature}]`,
+          `${group.name || '(unnamed)'}  [${group.signature}]` +
+          (group.signatureVariants > 1 ? `  ×${group.signatureVariants} signatures` : ''),
       );
       console.info(
         `Endless Driver program inventory: ${this.#programInventory.totalStages} stages ` +
@@ -919,6 +935,14 @@ export class Application {
           lines.join('\n'),
       );
     }
+    // The full report (all groups + samples of the actual generated code for the biggest
+    // groups) becomes a downloadable JSON from the diagnostics report, so a device can answer
+    // "what varies between two programs of a material" without a devtools console.
+    const programReport = this.#engine.getProgramReport();
+    this.#programReportJson =
+      programReport === null
+        ? null
+        : JSON.stringify({ buildTag: this.#buildTag, tier: this.#tier.id, ...programReport });
     console.info(
       'Endless Driver startup timings:',
       formatStartupTimings(this.#startupTimings, this.#startupNetwork),

@@ -593,6 +593,28 @@ body {
   cursor: pointer;
 }
 
+.diagnostics-save {
+  display: inline-grid;
+  height: 2.5rem;
+  flex: 0 0 auto;
+  place-items: center;
+  margin-left: 0.6rem;
+  padding: 0 1rem;
+  border: 1px solid rgb(148 163 184 / 28%);
+  border-radius: 9999px;
+  background: rgb(15 23 42 / 92%);
+  color: #e2e8f0;
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.diagnostics-save[hidden] {
+  display: none;
+}
+
 .diagnostics-grid {
   display: grid;
   min-width: 0;
@@ -667,6 +689,13 @@ body {
   .diagnostics-close {
     width: 2rem;
     height: 2rem;
+  }
+
+  .diagnostics-save {
+    height: 2rem;
+    margin-left: 0.4rem;
+    padding: 0 0.7rem;
+    font-size: 0.75rem;
   }
 }
 
@@ -1310,6 +1339,7 @@ body {
 
 .pause-toggle:focus-visible,
 .diagnostics-close:focus-visible,
+.diagnostics-save:focus-visible,
 .pause-menu-overlay button:focus-visible,
 .pause-menu-select:focus-visible,
 .credits-close:focus-visible,

@@ -225,6 +225,12 @@ export interface DiagnosticsOverlayOptions {
   readonly initiallyVisible?: boolean;
   /** Called when the player dismisses the panel with its close button. */
   readonly onClose?: () => void;
+  /**
+   * Returns the program report for the "Save programs" download (the device's answer to
+   * "what varies between two programs of a material" without a devtools console). The button
+   * only appears while the snapshot carries an inventory.
+   */
+  readonly programReport?: () => { readonly blob: Blob; readonly filename: string } | null;
 }
 
 interface RowDefinition {
@@ -470,6 +476,7 @@ function orbitSuffix(snapshot: {
 export class DiagnosticsOverlay {
   readonly #panel: HTMLElement;
   readonly #valueNodes: readonly HTMLElement[];
+  readonly #saveButton: HTMLButtonElement | null;
   #disposed = false;
   #visible: boolean;
 
@@ -493,6 +500,36 @@ export class DiagnosticsOverlay {
     subtitle.textContent = options.subtitle ?? 'Live telemetry · tap × or press F2 to close';
     headingGroup.append(heading, subtitle);
 
+    // "Save programs": downloads the full program report (groups + actual generated-code
+    // samples) as a JSON file the owner can attach to a device report. Hidden until the
+    // snapshot carries an inventory (after the settle) or no callback was offered.
+    const saveButton =
+      options.programReport === null || options.programReport === undefined
+        ? null
+        : (() => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = 'Save programs';
+            button.setAttribute('aria-label', 'Save the shader program report as a JSON file');
+            button.className = 'diagnostics-save';
+            button.hidden = true;
+            button.addEventListener('click', () => {
+              const result = options.programReport?.();
+              if (result === null || result === undefined) {
+                return;
+              }
+              const url = URL.createObjectURL(result.blob);
+              const anchor = document.createElement('a');
+              anchor.href = url;
+              anchor.download = result.filename;
+              // Mobile browsers only trigger the download for a connected anchor.
+              document.body.append(anchor);
+              anchor.click();
+              anchor.remove();
+              setTimeout(() => URL.revokeObjectURL(url), 10_000);
+            });
+            return button;
+          })();
     const closeButton = document.createElement('button');
     closeButton.type = 'button';
     closeButton.textContent = '×';
@@ -502,8 +539,13 @@ export class DiagnosticsOverlay {
       this.setVisible(false);
       options.onClose?.();
     });
-    header.append(headingGroup, closeButton);
+    if (saveButton !== null) {
+      header.append(headingGroup, saveButton, closeButton);
+    } else {
+      header.append(headingGroup, closeButton);
+    }
     this.#panel.append(header);
+    this.#saveButton = saveButton;
 
     const list = document.createElement('dl');
     list.className = 'diagnostics-grid';
@@ -555,6 +597,10 @@ export class DiagnosticsOverlay {
         node.textContent = row.format(snapshot);
       }
     });
+    // The report only exists after the settle; before that the button would download nothing.
+    if (this.#saveButton !== null) {
+      this.#saveButton.hidden = snapshot.programInventory === null;
+    }
   }
 
   dispose(): void {

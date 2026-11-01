@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   analyzeProgramInventory,
+  buildProgramReport,
   fragmentSignature,
   formatProgramInventory,
 } from '../../src/core/program-inventory';
@@ -56,7 +57,7 @@ describe('fragmentSignature', () => {
 });
 
 describe('analyzeProgramInventory', () => {
-  it('groups fragment stages by material name and keeps the dominant signature', () => {
+  it('groups fragment stages by material name and counts distinct signatures', () => {
     const pipelines = pipelinesOf([
       ['v1', vertex('aohara-facade')],
       ['v2', vertex('traffic-body')],
@@ -79,8 +80,8 @@ describe('analyzeProgramInventory', () => {
     expect(inventory?.totalStages).toBe(5);
     expect(inventory?.fragmentStages).toBe(3);
     expect(inventory?.groups).toEqual([
-      { name: 'aohara-facade', count: 2, signature: 'pl2·cc·env' },
-      { name: 'traffic-body', count: 1, signature: 'pl1·cc' },
+      { name: 'aohara-facade', count: 2, signature: 'pl2·cc·env', signatureVariants: 2 },
+      { name: 'traffic-body', count: 1, signature: 'pl1·cc', signatureVariants: 1 },
     ]);
   });
 
@@ -94,7 +95,9 @@ describe('analyzeProgramInventory', () => {
     const inventory = analyzeProgramInventory(pipelines);
     expect(inventory?.totalStages).toBe(4);
     expect(inventory?.fragmentStages).toBe(1);
-    expect(inventory?.groups).toEqual([{ name: 'a', count: 1, signature: 'plain' }]);
+    expect(inventory?.groups).toEqual([
+      { name: 'a', count: 1, signature: 'plain', signatureVariants: 1 },
+    ]);
   });
 
   it('returns null when the renderer does not expose the registry', () => {
@@ -106,21 +109,59 @@ describe('analyzeProgramInventory', () => {
   });
 });
 
+describe('buildProgramReport', () => {
+  it('lists every group and samples one code per distinct signature of the biggest groups', () => {
+    const pipelines = pipelinesOf([
+      ['f1', fragment('shadow', 'code A: nodeUniform0')],
+      ['f2', fragment('shadow', 'code B: nodeUniform1')],
+      ['f3', fragment('other', 'code C')],
+      ['v1', vertex('shadow')],
+    ]);
+
+    const report = buildProgramReport(pipelines);
+    // The two shadow codes differ (uniform indices) but share one signature — the
+    // single-signature case the second sample exists for.
+    expect(report?.groups).toEqual([
+      { name: 'shadow', count: 2, signature: 'plain', signatureVariants: 1 },
+      { name: 'other', count: 1, signature: 'plain', signatureVariants: 1 },
+    ]);
+    // shadow's two codes share one signature, so the sampler takes both (the diff is the
+    // point); other contributes one.
+    expect(report?.samples).toHaveLength(3);
+    expect(report?.samples.map((sample) => sample.code)).toEqual([
+      'code A: nodeUniform0',
+      'code B: nodeUniform1',
+      'code C',
+    ]);
+  });
+
+  it('truncates oversized sample codes and says so', () => {
+    const long = `x`.repeat(50_000);
+    const report = buildProgramReport(pipelinesOf([['f1', fragment('big', long)]]));
+    const sample = report?.samples[0];
+    expect(sample).toBeDefined();
+    expect(sample?.truncated).toBe(true);
+    expect(sample?.code.length).toBe(20_000);
+  });
+
+  it('returns null when the renderer does not expose the registry', () => {
+    expect(buildProgramReport(null)).toBeNull();
+    expect(buildProgramReport({})).toBeNull();
+  });
+});
+
 describe('formatProgramInventory', () => {
-  it('formats total plus the top three groups', () => {
+  it('formats total plus the top groups with the signature-variant fingerprint', () => {
     const inventory = analyzeProgramInventory(
       pipelinesOf([
-        ['v1', vertex('a')],
-        ['v2', vertex('b')],
-        ['v3', vertex('c')],
         ['f1', fragment('a', 'directPointLight(x) clearcoat envMap')],
-        ['f2', fragment('b', 'directPointLight(x) directPointLight(y)')],
-        ['f3', fragment('c', 'directPointLight(x) directPointLight(y)')],
+        ['f2', fragment('a', 'directPointLight(x) directPointLight(y) clearcoat envMap')],
+        ['f3', fragment('b', 'directPointLight(x) directPointLight(y)')],
+        ['v1', vertex('a')],
       ]),
     );
-    expect(formatProgramInventory(inventory)).toBe(
-      '6 · 1× a [pl1·cc·env] · 1× b [pl2] · 1× c [pl2]',
-    );
+    // Group a: 2 programs with 2 distinct signatures → the ×2sig suffix is what a fixer needs.
+    expect(formatProgramInventory(inventory)).toBe('4 · 2× a [pl1·cc·env] ×2sig · 1× b [pl2]');
   });
 
   it('says n/a for a missing inventory', () => {

@@ -10,11 +10,10 @@
  *
  * An inventory groups the fragment stages by material name and extracts the features that
  * differ between a material's programs: how many point/directional/spot lights are inlined into
- * the code, clearcoat, transmission, instancing, shadows, fog.
- *
- * On the owner's phone (742 stages) the top groups are the fix list: a material with 40
- * programs where one would do is a context multiplying it (usually the light set inlined per
- * code, or instanced vs plain rendering of the same material).
+ * the code, clearcoat, transmission, instancing, shadows, fog. The number of DISTINCT
+ * signatures inside a group matters as much as the count: 57 programs with one signature vary
+ * in something the signature cannot see (e.g. uniform-slot allocation), 3 programs with 3
+ * signatures vary in something it can.
  *
  * This is a read-only diagnostic: it never creates, releases or mutates anything.
  */
@@ -25,6 +24,8 @@ export interface ProgramGroup {
   readonly count: number;
   /** The features shared by most of its programs: light counts + flags. */
   readonly signature: string;
+  /** How many distinct signatures its programs split into (1 = they all match). */
+  readonly signatureVariants: number;
 }
 
 export interface ProgramInventory {
@@ -34,6 +35,22 @@ export interface ProgramInventory {
   readonly fragmentStages: number;
   /** Groups sorted by count, descending. */
   readonly groups: readonly ProgramGroup[];
+}
+
+/** One sample of a group's actual generated code, for a full report the owner can attach. */
+export interface ProgramCodeSample {
+  readonly name: string;
+  readonly signature: string;
+  /** Truncated if longer than the report's per-code budget. */
+  readonly code: string;
+  readonly truncated: boolean;
+}
+
+export interface ProgramReport {
+  readonly totalStages: number;
+  readonly fragmentStages: number;
+  readonly groups: readonly ProgramGroup[];
+  readonly samples: readonly ProgramCodeSample[];
 }
 
 interface ProgrammableStageLike {
@@ -83,13 +100,21 @@ export function fragmentSignature(code: string): string {
   return parts.length > 0 ? parts.join('·') : 'plain';
 }
 
+const SUMMARY_GROUP_LIMIT = 12;
+const REPORT_GROUP_LIMIT = 200;
+const SAMPLE_GROUPS = 6;
+const SAMPLES_PER_GROUP = 2;
+const SAMPLE_CODE_BUDGET = 20_000;
+
 /**
- * Groups the live fragment stages by material name. The argument is the renderer's `_pipelines`
- * (an engine detail this module tolerates rather than types, because it is not published API);
- * `null` is returned when the shape is not the expected one (e.g. the classic backend) instead
- * of guessing.
+ * The raw walk of the stage registry, kept separate so the summary and the full report share
+ * one traversal.
  */
-export function analyzeProgramInventory(pipelines: unknown): ProgramInventory | null {
+function walkStageRegistry(pipelines: unknown): {
+  totalStages: number;
+  fragmentStages: number;
+  byName: Map<string, Map<string, ProgrammableStageLike[]>>; // name -> signature -> stages
+} | null {
   if (pipelines === null || typeof pipelines !== 'object') {
     return null;
   }
@@ -109,7 +134,7 @@ export function analyzeProgramInventory(pipelines: unknown): ProgramInventory | 
 
   const vertexStages = mapSize(registry.vertex);
   const computeStages = mapSize(registry.compute);
-  const byName = new Map<string, Map<string, number>>(); // name -> signature -> count
+  const byName = new Map<string, Map<string, ProgrammableStageLike[]>>();
   let fragmentStages = 0;
   for (const stage of (fragmentMap as { values(): Iterable<ProgrammableStageLike> }).values()) {
     if (stage === null || typeof stage !== 'object' || typeof stage.code !== 'string') {
@@ -118,8 +143,10 @@ export function analyzeProgramInventory(pipelines: unknown): ProgramInventory | 
     fragmentStages += 1;
     const name = stage.name ?? '';
     const signature = fragmentSignature(stage.code);
-    const signatures = byName.get(name) ?? new Map<string, number>();
-    signatures.set(signature, (signatures.get(signature) ?? 0) + 1);
+    const signatures = byName.get(name) ?? new Map<string, ProgrammableStageLike[]>();
+    const stages = signatures.get(signature) ?? [];
+    stages.push(stage);
+    signatures.set(signature, stages);
     byName.set(name, signatures);
   }
 
@@ -127,40 +154,121 @@ export function analyzeProgramInventory(pipelines: unknown): ProgramInventory | 
   if (totalStages === 0) {
     return null;
   }
+  return { totalStages, fragmentStages, byName };
+}
 
+function toGroups(
+  byName: Map<string, Map<string, ProgrammableStageLike[]>>,
+  limit: number,
+): ProgramGroup[] {
   const groups: ProgramGroup[] = [];
   for (const [name, signatures] of byName) {
     let count = 0;
     let topSignature = 'plain';
     let topCount = -1;
-    for (const [signature, signatureCount] of signatures) {
-      count += signatureCount;
-      if (signatureCount > topCount) {
-        topCount = signatureCount;
+    for (const [signature, stages] of signatures) {
+      count += stages.length;
+      if (stages.length > topCount) {
+        topCount = stages.length;
         topSignature = signature;
       }
     }
-    groups.push({ name, count, signature: topSignature });
+    groups.push({ name, count, signature: topSignature, signatureVariants: signatures.size });
   }
-  groups.sort((a, b) => b.count - a.count);
+  groups.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  return groups.slice(0, limit);
+}
+
+/**
+ * The summary (the diagnostics Programs row): top groups with counts and dominant signatures.
+ * `null` when the renderer does not expose the registry (e.g. the classic backend).
+ */
+export function analyzeProgramInventory(pipelines: unknown): ProgramInventory | null {
+  const walk = walkStageRegistry(pipelines);
+  if (walk === null) {
+    return null;
+  }
   return {
-    totalStages,
-    fragmentStages,
-    groups: groups.slice(0, 24),
+    totalStages: walk.totalStages,
+    fragmentStages: walk.fragmentStages,
+    groups: toGroups(walk.byName, SUMMARY_GROUP_LIMIT),
   };
 }
 
 /**
+ * The full report for a downloadable file: every group (bounded) plus samples of the actual
+ * generated code for the biggest groups — one per distinct signature, up to two, each
+ * truncated to the per-code budget. The samples are what settle questions the counts cannot:
+ * two "identical" programs side by side show exactly what varies between them.
+ */
+export function buildProgramReport(pipelines: unknown): ProgramReport | null {
+  const walk = walkStageRegistry(pipelines);
+  if (walk === null) {
+    return null;
+  }
+  const groups = toGroups(walk.byName, REPORT_GROUP_LIMIT);
+
+  const samples: ProgramCodeSample[] = [];
+  for (const group of groups.slice(0, SAMPLE_GROUPS)) {
+    const signatures = walk.byName.get(group.name);
+    if (signatures === undefined) {
+      continue;
+    }
+    // One code per distinct signature (the visible differences), most numerous first.
+    const bySize = [...signatures.entries()].sort((a, b) => b[1].length - a[1].length);
+    const picked: Array<{ signature: string; stage: ProgrammableStageLike }> = [];
+    for (const [signature, stages] of bySize.slice(0, SAMPLES_PER_GROUP)) {
+      const first = stages[0];
+      if (first !== undefined) {
+        picked.push({ signature, stage: first });
+      }
+    }
+    // A single-signature group with several codes (e.g. 57 programs that all "look" the same)
+    // varies in something the signature cannot see — a second code makes the difference
+    // diffable.
+    if (picked.length === 1) {
+      const dominant = bySize[0];
+      const second = dominant === undefined ? undefined : dominant[1][1];
+      if (dominant !== undefined && second !== undefined) {
+        picked.push({ signature: dominant[0], stage: second });
+      }
+    }
+    for (const { signature, stage } of picked) {
+      const code = stage.code as string;
+      const truncated = code.length > SAMPLE_CODE_BUDGET;
+      samples.push({
+        name: group.name,
+        signature,
+        code: truncated ? code.slice(0, SAMPLE_CODE_BUDGET) : code,
+        truncated,
+      });
+    }
+  }
+  return {
+    totalStages: walk.totalStages,
+    fragmentStages: walk.fragmentStages,
+    groups,
+    samples,
+  };
+}
+
+const formatGroup = (group: ProgramGroup): string => {
+  const name = group.name || '(unnamed)';
+  const variants = group.signatureVariants > 1 ? ` ×${group.signatureVariants}sig` : '';
+  return `${group.count}× ${name} [${group.signature}]${variants}`;
+};
+
+/**
  * The compact form for the diagnostics row: total, then the top groups with their counts —
- * "742 · 42× aohara-facade [pl2·cc·env·sh] · 28× traffic-body [pl4·env·cc]".
+ * "742 · 57× ShadowMaterial [sh] ×57sig · 10× (unnamed) [sh·env] ×10sig · …". The `×Nsig`
+ * suffix is the multiplier's fingerprint: many programs with one signature vary in something
+ * invisible (uniform allocation), many with many signatures vary in the features themselves.
  */
 export function formatProgramInventory(inventory: ProgramInventory | null): string {
   if (inventory === null) {
     return 'n/a';
   }
-  const parts = inventory.groups
-    .slice(0, 3)
-    .map((group) => `${group.count}× ${group.name || '(unnamed)'} [${group.signature}]`);
+  const parts = inventory.groups.slice(0, SUMMARY_GROUP_LIMIT).map(formatGroup);
   return parts.length > 0
     ? `${inventory.totalStages} · ${parts.join(' · ')}`
     : `${inventory.totalStages}`;

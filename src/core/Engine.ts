@@ -24,7 +24,12 @@ import {
   type ToneMappingName,
 } from '../config/render';
 import { clampFrameDelta, resolvePixelRatio } from '../shared/math';
-import { analyzeProgramInventory, type ProgramInventory } from './program-inventory';
+import {
+  analyzeProgramInventory,
+  buildProgramReport,
+  type ProgramInventory,
+  type ProgramReport,
+} from './program-inventory';
 
 /**
  * Bounds for the grade multiplier. A grade is a *look*, not a light: anything outside this band is a
@@ -820,6 +825,16 @@ export class Engine {
     // itself is a WeakMap and cannot be enumerated, which is why the registry is read instead.
     const renderer = this.#renderer as unknown as { _pipelines?: unknown };
     return analyzeProgramInventory(renderer?._pipelines ?? null);
+  }
+
+  /**
+   * The full program report (every group + samples of the actual generated code for the biggest
+   * groups): the payload behind the report's "Save programs" download, for the questions the
+   * counts alone cannot settle — two programs side by side show exactly what varies.
+   */
+  getProgramReport(): ProgramReport | null {
+    const renderer = this.#renderer as unknown as { _pipelines?: unknown };
+    return buildProgramReport(renderer?._pipelines ?? null);
   }
 
   dispose(): void {
