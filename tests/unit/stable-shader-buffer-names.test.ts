@@ -22,10 +22,20 @@ type Builder = {
   ): { name?: string };
 };
 
+const rendererStub = { debug: { diagnostics: { keywords: [] } } };
+
+/** Backend stand-in whose `createNodeBuilder` returns the real builder class, mirroring how
+ * the production install discovers the class from the live backend. */
+function makeBackendLike(): { createNodeBuilder(object: unknown, renderer: unknown): unknown } {
+  return {
+    createNodeBuilder: (object: unknown, renderer: unknown) =>
+      new GLSLNodeBuilder(object as never, renderer as never),
+  };
+}
+
 function makeBuilder(): Builder {
   // Minimal renderer stub: the buffer branch only touches renderer.debug.diagnostics.keywords.
-  const renderer = { debug: { diagnostics: { keywords: [] } } };
-  return new GLSLNodeBuilder(new Object3D(), renderer as never) as unknown as Builder;
+  return new GLSLNodeBuilder(new Object3D(), rendererStub as never) as unknown as Builder;
 }
 
 type NamedNode = { name: string };
@@ -41,7 +51,7 @@ function makeBufferNode(count: number): NamedNode {
 
 describe('stable-shader-buffer-names', () => {
   beforeAll(() => {
-    installStableShaderBufferNames();
+    installStableShaderBufferNames(makeBackendLike(), rendererStub);
   });
 
   it('rewrites buffer names to the deterministic (type, count) form', () => {
@@ -54,7 +64,6 @@ describe('stable-shader-buffer-names', () => {
   });
 
   it('keeps unique id-based names when the same (type, count) appears twice in one build', () => {
-    installStableShaderBufferNames();
     const builder = makeBuilder();
     const first = makeBufferNode(16);
     const second = makeBufferNode(16);
@@ -67,16 +76,20 @@ describe('stable-shader-buffer-names', () => {
   });
 
   it('leaves non-buffer uniforms untouched', () => {
-    installStableShaderBufferNames();
     const builder = makeBuilder();
     const node = makeBufferNode(8);
     const uniformNode = builder.getUniformFromNode(node, 'float', 'vertex', 'myFloat');
     expect(uniformNode.name).toBe('myFloat');
   });
 
+  it('is a no-op when the backend exposes no createNodeBuilder', () => {
+    expect(() => installStableShaderBufferNames({})).not.toThrow();
+    expect(() => installStableShaderBufferNames(null)).not.toThrow();
+  });
+
   it('is idempotent and survives re-installation without double-wrapping', () => {
-    installStableShaderBufferNames();
-    installStableShaderBufferNames();
+    installStableShaderBufferNames(makeBackendLike(), rendererStub);
+    installStableShaderBufferNames(makeBackendLike(), rendererStub);
     expect(hasStableShaderBufferNames()).toBe(true);
     const builder = makeBuilder();
     const node = makeBufferNode(32);

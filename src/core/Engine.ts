@@ -507,11 +507,13 @@ export class Engine {
     if (this.#initialized || this.#disposed) {
       return;
     }
+    const backend = this.#renderer.backend as { isWebGLBackend?: boolean } | undefined;
     // Must run before the first pipeline build: makes per-instance UBO names deterministic so
     // InstancedMeshes with the same (buffer type, instance count) share compiled programs.
-    installStableShaderBufferNames();
+    // The backend argument is essential — the patch targets the builder class the live backend
+    // instantiates (packaged three entries bundle their own copy, see the module docs).
+    installStableShaderBufferNames(backend, this.#renderer);
     await this.#renderer.init();
-    const backend = this.#renderer.backend as { isWebGLBackend?: boolean } | undefined;
     this.#backend = backend?.isWebGLBackend === true ? 'webgl2' : 'webgpu';
     this.#initialized = true;
   }

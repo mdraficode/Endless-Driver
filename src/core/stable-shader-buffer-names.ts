@@ -20,10 +20,16 @@
  * (type, count) appears more than once inside a single shader, so a name can never alias two
  * different bindings.
  *
- * The patch is applied to `GLSLNodeBuilder.prototype.getUniformFromNode` (the one method that
- * writes both names, on every visit, before code generation reads them) and is idempotent.
+ * IMPORTANT — the patch must target the builder class the *running* renderer instantiates. The
+ * app imports three from the packaged entries (`three` / `three/webgpu`), which bundle their own
+ * copy of the node builder; importing `three/src/...` here would patch a second, unused class
+ * (this exact mismatch shipped in D-JSQBOt and silently did nothing on the device). So the
+ * class is discovered at runtime from the live backend via `createNodeBuilder`, which returns an
+ * instance of the real class, and its prototype is patched.
+ *
+ * The patch is applied to the builder's `getUniformFromNode` (the one method that writes both
+ * names, on every visit, before code generation reads them) and is idempotent.
  */
-import GLSLNodeBuilder from 'three/src/renderers/webgl-fallback/nodes/GLSLNodeBuilder.js';
 
 type BufferNodeLike = {
   isBufferNode?: boolean;
@@ -35,7 +41,13 @@ type BufferNodeLike = {
 
 type UniformNodeLike = { name?: string };
 
-let installed = false;
+type BackendLike = {
+  createNodeBuilder?: (object: unknown, renderer: unknown) => unknown;
+};
+
+/** Builder prototypes already patched (a backend swap at runtime can bring a new class). */
+const patchedPrototypes: WeakSet<object> = new WeakSet();
+let anyPatched = false;
 
 /**
  * Derives the stable name for a buffer node, or null when the node has no usable
@@ -51,36 +63,46 @@ function stableBufferName(node: BufferNodeLike): string | null {
 }
 
 /**
- * Installs the deterministic buffer-name patch on the WebGL2 (TSL) node builder. Safe to call
- * multiple times; only the first call patches the prototype.
+ * Discovers the node builder class from the live backend and patches its prototype so the
+ * generated per-instance UBO names are deterministic. Safe to call multiple times; only the
+ * first successful call patches. No-op when the backend does not expose `createNodeBuilder`.
  */
-export function installStableShaderBufferNames(): void {
-  if (installed) return;
-  installed = true;
+export function installStableShaderBufferNames(backend: unknown, renderer?: unknown): void {
+  const be = backend as BackendLike | null | undefined;
+  if (!be || typeof be.createNodeBuilder !== 'function') return;
 
-  const prototype = GLSLNodeBuilder.prototype as unknown as {
-    getUniformFromNode(
+  // A throwaway builder instance of the exact class the renderer uses; the constructor only
+  // stores references, so the probe is side-effect free and never rendered.
+  const probe = be.createNodeBuilder({}, renderer ?? null);
+  const prototype = Object.getPrototypeOf(probe) as {
+    getUniformFromNode?: (
       this: unknown,
       node: unknown,
       type: string,
       ...rest: unknown[]
-    ): UniformNodeLike;
-  };
+    ) => UniformNodeLike;
+  } | null;
+  if (!prototype || typeof prototype.getUniformFromNode !== 'function') return;
+  if (patchedPrototypes.has(prototype)) return;
+
+  patchedPrototypes.add(prototype);
+  anyPatched = true;
   const original = prototype.getUniformFromNode;
   prototype.getUniformFromNode = function (
-    this: Record<PropertyKey, unknown>,
+    this: unknown,
     node: unknown,
     type: string,
     ...rest: unknown[]
   ): UniformNodeLike {
-    const uniformNode = original.call(this, node, type, ...rest);
+    const self = this as Record<PropertyKey, unknown>;
+    const uniformNode = original.call(self, node, type, ...rest);
     if (type !== 'buffer') return uniformNode;
     const stable = stableBufferName(node as BufferNodeLike);
     if (stable === null) return uniformNode;
     const seen =
-      (this.__stableShaderBufferCounts as Record<string, number> | undefined) ??
+      (self.__stableShaderBufferCounts as Record<string, number> | undefined) ??
       (Object.create(null) as Record<string, number>);
-    this.__stableShaderBufferCounts = seen;
+    self.__stableShaderBufferCounts = seen;
     const ordinal = seen[stable] ?? 0;
     seen[stable] = ordinal + 1;
     if (ordinal > 0) return uniformNode; // duplicate (type, count) in this shader: keep unique id names
@@ -90,7 +112,7 @@ export function installStableShaderBufferNames(): void {
   };
 }
 
-/** True once the patch is active (used by diagnostics/tests). */
+/** True once at least one builder class is patched (used by diagnostics/tests). */
 export function hasStableShaderBufferNames(): boolean {
-  return installed;
+  return anyPatched;
 }

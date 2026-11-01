@@ -801,10 +801,10 @@ async function shadowProbe(backend) {
 async function instanceProbe(backend) {
   const patched = process.env.PATCH === '1';
   if (patched) {
-    const GLSLNodeBuilder = (
-      await import('three/src/renderers/webgl-fallback/nodes/GLSLNodeBuilder.js')
-    ).default;
-    const proto = GLSLNodeBuilder.prototype;
+    // Same discovery path as production (src/core/stable-shader-buffer-names.ts): probe the
+    // live backend for a builder instance and patch its prototype.
+    const probe = backend.createNodeBuilder({}, null);
+    const proto = Object.getPrototypeOf(probe);
     const original = proto.getUniformFromNode;
     proto.getUniformFromNode = function (node, type, ...rest) {
       const uniformNode = original.call(this, node, type, ...rest);

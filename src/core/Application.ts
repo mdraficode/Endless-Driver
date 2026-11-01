@@ -72,6 +72,7 @@ import {
   type EnvironmentClockOptions,
 } from '../environment/EnvironmentClock';
 import { Engine, type FrameState } from './Engine';
+import { hasStableShaderBufferNames } from './stable-shader-buffer-names';
 import { loadLutAsset } from '../assets/LutAsset';
 import { prefetchAssetBytes, warmAssetHttpCache } from '../assets/AssetBytes';
 import { readAssetManifest } from '../assets/AssetManifest';
@@ -964,6 +965,9 @@ export class Application {
         : JSON.stringify({
             buildTag: this.#buildTag,
             tier: this.#tier.id,
+            // Sanity flag: whether the deterministic per-instance UBO-name patch is active in
+            // this run (it is a no-op if the backend did not expose a node builder to probe).
+            stableShaderBufferNames: hasStableShaderBufferNames(),
             // WHEN the programs are born (per startup stage) — the companion to the groups'
             // "who", so a count cut can be aimed at the right phase.
             programGrowth: this.#programGrowth,
