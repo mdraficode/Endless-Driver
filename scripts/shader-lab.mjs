@@ -364,6 +364,89 @@ function facadeBenchmarkScene(mode) {
   return scene;
 }
 
+const geometryProbeMode = process.env.MODE === 'geometry';
+
+/**
+ * Geometry-identity probe: one shared material on several meshes. Group A shares ONE
+ * geometry instance; group B gets DISTINCT geometry instances with identical attribute
+ * content. If the device's per-mesh vertex-code drift is caused by geometry identity in the
+ * build context, group B multiplies codes and group A does not.
+ */
+async function geometryProbe(backend) {
+  const renderer = new Renderer(backend, { antialias: false, alpha: false });
+  renderer.library = new StandardNodeLibrary();
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = PCFShadowMap;
+  await renderer.init();
+  renderer.setSize(960, 432);
+
+  const scene = new Scene();
+  scene.add(new AmbientLight(0x334455, 0.5));
+  const sun = new DirectionalLight(0xffffff, 3);
+  sun.position.set(30, 40, 20);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  scene.add(sun);
+  const cam = new PerspectiveCamera(75, 960 / 432, 0.1, 400);
+  cam.position.set(0, 3, 20);
+  cam.lookAt(0, 1, 0);
+
+  const mat = new MeshStandardMaterial({ color: 0x884422, roughness: 0.6 });
+  mat.name = 'probe';
+
+  // Group B: distinct geometry instances with identical content, 6 meshes. Built FIRST.
+  const matB = new MeshStandardMaterial({ color: 0x336688, roughness: 0.5 });
+  matB.name = 'probeB';
+  for (let i = 0; i < 6; i += 1) {
+    const m = new Mesh(new BoxGeometry(1, 2, 1), matB);
+    m.position.set(i * 2 - 5, 1, 6);
+    m.castShadow = true;
+    scene.add(m);
+  }
+  // Group A: one shared geometry instance, 6 meshes. Built second.
+  const sharedGeo = new BoxGeometry(1, 2, 1);
+  for (let i = 0; i < 6; i += 1) {
+    const m = new Mesh(sharedGeo, mat);
+    m.position.set(i * 2 - 5, 1, 0);
+    m.castShadow = true;
+    scene.add(m);
+  }
+
+  const codesOf = (name) =>
+    new Set(
+      [...renderer._pipelines.programs.vertex.values()]
+        .filter((st) => st.name === name)
+        .map((st) => st.code),
+    ).size;
+  const scenePass = pass(scene, cam);
+  scenePass.setMRT(mrt({ output, normal: normalView, wetRoadMask: float(0) }));
+  const pipeline = new RenderPipeline(renderer, renderOutput(scenePass));
+  await renderer.compileAsync(scene, cam);
+  pipeline.render();
+  renderer.render(scene, cam);
+  {
+    const { Frustum } = await import('three/src/math/Frustum.js');
+    const { Matrix4 } = await import('three/src/math/Matrix4.js');
+    const mvp = new Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+    const fr = new Frustum();
+    fr.setFromProjectionMatrix(mvp);
+    scene.traverse((obj) => {
+      if (obj.isMesh) {
+        obj.updateWorldMatrix(true, false);
+        const sph = obj.geometry.boundingSphere.clone().applyMatrix4(obj.matrixWorld);
+        console.log(
+          `  mesh ${obj.material.name} pos=(${obj.position.x},${obj.position.y},${obj.position.z}) visible=${obj.visible} intersects=${fr.intersectsSphere(sph)}`,
+        );
+      }
+    });
+  }
+  console.log(`geometry probe: shared-geo material vertex codes = ${codesOf('probe')} (6 meshes)`);
+  console.log(
+    `geometry probe: distinct-geo material vertex codes = ${codesOf('probeB')} (6 meshes)`,
+  );
+  process.exit(0);
+}
+
 const startupSequenceMode = process.env.MODE === 'startup';
 
 /**
@@ -470,8 +553,20 @@ async function startupSequence(backend) {
 }
 
 const main = async () => {
+  if (geometryProbeMode) {
+    await geometryProbe(makeBackend());
+    return;
+  }
   if (startupSequenceMode) {
     await startupSequence(makeBackend());
+    return;
+  }
+  if (process.env.MODE === 'shadow') {
+    await shadowProbe(makeBackend());
+    return;
+  }
+  if (process.env.MODE === 'instance') {
+    await instanceProbe(makeBackend());
     return;
   }
   console.log('lab: building renderer');
@@ -621,3 +716,157 @@ main().catch((error) => {
   console.error('SHADER LAB FAILED:', error);
   process.exit(1);
 });
+
+// ---------------------------------------------------------------------------
+// MODE=shadow  GROUP=1|2|3|4
+// GROUP=1: 20 boxes, 20 distinct MeshStandardMaterial instances, identical props, no map
+// GROUP=2: 20 boxes, 20 distinct instances, DISTINCT color per box
+// GROUP=3: 20 boxes, 20 distinct instances, same color, DISTINCT DataTexture map per box
+// GROUP=4: 20 boxes, ONE shared material instance
+// Counts distinct vertex codes named ShadowMaterial after compile + render.
+// ---------------------------------------------------------------------------
+async function shadowProbe(backend) {
+  const group = Number(process.env.GROUP || 1);
+  const renderer = new Renderer(backend, { antialias: false, alpha: false });
+  renderer.library = new StandardNodeLibrary();
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = PCFShadowMap;
+  await renderer.init();
+  renderer.setSize(960, 432);
+
+  const scene = new Scene();
+  const sun = new DirectionalLight(0xffffff, 3);
+  sun.position.set(5, 10, 5);
+  sun.castShadow = true;
+  Object.assign(sun.shadow.camera, {
+    left: -12,
+    right: 12,
+    top: 8,
+    bottom: -8,
+    near: 0.5,
+    far: 40,
+  });
+  sun.shadow.mapSize.set(256, 256);
+  scene.add(sun, sun.target);
+  const cam = new PerspectiveCamera(50, 960 / 432, 0.1, 100);
+  cam.position.set(0, 6, 12);
+  cam.lookAt(0, 0, 0);
+
+  const mats = [];
+  for (let i = 0; i < 20; i += 1) {
+    const m = new MeshStandardMaterial({
+      color: group === 2 ? 0x400000 + i * 0x12345 : 0x888888,
+      roughness: 0.8,
+    });
+    if (group === 3) {
+      const tex = new DataTexture(new Uint8Array([200, 120, 90, 255]), 1, 1);
+      tex.needsUpdate = true;
+      m.map = tex;
+    }
+    mats.push(m);
+  }
+  for (let i = 0; i < 20; i += 1) {
+    const m = new Mesh(new BoxGeometry(1, 1, 1), group === 4 ? mats[0] : mats[i]);
+    m.position.set((i % 10) * 2.4 - 10.5, 0.5, Math.floor(i / 10) * 2.4 - 1.2);
+    m.castShadow = true;
+    m.name = `box${i}`;
+    scene.add(m);
+  }
+
+  const scenePass = pass(scene, cam);
+  scenePass.setMRT(mrt({ output, normal: normalView, wetRoadMask: float(0) }));
+  const pipeline = new RenderPipeline(renderer, renderOutput(scenePass));
+  await renderer.compileAsync(scene, cam);
+  pipeline.render();
+  renderer.render(scene, cam);
+  const allV = [...renderer._pipelines.programs.vertex.values()];
+  const shadow = allV.filter((st) => st.name === 'ShadowMaterial');
+  const distinct = new Set(shadow.map((st) => st.code)).size;
+  console.log(
+    `shadow probe GROUP=${group}: ShadowMaterial vertex stages=${shadow.length} distinct codes=${distinct}`,
+  );
+  console.log(
+    `  all vertex stage names: ${[...new Map(allV.map((st) => [st.name, 0])).keys()].join(', ')}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MODE=instance  PATCH=0|1
+// Two InstancedMeshes (16 instances each), identical material, different geometry
+// data. Mirrors the device's pedestrian-actor duplication. With PATCH=1 the same
+// (type, count) buffer naming from src/core/stable-shader-buffer-names.ts is
+// applied (mirrored inline so the .mjs lab stays loader-free).
+// Expect: PATCH=0 -> 2 distinct vertex codes; PATCH=1 -> 1.
+// ---------------------------------------------------------------------------
+async function instanceProbe(backend) {
+  const patched = process.env.PATCH === '1';
+  if (patched) {
+    const GLSLNodeBuilder = (
+      await import('three/src/renderers/webgl-fallback/nodes/GLSLNodeBuilder.js')
+    ).default;
+    const proto = GLSLNodeBuilder.prototype;
+    const original = proto.getUniformFromNode;
+    proto.getUniformFromNode = function (node, type, ...rest) {
+      const uniformNode = original.call(this, node, type, ...rest);
+      if (type === 'buffer' && node && node.isBufferNode === true) {
+        const count = node.bufferCount;
+        if (typeof node.bufferType === 'string' && Number.isInteger(count) && count > 0) {
+          const stable = `${node.bufferType}x${count}`;
+          const seen = (this.__stableShaderBufferCounts ??= Object.create(null));
+          const ordinal = seen[stable] ?? 0;
+          seen[stable] = ordinal + 1;
+          if (ordinal === 0) {
+            uniformNode.name = `buffer_${stable}`;
+            node.name = `NodeBuffer_${stable}`;
+          }
+        }
+      }
+      return uniformNode;
+    };
+  }
+  const renderer = new Renderer(backend, { antialias: false, alpha: false });
+  renderer.library = new StandardNodeLibrary();
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = PCFShadowMap;
+  await renderer.init();
+  renderer.setSize(960, 432);
+
+  const scene = new Scene();
+  scene.add(new AmbientLight(0x334455, 0.5));
+  const cam = new PerspectiveCamera(75, 960 / 432, 0.1, 400);
+  cam.position.set(0, 3, 20);
+  cam.lookAt(0, 1, 0);
+
+  const mat = new MeshStandardMaterial({ color: 0x884422, roughness: 0.6 });
+  mat.name = 'instProbe';
+  const geo1 = new BoxGeometry(1, 2, 1);
+  const geo2 = new BoxGeometry(1.2, 2, 1.2);
+  const counts = [16, 16];
+  for (let m = 0; m < 2; m += 1) {
+    const mesh = new InstancedMesh(m === 0 ? geo1 : geo2, mat, counts[m]);
+    const m4 = new Matrix4();
+    for (let i = 0; i < counts[m]; i += 1) {
+      m4.setPosition((i % 8) - 3.5 + m * 4, 1, Math.floor(i / 8) - 0.5);
+      mesh.setMatrixAt(i, m4);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    scene.add(mesh);
+  }
+
+  const scenePass = pass(scene, cam);
+  scenePass.setMRT(mrt({ output, normal: normalView, wetRoadMask: float(0) }));
+  const pipeline = new RenderPipeline(renderer, renderOutput(scenePass));
+  await renderer.compileAsync(scene, cam);
+  pipeline.render();
+  renderer.render(scene, cam);
+  const codes = new Set(
+    [...renderer._pipelines.programs.vertex.values()]
+      .filter((st) => st.name === 'instProbe')
+      .map((st) => st.code),
+  );
+  const sample = [...codes][0] ?? '';
+  const bufferNames = sample ? sample.match(/NodeBuffer_[A-Za-z0-9_]+/g) : [];
+  console.log(
+    `instance probe PATCH=${patched ? 1 : 0}: vertex codes = ${codes.size} (buffer names: ${[...new Set(bufferNames || [])].join(', ')})`,
+  );
+}

@@ -14,6 +14,7 @@ import {
 import { scaleBaseline } from '../environment/daylight-levels';
 import { buildPostChain, type PostEffectName } from '../shaders/post-chain';
 import { DynamicResolutionController } from './DynamicResolution';
+import { installStableShaderBufferNames } from './stable-shader-buffer-names';
 import { supportsScenePassResolutionScale } from './RenderScalePolicy';
 import type { PrewarmView } from './settle-views';
 import { writeLookTable } from '../shaders/lut-identity';
@@ -506,6 +507,9 @@ export class Engine {
     if (this.#initialized || this.#disposed) {
       return;
     }
+    // Must run before the first pipeline build: makes per-instance UBO names deterministic so
+    // InstancedMeshes with the same (buffer type, instance count) share compiled programs.
+    installStableShaderBufferNames();
     await this.#renderer.init();
     const backend = this.#renderer.backend as { isWebGLBackend?: boolean } | undefined;
     this.#backend = backend?.isWebGLBackend === true ? 'webgl2' : 'webgpu';
