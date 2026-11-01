@@ -123,6 +123,11 @@ export interface ApplicationOptions {
    * every diagnostics snapshot and performance statement can name the tier it was taken under.
    */
   readonly tier?: TierResolution;
+  /**
+   * The deployed bundle tag (derived at the entrypoint from the loaded script name), printed by
+   * the Build row so a device screenshot always names the exact build it was taken under.
+   */
+  readonly buildTag?: string | null;
   /** Time-of-day options; the entrypoint forwards the `?time=` debug switch through this. */
   readonly clock?: EnvironmentClockOptions | undefined;
   /** Persistent night-mood preset; ignored by the entrypoint when `?time=` explicitly overrides it. */
@@ -252,6 +257,8 @@ export class Application {
    * the steady-state set is what the load cost, and the settle is where it exists.
    */
   #programInventory: ProgramInventory | null = null;
+  /** The deployed bundle tag for the Build diagnostics row (device reports name their build). */
+  #buildTag: string | null = null;
   readonly #carEffects: CarEffects;
   readonly #input: InputManager;
 
@@ -327,6 +334,7 @@ export class Application {
     this.#cameraMode = options.cameraMode ?? 'chase';
     this.#steeringSensitivity = options.steeringSensitivity ?? 'standard';
     this.#onBoostState = options.onBoostState ?? null;
+    this.#buildTag = options.buildTag ?? null;
     this.#surfaceState = resolveSurfaceState(options.weather ?? 'clear');
 
     // One terrain sampler feeds the visual chunks (via SceneManager's content) and the
@@ -1112,6 +1120,7 @@ export class Application {
       fogMode: scene.fogMode,
       spawnId: this.#spawn.id,
       spawnLabel: this.#spawn.label,
+      buildTag: this.#buildTag,
       framesPerSecond: statistics.averageFramesPerSecond,
       minimumFramesPerSecond: statistics.minimumFramesPerSecond,
       averageFrameTimeMilliseconds: statistics.averageFrameTimeMilliseconds,

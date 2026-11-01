@@ -2,15 +2,19 @@
  * The program inventory: who is making the device compile, and how many times.
  *
  * The Programs row counts the shader stages the backend has created; this module answers the
- * question the count alone cannot — WHAT is multiplying them. The backend keeps every live
- * programmable stage (the full generated GLSL plus the material name it was built for) in
- * `renderer.info.memoryMap`, so an inventory groups the fragment stages by material name and
- * extracts the features that differ between a material's programs: how many point/directional/
- * spot lights are inlined into the code, clearcoat, transmission, instancing, shadows, fog.
+ * question the count alone cannot — WHAT is multiplying them. In the WebGPU renderer (including
+ * the WebGL2 fallback the phones run) the live stage registry is `renderer._pipelines.programs`:
+ * one Map per stage kind, keyed by the generated shader code string, value the ProgrammableStage
+ * (full GLSL + the material name it was built for). Stages leave the map exactly when
+ * `info.destroyProgram` runs, so its size equals the Programs row's number.
  *
- * On the owner's phone (WebGL2 fallback, 742 stages) the top groups are the fix list: a material
- * with 40 programs where one would do is a context multiplying it (usually the light set inlined
- * per code, or instanced vs plain rendering of the same material).
+ * An inventory groups the fragment stages by material name and extracts the features that
+ * differ between a material's programs: how many point/directional/spot lights are inlined into
+ * the code, clearcoat, transmission, instancing, shadows, fog.
+ *
+ * On the owner's phone (742 stages) the top groups are the fix list: a material with 40
+ * programs where one would do is a context multiplying it (usually the light set inlined per
+ * code, or instanced vs plain rendering of the same material).
  *
  * This is a read-only diagnostic: it never creates, releases or mutates anything.
  */
@@ -24,7 +28,7 @@ export interface ProgramGroup {
 }
 
 export interface ProgramInventory {
-  /** All live shader stages (vertex + fragment), the Programs row's number. */
+  /** All live shader stages (vertex + fragment + compute), the Programs row's number. */
   readonly totalStages: number;
   /** Fragment stages among them. */
   readonly fragmentStages: number;
@@ -37,6 +41,20 @@ interface ProgrammableStageLike {
   readonly code?: string;
   readonly name?: string;
 }
+
+/** The Pipelines stage registry: one Map per stage kind, code string → stage. */
+interface PipelinePrograms {
+  readonly vertex?: unknown;
+  readonly fragment?: unknown;
+  readonly compute?: unknown;
+}
+
+const mapSize = (candidate: unknown): number =>
+  candidate !== null &&
+  typeof candidate === 'object' &&
+  typeof (candidate as { size?: unknown }).size === 'number'
+    ? (candidate as { size: number }).size
+    : 0;
 
 const countMatches = (code: string, pattern: RegExp): number => (code.match(pattern) ?? []).length;
 
@@ -66,28 +84,35 @@ export function fragmentSignature(code: string): string {
 }
 
 /**
- * Groups the live fragment stages by material name. `memoryMap` is the renderer Info's internal
- * `Map<ProgrammableStage, bytes>` — an engine detail this module tolerates rather than types,
- * because the fallback backend does not publish it as API.
+ * Groups the live fragment stages by material name. The argument is the renderer's `_pipelines`
+ * (an engine detail this module tolerates rather than types, because it is not published API);
+ * `null` is returned when the shape is not the expected one (e.g. the classic backend) instead
+ * of guessing.
  */
-export function analyzeProgramInventory(memoryMap: unknown): ProgramInventory | null {
-  if (memoryMap === null || typeof memoryMap !== 'object') {
+export function analyzeProgramInventory(pipelines: unknown): ProgramInventory | null {
+  if (pipelines === null || typeof pipelines !== 'object') {
     return null;
   }
-  const map = memoryMap as { keys?: () => Iterable<ProgrammableStageLike> };
-  if (typeof map.keys !== 'function') {
+  const programs = (pipelines as { programs?: unknown }).programs;
+  if (programs === null || typeof programs !== 'object') {
+    return null;
+  }
+  const registry = programs as PipelinePrograms;
+  const fragmentMap = registry.fragment;
+  if (
+    fragmentMap === null ||
+    typeof fragmentMap !== 'object' ||
+    typeof (fragmentMap as { values?: unknown }).values !== 'function'
+  ) {
     return null;
   }
 
+  const vertexStages = mapSize(registry.vertex);
+  const computeStages = mapSize(registry.compute);
   const byName = new Map<string, Map<string, number>>(); // name -> signature -> count
-  let totalStages = 0;
   let fragmentStages = 0;
-  for (const stage of map.keys()) {
-    if (stage === null || typeof stage !== 'object') {
-      continue;
-    }
-    totalStages += 1;
-    if (stage.stage !== 'fragment' || typeof stage.code !== 'string') {
+  for (const stage of (fragmentMap as { values(): Iterable<ProgrammableStageLike> }).values()) {
+    if (stage === null || typeof stage !== 'object' || typeof stage.code !== 'string') {
       continue;
     }
     fragmentStages += 1;
@@ -98,6 +123,7 @@ export function analyzeProgramInventory(memoryMap: unknown): ProgramInventory | 
     byName.set(name, signatures);
   }
 
+  const totalStages = vertexStages + fragmentStages + computeStages;
   if (totalStages === 0) {
     return null;
   }

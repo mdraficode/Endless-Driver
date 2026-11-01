@@ -52,6 +52,7 @@ const SNAPSHOT = {
   drawCalls: 123,
   triangles: 456_789,
   programs: 96,
+  buildTag: 'Dgg3fSk3',
   startup: [
     { stage: 'total', ms: 94_000 },
     { stage: 'terrain', ms: 2_000 },
@@ -151,11 +152,19 @@ describe('full-screen diagnostics report', () => {
     expect(panel.getAttribute('aria-label')).toBe('Live diagnostics report');
     expect(panel.getAttribute('aria-hidden')).toBe('false');
     expect(grid.className).toBe('diagnostics-grid');
-    expect(grid.children).toHaveLength(35);
+    expect(grid.children).toHaveLength(36);
     expect(grid.children.every((metric) => metric.children.length === 2)).toBe(true);
 
     const labels = grid.children.map((metric) => metric.children[0]?.textContent);
-    for (const label of ['Viewport', 'Tier', 'Renderer', 'Resolution', 'Weather', 'Surface']) {
+    for (const label of [
+      'Build',
+      'Viewport',
+      'Tier',
+      'Renderer',
+      'Resolution',
+      'Weather',
+      'Surface',
+    ]) {
       expect(labels).toContain(label);
     }
 
@@ -166,6 +175,9 @@ describe('full-screen diagnostics report', () => {
         metric.children[1]?.textContent,
       ]),
     );
+    // The Build row names the deployed bundle, so a device report is self-identifying:
+    // a stale cached page is caught in one screenshot instead of guesswork.
+    expect(report.get('Build')).toBe('Dgg3fSk3');
     expect(report.get('Viewport')).toBe('1536×704 @ 1.00x');
     expect(report.get('Tier')).toBe('C · mobile · 1x shadow');
     expect(report.get('Renderer')).toBe('webgl2 · fxaa');

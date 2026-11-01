@@ -84,6 +84,8 @@ export function formatStartupTimings(
 }
 
 export interface DiagnosticsSnapshot {
+  /** The deployed bundle tag (the Build row); absent on older snapshots. */
+  readonly buildTag?: string | null;
   readonly framesPerSecond: number;
   readonly minimumFramesPerSecond: number;
   readonly averageFrameTimeMilliseconds: number;
@@ -233,6 +235,13 @@ interface RowDefinition {
 const formatGear = (gear: number): string => (gear < 0 ? 'R' : String(gear));
 
 const ROW_DEFINITIONS: readonly RowDefinition[] = [
+  {
+    // The deployed bundle tag (from the loaded script name), so a device screenshot always names
+    // the exact build it was taken under — a stale cached bundle is then caught in one look
+    // instead of being guessed at.
+    label: 'Build',
+    format: (snapshot) => snapshot.buildTag ?? 'unknown',
+  },
   {
     label: 'Speed',
     format: (snapshot) => `${snapshot.speedKph.toFixed(1)} km/h`,

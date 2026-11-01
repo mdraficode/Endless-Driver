@@ -388,6 +388,7 @@ async function startDrivingScene(restarting = false): Promise<void> {
       config,
       worldConfig: WORLD_CONFIG,
       tier,
+      buildTag: buildTagId ?? null,
       clock: startHour === null ? undefined : { startHour },
       nightMood,
       ...(spawnId === undefined ? {} : { spawnId }),

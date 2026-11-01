@@ -815,8 +815,11 @@ export class Engine {
    * (the WebGPU path).
    */
   getProgramInventory(): ProgramInventory | null {
-    const info = this.#renderer.info as unknown as { memoryMap?: unknown } | undefined;
-    return analyzeProgramInventory(info?.memoryMap ?? null);
+    // `_pipelines` is the WebGPU renderer's stage registry (an engine detail, not public API):
+    // its per-kind maps hold exactly the stages `info.memory.programs` counts. `info.memoryMap`
+    // itself is a WeakMap and cannot be enumerated, which is why the registry is read instead.
+    const renderer = this.#renderer as unknown as { _pipelines?: unknown };
+    return analyzeProgramInventory(renderer?._pipelines ?? null);
   }
 
   dispose(): void {
