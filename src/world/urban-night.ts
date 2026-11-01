@@ -36,7 +36,6 @@ import {
   uniform,
   uv,
   vec2,
-  vec3,
   vec4,
 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -1036,11 +1035,12 @@ function createNightEmissiveMaterial(
 ): MeshBasicNodeMaterial {
   const material = new MeshBasicNodeMaterial();
   const color = new Color(colorHex);
-  const dayColor = vec3(color.r, color.g, color.b).mul(0.14);
-  const nightColor = vec3(color.r, color.g, color.b).mul(1.12);
+  // Uniform node, not a vec3 literal: every billboard/storefront tone shared one program
+  // instead of one 20 KB scene fragment per color (see architectural-materials.ts).
+  const colorU = uniform(new Vector3(color.r, color.g, color.b), 'vec3');
   material.name = name;
   material.toneMapped = false;
-  material.colorNode = vec4(mix(dayColor, nightColor, nightGain), 1);
+  material.colorNode = vec4(mix(colorU.mul(0.14), colorU.mul(1.12), nightGain), 1);
   return material;
 }
 
@@ -1204,7 +1204,7 @@ function createFlareMaterial(
     .mul(spatialGain ?? 1)
     .clamp(0, URBAN_CITY_CONFIG.optics.maximumOpacity);
   const color = new Color(colorHex);
-  material.colorNode = vec4(color.r, color.g, color.b, 1);
+  material.colorNode = vec4(uniform(new Vector3(color.r, color.g, color.b), 'vec3'), 1);
   material.opacityNode = opacity;
   return material;
 }
@@ -1217,7 +1217,8 @@ function createWindowMaterial(
   const material = new MeshBasicNodeMaterial();
   material.name = name;
   material.toneMapped = false;
-  material.colorNode = vec4(vec3(color[0], color[1], color[2]).mul(nightGain), 1);
+  const colorU = uniform(new Vector3(color[0], color[1], color[2]), 'vec3');
+  material.colorNode = vec4(colorU.mul(nightGain), 1);
   return material;
 }
 
@@ -2777,9 +2778,10 @@ export class UrbanNightWorld implements SceneContent {
           float(URBAN_CITY_CONFIG.wetRoad.wetClearcoatRoughness),
           wetRoadMask,
         );
-        asphalt.colorNode = vec4(asphalt.color.r, asphalt.color.g, asphalt.color.b, 1).mul(
-          mix(float(1), float(URBAN_CITY_CONFIG.wetRoad.wetAlbedoMultiplier), wetRoadMask),
-        );
+        asphalt.colorNode = vec4(
+          uniform(new Vector3(asphalt.color.r, asphalt.color.g, asphalt.color.b), 'vec3'),
+          1,
+        ).mul(mix(float(1), float(URBAN_CITY_CONFIG.wetRoad.wetAlbedoMultiplier), wetRoadMask));
         asphalt.mrtNode = this.#wetRoadMaskOutput ? mrt({ wetRoadMask }) : null;
         asphalt.name = name;
         return asphalt;
@@ -4069,7 +4071,10 @@ export class UrbanNightWorld implements SceneContent {
     for (const [index, [color, transforms]] of [...emitterGroups].entries()) {
       const tint = new Color(color);
       const emitter = new MeshBasicNodeMaterial();
-      emitter.colorNode = vec4(vec3(tint.r, tint.g, tint.b).mul(this.#nightGain), 1);
+      emitter.colorNode = vec4(
+        uniform(new Vector3(tint.r, tint.g, tint.b), 'vec3').mul(this.#nightGain),
+        1,
+      );
       emitter.toneMapped = false;
       emitter.name = `aohara-street-lamp-emitter-${index}`;
       const mesh = addInstancedBoxes(

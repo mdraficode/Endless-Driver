@@ -1,6 +1,6 @@
-import { Color } from 'three';
+import { Color, Vector3 } from 'three';
 import { MeshPhysicalNodeMaterial, type Node } from 'three/webgpu';
-import { float, positionWorld, sin, vec4, vertexColor } from 'three/tsl';
+import { float, positionWorld, sin, uniform, vec4, vertexColor } from 'three/tsl';
 
 export interface ArchitecturalMaterialOptions {
   readonly name: string;
@@ -18,6 +18,12 @@ interface SurfaceDetailNodes {
   readonly roughness: Node<'float'>;
 }
 
+/**
+ * TSL constants are baked into the generated code, so every material built with a different
+ * literal becomes its own GPU program (the phone compiled 58 of these as separate 20 KB
+ * scene fragments). Per-instance values are exposed as uniform nodes instead: materials that
+ * share this graph share one program, with the values bound as uniforms at render time.
+ */
 function createSurfaceDetailNodes(roughness: number, amplitude: number): SurfaceDetailNodes {
   // Two restrained, continuous TSL bands create material-scale variation without a texture
   // dependency or screen-space effect. The HDRI remains the actual environment-light source.
@@ -27,13 +33,12 @@ function createSurfaceDetailNodes(roughness: number, amplitude: number): Surface
   const fine = sin(
     positionWorld.x.mul(2.31).add(positionWorld.y.mul(1.67)).add(positionWorld.z.mul(2.83)),
   );
+  const baseRoughness = uniform(roughness);
+  const amplitudeNode = uniform(amplitude);
   const albedo = float(1)
-    .add(broad.mul(amplitude))
-    .add(fine.mul(amplitude * 0.22));
-  const roughnessNode = float(roughness)
-    .add(broad.mul(0.055))
-    .add(fine.mul(0.018))
-    .clamp(0.06, 0.98);
+    .add(broad.mul(amplitudeNode))
+    .add(fine.mul(amplitudeNode.mul(0.22)));
+  const roughnessNode = baseRoughness.add(broad.mul(0.055)).add(fine.mul(0.018)).clamp(0.06, 0.98);
   return { albedo, roughness: roughnessNode };
 }
 
@@ -47,10 +52,12 @@ export function createArchitecturalMaterial(
   material.color.setHex(options.colorHex);
   material.roughness = options.roughness;
   material.metalness = options.metalness;
-  material.colorNode = vec4(color.r, color.g, color.b, 1).mul(detail.albedo);
+  material.colorNode = vec4(uniform(new Vector3(color.r, color.g, color.b), 'vec3'), 1).mul(
+    detail.albedo,
+  );
   material.roughnessNode = detail.roughness;
-  material.clearcoatNode = float(options.clearcoat ?? 0.08);
-  material.clearcoatRoughnessNode = float(options.clearcoatRoughness ?? 0.34);
+  material.clearcoatNode = uniform(options.clearcoat ?? 0.08);
+  material.clearcoatRoughnessNode = uniform(options.clearcoatRoughness ?? 0.34);
   material.name = options.name;
   return material;
 }
@@ -66,8 +73,8 @@ export function createVertexColorArchitecturalMaterial(
   material.metalness = options.metalness;
   material.colorNode = vertexColor().mul(detail.albedo);
   material.roughnessNode = detail.roughness;
-  material.clearcoatNode = float(options.clearcoat ?? 0.06);
-  material.clearcoatRoughnessNode = float(options.clearcoatRoughness ?? 0.38);
+  material.clearcoatNode = uniform(options.clearcoat ?? 0.06);
+  material.clearcoatRoughnessNode = uniform(options.clearcoatRoughness ?? 0.38);
   material.name = options.name;
   return material;
 }

@@ -4,7 +4,14 @@
  * offline in milliseconds. Captures every generated stage (code + name) from
  * `renderer._pipelines.programs` — the same registry the device inventory reads.
  *
- * Usage: node scripts/shader-lab.mjs
+ * Usage:
+ *   node scripts/shader-lab.mjs                    # mixed shadow scene (default)
+ *   MODE=facade-literal node scripts/shader-lab.mjs # 30 facade materials, TSL literal constants
+ *   MODE=facade-uniform node scripts/shader-lab.mjs # 30 facade materials, uniform nodes
+ *
+ * The two facade modes are the regression instrument for the program-count fix (2026-11-01):
+ * literal constants are baked into the generated code (one program per material), uniform
+ * nodes are not (one program per graph shape). Expected: 32 vs 3 fragment stages.
  */
 // All imports from the src paths (one module instance) — 'three/webgpu' resolves to the
 // prebuilt bundle, whose classes would not match the src-based StandardNodeLibrary's keys.
@@ -21,6 +28,10 @@ import { MeshStandardMaterial } from 'three/src/materials/MeshStandardMaterial.j
 import { InstancedMesh } from 'three/src/objects/InstancedMesh.js';
 import { Matrix4 } from 'three/src/math/Matrix4.js';
 import { DataTexture } from 'three/src/textures/DataTexture.js';
+import MeshPhysicalNodeMaterial from 'three/src/materials/nodes/MeshPhysicalNodeMaterial.js';
+import { Vector3 } from 'three/src/math/Vector3.js';
+import { Color } from 'three/src/math/Color.js';
+import { uniform, vec4, positionWorld, sin } from 'three/src/nodes/TSL.js';
 import { PCFShadowMap, SRGBColorSpace, NoToneMapping } from 'three/src/constants.js';
 import fs from 'node:fs';
 
@@ -157,6 +168,13 @@ function shadowMixScene() {
   sun.castShadow = true;
   sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.02; // tier-C sun values (config/render.ts)
+  sun.shadow.camera.left = -70;
+  sun.shadow.camera.right = 70;
+  sun.shadow.camera.top = 70;
+  sun.shadow.camera.bottom = -70;
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = 320;
   scene.add(sun);
 
   // N shadow-casting point lights — the experiment: how many ShadowMaterial fragment
@@ -253,11 +271,94 @@ function shadowMixScene() {
   return { scene, texArrivals };
 }
 
+/**
+ * The facade-material experiment: N physical materials with the same procedural detail graph,
+ * differing only in color/roughness/clearcoat. `facade-literal` bakes the values as TSL
+ * constants (what createArchitecturalMaterial does today); `facade-uniform` uses uniform
+ * nodes. Count the distinct fragment codes each mode produces — the answer to whether
+ * uniform nodes collapse the 58 numbered facade materials into one program.
+ */
+function facadeBenchmarkScene(mode) {
+  const scene = new Scene();
+  const sun = new DirectionalLight(0xffffff, 3);
+  sun.position.set(30, 40, 20);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  scene.add(sun);
+  scene.add(new AmbientLight(0x223344, 0.4));
+
+  const detail = (roughness, amplitude, withUniforms) => {
+    // Mirror of src/world/architectural-materials.ts (same graph shape).
+    const broad = sin(positionWorld.x.mul(0.083).add(positionWorld.z.mul(0.117))).mul(
+      sin(positionWorld.z.mul(0.071).sub(positionWorld.y.mul(0.049))),
+    );
+    const fine = sin(
+      positionWorld.x.mul(2.31).add(positionWorld.y.mul(1.67)).add(positionWorld.z.mul(2.83)),
+    );
+    const albedo = withUniforms
+      ? float1()
+          .add(broad.mul(uniform(amplitude, 'float')))
+          .add(fine.mul(uniform(amplitude, 'float').mul(0.22)))
+      : float1()
+          .add(broad.mul(amplitude))
+          .add(fine.mul(amplitude * 0.22));
+    const roughnessNode = withUniforms
+      ? uniform(roughness, 'float').add(broad.mul(0.055)).add(fine.mul(0.018)).clamp(0.06, 0.98)
+      : float1().add(broad.mul(0.055)).add(fine.mul(0.018)).clamp(0.06, 0.98);
+    return { albedo, roughness: roughnessNode };
+  };
+  const float1 = () => /* @__PURE__ */ sin(positionWorld.x).sub(sin(positionWorld.x)); // constant 1.0 via TSL ops
+
+  const N = 30;
+  const geo = new BoxGeometry(1, 6, 1);
+  for (let i = 0; i < N; i++) {
+    const material = new MeshPhysicalNodeMaterial();
+    const color = new Color().setHSL((i * 0.137) % 1, 0.35, 0.5);
+    const d = detail(0.77 + i * 0.001, 0.025 + (i % 3) * 0.005, mode === 'facade-uniform');
+    if (mode === 'facade-literal') {
+      material.colorNode = vec4(color.r, color.g, color.b, 1).mul(d.albedo);
+      material.roughnessNode = d.roughness;
+      material.clearcoatNode = /* @__PURE__ */ (function (v) {
+        return v;
+      })(0.08 + i * 0.001);
+    } else {
+      material.colorNode = vec4(uniform(new Vector3(color.r, color.g, color.b), 'vec3'), 1).mul(
+        d.albedo,
+      );
+      material.roughnessNode = d.roughness;
+      material.clearcoatNode = uniform(0.08 + i * 0.001, 'float');
+      material.clearcoatRoughnessNode = uniform(0.34 + i * 0.001, 'float');
+    }
+    material.name = `facade-${i}`;
+    const mesh = new Mesh(geo, material);
+    mesh.position.set((i % 10) * 4 - 18, 3, Math.floor(i / 10) * 4 - 4);
+    mesh.castShadow = true;
+    scene.add(mesh);
+  }
+  const floor = new Mesh(
+    new BoxGeometry(60, 0.2, 20),
+    new (function () {
+      const m = new MeshStandardMaterial({ color: 0x333844, roughness: 0.9 });
+      return m;
+    })(),
+  );
+  floor.position.y = -0.1;
+  scene.add(floor);
+  return scene;
+}
+
 const main = async () => {
   console.log('lab: building renderer');
   const renderer = await buildRenderer();
   console.log('lab: renderer ready, shadowMap', renderer.shadowMap.enabled);
-  const { scene, texArrivals } = shadowMixScene();
+  let scene;
+  let texArrivals = [];
+  const mode = process.env.MODE ?? 'standard';
+  if (mode === 'facade-literal' || mode === 'facade-uniform') {
+    scene = facadeBenchmarkScene(mode);
+  } else {
+    ({ scene, texArrivals } = shadowMixScene());
+  }
   const camera = new PerspectiveCamera(75, 960 / 432, 0.1, 400);
   camera.position.set(0, 3, 14);
   camera.lookAt(0, 2, 0);
@@ -331,6 +432,24 @@ const main = async () => {
 
   // The animation loop keeps rAF chained forever; end the process once the data is out.
   const done = () => process.exit(0);
+
+  if (mode === 'facade-literal' || mode === 'facade-uniform') {
+    const fragmentCodes = new Map(); // name -> Set(code)
+    for (const stage of programs.fragment.values()) {
+      const codes = fragmentCodes.get(stage.name) ?? new Set();
+      codes.add(stage.code);
+      fragmentCodes.set(stage.name, codes);
+    }
+    let distinct = 0;
+    for (const codes of fragmentCodes.values()) distinct += codes.size;
+    const dumpStage = [...programs.fragment.values()].find((st) => st.name.startsWith('facade-0'));
+    fs.writeFileSync(`/tmp/${mode}-frag.glsl`, dumpStage ? dumpStage.code : '(none)');
+    console.log(
+      `\nMODE ${mode}: ${fragmentCodes.size} materials -> ${distinct} distinct fragment codes (total fragment stages ${programs.fragment.size})`,
+    );
+    done();
+    return;
+  }
 
   // Dump the ShadowMaterial fragment codes so the diff between variants is visible.
   const shadowFragments = [...programs.fragment.values()].filter(
