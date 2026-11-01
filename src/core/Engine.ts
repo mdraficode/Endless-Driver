@@ -837,6 +837,31 @@ export class Engine {
     return buildProgramReport(renderer?._pipelines ?? null);
   }
 
+  /**
+   * The live stage counts (total / fragment / vertex) — the startup growth trace samples this
+   * at every stage boundary so a device report says WHEN the programs are born (during the
+   * main compile, the car pass, or the settle sweep), not just how many exist at the end.
+   */
+  getProgramStageCounts(): { total: number; fragment: number; vertex: number } | null {
+    const pipelines = (this.#renderer as unknown as { _pipelines?: unknown })?._pipelines;
+    const programs = (pipelines as { programs?: unknown } | null)?.programs as
+      { vertex?: unknown; fragment?: unknown; compute?: unknown } | null | undefined;
+    if (programs === null || programs === undefined || typeof programs !== 'object') {
+      return null;
+    }
+    const count = (candidate: unknown): number =>
+      candidate !== null &&
+      typeof candidate === 'object' &&
+      typeof (candidate as { size?: unknown }).size === 'number'
+        ? (candidate as { size: number }).size
+        : 0;
+    const fragment = count(programs.fragment);
+    const vertex = count(programs.vertex);
+    const compute = count(programs.compute);
+    const total = fragment + vertex + compute;
+    return total > 0 ? { total, fragment, vertex } : null;
+  }
+
   dispose(): void {
     if (this.#disposed) {
       return;

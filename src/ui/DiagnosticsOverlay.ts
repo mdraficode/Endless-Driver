@@ -24,6 +24,14 @@ export interface StartupStage {
 }
 
 /** The page's network bill while loading (wire bytes + download window). */
+export interface ProgramGrowthEntry {
+  /** The startup stage the count was sampled just after. */
+  readonly stage: string;
+  readonly total: number;
+  readonly fragment: number;
+  readonly vertex: number;
+}
+
 export interface StartupNetwork {
   readonly bytes: number;
   readonly ms: number;
@@ -104,6 +112,11 @@ export interface DiagnosticsSnapshot {
   readonly startup: readonly StartupStage[];
   /** The page's wire bytes + download window for the load; `null` where unavailable. */
   readonly startupNetwork?: StartupNetwork | null;
+  /**
+   * Shader-stage counts sampled at each startup stage boundary (total/fragment/vertex): when
+   * the programs are born — the main compile, the car pass, or the settle sweep.
+   */
+  readonly programGrowth?: readonly ProgramGrowthEntry[];
   /** Quality tier this frame was rendered under; see `docs/VISUAL_TARGET.md` §3. */
   readonly qualityTier: TierId;
   /** Why that tier was chosen, so a quality report can explain itself. */

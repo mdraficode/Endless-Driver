@@ -249,6 +249,12 @@ export class Application {
    * (car, surfaces) from the GPU-bound ones (compile, settle) so the next fix is aimed.
    */
   #startupTimings: readonly StartupStage[] | null = null;
+  /**
+   * Shader-stage counts sampled at every startup stage boundary: WHEN the programs are born
+   * (terrain build, surfaces, the main compile, the car pass, the settle sweep) — the
+   * companion to the inventory's "who" for aiming the next program-count cut.
+   */
+  #programGrowth: Array<{ stage: string; total: number; fragment: number; vertex: number }> = [];
   /** The page's wire bytes + download window for the load (the Startup row's net part). */
   #startupNetwork: StartupNetwork | null = null;
   /**
@@ -683,6 +689,12 @@ export class Application {
     const mark = (stage: string): void => {
       stageMarks[stage] = performance.now();
     };
+    const samplePrograms = (stage: string): void => {
+      const counts = this.#engine.getProgramStageCounts();
+      if (counts !== null) {
+        this.#programGrowth.push({ stage, ...counts });
+      }
+    };
 
     if (!this.#engine.isInitialized) {
       this.#reportLoadingProgress(0.2, 'Preparing the renderer…');
@@ -719,6 +731,7 @@ export class Application {
         },
       );
       mark('terrain');
+      samplePrograms('terrain');
       // Gate the first frame on the selected hero car (bounded). The authored fallback is a
       // roadster and stays hidden while the 2.9 MB coupé loads, so the first frame never shows
       // the wrong car — the "Roadster, then Generic Sports Car" report.
@@ -748,6 +761,7 @@ export class Application {
         }
       }
       mark('car');
+      samplePrograms('car');
       // The pixel budget this load reads from the manifest: tier C (phones) takes the 512-px
       // derivations where the catalog has them, B/A the full 1K files. Both the download below
       // and the t=0 prefetch key off the same value, so a load never fetches the budget it will
@@ -782,9 +796,11 @@ export class Application {
         'Preparing the road surfaces, lighting and vegetation…',
       );
       mark('surfaces');
+      samplePrograms('surfaces');
       // Build the frame graph and kick off creation of every pipeline in the real frame's
       // context, before the compile: the main compile below then produces exactly the
       // pipelines the first frame draws with — one full-scene compile, never two.
+      samplePrograms('frameGraph');
       this.#reportLoadingProgress(0.92, 'Warming up the graphics pipeline (first run is slower)…');
       if (!this.#engine.prepareFrameGraph(this.#scene.scene, this.#activeCamera())) {
         this.#reportLoadingError(
@@ -804,6 +820,7 @@ export class Application {
         'Warming up the graphics pipeline (first run is slower)…',
       );
       mark('compile');
+      samplePrograms('compile');
       this.#warmupComplete = true;
       // Second pass: picks up the hero car's materials and anything the first pass missed;
       // everything else is a cache hit, so this pass is short.
@@ -814,6 +831,7 @@ export class Application {
         'Warming up the car and effects…',
       );
       mark('carFX');
+      samplePrograms('carFX');
       // Settle: render until the drawn workload is stable, then sweep the bounded off-screen
       // views of the playable area, then close back in the spawn context. The shadow depth
       // programs and the nested effect passes (SSAO/SSR internal quads) only an actual render
@@ -843,6 +861,7 @@ export class Application {
       }
       this.#endSettleSweep(spawnPose);
       mark('settle');
+      samplePrograms('settle');
       this.#reportLoadingProgress(0.99, 'Starting the simulation…');
     }
 
@@ -947,6 +966,14 @@ export class Application {
       'Endless Driver startup timings:',
       formatStartupTimings(this.#startupTimings, this.#startupNetwork),
     );
+    if (this.#programGrowth.length > 0) {
+      console.info(
+        'Endless Driver program growth (total/frag/vertex per startup stage):',
+        this.#programGrowth
+          .map((entry) => `${entry.stage} ${entry.total}/${entry.fragment}/${entry.vertex}`)
+          .join(' -> '),
+      );
+    }
     this.#engine.start();
     this.#armFirstFrameWatchdog();
 
@@ -1154,6 +1181,7 @@ export class Application {
       programs: render.programs,
       programInventory: this.#programInventory,
       startup: this.#startupTimings ?? [],
+      programGrowth: this.#programGrowth,
       startupNetwork: this.#startupNetwork,
       pixelRatio: viewport.pixelRatio,
       viewport: { width: viewport.width, height: viewport.height },

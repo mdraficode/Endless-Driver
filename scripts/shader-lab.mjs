@@ -344,7 +344,8 @@ function facadeBenchmarkScene(mode) {
   );
   floor.position.y = -0.1;
   scene.add(floor);
-  if (process.env.TRANSPARENT === '1') {
+  const paneCount = Number(process.env.TRANSPARENT ?? 0);
+  if (paneCount > 0) {
     // Camera-dependent depth sort, like the phone's glazing/sprite pass.
     const glassMat = new MeshStandardMaterial({
       color: 0x223344,
@@ -353,16 +354,123 @@ function facadeBenchmarkScene(mode) {
       transparent: true,
       opacity: 0.35,
     });
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < paneCount; i++) {
       const pane = new Mesh(new BoxGeometry(2, 3, 0.1), glassMat);
-      pane.position.set(i * 3 - 16, 2, -6 + (i % 4) * 3);
+      // Scattered depths: from a moving camera the depth order flips often, like city glazing.
+      pane.position.set(((i * 7919) % 61) - 30, 1 + ((i * 104729) % 5), -8 + ((i * 15485863) % 21));
       scene.add(pane);
     }
   }
   return scene;
 }
 
+const startupSequenceMode = process.env.MODE === 'startup';
+
+/**
+ * The device startup sequence, replayed: plain compile, MRT scene pass, a second pipeline from
+ * a MIRROR camera (the SSR reflection pass), another compileAsync, then the 16-view settle
+ * sweep. Counts how many distinct codes one textured material accumulates per step — the
+ * probe for the device's 45-variant vegetation vertex codes.
+ */
+async function startupSequence(backend) {
+  const renderer = new Renderer(backend, { antialias: false, alpha: false });
+  renderer.library = new StandardNodeLibrary();
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = PCFShadowMap;
+  renderer.outputColorSpace = SRGBColorSpace;
+  renderer.toneMapping = NoToneMapping;
+  await renderer.init();
+  renderer.setSize(960, 432);
+
+  const scene = new Scene();
+  scene.add(new AmbientLight(0x334455, 0.5));
+  const sun = new DirectionalLight(0xffffff, 3);
+  sun.position.set(30, 40, 20);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  scene.add(sun);
+  for (let i = 0; i < 12; i++) {
+    const lamp = new PointLight(0xffb46b, 8, 30, 2);
+    lamp.position.set(Math.cos((i / 12) * 6.28) * 14, 4, Math.sin((i / 12) * 6.28) * 14);
+    scene.add(lamp);
+  }
+  const cam = new PerspectiveCamera(75, 960 / 432, 0.1, 400);
+  cam.position.set(0, 3, 14);
+  cam.lookAt(0, 1, 0);
+  const mirror = new PerspectiveCamera(75, 960 / 432, 0.1, 400);
+
+  const mkTex = () => {
+    const data = new Uint8Array(16);
+    data.fill(128);
+    const t = new DataTexture(data, 2, 2);
+    t.needsUpdate = true;
+    return t;
+  };
+  const mat = new MeshStandardMaterial({ color: 0x884422, roughness: 0.6, map: mkTex() });
+  mat.name = 'probe';
+  const box = new Mesh(new BoxGeometry(2, 4, 2), mat);
+  box.position.set(0, 2, 0);
+  box.castShadow = true;
+  scene.add(box);
+  const glassMat = new MeshStandardMaterial({ color: 0x223344, transparent: true, opacity: 0.35 });
+  glassMat.name = 'glass';
+  for (let i = 0; i < 40; i++) {
+    const pane = new Mesh(new BoxGeometry(2, 3, 0.1), glassMat);
+    pane.position.set(((i * 7919) % 61) - 30, 1 + ((i * 104729) % 5), -8 + ((i * 15485863) % 21));
+    scene.add(pane);
+  }
+
+  const codes = () => {
+    const p = renderer._pipelines.programs;
+    const frag = new Set(
+      [...p.fragment.values()].filter((s) => s.name === 'probe').map((s) => s.code),
+    );
+    const vert = new Set(
+      [...p.vertex.values()].filter((s) => s.name === 'probe').map((s) => s.code),
+    );
+    return `${p.fragment.size}+${p.vertex.size} probeF=${frag.size} probeV=${vert.size}`;
+  };
+
+  console.log(`step0 initial:        ${codes()}`);
+  await renderer.compileAsync(scene, cam);
+  renderer.render(scene, cam);
+  console.log(`step1 plain render:   ${codes()}`);
+
+  const scenePass = pass(scene, cam);
+  scenePass.setMRT(mrt({ output, normal: normalView, wetRoadMask: float(0) }));
+  const pipeline = new RenderPipeline(renderer, renderOutput(scenePass));
+  pipeline.render();
+  console.log(`step2 MRT pass:       ${codes()}`);
+
+  // The SSR reflection pass: the scene re-rendered from a mirrored camera.
+  mirror.position.set(0, 3, -14);
+  mirror.lookAt(0, 1, 0);
+  const mirrorPass = pass(scene, mirror);
+  mirrorPass.setMRT(mrt({ output, normal: normalView, wetRoadMask: float(0) }));
+  const mirrorPipeline = new RenderPipeline(renderer, renderOutput(mirrorPass));
+  mirrorPipeline.render();
+  pipeline.render();
+  console.log(`step3 SSR mirror:     ${codes()}`);
+
+  await renderer.compileAsync(scene, cam);
+  console.log(`step4 re-compile:     ${codes()}`);
+
+  // The 16-view settle sweep.
+  for (let i = 0; i < 16; i++) {
+    const angle = (i / 16) * 6.28;
+    cam.position.set(Math.cos(angle) * 14, 3 + (i % 3), Math.sin(angle) * 14);
+    cam.lookAt(0, 1, 0);
+    pipeline.render();
+  }
+  console.log(`step5 settle x16:     ${codes()}`);
+  process.exit(0);
+}
+
 const main = async () => {
+  if (startupSequenceMode) {
+    await startupSequence(makeBackend());
+    return;
+  }
   console.log('lab: building renderer');
   const renderer = await buildRenderer();
   console.log('lab: renderer ready, shadowMap', renderer.shadowMap.enabled);
