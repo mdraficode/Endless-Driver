@@ -18,7 +18,7 @@ import { DEFAULT_TIER } from '../config/tiers';
 import { WORLD_CONFIG, type WorldConfig } from '../config/world';
 import { proceduralSpawn, homeCityAnchor } from '../world/city-content';
 import { buildRoadLayout } from '../world/road-layout';
-import { createWorldPlan } from '../world/world-plan';
+import { createWorldPlan, terrainSeedFor } from '../world/world-plan';
 import type { SpawnPoint } from '../config/spawns';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
 import type { TerrainSampler } from '../world/terrain-height';
@@ -369,7 +369,7 @@ export class Application {
     // physics heightfields: ground you see and ground you drive on are the same function.
     // The city plateau follows the generated anchor; the heightfield seed is its own stream.
     const terrainSampler = createWorldTerrainSampler(
-      terrainConfigForTier(this.#tier.id, (Math.imul(worldSeed, 0x9e3779b9) ^ 0x7e55d) | 0),
+      terrainConfigForTier(this.#tier.id, terrainSeedFor(worldSeed)),
       roadLayout.config,
       {
         x: anchor.x,

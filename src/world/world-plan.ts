@@ -13,11 +13,43 @@
  * physics and minimap stay untouched downstream.
  */
 
+import { createTerrainSampler } from './terrain-height';
+import { TERRAIN_CONFIG, type TerrainConfig } from '../config/terrain';
+
 /** Bump whenever plan semantics change; the world key is seed + version (plan §5). */
 export const WORLD_PLAN_VERSION = 1;
 
 /** Macro-cell edge, metres. Regions tile the plane on this lattice. */
 export const REGION_CELL_METERS = 4000;
+
+/**
+ * The heightfield seed for a world: its own stream off the world seed, so the same world
+ * always gets the same terrain and every launch gets different terrain.
+ */
+export function terrainSeedFor(worldSeed: number): number {
+  return (Math.imul(worldSeed, 0x9e3779b9) ^ 0x7e55d) | 0;
+}
+
+/** Highest terrain point over a cell (5×5 probe). A world's passes live where the ground is high. */
+const cellMaxHeight = (
+  sampler: ReturnType<typeof createTerrainSampler>,
+  ix: number,
+  iz: number,
+): number => {
+  const cx = ix * REGION_CELL_METERS;
+  const cz = iz * REGION_CELL_METERS;
+  let max = 0;
+  for (let dz = -2; dz <= 2; dz += 1) {
+    for (let dx = -2; dx <= 2; dx += 1) {
+      max = Math.max(max, sampler.heightAt(cx + dx * 800, cz + dz * 800));
+    }
+  }
+  return max;
+};
+
+/** Cells reaching this height are pass country regardless of the urbanness roll — this is
+ * what puts a real mountain pass next to the volcano in every world (the old Kiri geography). */
+const PASS_MAX_HEIGHT_METERS = 180;
 
 /** Global city block lattice, metres — megacity road lines sit on 50 m world lines. */
 export const MEGACITY_BLOCK_METERS = 50;
@@ -152,7 +184,7 @@ function urbannessAtCell(ix: number, iz: number, worldSeed: number): number {
     rawUrbanness(ix, iz + 1, worldSeed),
     rawUrbanness(ix, iz - 1, worldSeed),
   );
-  return own * 0.7 + maxNeighbour * 0.3;
+  return own * 0.8 + maxNeighbour * 0.2;
 }
 
 // ---------------------------------------------------------------------------
@@ -169,10 +201,10 @@ function archetypeAtCell(ix: number, iz: number, worldSeed: number): RegionArche
   // on a boulevard (today's Central Avenue vibe), whatever the seed rolls.
   if (ix === 0 && iz === 0) return 'megacity';
   const u = urbannessAtCell(ix, iz, worldSeed);
-  if (u >= 0.72) return 'megacity';
-  if (u >= 0.45) return 'urban-fringe';
-  if (u >= 0.32) return 'small-town';
-  if (u >= 0.1) return 'rural';
+  if (u >= 0.76) return 'megacity';
+  if (u >= 0.52) return 'urban-fringe';
+  if (u >= 0.36) return 'small-town';
+  if (u >= 0.14) return 'rural';
   return 'mountain-pass';
 }
 
@@ -215,30 +247,34 @@ const DISTRICT_SPECS: Record<RegionArchetype, ArchetypeDistrictSpec> = {
   'urban-fringe': {
     labelPrefix: 'Colony',
     radiusFraction: 0.7,
-    speciesDensity: { conifer: 0.12, broadleaf: 0.6, sakura: 0.7, bamboo: 0.15, rock: 0.15 },
-    groundTint: [1.03, 0.99, 0.9],
+    // Suburban planting — the old world's fringe ran at full base density.
+    speciesDensity: { conifer: 0.6, broadleaf: 1.2, sakura: 1.4, bamboo: 0.4, rock: 0.3 },
+    groundTint: [1.02, 1.0, 0.92],
   },
   // Garden town (Yūhi's rule: buildings carry the district, garden trees only).
   'small-town': {
     labelPrefix: 'Town',
     radiusFraction: 0.75,
-    speciesDensity: { conifer: 0.15, broadleaf: 0.55, sakura: 0.8, bamboo: 0.2, rock: 0.1 },
-    groundTint: [1.03, 0.99, 0.9],
+    speciesDensity: { conifer: 0.4, broadleaf: 1.0, sakura: 1.2, bamboo: 0.5, rock: 0.3 },
+    groundTint: [1.02, 1.0, 0.92],
   },
-  // Open countryside (Shirasagi's rule: trees are events, not cover).
+  // Open countryside. In the generated world this archetype IS the countryside (the old
+  // world's base density, a little richer), never the sparse spot-district the old
+  // Shirasagi terraces were — 3x sparser than the old countryside read as "empty"
+  // (owner report 2026-11-02).
   rural: {
     labelPrefix: 'Fields',
-    radiusFraction: 0.85,
-    speciesDensity: { conifer: 0.1, broadleaf: 0.35, sakura: 0.15, rock: 0.4 },
-    groundTint: [1.13, 1.03, 0.76],
+    radiusFraction: 0.9,
+    speciesDensity: { conifer: 1.5, broadleaf: 1.3, sakura: 0.5, bamboo: 0.4, rock: 0.7 },
+    groundTint: [1.02, 1.0, 0.95],
   },
   // Canyon pass (Kiri's rule: sugi cedar and exposed rock around the pass road).
   'mountain-pass': {
     labelPrefix: 'Pass',
     radiusFraction: 0.9,
-    speciesDensity: { conifer: 3.2, broadleaf: 0.5, rock: 1.4 },
-    groundTint: [0.8, 0.93, 0.79],
-    canopyScale: 1.25,
+    speciesDensity: { conifer: 3.4, broadleaf: 0.8, sakura: 0.3, bamboo: 0.2, rock: 1.5 },
+    groundTint: [0.82, 0.95, 0.8],
+    canopyScale: 1.3,
   },
 };
 
@@ -274,10 +310,33 @@ function districtName(seed: number, prefix: string): string {
  */
 export function createWorldPlan(seed: number): WorldPlan {
   const worldSeed = seed | 0;
+  // Built lazily on the first high cell probe; pure math, no renderer needed.
+  let terrainSampler: ReturnType<typeof createTerrainSampler> | null = null;
+  const probeTerrain = (): ReturnType<typeof createTerrainSampler> => {
+    if (terrainSampler === null) {
+      const config: TerrainConfig = { ...TERRAIN_CONFIG, seed: terrainSeedFor(worldSeed) };
+      terrainSampler = createTerrainSampler(config);
+    }
+    return terrainSampler;
+  };
+  // Regions are immutable per seed; the plan is queried point-by-point by the vegetation
+  // and terrain tint paths, so memoise instead of re-rolling the hashes.
+  const regionCache = new Map<string, RegionPlan>();
 
   const regionAtCell = (ix: number, iz: number): RegionPlan => {
+    const key = `${ix},${iz}`;
+    const cached = regionCache.get(key);
+    if (cached !== undefined) return cached;
     const regionSeed = hashInt(ix, iz, worldSeed ^ 0x5eed5eed);
-    const archetype = archetypeAtCell(ix, iz, worldSeed);
+    let archetype = archetypeAtCell(ix, iz, worldSeed);
+    // High ground is pass country no matter what the urbanness roll says: this is what puts
+    // a real mountain pass (and its cedar forest) in every world, next to the big volcano —
+    // the old world's Kiri sat right against the city, and the generated one does too.
+    if (archetype !== 'megacity') {
+      if (cellMaxHeight(probeTerrain(), ix, iz) > PASS_MAX_HEIGHT_METERS) {
+        archetype = 'mountain-pass';
+      }
+    }
     // The lattice is centred on the origin: cell (0,0) spans [-2000, 2000) so the home
     // city (and the spawn) sits at its centre, not on a corner.
     const centerX = ix * REGION_CELL_METERS;
@@ -295,7 +354,18 @@ export function createWorldPlan(seed: number): WorldPlan {
       };
     }
 
-    const spec = DISTRICT_SPECS[archetype];
+    let spec = DISTRICT_SPECS[archetype];
+    // The old world's Kuroha Jungle signature: bamboo and broadleaf under a tall canopy.
+    // ~45% of rural cells grow into a grove so every world has its deep forest.
+    if (archetype === 'rural' && hash2(0xe7, 0x7e, regionSeed) < 0.45) {
+      spec = {
+        labelPrefix: 'Grove',
+        radiusFraction: 0.95,
+        speciesDensity: { conifer: 0.4, broadleaf: 1.9, sakura: 0.9, bamboo: 2.4, rock: 0.4 },
+        groundTint: [0.9, 1.02, 0.86],
+        canopyScale: 1.45,
+      };
+    }
     // The home district hugs the spawn: a large core with small jitter, so the start is
     // always in the middle of the vast city, not at its edge.
     const jitter = ix === 0 && iz === 0 ? 0.15 : 0.35;
@@ -311,7 +381,7 @@ export function createWorldPlan(seed: number): WorldPlan {
       ...(spec.canopyScale !== undefined ? { canopyScale: spec.canopyScale } : {}),
     };
 
-    return {
+    const region: RegionPlan = {
       id,
       ix,
       iz,
@@ -322,6 +392,8 @@ export function createWorldPlan(seed: number): WorldPlan {
       ...(cityGrid !== undefined ? { cityGrid } : {}),
       district,
     };
+    regionCache.set(key, region);
+    return region;
   };
 
   const regionAt = (x: number, z: number): RegionPlan =>
