@@ -296,7 +296,9 @@ export function createWorldPlan(seed: number): WorldPlan {
     }
 
     const spec = DISTRICT_SPECS[archetype];
-    const jitter = 0.35;
+    // The home district hugs the spawn: a large core with small jitter, so the start is
+    // always in the middle of the vast city, not at its edge.
+    const jitter = ix === 0 && iz === 0 ? 0.15 : 0.35;
     const district: PlannedDistrict = {
       id: `d-${id}`,
       label: districtName(regionSeed, spec.labelPrefix),
