@@ -3289,3 +3289,68 @@ _Rendering — bounded polish within budgets:_ tier C SSR `resolutionScale 0.33�
 **Iron rules for the build:** (1) no new materials/shaders — archetypes compose existing kits, 281-stage floor must hold; (2) plan generation = a few hundred ms of pure CPU math at load, no load-time regression; (3) determinism per plan §5 (separate streams, travel-order independence, bit-identical chunk edges); (4) the generator emits the existing `RoadNetworkConfig` shape so solver/carve/ribbons/physics/minimap are untouched; (5) city content must become chunk-streamed (vast city) — generalize Aohara's block/plot logic to a pure (seed, chunk, plan) function; (6) spawn = generated straight low-grade edge + existing flat plateau; (7) seed random per launch, shown in pause menu, debug `?seed=` for look-dev.
 
 **Next (implementation):** pass 1 modules in order — `src/world/world-plan.ts` (pure plan: regions/districts/spawn/summary) with tests → `src/world/road-layout.ts` (pure backbone + per-region graphs) with tests → procedural city generator (chunk-streamed) → Application wiring + retire hand-placed configs → full check → device pass. Then pass 2 (highway class, slums, off-road, bridges).
+---
+
+## §172 Phase 10 pass 1 — the generated world is live (2026-11-02)
+
+**Status: shipped, awaiting owner device pass.** Live build **BC_5P_64** (commit `cdae6cf`, CI ✓/✓).
+Every launch is now a brand-new world: new terrain (own seed stream), new road graph, new home city
+placement, new districts, new vast city. `?seed=<n>` pins a world for captures/bug reports; the seed is
+shown in the pause menu and diagnostics. The hand-placed Hinode/Aohara world is retired for the game
+(constants survive only for standalone look-dev scenes and unit fixtures).
+
+### Architecture (all pure until the renderer; deterministic per seed)
+
+- `src/world/world-plan.ts` — seed → archetype grid on a 4 km macro lattice (home cell always
+  megacity; 2-octave value noise + one neighbour-spreading pass so cities read as a vast city;
+  thresholds: megacity ≥0.72, fringe ≥0.45, town ≥0.32, rural ≥0.10, else pass). One soft-disc
+  district per cell (speciesDensity/groundTint/canopyScale). Home district jitter clamped to ±0.15
+  cell so the spawn is always in the city core. O(1) plan; regions generated on demand.
+- `src/world/road-layout.ts` — plan → `RoadNetworkConfig` (solver/carve/ribbons/physics/minimap
+  untouched): arterial skeleton on the global cell-boundary lattice (per-segment class by
+  archetype), the **Aohara kit graph translated to the generated anchor** (ids preserved — traffic,
+  signals and facade placement keep working; the kit's clearance math is translation-invariant),
+  9×9/6×6/3×3 block grids for megacity/fringe/town cells, two-road rural webs, touge pass roads,
+  gateway connectors. 3×3-cell window: 311–554 nodes, 291–433 km, one connected component, solver
+  300–455 ms (server; phone est. ~0.8–1.5 s — the main load-time risk to watch).
+- `src/world/city-content.ts` — home anchor (plan district + Aohara plateau radii 500/620), kit
+  translation, Central Avenue spawn (anchor + (0, −75), yaw 0), massing specs for other urban
+  regions (towers with 3 crown styles from Aohara's palette/height ladder, infill, lamps).
+- `src/world/urban-massing.ts` + `src/world/city-streamer.ts` — the vast city: instanced tower
+  blocks (Aohara's `createArchitecturalMaterial` family — **no new shader stages**), lit window
+  quads (Aohara's window material pattern), infill, lamps, 2/3/4 point lights per tier. Streamed on
+  approach: build 1.8 km, unbuild 2.8 km, max 2/3/4 live per tier, one build per frame.
+- `src/world/plan-districts.ts` — plan-driven vegetation multipliers/ground tint/canopy (same
+  soft-disc math, module-level provider seam; static Hinode fallback for fixtures).
+- Wiring: `Application` rolls `worldSeed` per launch → plan → layout → carved terrain with the city
+  plateau on the anchor (terrain heightfield seed = `imul(seed, 0x9e3779b9) ^ 0x7e55d`). `DrivingWorld`
+  mounts the kit at the anchor, re-anchors Yūhi to the nearest generated small town (capped 900 m
+  radius; falls back to the hand-placed Yūhi spot when the window has no small town), wires the
+  streamer into setDaylight/updateStreaming/collideTown/stats/dispose. Pause menu: WORLD SEED stat,
+  spawn list degrades to Central Avenue. Diagnostics: world seed row + spawn point.
+
+### Verified (unit/integration, 752 tests green)
+
+- Plan: determinism, home-megacity, lattice mapping, urban mix 35–80%, shared line classes.
+- Road layout: determinism, edge/node validity, **single connected component**, window extent,
+  kit translated with ids preserved, **spawn on an urban-arterial at d=0.0**, solved grade caps.
+- End-to-end smoke: seeds 20261102 / 424242 → plan+layout 4–6 ms, solve 300–455 ms, 291/433 km,
+  4/8 massing cities, 69/476 towers.
+- Live bundle `BC_5P_64` (1,770,092 B) contains all Phase 10 string markers.
+
+### Known limits / pass-2 queue (only after owner accepts pass 1)
+
+- Solve time is the load risk (up to ~1.5 s on a tier-C phone). If the owner reports a slow
+  startup: shrink `ROAD_WINDOW_CELLS` → 1 stays, cut non-home grids 9×9→8×8 or rural webs 2→1.
+- Massing cities have no flares/facade kit/backstreet props/traffic (home city has all of it).
+- Volcano stays at fixed (−1500, −2100) in every world; per-seed volcano position is an enhancement.
+- Pass 2 per spec: highway road class, slum-colony sub-archetype, enhanced off-road, bridges
+  (after grade/clearance/collision validation), massing flares, per-seed volcano.
+
+### Owner device pass — ask for
+
+1. Does the world read as the same vibe (vast city, rural pockets, narrow streets)?
+2. The **Startup** line (expect ~30–35 s; the layout+solve adds ~0.3–1.5 s).
+3. Tier C FPS.
+4. Does the distant city materialise as you drive toward it (and free memory as you leave)?
+5. A `?seed=` reload giving the identical world.
