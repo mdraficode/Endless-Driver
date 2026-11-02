@@ -13,6 +13,7 @@ import {
 } from 'three/webgpu';
 import { scaleBaseline } from '../environment/daylight-levels';
 import { buildPostChain, type PostEffectName } from '../shaders/post-chain';
+import { installStableShaderBufferNames } from './stable-shader-buffer-names';
 import { DynamicResolutionController } from './DynamicResolution';
 import { supportsScenePassResolutionScale } from './RenderScalePolicy';
 import type { PrewarmView } from './settle-views';
@@ -507,11 +508,12 @@ export class Engine {
       return;
     }
     const backend = this.#renderer.backend as { isWebGLBackend?: boolean } | undefined;
-    // DISABLED (2026-11-02): kHVW6972 went black-screen on the owner's phone — the deterministic
-    // UBO names produced GLSL the real driver rejected (the lab's stub backend never compiles
-    // GLSL, so it cannot catch this). Re-enable only after the fix is verified against a real
-    // WebGL2 shader compilation (see docs/SESSION_HANDOFF.md §169).
-    // installStableShaderBufferNames(backend, this.#renderer);
+    // Must run before the first pipeline build: makes per-instance UBO names deterministic so
+    // InstancedMeshes with the same (buffer type, instance count) share compiled programs.
+    // Renames ALL THREE names the pipeline uses (GLSL declaration, body reference, runtime
+    // binding name) — kHVW6972 skipped the binding name and went black-screen (§169); the
+    // lockstep unit test guards the chain.
+    installStableShaderBufferNames(backend, this.#renderer);
     await this.#renderer.init();
     this.#backend = backend?.isWebGLBackend === true ? 'webgl2' : 'webgpu';
     this.#initialized = true;

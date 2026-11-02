@@ -866,6 +866,20 @@ async function instanceProbe(backend) {
   );
   const sample = [...codes][0] ?? '';
   const bufferNames = sample ? sample.match(/NodeBuffer_[A-Za-z0-9_]+/g) : [];
+  // Text-level GLSL audit: every UBO member reference in the body must be declared in a UBO
+  // block, or the driver rejects the whole program (all materials fail -> black scene).
+  for (const [i, code] of [...codes].entries()) {
+    const decls = new Set(
+      [...code.matchAll(/uniform \w+ \{\s*\w+ (\w+)\[\d*\];/g)].map((m) => m[1]),
+    );
+    const refs = [...new Set([...code.matchAll(/\b(\w+)\[ uint/g)].map((m) => m[1]))];
+    const undeclared = refs.filter((r) => !decls.has(r));
+    console.log(
+      `  audit code${i}: decls=[${[...decls].join(', ')}] refs=[${refs.join(', ')}] undeclared=${
+        undeclared.length ? undeclared.join(', ') : 'none'
+      }`,
+    );
+  }
   console.log(
     `instance probe PATCH=${patched ? 1 : 0}: vertex codes = ${codes.size} (buffer names: ${[...new Set(bufferNames || [])].join(', ')})`,
   );

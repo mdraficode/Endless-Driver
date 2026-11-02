@@ -108,6 +108,25 @@ export function installStableShaderBufferNames(backend: unknown, renderer?: unkn
     if (ordinal > 0) return uniformNode; // duplicate (type, count) in this shader: keep unique id names
     uniformNode.name = `buffer_${stable}`;
     (node as BufferNodeLike).name = `NodeBuffer_${stable}`;
+    // The runtime binding lookup (WebGLBackend._setupBindings) resolves the uniform block by
+    // the NodeUniformBuffer's OWN name, which the original code captured from node.name at
+    // creation time — before this rename. Renaming it too is mandatory: without it the GLSL
+    // declares the stable name while the lookup still uses the id name, getUniformBlockIndex
+    // returns -1, the block is never bound, and every InstancedMesh renders with zero
+    // matrices (this exact mismatch shipped in kHVW6972 as a black screen). The per-stage
+    // binding object is cached in the node data as `uniformGPU` (the same lookup the original
+    // branch uses to avoid recreating it).
+    const shaderStage = (rest[0] as string | undefined) ?? 'vertex';
+    const builder = self as unknown as {
+      getDataFromNode?: (n: unknown, s: string, c: unknown) => { uniformGPU?: { name?: string } };
+      globalCache?: unknown;
+    };
+    const bufferBinding = builder.getDataFromNode?.(
+      node,
+      shaderStage,
+      builder.globalCache ?? null,
+    )?.uniformGPU;
+    if (bufferBinding) bufferBinding.name = `NodeBuffer_${stable}`;
     return uniformNode;
   };
 }

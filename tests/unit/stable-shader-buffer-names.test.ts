@@ -82,6 +82,30 @@ describe('stable-shader-buffer-names', () => {
     expect(uniformNode.name).toBe('myFloat');
   });
 
+  it('keeps the declaration, body reference and runtime binding names in lockstep', () => {
+    const builder = makeBuilder() as Builder & {
+      globalCache: unknown;
+      getDataFromNode(
+        node: unknown,
+        stage: string,
+        cache: unknown,
+      ): {
+        uniformGPU?: { name?: string };
+      };
+      getPropertyName(node: { name?: string }): string;
+    };
+    const node = makeBufferNode(24);
+    const uniformNode = builder.getUniformFromNode(node, 'buffer', 'vertex');
+    const binding = builder.getDataFromNode(node, 'vertex', builder.globalCache).uniformGPU;
+    // All three names the pipeline uses must be identical, or the driver cannot resolve the
+    // uniform block (getUniformBlockIndex returns -1 and the instances render as zeros).
+    expect(node.name).toBe('NodeBuffer_mat4x24');
+    expect(uniformNode.name).toBe('buffer_mat4x24');
+    expect(binding?.name).toBe('NodeBuffer_mat4x24');
+    // The body reference path (UniformNode.generate) reads getPropertyName(nodeUniform).
+    expect(builder.getPropertyName(uniformNode as { name?: string })).toBe('buffer_mat4x24');
+  });
+
   it('is a no-op when the backend exposes no createNodeBuilder', () => {
     expect(() => installStableShaderBufferNames({})).not.toThrow();
     expect(() => installStableShaderBufferNames(null)).not.toThrow();
