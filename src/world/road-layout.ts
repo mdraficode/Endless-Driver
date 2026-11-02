@@ -25,6 +25,8 @@
  * count; the hand-placed world is 195). Keep new road sources proportional.
  */
 import type { RoadClass, RoadEdgeConfig, RoadNetworkConfig, RoadNodeConfig } from '../config/roads';
+import { AOHARA_JUNCTION_NODE_ID } from '../config/urban-district';
+import { homeCityAnchor, homeCityRoadGraph } from './city-content';
 import { REGION_CELL_METERS, type RegionPlan, type WorldPlan } from './world-plan';
 
 /**
@@ -165,10 +167,42 @@ export function buildRoadLayout(
   }
 
   // ---------------------------------------------------------------------
-  // 2. Per-region content, walking the window in a fixed (deterministic) order.
+  // 2. The home city: the hand-tuned Aohara kit translated to the generated anchor.
+  // ---------------------------------------------------------------------
+  const anchor = homeCityAnchor(plan);
+  const kit = homeCityRoadGraph(anchor);
+  for (const node of kit.nodes) {
+    addNode(node.id, node.x, node.z);
+  }
+  for (const edge of kit.edges) {
+    edges.push({ ...edge });
+  }
+  // The kit's outer gateway nodes join the arterial skeleton.
+  for (const gatewayId of [
+    'aohara-north-outer-west-outer',
+    'aohara-north-outer-east-outer',
+    'aohara-south-outer-west-outer',
+    'aohara-south-outer-east-outer',
+    'aohara-boulevard-west-outer',
+  ]) {
+    const from = nodeIndex.get(gatewayId);
+    if (from === undefined) continue;
+    const to = nearestNode(skeletonNodes, from.x, from.z);
+    edges.push({
+      from: from.id,
+      to: to.id,
+      roadClass: 'city-access',
+      halfWidthMeters: CITY_ACCESS_HALF_WIDTH,
+      maxGrade: 0.08,
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // 3. Per-region content, walking the window in a fixed (deterministic) order.
   // ---------------------------------------------------------------------
   for (let iz = -W; iz <= W; iz += 1) {
     for (let ix = -W; ix <= W; ix += 1) {
+      if (ix === 0 && iz === 0) continue; // the home cell carries the Aohara kit above
       const region = plan.regionAtCell(ix, iz);
       addRegionRoads(region);
     }
@@ -179,7 +213,6 @@ export function buildRoadLayout(
     if (archetype === 'megacity' || archetype === 'urban-fringe' || archetype === 'small-town') {
       const n = GRID_NODES[archetype];
       const spacing = GRID_SPACING[archetype];
-      const half = ((n - 1) / 2) * spacing;
       const gridNodes: RoadNodeConfig[] = [];
       for (let r = 0; r < n; r += 1) {
         for (let c = 0; c < n; c += 1) {
@@ -246,7 +279,9 @@ export function buildRoadLayout(
               [n - 1, Math.floor((n - 1) / 2)],
               [n - 1, n - 1],
             ];
-      for (const [r, c] of anchorPoints) {
+      for (const anchor of anchorPoints) {
+        const [r, c] = anchor;
+        if (r === undefined || c === undefined) continue;
         const from = gridNodes[r * n + c]!;
         const to = nearestNode(skeletonNodes, from.x, from.z);
         if (from.id === to.id) continue;
@@ -336,53 +371,6 @@ export function buildRoadLayout(
     }
   }
 
-  // ---------------------------------------------------------------------
-  // 3. Spawn edge: a straight, low-grade boulevard along +Z from the origin.
-  // ---------------------------------------------------------------------
-  const spawnA = addNode('spawn-0', 0, 0);
-  const spawnB = addNode('spawn-1', 0, 800);
-  const spawnC = addNode('spawn-2', 0, 1600);
-  edges.push({
-    from: spawnA.id,
-    to: spawnB.id,
-    roadClass: 'urban-arterial',
-    halfWidthMeters: URBAN_ARTERIAL_HALF_WIDTH,
-    maxGrade: 0.05,
-  });
-  edges.push({
-    from: spawnB.id,
-    to: spawnC.id,
-    roadClass: 'urban-arterial',
-    halfWidthMeters: URBAN_ARTERIAL_HALF_WIDTH,
-    maxGrade: 0.05,
-  });
-  const home = plan.regionAtCell(0, 0);
-  if (home.archetype === 'megacity' || home.archetype === 'urban-fringe') {
-    // The far end of the spawn boulevard meets the home grid.
-    const gridNodes = nodes.filter((node) => node.id.startsWith(`g0-0-`));
-    if (gridNodes.length > 0) {
-      const to = nearestNode(gridNodes, spawnC.x, spawnC.z);
-      if (to.id !== spawnC.id) {
-        edges.push({
-          from: spawnC.id,
-          to: to.id,
-          roadClass: 'city-access',
-          halfWidthMeters: CITY_ACCESS_HALF_WIDTH,
-          maxGrade: 0.06,
-        });
-      }
-    }
-  } else {
-    const to = nearestNode(skeletonNodes, spawnC.x, spawnC.z);
-    edges.push({
-      from: spawnC.id,
-      to: to.id,
-      roadClass: 'city-access',
-      halfWidthMeters: CITY_ACCESS_HALF_WIDTH,
-      maxGrade: 0.06,
-    });
-  }
-
   return {
     config: {
       halfWidthMeters: 2.75,
@@ -393,6 +381,8 @@ export function buildRoadLayout(
       nodes,
       edges,
     },
-    spawnNodeId: spawnB.id,
+    // The kit's central intersection: every world starts on Central Avenue, which runs
+    // straight through the levelled city plateau (see proceduralSpawn in city-content).
+    spawnNodeId: AOHARA_JUNCTION_NODE_ID,
   };
 }

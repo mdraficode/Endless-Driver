@@ -4,6 +4,13 @@ import { AOHARA_DISTRICT_CONFIG } from '../config/urban-district';
 import { createTerrainSampler, terrainNormalAt, type TerrainSampler } from './terrain-height';
 import { buildRoadNetwork, roadInfluence } from './road-network';
 
+export interface CityPlateau {
+  readonly x: number;
+  readonly z: number;
+  readonly flatRadiusMeters: number;
+  readonly blendRadiusMeters: number;
+}
+
 /**
  * The world sampler the game actually uses: base terrain with the road network carved in.
  *
@@ -11,33 +18,37 @@ import { buildRoadNetwork, roadInfluence } from './road-network';
  * colliders, the chunk meshes, and the surface query all see the same flattened,
  * grade-limited road corridor. `createTerrainSampler` stays road-free for tests and for
  * any future biome that has no roads; the composition happens here, once, in Application.
+ *
+ * `cityPlateau` moves the levelled urban core (Phase 10: the generated home city); omitted,
+ * it stays at the hand-placed Aohara position so existing callers keep today's behaviour.
  */
 export function createWorldTerrainSampler(
   terrainConfig: TerrainConfig,
   roadConfig: RoadNetworkConfig,
+  cityPlateau?: CityPlateau,
 ): TerrainSampler {
+  const plateau: CityPlateau = cityPlateau ?? {
+    x: AOHARA_DISTRICT_CONFIG.centerX,
+    z: AOHARA_DISTRICT_CONFIG.centerZ,
+    flatRadiusMeters: AOHARA_DISTRICT_CONFIG.flatRadiusMeters,
+    blendRadiusMeters: AOHARA_DISTRICT_CONFIG.terrainBlendRadiusMeters,
+  };
   const base = createTerrainSampler(terrainConfig);
-  const cityElevation = base.heightAt(
-    AOHARA_DISTRICT_CONFIG.centerX,
-    AOHARA_DISTRICT_CONFIG.centerZ,
-  );
+  const cityElevation = base.heightAt(plateau.x, plateau.z);
   // The city core is a bounded graded plain, not a second terrain/physics surface. A smooth
-  // radial transition restores the original seeded Hinode heightfield before the district edge.
+  // radial transition restores the original seeded heightfield before the district edge.
   const baseHeightAt = (x: number, z: number): number => {
-    const distance = Math.hypot(
-      x - AOHARA_DISTRICT_CONFIG.centerX,
-      z - AOHARA_DISTRICT_CONFIG.centerZ,
-    );
-    if (distance <= AOHARA_DISTRICT_CONFIG.flatRadiusMeters) {
+    const distance = Math.hypot(x - plateau.x, z - plateau.z);
+    if (distance <= plateau.flatRadiusMeters) {
       return cityElevation;
     }
     const naturalHeight = base.heightAt(x, z);
-    if (distance >= AOHARA_DISTRICT_CONFIG.terrainBlendRadiusMeters) {
+    if (distance >= plateau.blendRadiusMeters) {
       return naturalHeight;
     }
     const t =
-      (distance - AOHARA_DISTRICT_CONFIG.flatRadiusMeters) /
-      (AOHARA_DISTRICT_CONFIG.terrainBlendRadiusMeters - AOHARA_DISTRICT_CONFIG.flatRadiusMeters);
+      (distance - plateau.flatRadiusMeters) /
+      (plateau.blendRadiusMeters - plateau.flatRadiusMeters);
     const blend = t * t * (3 - 2 * t);
     return cityElevation + (naturalHeight - cityElevation) * blend;
   };

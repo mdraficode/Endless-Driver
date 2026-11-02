@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { buildRoadLayout, ROAD_WINDOW_CELLS } from '../../src/world/road-layout';
 import { createWorldPlan, REGION_CELL_METERS } from '../../src/world/world-plan';
 import { buildRoadNetwork } from '../../src/world/road-network';
+import { AOHARA_JUNCTION_NODE_ID } from '../../src/config/urban-district';
+import { homeCityAnchor, proceduralSpawn } from '../../src/world/city-content';
 
 function layoutFor(seed: number) {
   return buildRoadLayout(createWorldPlan(seed));
@@ -65,16 +67,30 @@ describe('road-layout', () => {
     }
   });
 
-  it('starts every world on a straight low-grade boulevard at the origin', () => {
-    const { config } = layoutFor(99);
+  it('mounts the hand-tuned Aohara kit at the generated anchor, ids preserved', () => {
+    const plan = createWorldPlan(99);
+    const { config } = buildRoadLayout(plan);
+    const anchor = homeCityAnchor(plan);
     const byId = new Map(config.nodes.map((node) => [node.id, node]));
-    expect(byId.get('spawn-0')).toEqual({ id: 'spawn-0', x: 0, z: 0 });
-    const spawnEdges = config.edges.filter(
-      (edge) => edge.from === 'spawn-0' || edge.to === 'spawn-0',
-    );
-    expect(spawnEdges.length).toBe(1);
-    expect(spawnEdges[0]?.roadClass).toBe('urban-arterial');
-    expect(spawnEdges[0]?.maxGrade).toBe(0.05);
+    // The kit's central intersection exists, translated from the hand-placed centre.
+    const centre = byId.get(AOHARA_JUNCTION_NODE_ID)!;
+    expect(Math.abs(centre.x - anchor.x)).toBeLessThan(1);
+    expect(Math.abs(centre.z - anchor.z)).toBeLessThan(1);
+    // The kit's boulevard junctions travel with it too.
+    expect(byId.has('aohara-boulevard-west-outer')).toBe(true);
+    // And the anchor actually follows the plan (differs from the hand-placed centre).
+    expect([anchor.x, anchor.z]).not.toEqual([1250, -430]);
+  });
+
+  it('puts the spawn point on an arterial road in the home city', () => {
+    const plan = createWorldPlan(99);
+    const layout = buildRoadLayout(plan);
+    const spawn = proceduralSpawn(homeCityAnchor(plan));
+    const network = buildRoadNetwork(layout.config, () => 0);
+    const sample = network.sample(spawn.x, spawn.z);
+    expect(sample).not.toBeNull();
+    expect(sample?.roadClass).toBe('urban-arterial');
+    expect(sample?.distance).toBeLessThan(5);
   });
 
   it('solves through the existing solver and obeys grade caps', () => {

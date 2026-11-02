@@ -379,6 +379,24 @@ const AOHARA_BACKSTREET_EDGES: readonly RoadEdgeConfig[] = AOHARA_BACKSTREET_BLO
   ],
 );
 
+/**
+ * The Aohara city *kit* graph: the 5×5 street grid, alley access, backstreets and the grand
+ * boulevard, with no rural link. Phase 10 mounts this graph at the generated home anchor
+ * (translated, ids preserved) so the hand-tuned city travels to wherever the plan puts it.
+ */
+export const AOHARA_KIT_NODES: readonly RoadNodeConfig[] = [
+  ...AOHARA_GRID_NODES,
+  ...AOHARA_BACKSTREET_ACCESS_NODES,
+  ...AOHARA_BACKSTREET_INTERNAL_NODES,
+  ...AOHARA_BOULEVARD_JUNCTIONS,
+];
+
+export const AOHARA_KIT_EDGES: readonly RoadEdgeConfig[] = [
+  ...AOHARA_GRID_EDGES,
+  ...AOHARA_BOULEVARD_EDGES,
+  ...AOHARA_BACKSTREET_EDGES,
+];
+
 export const ROAD_NETWORK_CONFIG: RoadNetworkConfig = {
   halfWidthMeters: 5.5,
   shoulderMeters: 2.2,

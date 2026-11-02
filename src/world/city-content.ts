@@ -1,0 +1,270 @@
+/**
+ * Phase 10 — plan-driven city content (pure).
+ *
+ * The world plan decides WHERE every city sits; this module turns that into concrete
+ * content: the home city's road graph (the hand-tuned Aohara kit, translated to the
+ * generated anchor), the spawn point, and the "massing" specs for every other urban
+ * region (towers, infill, lamps) that the streamed massing renderer draws.
+ *
+ * Everything here is a pure function of the plan — deterministic per seed, no three.js.
+ */
+import type { RoadEdgeConfig, RoadNodeConfig } from '../config/roads';
+import { AOHARA_KIT_EDGES, AOHARA_KIT_NODES } from '../config/roads';
+import { AOHARA_DISTRICT_CONFIG, aoharaRowOffsetMeters } from '../config/urban-district';
+import type { RegionPlan, WorldPlan } from './world-plan';
+
+// ---------------------------------------------------------------------------
+// Home city: the Aohara kit, moved.
+// ---------------------------------------------------------------------------
+
+export interface HomeCityAnchor {
+  /** World position of the city centre (the plan's home district centre). */
+  readonly x: number;
+  readonly z: number;
+  /** Terrain plateau radii that keep the city on a levelled urban core. */
+  readonly flatRadiusMeters: number;
+  readonly blendRadiusMeters: number;
+}
+
+/** Where the home city sits: the plan's home district, always at the origin's cell. */
+export function homeCityAnchor(plan: WorldPlan): HomeCityAnchor {
+  const district = plan.regionAtCell(0, 0).district;
+  return {
+    x: district.centerX,
+    z: district.centerZ,
+    flatRadiusMeters: AOHARA_DISTRICT_CONFIG.flatRadiusMeters,
+    blendRadiusMeters: AOHARA_DISTRICT_CONFIG.terrainBlendRadiusMeters,
+  };
+}
+
+/**
+ * The Aohara kit graph (grid + alley access + backstreets + boulevard) translated to the
+ * anchor. Node ids are preserved verbatim: the city's traffic, signals and facade placement
+ * reference them, and the kit's own clearance math is translation-invariant.
+ */
+export function homeCityRoadGraph(anchor: HomeCityAnchor): {
+  readonly nodes: readonly RoadNodeConfig[];
+  readonly edges: readonly RoadEdgeConfig[];
+} {
+  const dx = anchor.x - AOHARA_DISTRICT_CONFIG.centerX;
+  const dz = anchor.z - AOHARA_DISTRICT_CONFIG.centerZ;
+  return {
+    nodes: AOHARA_KIT_NODES.map((node) => ({ id: node.id, x: node.x + dx, z: node.z + dz })),
+    edges: AOHARA_KIT_EDGES.map((edge) => ({
+      from: edge.from,
+      to: edge.to,
+      ...(edge.roadClass !== undefined ? { roadClass: edge.roadClass } : {}),
+      ...(edge.halfWidthMeters !== undefined ? { halfWidthMeters: edge.halfWidthMeters } : {}),
+      ...(edge.shoulderMeters !== undefined ? { shoulderMeters: edge.shoulderMeters } : {}),
+      ...(edge.maxGrade !== undefined ? { maxGrade: edge.maxGrade } : {}),
+      ...(edge.via !== undefined
+        ? { via: edge.via.map(([x, z]) => [x + dx, z + dz] as [number, number]) }
+        : {}),
+    })),
+  };
+}
+
+export interface ProceduralSpawn {
+  readonly id: string;
+  readonly label: string;
+  readonly x: number;
+  readonly z: number;
+  /** Heading in radians; 0 faces -Z. */
+  readonly yaw: number;
+}
+
+/** Central Avenue, midway between the central intersection and the north street — today's start. */
+export function proceduralSpawn(anchor: HomeCityAnchor): ProceduralSpawn {
+  return {
+    id: 'procedural-city',
+    label: 'Home City — Central Avenue',
+    x: anchor.x,
+    z: anchor.z + aoharaRowOffsetMeters(1) / 2,
+    yaw: 0,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Massing cities: the other urban regions, drawn light but real.
+// ---------------------------------------------------------------------------
+
+/** Tower palette — Aohara's facade tones, so the generated skyline reads as the same city. */
+const MASSING_FACADE_PALETTE = [0x202b36, 0x27333e, 0x30343e, 0x3a3735] as const;
+/** Heights in metres, Aohara's skyline ladder. */
+const MASSING_TOWER_HEIGHTS = [34, 44, 58, 72, 90, 116, 142] as const;
+const MASSING_ROOF_COLORS = [0x263039, 0x1c2029, 0x2a2f38] as const;
+
+/** Infallible 3-input hash in [0, 1) — same pattern as the terrain's value noise. */
+function stableUnit(a: number, b: number, salt: number): number {
+  let h = (a * 374761393 + b * 668265263 + salt * 2246822519) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h = h ^ (h >>> 16);
+  return (h >>> 0) / 0x100000000;
+}
+
+export interface MassingCrown {
+  readonly width: number;
+  readonly depth: number;
+  readonly height: number;
+  readonly offsetX?: number;
+  readonly offsetZ?: number;
+}
+
+export interface MassingTower {
+  /** District-local coordinates, metres. */
+  readonly x: number;
+  readonly z: number;
+  readonly width: number;
+  readonly depth: number;
+  readonly height: number;
+  readonly color: number;
+  readonly crown: MassingCrown | null;
+}
+
+export interface MassingInfill {
+  readonly x: number;
+  readonly z: number;
+  readonly width: number;
+  readonly depth: number;
+  readonly height: number;
+  readonly color: number;
+}
+
+/** A lamp slot on a grid node; the renderer budgets which actually light up. */
+export interface MassingLamp {
+  readonly x: number;
+  readonly z: number;
+}
+
+export interface MassingCitySpec {
+  readonly regionId: string;
+  /** District centre (world), where the region's road grid sits. */
+  readonly x: number;
+  readonly z: number;
+  readonly streetSpacing: number;
+  readonly gridNodes: number;
+  readonly towers: readonly MassingTower[];
+  readonly infill: readonly MassingInfill[];
+  readonly lamps: readonly MassingLamp[];
+}
+
+/**
+ * Generates the massing content for one urban region (megacity or urban-fringe).
+ * Pure in the region: the same plan always yields the same city.
+ */
+export function massingCityForRegion(region: RegionPlan): MassingCitySpec {
+  if (region.archetype !== 'megacity' && region.archetype !== 'urban-fringe') {
+    return {
+      regionId: region.id,
+      x: region.district.centerX,
+      z: region.district.centerZ,
+      streetSpacing: 0,
+      gridNodes: 0,
+      towers: [],
+      infill: [],
+      lamps: [],
+    };
+  }
+  const isMegacity = region.archetype === 'megacity';
+  const n = isMegacity ? 9 : 6;
+  const spacing = isMegacity ? 240 : 320;
+  const seed = region.seed;
+  const districtX = region.district.centerX;
+  const districtZ = region.district.centerZ;
+  const half = ((n - 1) / 2) * spacing;
+
+  const towers: MassingTower[] = [];
+  const infill: MassingInfill[] = [];
+  const lamps: MassingLamp[] = [];
+
+  // Lamps at every grid node (the renderer trims to tier budget).
+  for (let r = 0; r < n; r += 1) {
+    for (let c = 0; c < n; c += 1) {
+      lamps.push({ x: (c - (n - 1) / 2) * spacing, z: (r - (n - 1) / 2) * spacing });
+    }
+  }
+
+  // One block at a time, in a fixed order (deterministic).
+  for (let r = 0; r < n - 1; r += 1) {
+    for (let c = 0; c < n - 1; c += 1) {
+      const blockSeed = r * 131 + c * 17;
+      const blockCenterX = (c - (n - 1) / 2) * spacing + spacing / 2;
+      const blockCenterZ = (r - (n - 1) / 2) * spacing + spacing / 2;
+      // Blocks closer to the district core run taller and denser.
+      const coreDistance = Math.hypot(blockCenterX, blockCenterZ) / half;
+      const coreBoost = Math.max(0, 1 - coreDistance);
+
+      const u = (k: number): number => stableUnit(blockSeed, k, seed);
+      // Towers: two per block in the megacity, ~70% of blocks elsewhere.
+      const towerCount = isMegacity ? 2 : u(1) < 0.7 ? 1 : 0;
+      for (let t = 0; t < towerCount; t += 1) {
+        const side = t === 0 ? -1 : 1;
+        const ut = (k: number): number => stableUnit(blockSeed, t * 31 + k, seed);
+        const heightBudget = (isMegacity ? 1 : 0.65) + coreBoost * (isMegacity ? 0.5 : 0.35);
+        const heightIndex = Math.min(
+          MASSING_TOWER_HEIGHTS.length - 1,
+          Math.floor(ut(11) * MASSING_TOWER_HEIGHTS.length * heightBudget),
+        );
+        const height = MASSING_TOWER_HEIGHTS[heightIndex] ?? MASSING_TOWER_HEIGHTS[0]!;
+        const towerWidth = (isMegacity ? 28 : 22) + ut(13) * (isMegacity ? 8 : 6);
+        const towerDepth = Math.min(30 + ut(17) * 10, spacing / 3 - 9);
+        const crownStyle = ut(23);
+        const crown: MassingCrown =
+          crownStyle < 0.5
+            ? {
+                width: towerWidth * (0.58 + 0.22 * ut(29)),
+                depth: towerDepth * (0.58 + 0.22 * ut(31)),
+                height: Math.max(10, height * (0.15 + 0.1 * ut(37))),
+              }
+            : crownStyle < 0.75
+              ? {
+                  width: towerWidth * (0.5 + 0.18 * ut(29)),
+                  depth: towerDepth * (0.5 + 0.18 * ut(31)),
+                  height: Math.max(10, height * (0.15 + 0.1 * ut(37))),
+                  offsetX: (ut(41) < 0.5 ? -1 : 1) * towerWidth * 0.25 * ut(43),
+                  offsetZ: (ut(47) < 0.5 ? -1 : 1) * towerDepth * 0.25 * ut(49),
+                }
+              : {
+                  width: towerWidth * (0.8 + 0.1 * ut(29)),
+                  depth: towerDepth * (0.8 + 0.1 * ut(31)),
+                  height: 8 + 4 * ut(37),
+                };
+        towers.push({
+          x: blockCenterX + side * 35 + (ut(7) - 0.5) * 6,
+          z: blockCenterZ,
+          width: towerWidth,
+          depth: towerDepth,
+          height,
+          color:
+            MASSING_FACADE_PALETTE[Math.floor(ut(53) * MASSING_FACADE_PALETTE.length)] ?? 0x202b36,
+          crown,
+        });
+      }
+
+      // Infill: two to four low buildings per block, denser in the core.
+      const infillCount = 2 + Math.floor(u(61) * (2 + coreBoost * 2));
+      for (let i = 0; i < infillCount; i += 1) {
+        const ui = (k: number): number => stableUnit(blockSeed, 71 + i * 13 + k, seed);
+        infill.push({
+          x: blockCenterX + (ui(1) - 0.5) * (spacing - 40),
+          z: blockCenterZ + (ui(2) - 0.5) * (spacing - 40),
+          width: 10 + ui(3) * 8,
+          depth: 10 + ui(4) * 8,
+          height: 5 + ui(5) * (isMegacity ? 9 : 6),
+          color: MASSING_ROOF_COLORS[Math.floor(ui(6) * MASSING_ROOF_COLORS.length)] ?? 0x263039,
+        });
+      }
+    }
+  }
+
+  return {
+    regionId: region.id,
+    x: districtX,
+    z: districtZ,
+    streetSpacing: spacing,
+    gridNodes: n,
+    towers,
+    infill,
+    lamps,
+  };
+}
