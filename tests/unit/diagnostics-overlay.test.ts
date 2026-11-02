@@ -53,6 +53,7 @@ const SNAPSHOT = {
   triangles: 456_789,
   programs: 96,
   buildTag: 'Dgg3fSk3',
+  worldSeed: 20261102,
   startup: [
     { stage: 'total', ms: 94_000 },
     { stage: 'terrain', ms: 2_000 },
@@ -152,7 +153,7 @@ describe('full-screen diagnostics report', () => {
     expect(panel.getAttribute('aria-label')).toBe('Live diagnostics report');
     expect(panel.getAttribute('aria-hidden')).toBe('false');
     expect(grid.className).toBe('diagnostics-grid');
-    expect(grid.children).toHaveLength(36);
+    expect(grid.children).toHaveLength(37);
     expect(grid.children.every((metric) => metric.children.length === 2)).toBe(true);
 
     const labels = grid.children.map((metric) => metric.children[0]?.textContent);

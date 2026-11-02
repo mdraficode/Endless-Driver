@@ -38,6 +38,8 @@ export interface PauseMenuOptions {
   readonly spawnPoints: readonly SpawnPoint[];
   readonly currentSpawnId: string;
   readonly defaultSpawnId: string;
+  /** Phase 10: the seed behind this session's generated world (shown for sharing via ?seed=). */
+  readonly worldSeed?: number;
   readonly activeTier: TierId;
   readonly activeRenderer: string;
   readonly activeTrafficVehicleCount: number;
@@ -392,6 +394,9 @@ export class PauseMenu {
       (point) => point.id === this.#options.currentSpawnId,
     );
     this.#appendStat(statusGrid, 'CURRENT LOCATION', spawn?.label ?? this.#options.currentSpawnId);
+    if (this.#options.worldSeed !== undefined) {
+      this.#appendStat(statusGrid, 'WORLD SEED', String(this.#options.worldSeed));
+    }
     this.#appendStat(statusGrid, 'ACTIVE GRAPHICS', `Tier ${this.#options.activeTier}`);
     this.#appendStat(statusGrid, 'RENDERER', this.#options.activeRenderer.toUpperCase());
     this.#appendStat(

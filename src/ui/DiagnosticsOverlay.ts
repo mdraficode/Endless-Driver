@@ -172,10 +172,20 @@ export interface DiagnosticsSnapshot {
   readonly environmentId: string | null;
   /** Fog was removed completely, so this must always read `off`. */
   readonly fogMode: 'off';
-  /** Session start id (`home-meadow`, `Kiri-cedar`, ...), picked per load. */
+  /** Session start id (Phase 10: the generated Central Avenue), picked per load. */
   readonly spawnId: string;
   /** Player-facing name of that start, e.g. `Kiri Pass`. */
   readonly spawnLabel: string;
+  /** The generated start point (Phase 10): the pause menu offers it as the only location. */
+  readonly spawnPoint?: {
+    readonly id: string;
+    readonly label: string;
+    readonly x: number;
+    readonly z: number;
+    readonly yaw: number;
+  };
+  /** Phase 10: the seed behind this session's generated world. */
+  readonly worldSeed?: number;
   readonly pixelRatio: number;
   readonly viewport: { readonly width: number; readonly height: number };
   readonly cameraPosition: { readonly x: number; readonly y: number; readonly z: number };
@@ -354,6 +364,10 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
   {
     label: 'Start',
     format: (snapshot) => snapshot.spawnLabel,
+  },
+  {
+    label: 'World seed',
+    format: (snapshot) => (snapshot.worldSeed === undefined ? '—' : String(snapshot.worldSeed)),
   },
   {
     label: 'Renderer',

@@ -5,10 +5,14 @@ import type { TierId } from '../config/tiers';
 import { RoadWorld } from './RoadWorld';
 import { DistantMountainWorld } from './distant-mountains';
 import { UrbanNightWorld } from './urban-night';
+import { CityStreamer } from './city-streamer';
+import { homeCityAnchor } from './city-content';
 import { TerrainWorld } from './TerrainWorld';
 import { HinodeTougeWorld } from './hinode-touge';
-import { TownWorld } from './town';
+import { TownWorld, setTownDistrict } from './town';
 import { VegetationWorld } from './vegetation';
+import { nearestSmallTownDistrict, setPlanDistricts } from './plan-districts';
+import { ROAD_WINDOW_CELLS } from './road-layout';
 import type { AssetResolution } from '../assets/AssetManifest';
 import type { SceneContent, SceneContentContext } from './WorldContent';
 
@@ -32,6 +36,27 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
   root.name = 'driving-world';
   const surfaceTextures = new SurfaceTextureLibrary();
   const terrainInitialRing = qualityTier === 'C' ? 0 : 1;
+  // Phase 10: when a plan is present, the hand-placed Hinode data is retired — districts,
+  // the town and the home city all follow the generated world.
+  const plan = context.worldPlan ?? null;
+  const anchor = plan === null ? null : homeCityAnchor(plan);
+  if (plan !== null) {
+    setPlanDistricts(plan);
+    const smallTown = nearestSmallTownDistrict(plan, ROAD_WINDOW_CELLS);
+    setTownDistrict(
+      smallTown === null
+        ? null
+        : {
+            id: 'generated-small-town',
+            label: 'Generated Small Town',
+            centerX: smallTown.x,
+            centerZ: smallTown.z,
+            radiusMeters: Math.min(smallTown.radius, 900),
+            speciesDensity: {},
+            groundTint: [1, 1, 1],
+          },
+    );
+  }
   const terrain = new TerrainWorld(terrainSampler, {
     enableParallaxOcclusion: qualityTier === 'A',
     initialReadyRing: terrainInitialRing,
@@ -80,9 +105,9 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       ? null
       : new UrbanNightWorld(qualityTier, {
           position: [
-            AOHARA_DISTRICT_CONFIG.centerX,
+            anchor?.x ?? AOHARA_DISTRICT_CONFIG.centerX,
             urbanNode.y + 0.57,
-            AOHARA_DISTRICT_CONFIG.centerZ,
+            anchor?.z ?? AOHARA_DISTRICT_CONFIG.centerZ,
           ],
           ...(urbanNetwork === null ? {} : { roadNetwork: urbanNetwork }),
           ...(context.physics === undefined ? {} : { physics: context.physics }),
@@ -97,6 +122,15 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
     root.add(aohara.root);
   }
 
+  // The vast city beyond the home city: streamed on approach (Phase 10).
+  const cityStreamer =
+    plan === null
+      ? null
+      : new CityStreamer(plan, qualityTier, terrainSampler, {
+          attach: (city) => root.add(city.root),
+          detach: (city) => root.remove(city.root),
+        });
+
   return {
     root,
     kind: 'driving',
@@ -105,6 +139,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       vegetation.setDaylight(state);
       roads?.setDaylight(state);
       aohara?.setDaylight(state);
+      cityStreamer?.setDaylight(state);
     },
     update: (deltaSeconds) => aohara?.update(deltaSeconds),
     updateStreaming: (focus, velocity, deltaSeconds) => {
@@ -112,6 +147,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       vegetation.updateStreaming(focus, velocity, deltaSeconds ?? 0);
       town.updateStreaming(focus, deltaSeconds ?? 0);
       aohara?.updateStreaming(focus);
+      cityStreamer?.update(focus);
     },
     prepareInitial: async (focus, velocity = { x: 0, z: 0 }, onProgress) => {
       aohara?.updateStreaming(focus);
@@ -141,6 +177,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       ...town.collide(car, deltaSeconds),
       ...(aohara?.collide(car) ?? []),
       ...(hinodeTouge?.collide(car) ?? []),
+      ...(cityStreamer?.collideTown(car) ?? []),
     ],
     applyVegetationHits: (events) => {
       vegetation.applyHits(events);
@@ -176,6 +213,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       const townStats = town.getContentStats();
       const urbanStats = aohara?.getContentStats() ?? {};
       const tougeStats = hinodeTouge?.getContentStats() ?? {};
+      const cityStreamerStats = cityStreamer?.getContentStats() ?? {};
       const groundCoverInstances = vegetationStats.groundCoverInstances ?? 0;
       const groundCoverBudget = vegetationStats.groundCoverInstanceBudget ?? 0;
       const streetFurnitureInstances = urbanStats.urbanStreetFurnitureInstances ?? 0;
@@ -188,6 +226,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
         ...townStats,
         ...urbanStats,
         ...tougeStats,
+        ...cityStreamerStats,
         worldEnrichmentInstances: groundCoverInstances + streetFurnitureInstances,
         worldEnrichmentInstanceBudget: groundCoverBudget + streetFurnitureBudget,
         /** Number of static instance pools; this is not a measured draw-call count. */
@@ -202,6 +241,9 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       vegetation.dispose();
       town.dispose();
       aohara?.dispose();
+      cityStreamer?.dispose();
+      setPlanDistricts(null);
+      setTownDistrict(null);
       const geometries = new Set<BufferGeometry>();
       const materials = new Set<Material>();
       root.traverse((object) => {

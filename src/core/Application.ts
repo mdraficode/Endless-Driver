@@ -12,12 +12,14 @@ import {
   type TrafficIntensity,
 } from '../config/game-preferences';
 import { RENDER_CONFIG, type RenderConfig } from '../config/render';
-import { ROAD_NETWORK_CONFIG } from '../config/roads';
 import { ORIGIN_CONFIG } from '../config/origin';
 import { terrainConfigForTier } from '../config/terrain';
 import { DEFAULT_TIER } from '../config/tiers';
 import { WORLD_CONFIG, type WorldConfig } from '../config/world';
-import { resolveSpawnPoint, type SpawnPoint } from '../config/spawns';
+import { proceduralSpawn, homeCityAnchor } from '../world/city-content';
+import { buildRoadLayout } from '../world/road-layout';
+import { createWorldPlan } from '../world/world-plan';
+import type { SpawnPoint } from '../config/spawns';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
 import type { TerrainSampler } from '../world/terrain-height';
 import { OriginManager } from '../world/origin';
@@ -133,9 +135,14 @@ export interface ApplicationOptions {
   readonly clock?: EnvironmentClockOptions | undefined;
   /** Persistent night-mood preset; ignored by the entrypoint when `?time=` explicitly overrides it. */
   readonly nightMood?: boolean;
-  /** Pinned start (`?spawn=<id>`); omit for the default Aohara Metropolis start. */
+  /**
+   * Phase 10: the world seed — every launch gets a brand-new generated world (roads, cities,
+   * terrain, districts). `?seed=` pins one for captures/bug reports; omit for a fresh roll.
+   */
+  readonly worldSeed?: number;
+  /** @deprecated Phase 10 retires the hand-placed start list; the spawn is Central Avenue. */
   readonly spawnId?: string;
-  /** Random source used only when `spawnId` is explicitly `random`; injectable for tests/captures. */
+  /** @deprecated Phase 10 retires the per-session spawn rotation. */
   readonly spawnRandom?: () => number;
   /** Persistent player-selected visual car model. */
   readonly carModel?: PlayerCarModel;
@@ -338,6 +345,9 @@ export class Application {
   readonly #treeField: TreeCollisionField;
   /** This session's start: chosen once, and where the reset key returns to. */
   readonly #spawn: SpawnPoint & { readonly position: readonly [number, number, number] };
+  /** Phase 10: this session's generated world (diagnostics, scene context). */
+  readonly #worldPlan: import('../world/world-plan').WorldPlan;
+  readonly #worldSeed: number;
 
   constructor(options: ApplicationOptions) {
     this.#tier = options.tier ?? { id: DEFAULT_TIER, reason: 'unresolved' };
@@ -349,18 +359,31 @@ export class Application {
     this.#buildTag = options.buildTag ?? null;
     this.#surfaceState = resolveSurfaceState(options.weather ?? 'clear');
 
+    // Phase 10: the generated world. One seed drives terrain, the road graph, the home
+    // city's anchor, the districts and the vast city beyond; every launch is a new prefecture.
+    const worldSeed = (options.worldSeed ?? (Math.random() * 0x7fffffff) | 0) | 0;
+    const plan = createWorldPlan(worldSeed);
+    const anchor = homeCityAnchor(plan);
+    const roadLayout = buildRoadLayout(plan);
     // One terrain sampler feeds the visual chunks (via SceneManager's content) and the
     // physics heightfields: ground you see and ground you drive on are the same function.
+    // The city plateau follows the generated anchor; the heightfield seed is its own stream.
     const terrainSampler = createWorldTerrainSampler(
-      terrainConfigForTier(this.#tier.id),
-      ROAD_NETWORK_CONFIG,
+      terrainConfigForTier(this.#tier.id, (Math.imul(worldSeed, 0x9e3779b9) ^ 0x7e55d) | 0),
+      roadLayout.config,
+      {
+        x: anchor.x,
+        z: anchor.z,
+        flatRadiusMeters: anchor.flatRadiusMeters,
+        blendRadiusMeters: anchor.blendRadiusMeters,
+      },
     );
     this.#terrainSampler = terrainSampler;
     this.#treeField = new TreeCollisionField(terrainSampler);
-    // Aohara is the default game start. Explicit `?spawn=<id>` requests still select rural
-    // districts, and `?spawn=random` opts into the previous per-session rotation.
-    const spawnRandom = options.spawnId === 'random' ? (options.spawnRandom ?? Math.random)() : 0;
-    const spawnPoint = resolveSpawnPoint(options.spawnId, spawnRandom);
+    this.#worldPlan = plan;
+    this.#worldSeed = worldSeed;
+    // Every world starts on Central Avenue in the generated home city.
+    const spawnPoint = proceduralSpawn(anchor);
     this.#spawn = {
       ...spawnPoint,
       position: [
@@ -391,6 +414,7 @@ export class Application {
       ...(options.trafficIntensity !== undefined
         ? { trafficIntensity: options.trafficIntensity }
         : {}),
+      worldPlan: this.#worldPlan,
     });
     this.#engine.setGodraysLight(this.#scene.godraysLight);
 
@@ -1182,6 +1206,14 @@ export class Application {
       fogMode: scene.fogMode,
       spawnId: this.#spawn.id,
       spawnLabel: this.#spawn.label,
+      spawnPoint: {
+        id: this.#spawn.id,
+        label: this.#spawn.label,
+        x: this.#spawn.x,
+        z: this.#spawn.z,
+        yaw: this.#spawn.yaw,
+      },
+      worldSeed: this.#worldSeed,
       buildTag: this.#buildTag,
       framesPerSecond: statistics.averageFramesPerSecond,
       minimumFramesPerSecond: statistics.minimumFramesPerSecond,

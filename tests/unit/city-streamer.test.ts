@@ -30,7 +30,7 @@ function anUrbanRegion(seed: number, archetype: 'megacity' | 'urban-fringe') {
 
 describe('urban-massing', () => {
   it('builds instanced batches and tier-budgeted point lights', () => {
-    const { plan, region } = anUrbanRegion(20261102, 'megacity');
+    const { region } = anUrbanRegion(20261102, 'megacity');
     const spec = massingCityForRegion(region);
     const city = new MassingCityWorld(spec, 'C', { nightGain: nightGain(), baseY: 0 });
     expect(city.root.children.length).toBeGreaterThan(3);
@@ -40,7 +40,7 @@ describe('urban-massing', () => {
   });
 
   it('collides the car against every tower and infill box', () => {
-    const { plan, region } = anUrbanRegion(12345, 'urban-fringe');
+    const { region } = anUrbanRegion(12345, 'urban-fringe');
     const spec = massingCityForRegion(region);
     const city = new MassingCityWorld(spec, 'B', { nightGain: nightGain(), baseY: 0 });
     // A probe at the city centre with zero speed: solid boxes near the centre push back.
@@ -69,7 +69,7 @@ describe('city-streamer', () => {
 
     // Urban candidates exist beyond the home cell.
     // Drive to the first candidate: it builds within the radius.
-    const urbanCells = [
+    const urbanCells: [number, number][] = [
       [1, 0],
       [-1, 0],
       [0, 1],

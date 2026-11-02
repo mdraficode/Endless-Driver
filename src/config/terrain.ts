@@ -124,20 +124,26 @@ export const TERRAIN_CONFIG: TerrainConfig = {
  * only the rendered tessellation and per-frame construction budget change. POM is separately opt-in
  * in TerrainWorld because it multiplies fragment work on the closest terrain ring.
  */
-export function terrainConfigForTier(tier: TierId): TerrainConfig {
+/**
+ * Phase 10: `seed` overrides the heightfield seed so every generated world gets its own
+ * terrain (same generator, different prefecture). Omitted, today's fixed seed is kept.
+ */
+export function terrainConfigForTier(tier: TierId, seed?: number): TerrainConfig {
+  const withSeed = (config: TerrainConfig): TerrainConfig =>
+    seed === undefined ? config : { ...config, seed };
   if (tier === 'A') {
-    return TERRAIN_CONFIG;
+    return withSeed(TERRAIN_CONFIG);
   }
   if (tier === 'B') {
-    return {
+    return withSeed({
       ...TERRAIN_CONFIG,
       lodSegments: [64, 24, 12],
       maxBuildsPerFrame: 1,
-    };
+    });
   }
-  return {
+  return withSeed({
     ...TERRAIN_CONFIG,
     lodSegments: [48, 20, 8],
     maxBuildsPerFrame: 1,
-  };
+  });
 }

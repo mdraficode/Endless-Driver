@@ -70,6 +70,8 @@ export interface SceneManagerOptions {
   readonly terrainSampler?: TerrainSampler;
   /** Forwarded into the content context so streamed content can load compressed assets. */
   readonly renderer?: object;
+  /** The generated world plan (Phase 10); the driving world streams its cities from it. */
+  readonly worldPlan?: import('../world/world-plan').WorldPlan;
 }
 
 export interface SceneDiagnostics {
@@ -227,6 +229,7 @@ export class SceneManager {
       ...(options.trafficIntensity !== undefined
         ? { trafficIntensity: options.trafficIntensity }
         : {}),
+      ...(options.worldPlan !== undefined ? { worldPlan: options.worldPlan } : {}),
     });
     this.scene.userData['wetRoadSurface'] = this.#content.wetRoadSurface ?? false;
 

@@ -88,6 +88,11 @@ export interface SceneContent {
 }
 
 export interface SceneContentContext {
+  /**
+   * The generated world plan (Phase 10): cities, districts and roads are derived from it.
+   * Absent for standalone look-dev scenes and unit fixtures, which keep the fixed Hinode data.
+   */
+  readonly worldPlan?: import('./world-plan').WorldPlan;
   readonly config: RenderConfig;
   readonly worldConfig: WorldConfig;
   /** Shared Rapier world for content-owned dynamic actors, such as city traffic. */

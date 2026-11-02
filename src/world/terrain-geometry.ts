@@ -7,7 +7,7 @@ import {
   terrainVariationAt,
   type TerrainSampler,
 } from './terrain-height';
-import { groundTintAt } from './districts';
+import { groundTintAt } from './plan-districts';
 import { trailInfluenceAt } from './trails';
 
 /**

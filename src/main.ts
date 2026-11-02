@@ -81,6 +81,21 @@ function readSpawnRequest(search: string): string | undefined {
   return id === null || id === '' ? undefined : id;
 }
 
+/**
+ * Phase 10: the world seed. `?seed=<n>` pins a world (captures, bug reports); otherwise every
+ * launch rolls a fresh one — each play is a brand-new prefecture.
+ */
+function readWorldSeed(search: string): number {
+  const raw = new URLSearchParams(search).get('seed');
+  if (raw !== null && raw !== '') {
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed | 0;
+    }
+  }
+  return (Math.random() * 0x7fffffff) | 0;
+}
+
 function readSceneRequest(search: string): 'drive' | 'studio' | 'props' | 'route' | 'city' {
   const scene = new URLSearchParams(search).get('scene');
   if (scene === 'studio' || scene === 'props' || scene === 'route' || scene === 'city') {
@@ -365,6 +380,7 @@ async function startDrivingScene(restarting = false): Promise<void> {
     const { config, tier } = resolveRenderConfig(preferences);
 
     const spawnId = readSpawnRequest(window.location.search);
+    const worldSeed = readWorldSeed(window.location.search);
     const options: ApplicationOptions = {
       canvas,
       rapier,
@@ -389,6 +405,7 @@ async function startDrivingScene(restarting = false): Promise<void> {
       worldConfig: WORLD_CONFIG,
       tier,
       buildTag: buildTagId ?? null,
+      worldSeed,
       clock: startHour === null ? undefined : { startHour },
       nightMood,
       ...(spawnId === undefined ? {} : { spawnId }),
@@ -445,13 +462,18 @@ async function startDrivingScene(restarting = false): Promise<void> {
 
     if (pauseToggleButton !== null && pauseMenuRoot !== null) {
       const diagnostics = activeApplication.getDiagnostics();
+      // Phase 10: the generated world has one start (Central Avenue); the picker degrades
+      // to a single entry, and the seed is shown so a world can be shared via ?seed=.
+      const pauseSpawnPoints =
+        diagnostics.spawnPoint !== undefined ? [diagnostics.spawnPoint] : SPAWN_POINTS;
       drivingPauseMenu = new PauseMenu({
         root: pauseMenuRoot,
         triggerButton: pauseToggleButton,
         preferences: effectivePreferences,
-        spawnPoints: SPAWN_POINTS,
+        spawnPoints: pauseSpawnPoints,
         currentSpawnId: diagnostics.spawnId,
-        defaultSpawnId: DEFAULT_SPAWN_ID,
+        defaultSpawnId: diagnostics.spawnId === undefined ? DEFAULT_SPAWN_ID : diagnostics.spawnId,
+        ...(diagnostics.worldSeed !== undefined ? { worldSeed: diagnostics.worldSeed } : {}),
         activeTier: tier.id,
         activeRenderer: diagnostics.rendererBackend,
         activeTrafficVehicleCount: trafficVehicleCountFor(tier.id, preferences.trafficIntensity),

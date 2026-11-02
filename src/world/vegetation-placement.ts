@@ -3,7 +3,8 @@ import {
   type VegetationConfig,
   type VegetationSpecies,
 } from '../config/districts';
-import { speciesMultipliersAt, VEGETATION_SPECIES, canopyScaleAt } from './districts';
+import { VEGETATION_SPECIES } from './districts';
+import { speciesMultipliersAt, canopyScaleAt } from './plan-districts';
 import { TRAIL_NETWORK_CONFIG } from '../config/trails';
 import { trailAt } from './trails';
 import type { TerrainSampler } from './terrain-height';

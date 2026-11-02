@@ -19,7 +19,7 @@ import { BUILDING_ARCHETYPES, TOWN_CONFIG } from '../config/town';
 import { configureTiledSurface, SurfaceTextureLibrary } from '../assets/SurfaceTextureLibrary';
 import type { AssetResolution } from '../assets/AssetManifest';
 import { surfaceAssetIdAtResolution } from '../config/asset-resolution';
-import { DISTRICTS } from '../config/districts';
+import { DISTRICTS, type DistrictConfig } from '../config/districts';
 import type { TerrainSampler } from './terrain-height';
 import type { RoadNetwork } from './road-network';
 import { districtAt } from './districts';
@@ -63,8 +63,18 @@ export interface PolePlacement {
   readonly yaw: number;
 }
 
-function townDistrict() {
-  return DISTRICTS.find((district) => district.id === 'yuhi-town')!;
+let townDistrictOverride: DistrictConfig | null = null;
+
+/**
+ * Phase 10: the town kit re-anchors to a generated small-town district. Omitted/null restores
+ * the hand-placed Yūhi district (standalone scenes, unit fixtures).
+ */
+export function setTownDistrict(district: DistrictConfig | null): void {
+  townDistrictOverride = district;
+}
+
+function townDistrict(): DistrictConfig {
+  return townDistrictOverride ?? DISTRICTS.find((district) => district.id === 'yuhi-town')!;
 }
 
 /** Direction (yaw) of the road nearest a point, from the solved edge polylines. */
