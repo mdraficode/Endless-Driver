@@ -14,6 +14,7 @@ import type { DaylightState } from '../environment/EnvironmentClock';
 import type { TierId } from '../config/tiers';
 import { ROAD_WINDOW_CELLS } from './road-layout';
 import { massingCityForRegion, type MassingCitySpec } from './city-content';
+import { computeRegionPedestrians, type RegionPedestrianData } from './pedestrians';
 import { MassingCityWorld } from './urban-massing';
 import type { WorldPlan } from './world-plan';
 import type { TownCarProbe, TownHit } from './town';
@@ -28,6 +29,7 @@ interface CandidateRegion {
   readonly regionId: string;
   readonly x: number;
   readonly z: number;
+  readonly seed: number;
   readonly spec: MassingCitySpec;
 }
 
@@ -41,6 +43,12 @@ export class CityStreamer {
   readonly #lru: string[] = [];
   #disposed = false;
 
+  /** Phase 10.3: the pedestrian system streams its region data in and out with the cities. */
+  readonly #pedestrians: {
+    setRegion(data: RegionPedestrianData): void;
+    clearRegion(regionId: string): void;
+  };
+
   constructor(
     plan: WorldPlan,
     tier: TierId,
@@ -48,8 +56,16 @@ export class CityStreamer {
     options: {
       readonly attach: (city: MassingCityWorld) => void;
       readonly detach: (city: MassingCityWorld) => void;
+      readonly pedestrians?: {
+        setRegion(data: RegionPedestrianData): void;
+        clearRegion(regionId: string): void;
+      };
     },
   ) {
+    this.#pedestrians = options.pedestrians ?? {
+      setRegion: () => undefined,
+      clearRegion: () => undefined,
+    };
     this.#tier = tier;
     this.#terrainSampler = terrainSampler;
     this.#attach = options.attach;
@@ -64,6 +80,7 @@ export class CityStreamer {
           regionId: region.id,
           x: region.district.centerX,
           z: region.district.centerZ,
+          seed: region.seed,
           spec: massingCityForRegion(region),
         });
       }
@@ -99,6 +116,12 @@ export class CityStreamer {
     this.#attach(city);
     this.#live.set(next.regionId, city);
     this.#lru.push(next.regionId);
+    // The pedestrians of this block rise with it: sidewalks from the solved roads,
+    // activity nodes from the region seed.
+    const network = this.#terrainSampler.roadNetwork;
+    if (this.#pedestrians !== undefined && network !== undefined) {
+      this.#pedestrians.setRegion(computeRegionPedestrians(next.spec, network, next.seed));
+    }
   }
 
   setDaylight(state: DaylightState): void {
@@ -132,6 +155,7 @@ export class CityStreamer {
     this.#lru.splice(this.#lru.indexOf(regionId), 1);
     this.#detach(city);
     city.dispose();
+    this.#pedestrians?.clearRegion(regionId);
   }
 
   dispose(): void {

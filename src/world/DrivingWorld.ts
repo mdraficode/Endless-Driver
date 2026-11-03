@@ -15,6 +15,7 @@ import { nearestSmallTownDistrict, setPlanDistricts } from './plan-districts';
 import { ROAD_WINDOW_CELLS } from './road-layout';
 import { ParkedTrafficWorld } from './parked-traffic';
 import { HideoutWorld } from './hideout-world';
+import { computeHomePedestrians, PedestrianWorld } from './pedestrians';
 import type { AssetResolution } from '../assets/AssetManifest';
 import type { SceneContent, SceneContentContext } from './WorldContent';
 
@@ -124,13 +125,40 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
     root.add(aohara.root);
   }
 
+  // Phase 10.3: the NPC ecosystem — instanced pedestrians on the sidewalks of the home
+  // district and of every streamed massing city (activity nodes stream in with the cities).
+  const pedestrianWorld =
+    urbanNetwork === null
+      ? null
+      : new PedestrianWorld({
+          tier: qualityTier,
+          network: urbanNetwork,
+          home: computeHomePedestrians(
+            {
+              x: anchor?.x ?? AOHARA_DISTRICT_CONFIG.centerX,
+              z: anchor?.z ?? AOHARA_DISTRICT_CONFIG.centerZ,
+            },
+            urbanNetwork,
+            plan?.seed ?? 20261103,
+          ),
+        });
+  if (pedestrianWorld !== null) {
+    root.add(pedestrianWorld.root);
+  }
+
   // The vast city beyond the home city: streamed on approach (Phase 10).
   const cityStreamer =
-    plan === null
-      ? null
+    plan === null || pedestrianWorld === null
+      ? plan === null
+        ? null
+        : new CityStreamer(plan, qualityTier, terrainSampler, {
+            attach: (city) => root.add(city.root),
+            detach: (city) => root.remove(city.root),
+          })
       : new CityStreamer(plan, qualityTier, terrainSampler, {
           attach: (city) => root.add(city.root),
           detach: (city) => root.remove(city.root),
+          pedestrians: pedestrianWorld,
         });
 
   // Phase 10.1: parked cars lining the residential streets and commercial curbs (static,
@@ -164,6 +192,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       aohara?.setDaylight(state);
       cityStreamer?.setDaylight(state);
       hideoutWorld?.setDaylight(state);
+      pedestrianWorld?.setDaylight(state);
     },
     update: (deltaSeconds) => aohara?.update(deltaSeconds),
     updateStreaming: (focus, velocity, deltaSeconds) => {
@@ -173,6 +202,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       aohara?.updateStreaming(focus);
       cityStreamer?.update(focus);
       hideoutWorld?.update(focus);
+      pedestrianWorld?.update(deltaSeconds ?? 0);
     },
     prepareInitial: async (focus, velocity = { x: 0, z: 0 }, onProgress) => {
       aohara?.updateStreaming(focus);
@@ -241,6 +271,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       const tougeStats = hinodeTouge?.getContentStats() ?? {};
       const cityStreamerStats = cityStreamer?.getContentStats() ?? {};
       const hideoutStats = hideoutWorld?.getContentStats() ?? {};
+      const pedestrianStats = pedestrianWorld?.getContentStats() ?? {};
       const parkedStats = parkedTraffic === null ? {} : { parkedTrafficCars: parkedTraffic.count };
       const groundCoverInstances = vegetationStats.groundCoverInstances ?? 0;
       const groundCoverBudget = vegetationStats.groundCoverInstanceBudget ?? 0;
@@ -256,6 +287,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
         ...tougeStats,
         ...cityStreamerStats,
         ...hideoutStats,
+        ...pedestrianStats,
         ...parkedStats,
         worldEnrichmentInstances: groundCoverInstances + streetFurnitureInstances,
         worldEnrichmentInstanceBudget: groundCoverBudget + streetFurnitureBudget,
@@ -274,6 +306,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       cityStreamer?.dispose();
       parkedTraffic?.dispose();
       hideoutWorld?.dispose();
+      pedestrianWorld?.dispose();
       setPlanDistricts(null);
       setTownDistrict(null);
       const geometries = new Set<BufferGeometry>();

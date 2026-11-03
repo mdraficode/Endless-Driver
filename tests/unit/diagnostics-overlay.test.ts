@@ -98,6 +98,9 @@ const SNAPSHOT = {
     hideoutsPlaced: 4,
     hideoutsBuilt: 2,
     hideoutCars: 8,
+    pedestrianAgents: 86,
+    pedestrianLoiterers: 12,
+    pedestrianNodes: 6,
   },
   totalFrames: 300,
   cameraMode: 'chase',
@@ -156,7 +159,7 @@ describe('full-screen diagnostics report', () => {
     expect(panel.getAttribute('aria-label')).toBe('Live diagnostics report');
     expect(panel.getAttribute('aria-hidden')).toBe('false');
     expect(grid.className).toBe('diagnostics-grid');
-    expect(grid.children).toHaveLength(38);
+    expect(grid.children).toHaveLength(39);
     expect(grid.children.every((metric) => metric.children.length === 2)).toBe(true);
 
     const labels = grid.children.map((metric) => metric.children[0]?.textContent);

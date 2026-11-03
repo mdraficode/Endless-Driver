@@ -428,6 +428,19 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
     },
   },
   {
+    // Phase 10.3: the NPC ecosystem — pedestrians walking the sidewalks right now, how
+    // many are clustered at activity nodes, and how many node clusters are live.
+    label: 'Pedestrians',
+    format: (snapshot) => {
+      const stats = snapshot.contentStats;
+      const agents = stats.pedestrianAgents;
+      if (agents === undefined) {
+        return '—';
+      }
+      return `${agents} walking · ${stats.pedestrianLoiterers ?? 0} at stalls · ${stats.pedestrianNodes ?? 0} nodes`;
+    },
+  },
+  {
     // Phase 10.2: the world's secret corners — how many hideouts exist, how many are built
     // near the player right now, and how many cars are parked inside them.
     label: 'Hideouts',
