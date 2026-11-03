@@ -437,7 +437,14 @@ export class Application {
       // response only, never infer friction from rendered pixels.
       surfaceProvider: (x, z) => {
         const surface = this.#physics.surfaceAt(x, z);
-        return surface === null ? null : applySurfaceState(surface, this.#surfaceState);
+        if (surface === null) return null;
+        const state = applySurfaceState(surface, this.#surfaceState);
+        // The world's drift zones soften grip (Phase 10.5): world-space query, physics-space input.
+        const zoneGrip = this.#scene.zoneGripModifier(
+          x + this.#origin.offset.x,
+          z + this.#origin.offset.z,
+        );
+        return zoneGrip === 1 ? state : { ...state, gripModifier: state.gripModifier * zoneGrip };
       },
       groundNormalProvider: (x, z) =>
         terrainSampler.normalAt(x + this.#origin.offset.x, z + this.#origin.offset.z),
@@ -736,6 +743,10 @@ export class Application {
       await this.#engine.init();
       mark('init');
       this.#carEffects.configureBackend(this.#engine.backend, this.#engine.renderer);
+      const backend = this.#engine.backend;
+      if (backend !== null) {
+        this.#scene.configureRenderer(backend, this.#engine.renderer);
+      }
       this.#shadowCamera = null;
       this.#syncShadowCamera(this.#activeCamera());
 
@@ -1481,7 +1492,17 @@ export class Application {
         z: -Math.cos(yaw) * forwardSpeed,
       },
       delta,
+      {
+        x: worldFocus.x,
+        y: worldFocus.y,
+        z: worldFocus.z,
+        yaw,
+        speedMps: this.#car.telemetry.speedMps,
+        forwardSpeed,
+        drifting: this.#car.telemetry.drifting,
+      },
     );
+    this.#applyWorldEventOutputs(delta);
     this.#physics.syncTerrain(worldFocus, 1);
     this.#cockpitCamera.setEyeAnchor(this.#carVisual.cockpitEyeAnchor);
 
@@ -2002,5 +2023,45 @@ export class Application {
     }
     element.textContent = message ?? '';
     element.dataset['tone'] = tone;
+  }
+
+  #gameToast: { text: string; tone: StatusTone; until: number } | null = null;
+
+  /**
+   * Consumes the content's world-event outputs once per frame (Phase 10.5): player impulses
+   * (traffic hits, the off-road jump), nitro deltas (traps, drift, smashed boards) and toasts
+   * with their smash-burst effects.
+   */
+  #applyWorldEventOutputs(deltaSeconds: number): void {
+    if (!this.#firstFrameRendered) return;
+    for (const impulse of this.#scene.consumeImpulses()) {
+      this.#car.body.applyImpulse({ x: impulse.x, y: impulse.y, z: impulse.z }, true);
+    }
+    const boostDelta = this.#scene.consumeBoostDelta();
+    if (boostDelta !== 0) {
+      this.#boostTank.adjustCharge(boostDelta);
+      this.#onBoostState?.(this.#boostTank.state);
+    }
+    const messages = this.#scene.consumeEventMessages();
+    if (messages.length > 0) {
+      const last = messages[messages.length - 1]!;
+      this.#gameToast = {
+        text: last.text,
+        tone: last.tone,
+        until: performance.now() + 3200 + deltaSeconds * 0,
+      };
+      for (const message of messages) {
+        if (message.position === undefined) continue;
+        this.#carEffects.spawnBurst({
+          x: message.position.x - this.#origin.offset.x,
+          y: message.position.y,
+          z: message.position.z - this.#origin.offset.z,
+        });
+      }
+      this.#setStatus(this.#gameToast.text, this.#gameToast.tone);
+    } else if (this.#gameToast !== null && performance.now() > this.#gameToast.until) {
+      this.#gameToast = null;
+      this.#setStatus(null);
+    }
   }
 }

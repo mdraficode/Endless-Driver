@@ -44,7 +44,33 @@ export interface SceneContent {
     focus: { x: number; y: number; z: number },
     velocity?: { x: number; z: number },
     deltaSeconds?: number,
+    player?: {
+      readonly x: number;
+      readonly y: number;
+      readonly z: number;
+      readonly yaw: number;
+      readonly speedMps: number;
+      readonly forwardSpeed: number;
+      readonly drifting: boolean;
+    },
   ): void;
+  /** Optional renderer backend hookup for content-owned GPU systems (WebGPU compute). */
+  configureRenderer?(backend: 'webgpu' | 'webgl2', renderer: unknown): void;
+  /** Player-body impulses (kg·m/s) the content generated this frame, consumed once. */
+  consumeImpulses?(): readonly { readonly x: number; readonly y: number; readonly z: number }[];
+  /** Surface grip modifier the content applies at a world XZ (1 = no modification). */
+  zoneGripModifier?(x: number, z: number): number;
+  /** Net nitro charge delta the content generated this frame, consumed once. */
+  consumeBoostDelta?(): number;
+  /**
+   * Transient gameplay messages (toasts; an optional world position carries an fx burst),
+   * consumed once per frame.
+   */
+  consumeEventMessages?(): readonly {
+    readonly text: string;
+    readonly tone: 'info' | 'error';
+    readonly position?: { readonly x: number; readonly y: number; readonly z: number };
+  }[];
   /**
    * Optional startup preparation. Streamed content may await its initial visible window here;
    * `Application` resolves it before starting the frame loop, so the player never sees the first

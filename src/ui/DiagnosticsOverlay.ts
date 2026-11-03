@@ -467,6 +467,19 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
     },
   },
   {
+    // Phase 10.5 (C5): the player's active region's emergent events — speed traps, drift
+    // zones and the smashable boards (with how many are already smashed), plus the streamed
+    // cities' AI traffic fleet and its routes.
+    label: 'World events',
+    format: (snapshot) => {
+      const stats = snapshot.contentStats;
+      if (stats.worldEventTraps === undefined && stats.streamedTrafficVehicles === undefined) {
+        return '—';
+      }
+      return `${stats.worldEventTraps ?? 0} traps · ${stats.worldEventDriftZones ?? 0} drift · ${stats.worldEventBoardsSmashed ?? 0}/${stats.worldEventBoards ?? 0} boards · ${stats.streamedTrafficVehicles ?? 0} AI cars`;
+    },
+  },
+  {
     label: 'Camera',
     format: (snapshot) =>
       `${snapshot.cameraView}${snapshot.cameraMode === 'chase' ? orbitSuffix(snapshot) : ''} · ${snapshot.cameraFov.toFixed(1)}° fov · ${snapshot.cameraPosition.x.toFixed(0)}, ${snapshot.cameraPosition.y.toFixed(0)}, ${snapshot.cameraPosition.z.toFixed(0)}`,

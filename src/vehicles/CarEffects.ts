@@ -159,6 +159,36 @@ export class CarEffects {
     };
   }
 
+  /**
+   * A one-shot debris burst at a world position (smashed bonus boards). Simulation space:
+   * the application converts world coordinates through the floating origin before calling.
+   */
+  spawnBurst(position: Vec3): void {
+    if (this.#disposed) return;
+    for (let i = 0; i < 10; i += 1) {
+      const angle = this.#random() * Math.PI * 2;
+      const speed = this.#range(2, 7);
+      const up = this.#range(1.5, 5);
+      this.#sparks.spawn({
+        position,
+        velocity: {
+          x: Math.cos(angle) * speed,
+          y: up,
+          z: Math.sin(angle) * speed,
+        },
+        lifetime: this.#range(0.35, 0.8),
+        startSizeX: this.#range(0.15, 0.3),
+        endSizeX: this.#range(0.4, 0.7),
+        startSizeY: this.#range(0.08, 0.16),
+        endSizeY: this.#range(0.2, 0.4),
+        opacity: 0.95,
+        color: [0xffb34a, 0xff7d2f, 0xe8542f, 0x9aa2ab][i % 4] ?? 0xffb34a,
+        roll: this.#randomSigned() * 1.4,
+        fadeInSeconds: 0.01,
+      });
+    }
+  }
+
   /** Keeps already-emitted particles aligned when the simulation origin rebases. */
   shiftBy(dx: number, dz: number): void {
     this.#smoke.shiftBy(dx, dz);

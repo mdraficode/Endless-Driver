@@ -53,6 +53,14 @@ export class NitroBoost {
     return this.state;
   }
 
+  /** Adds/removes a fraction of the tank (world events: trap bonuses, drift charge, smashed boards). */
+  adjustCharge(delta: number): NitroBoostState {
+    if (Number.isFinite(delta) && delta !== 0) {
+      this.#charge = clamp(this.#charge + delta, 0, 1);
+    }
+    return this.state;
+  }
+
   /** Pause/unfocus stops boost force immediately without changing the stored tank level. */
   deactivate(): NitroBoostState {
     this.#active = false;

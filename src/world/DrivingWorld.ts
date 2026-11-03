@@ -15,6 +15,9 @@ import { nearestSmallTownDistrict, setPlanDistricts } from './plan-districts';
 import { ROAD_WINDOW_CELLS } from './road-layout';
 import { ParkedTrafficWorld } from './parked-traffic';
 import { HideoutWorld } from './hideout-world';
+import { GpuTrafficWorld } from './gpu-traffic';
+import { WorldEventManager } from './world-events';
+import { resolveUrbanNightGain } from '../config/urban-city';
 import { computeHomePedestrians, PedestrianWorld } from './pedestrians';
 import type { AssetResolution } from '../assets/AssetManifest';
 import type { SceneContent, SceneContentContext } from './WorldContent';
@@ -182,6 +185,24 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
     root.add(hideoutWorld.root);
   }
 
+  // Phase 10.5 (C5): the streamed cities' AI traffic — WebGPU compute on every tier with a
+  // hidden CPU fallback, plus the player's region's emergent events (speed traps, drift
+  // zones, smashable boards and the off-road jump).
+  const gpuTraffic =
+    plan === null || urbanNetwork === null
+      ? null
+      : new GpuTrafficWorld(urbanNetwork, plan, qualityTier);
+  if (gpuTraffic !== null) {
+    root.add(gpuTraffic.root);
+  }
+  const eventManager =
+    plan === null || urbanNetwork === null
+      ? null
+      : new WorldEventManager(urbanNetwork, plan, (x, z) => terrainSampler.heightAt(x, z));
+  if (eventManager !== null) {
+    root.add(eventManager.root);
+  }
+
   return {
     root,
     kind: 'driving',
@@ -193,9 +214,10 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       cityStreamer?.setDaylight(state);
       hideoutWorld?.setDaylight(state);
       pedestrianWorld?.setDaylight(state);
+      gpuTraffic?.setNightGain(resolveUrbanNightGain(state.sunElevationDegrees));
     },
     update: (deltaSeconds) => aohara?.update(deltaSeconds),
-    updateStreaming: (focus, velocity, deltaSeconds) => {
+    updateStreaming: (focus, velocity, deltaSeconds, player) => {
       terrain.updateStreaming(focus, velocity);
       vegetation.updateStreaming(focus, velocity, deltaSeconds ?? 0);
       town.updateStreaming(focus, deltaSeconds ?? 0);
@@ -203,7 +225,37 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       cityStreamer?.update(focus);
       hideoutWorld?.update(focus);
       pedestrianWorld?.update(deltaSeconds ?? 0);
+      gpuTraffic?.update(
+        deltaSeconds ?? 0,
+        { x: focus.x, z: focus.z },
+        velocity === undefined ? undefined : { x: velocity.x, z: velocity.z },
+      );
+      eventManager?.update(
+        deltaSeconds ?? 0,
+        { x: focus.x, z: focus.z },
+        player ?? {
+          x: focus.x,
+          y: focus.y,
+          z: focus.z,
+          yaw: 0,
+          speedMps: 0,
+          forwardSpeed: 0,
+          drifting: false,
+        },
+      );
     },
+    configureRenderer: (backend, renderer) => {
+      gpuTraffic?.configureBackend(backend, renderer as never);
+    },
+    consumeImpulses: () => {
+      const out = gpuTraffic === null ? [] : gpuTraffic.consumeImpulses();
+      const jump = eventManager?.consumeImpulse() ?? null;
+      if (jump === null) return out;
+      return [...out, jump];
+    },
+    zoneGripModifier: (x, z) => eventManager?.zoneGripModifier(x, z) ?? 1,
+    consumeBoostDelta: () => eventManager?.consumeBoostDelta() ?? 0,
+    consumeEventMessages: () => eventManager?.consumeMessages() ?? [],
     prepareInitial: async (focus, velocity = { x: 0, z: 0 }, onProgress) => {
       aohara?.updateStreaming(focus);
       let terrainProgress = 0;
@@ -273,6 +325,8 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       const hideoutStats = hideoutWorld?.getContentStats() ?? {};
       const pedestrianStats = pedestrianWorld?.getContentStats() ?? {};
       const parkedStats = parkedTraffic === null ? {} : { parkedTrafficCars: parkedTraffic.count };
+      const trafficStats = gpuTraffic?.getContentStats() ?? {};
+      const eventStats = eventManager?.getContentStats() ?? {};
       const groundCoverInstances = vegetationStats.groundCoverInstances ?? 0;
       const groundCoverBudget = vegetationStats.groundCoverInstanceBudget ?? 0;
       const streetFurnitureInstances = urbanStats.urbanStreetFurnitureInstances ?? 0;
@@ -289,6 +343,8 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
         ...hideoutStats,
         ...pedestrianStats,
         ...parkedStats,
+        ...trafficStats,
+        ...eventStats,
         worldEnrichmentInstances: groundCoverInstances + streetFurnitureInstances,
         worldEnrichmentInstanceBudget: groundCoverBudget + streetFurnitureBudget,
         /** Number of static instance pools; this is not a measured draw-call count. */
@@ -307,6 +363,8 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       parkedTraffic?.dispose();
       hideoutWorld?.dispose();
       pedestrianWorld?.dispose();
+      gpuTraffic?.dispose();
+      eventManager?.dispose();
       setPlanDistricts(null);
       setTownDistrict(null);
       const geometries = new Set<BufferGeometry>();
