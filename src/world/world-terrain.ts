@@ -33,7 +33,12 @@ export function createWorldTerrainSampler(
     flatRadiusMeters: AOHARA_DISTRICT_CONFIG.flatRadiusMeters,
     blendRadiusMeters: AOHARA_DISTRICT_CONFIG.terrainBlendRadiusMeters,
   };
-  const base = createTerrainSampler(terrainConfig);
+  // The country elevation fades out around the city anchor so the plateau blend never meets
+  // a cliff ring; the base sampler is rebuilt with the fade centred on the real city.
+  const base = createTerrainSampler({
+    ...terrainConfig,
+    elevationFadeCenter: [plateau.x, plateau.z],
+  });
   const cityElevation = base.heightAt(plateau.x, plateau.z);
   // The city core is a bounded graded plain, not a second terrain/physics surface. A smooth
   // radial transition restores the original seeded heightfield before the district edge.

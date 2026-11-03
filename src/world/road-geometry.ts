@@ -1,6 +1,6 @@
 import { BufferAttribute, BufferGeometry } from 'three';
 
-import type { RoadEdge, RoadNetwork, RoadPoint } from './road-network';
+import type { RoadEdge, RoadNetwork, RoadNode, RoadPoint } from './road-network';
 
 /**
  * Road ribbon construction from solved spline profiles.
@@ -94,6 +94,67 @@ function sideOf(tangent: { x: number; z: number }): { x: number; z: number } {
 }
 
 /**
+ * Per-network precompute for `markingTrimsForEdge`: which edges meet each node, and a spatial
+ * index over the nodes. Without it the trim solver is O(E²) per network, which a dense
+ * procedural grid (thousands of short edges) would make a multi-second build.
+ */
+const TRIM_NODE_INDEX_CELL_METERS = 32;
+
+interface TrimPrecompute {
+  readonly edgeAdjacency: ReadonlyMap<string, readonly RoadEdge[]>;
+  readonly nodeCells: ReadonlyMap<string, readonly RoadNode[]>;
+}
+const trimPrecomputeCache = new WeakMap<RoadNetwork, TrimPrecompute>();
+function trimPrecomputeFor(network: RoadNetwork): TrimPrecompute {
+  const cached = trimPrecomputeCache.get(network);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const edgeAdjacency = new Map<string, RoadEdge[]>();
+  for (const edge of network.edges) {
+    for (const nodeId of [edge.from, edge.to]) {
+      const list = edgeAdjacency.get(nodeId) ?? [];
+      list.push(edge);
+      edgeAdjacency.set(nodeId, list);
+    }
+  }
+  const nodeCells = new Map<string, RoadNode[]>();
+  for (const node of network.nodes) {
+    const key = `${Math.floor(node.x / TRIM_NODE_INDEX_CELL_METERS)},${Math.floor(node.z / TRIM_NODE_INDEX_CELL_METERS)}`;
+    const list = nodeCells.get(key) ?? [];
+    list.push(node);
+    nodeCells.set(key, list);
+  }
+  const precompute: TrimPrecompute = { edgeAdjacency, nodeCells };
+  trimPrecomputeCache.set(network, precompute);
+  return precompute;
+}
+
+/** Neighbours of a node within `radiusMeters`, from the precomputed cell index. */
+function nodesNear(
+  node: RoadNode,
+  precompute: TrimPrecompute,
+  radiusMeters: number,
+): readonly RoadNode[] {
+  const cellSpan = Math.ceil(radiusMeters / TRIM_NODE_INDEX_CELL_METERS);
+  const cx = Math.floor(node.x / TRIM_NODE_INDEX_CELL_METERS);
+  const cz = Math.floor(node.z / TRIM_NODE_INDEX_CELL_METERS);
+  const result: RoadNode[] = [];
+  for (let dx = -cellSpan; dx <= cellSpan; dx += 1) {
+    for (let dz = -cellSpan; dz <= cellSpan; dz += 1) {
+      const bucket = precompute.nodeCells.get(`${cx + dx},${cz + dz}`);
+      if (bucket === undefined) {
+        continue;
+      }
+      for (const other of bucket) {
+        result.push(other);
+      }
+    }
+  }
+  return result;
+}
+
+/**
  * Closest point on a solved profile to a world position, with the local tangent and the
  * perpendicular distance. Paint rules need the approach geometry at a junction even where the
  * junction node is not the nearest profile sample.
@@ -153,6 +214,7 @@ export function markingTrimsForEdge(
   edge: RoadEdge,
   lateralOffsetMeters: number,
 ): { readonly startMeters: number; readonly endMeters: number } {
+  const precompute = trimPrecomputeFor(network);
   const trimForEndpoint = (nodeId: string, endpointTangent: { x: number; z: number }): number => {
     const node = network.nodeById(nodeId);
     if (node === null) {
@@ -160,11 +222,8 @@ export function markingTrimsForEdge(
     }
     const endpointNormal = sideOf(endpointTangent);
     let windowMeters = 0;
-    for (const other of network.edges) {
+    for (const other of precompute.edgeAdjacency.get(nodeId) ?? []) {
       if (other === edge || other.roadClass === 'urban-alley') {
-        continue;
-      }
-      if (other.from !== nodeId && other.to !== nodeId) {
         continue;
       }
       const approach = nearestOnProfile(other.points, node.x, node.z);
@@ -190,7 +249,7 @@ export function markingTrimsForEdge(
     const clearanceSquared =
       (ROAD_MARKING_JUNCTION_CLEARANCE_METERS - 0.05) *
       (ROAD_MARKING_JUNCTION_CLEARANCE_METERS - 0.05);
-    for (const otherNode of network.nodes) {
+    for (const otherNode of nodesNear(node, precompute, 80)) {
       if (otherNode.id === nodeId) {
         continue;
       }
@@ -232,6 +291,51 @@ export function markingTrimsForEdge(
   };
 }
 
+/**
+ * Design speed per road class, m/s — what the banking assumes traffic is doing at a corner.
+ * Bank = (v² · halfWidth) / (g · R): the lateral offset that keeps a car at that speed level
+ * through the corner, applied as a left/right height split. Capped so a tight alley never
+ * tips its ribbon.
+ */
+const BANK_DESIGN_SPEED: Readonly<Record<RoadEdge['roadClass'], number>> = {
+  rural: 24,
+  touge: 14,
+  'city-access': 18,
+  'urban-local': 16,
+  'urban-arterial': 26,
+  'urban-alley': 8,
+};
+const GRAVEITY_METER_PER_SECOND_SQUARED = 9.81;
+const MAX_BANK_METERS = 0.5;
+
+/** Superelevation at profile `index`: signed metres — positive lifts the right edge
+ * (right-hand corner), negative lifts the left. */
+function bankAt(
+  points: readonly RoadPoint[],
+  index: number,
+  half: number,
+  roadClass: RoadEdge['roadClass'],
+): number {
+  const back = tangentAt(points, Math.max(0, index - 4));
+  const ahead = tangentAt(points, Math.min(points.length - 1, index + 4));
+  // Signed turn rate: cross2 > 0 is a right turn in three.js y-up space (x east, z south),
+  // where the right edge is the inside of the corner.
+  const cross = back.x * ahead.z - back.z * ahead.x;
+  const lookAheadMeters = 32;
+  const curvature = cross / lookAheadMeters;
+  if (Math.abs(curvature) < 1e-4) {
+    return 0;
+  }
+  const radiusMeters = 1 / Math.abs(curvature);
+  const speed = BANK_DESIGN_SPEED[roadClass];
+  const ideal = ((speed * speed) / (GRAVEITY_METER_PER_SECOND_SQUARED * radiusMeters)) * half;
+  const magnitude = Math.min(MAX_BANK_METERS, ideal);
+  // The profile's "right" vertex (centre + side·half, side = (t.z, -t.x)) is the inside of the
+  // corner whenever cross < 0 — verified against an arc whose centre sits on the -z side — so
+  // the lift sign runs opposite to the cross product.
+  return cross > 0 ? -magnitude : magnitude;
+}
+
 export function buildRibbonGeometry(
   edge: RoadEdge,
   widthMeters: number,
@@ -242,17 +346,30 @@ export function buildRibbonGeometry(
   const half = widthMeters / 2;
   const positions = new Float32Array(points.length * 2 * 3);
   const uvs = new Float32Array(points.length * 2 * 2);
+  // Pre-solve the bank per profile point, then feather it in/out over a few samples so the
+  // superelevation never kinks at the edge of a corner.
+  const banks: number[] = points.map((_, index) => bankAt(points, index, half, edge.roadClass));
+  for (let pass = 0; pass < 3; pass += 1) {
+    const source = banks.slice();
+    for (let index = 1; index < banks.length - 1; index += 1) {
+      const leftValue = source[index - 1] ?? 0;
+      const middle = source[index] ?? 0;
+      const rightValue = source[index + 1] ?? 0;
+      banks[index] = (leftValue + 2 * middle + rightValue) / 4;
+    }
+  }
   points.forEach((point, index) => {
     const side = sideOf(tangentAt(points, index));
     const centreX = point.x + side.x * centerOffsetMeters;
     const centreZ = point.z + side.z * centerOffsetMeters;
+    const bank = banks[index] ?? 0;
     const left = index * 2;
     const right = left + 1;
     positions[left * 3] = centreX - side.x * half;
-    positions[left * 3 + 1] = point.y + yOffset;
+    positions[left * 3 + 1] = point.y + yOffset - bank / 2;
     positions[left * 3 + 2] = centreZ - side.z * half;
     positions[right * 3] = centreX + side.x * half;
-    positions[right * 3 + 1] = point.y + yOffset;
+    positions[right * 3 + 1] = point.y + yOffset + bank / 2;
     positions[right * 3 + 2] = centreZ + side.z * half;
     uvs[left * 2] = 0;
     uvs[left * 2 + 1] = point.alongMeters / 6;

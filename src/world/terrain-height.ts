@@ -99,6 +99,57 @@ function smoothstep(edge0: number, edge1: number, value: number): number {
   return t * t * (3 - 2 * t);
 }
 
+/**
+ * Phase 10.1 country elevation: kilometre-scale rolling hills, escarpments and steep-cut
+ * valleys, layered above the metre-scale hills.
+ *
+ * Shape: a domain-warped fBm (the warp bends the ridgelines so high ground reads as folded
+ * hills instead of noise), shaped through a smootherstep so lowlands stay broad and the high
+ * third gains relief, then cut by a separate low-frequency mask into steep-walled valleys.
+ * The whole layer fades to zero inside the city anchor so the urban plateau never meets a
+ * cliff ring, and the volcano sits on top of it as before. Pure in (config, x, z): the
+ * integer-hash noise keeps the determinism contract.
+ */
+function countryElevationAt(x: number, z: number, config: TerrainConfig, seed: number): number {
+  if (config.elevationAmplitudeMeters <= 0) {
+    return 0;
+  }
+  const fadeCenterX = config.elevationFadeCenter[0];
+  const fadeCenterZ = config.elevationFadeCenter[1];
+  const distanceToCity = Math.hypot(x - fadeCenterX, z - fadeCenterZ);
+  const cityFade =
+    1 -
+    smoothstep(config.elevationFadeInnerMeters, config.elevationFadeOuterMeters, distanceToCity);
+  const strength = (1 - cityFade) * config.elevationAmplitudeMeters;
+  if (strength <= 0.01) {
+    return 0;
+  }
+  // Domain warp: two independent low-frequency fields bend the sample coordinate, so the
+  // ridgelines meander the way real hill country does.
+  const warpX =
+    fbm(x, z, config.elevationWavelengthMeters * 0.8, seed + 505) * config.elevationWarpMeters;
+  const warpZ =
+    fbm(x + 4471.2, z - 2903.7, config.elevationWavelengthMeters * 0.8, seed + 606) *
+    config.elevationWarpMeters;
+  const warped =
+    fbm(x + warpX, z + warpZ, config.elevationWavelengthMeters, seed + 707) * 0.5 + 0.5;
+  // Smootherstep: broad, gentle lowlands; the upper third of the field carries the relief.
+  const shaped = warped * warped * (3 - 2 * warped);
+  // Steep-cut valleys: a separate mask carves the high ground down along meandering lines,
+  // leaving walls instead of a gradual slope.
+  const gorge = valueNoise(
+    x - 913.4,
+    z + 1757.1,
+    config.elevationWavelengthMeters * 0.42,
+    seed + 808,
+  );
+  const gorgeCut = smoothstep(0.42, 0.18, gorge) * smoothstep(0.02, 0.3, warped);
+  const relief = shaped * (1 - 0.62 * gorgeCut);
+  // Offset 0.42 below the field mean so most of the country stays a lowland; the peaks of
+  // the shaped field reach roughly +0.9 * amplitude.
+  return (relief - 0.42) * strength * 1.8;
+}
+
 export function createTerrainSampler(config: TerrainConfig): TerrainSampler {
   const { seed } = config;
   const [vx, vz] = config.volcano.position;
@@ -109,6 +160,7 @@ export function createTerrainSampler(config: TerrainConfig): TerrainSampler {
       fbm(x + 3917.3, z - 2718.1, config.hillWavelengthMeters * 2.7, seed + 77) *
         config.hillAmplitudeMeters *
         1.6;
+    height += countryElevationAt(x, z, config, seed);
     // Ridged detail: fBm alone reads as dunes. One-minus-absolute noise makes crests and
     // broken skylines; squared, it stays quiet in the valleys and speaks on the ridges.
     const ridgeBroad = 1 - Math.abs(valueNoise(x, z, 210, seed + 303));
@@ -126,7 +178,12 @@ export function createTerrainSampler(config: TerrainConfig): TerrainSampler {
   };
 
   const heightAt = (x: number, z: number): number => {
-    const raw = rawHeight(x, z);
+    let raw = rawHeight(x, z);
+    // The gameplay floor: below `floorMeters` the ground flattens out instead of falling
+    // past the vehicle's out-of-bounds reset line.
+    if (raw < config.floorMeters) {
+      raw = config.floorMeters;
+    }
     const distance = Math.sqrt(x * x + z * z);
     const pad = smoothstep(
       config.spawnPad.flatRadiusMeters,

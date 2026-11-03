@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { HINODE_TOUGE_START, ROAD_NETWORK_CONFIG } from '../../src/config/roads';
+import { AOHARA_DISTRICT_CONFIG } from '../../src/config/urban-district';
 import { TRAIL_NETWORK_CONFIG } from '../../src/config/trails';
 import { DEFAULT_SPAWN_ID, resolveSpawnPoint } from '../../src/config/spawns';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
@@ -84,7 +85,10 @@ describe('optional Hinode Touge route', () => {
     expect(sampleTerrainSurface(sampler, sample![0], sample![1]).gripModifier).toBeLessThan(1);
     const roadDistance = sampler.roadAt?.(sample![0], sample![1])?.distance ?? Infinity;
     expect(roadDistance).toBeGreaterThan(ROAD_NETWORK_CONFIG.blendWidthMeters);
-    const naturalTerrain = createTerrainSampler(TERRAIN_CONFIG);
+    const naturalTerrain = createTerrainSampler({
+      ...TERRAIN_CONFIG,
+      elevationFadeCenter: [AOHARA_DISTRICT_CONFIG.centerX, AOHARA_DISTRICT_CONFIG.centerZ],
+    });
     expect(sampler.heightAt(sample![0], sample![1])).toBeCloseTo(
       naturalTerrain.heightAt(sample![0], sample![1]),
       6,

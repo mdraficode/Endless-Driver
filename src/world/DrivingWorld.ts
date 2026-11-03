@@ -13,6 +13,7 @@ import { TownWorld, setTownDistrict } from './town';
 import { VegetationWorld } from './vegetation';
 import { nearestSmallTownDistrict, setPlanDistricts } from './plan-districts';
 import { ROAD_WINDOW_CELLS } from './road-layout';
+import { ParkedTrafficWorld } from './parked-traffic';
 import type { AssetResolution } from '../assets/AssetManifest';
 import type { SceneContent, SceneContentContext } from './WorldContent';
 
@@ -131,6 +132,17 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
           detach: (city) => root.remove(city.root),
         });
 
+  // Phase 10.1: parked cars lining the residential streets and commercial curbs (static,
+  // placed on the solved conforming profiles). Generated worlds only — the retired
+  // hand-placed fixture keeps its classic look.
+  const parkedTraffic =
+    plan === null || urbanNetwork === null
+      ? null
+      : new ParkedTrafficWorld(urbanNetwork, { tier: qualityTier, worldSeed: plan.seed });
+  if (parkedTraffic !== null) {
+    root.add(parkedTraffic.root);
+  }
+
   return {
     root,
     kind: 'driving',
@@ -214,6 +226,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       const urbanStats = aohara?.getContentStats() ?? {};
       const tougeStats = hinodeTouge?.getContentStats() ?? {};
       const cityStreamerStats = cityStreamer?.getContentStats() ?? {};
+      const parkedStats = parkedTraffic === null ? {} : { parkedTrafficCars: parkedTraffic.count };
       const groundCoverInstances = vegetationStats.groundCoverInstances ?? 0;
       const groundCoverBudget = vegetationStats.groundCoverInstanceBudget ?? 0;
       const streetFurnitureInstances = urbanStats.urbanStreetFurnitureInstances ?? 0;
@@ -227,6 +240,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
         ...urbanStats,
         ...tougeStats,
         ...cityStreamerStats,
+        ...parkedStats,
         worldEnrichmentInstances: groundCoverInstances + streetFurnitureInstances,
         worldEnrichmentInstanceBudget: groundCoverBudget + streetFurnitureBudget,
         /** Number of static instance pools; this is not a measured draw-call count. */
@@ -242,6 +256,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       town.dispose();
       aohara?.dispose();
       cityStreamer?.dispose();
+      parkedTraffic?.dispose();
       setPlanDistricts(null);
       setTownDistrict(null);
       const geometries = new Set<BufferGeometry>();

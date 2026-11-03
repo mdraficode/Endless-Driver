@@ -33,7 +33,12 @@ import { createWorldTerrainSampler } from '../../src/world/world-terrain';
  * surface query, so the three can never disagree about where the road is or how it lies.
  */
 
-const base = createTerrainSampler(TERRAIN_CONFIG);
+// The world sampler moves the country-elevation fade to the default Aohara plateau; the
+// "untouched" comparison sampler must use the same fade centre to stay a true baseline.
+const base = createTerrainSampler({
+  ...TERRAIN_CONFIG,
+  elevationFadeCenter: [AOHARA_DISTRICT_CONFIG.centerX, AOHARA_DISTRICT_CONFIG.centerZ],
+});
 const world = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
 const network =
   world.roadNetwork ??

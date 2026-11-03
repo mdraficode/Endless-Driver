@@ -56,6 +56,22 @@ export interface TerrainConfig {
   /** Rolling-hill amplitude and base wavelength, metres (fBm in terrain-height). */
   readonly hillAmplitudeMeters: number;
   readonly hillWavelengthMeters: number;
+  /**
+   * Large-scale country elevation (Phase 10.1): the kilometre-scale rolling hills, escarpments
+   * and steep cuts above the metre-scale hills. Zero keeps the historical flat-lowland look.
+   */
+  readonly elevationAmplitudeMeters: number;
+  readonly elevationWavelengthMeters: number;
+  /** Domain-warp strength for the elevation layer, metres: bends ridgelines so they read as valleys. */
+  readonly elevationWarpMeters: number;
+  /**
+   * The elevation layer fades out around the city anchor so the urban plateau never meets a
+   * cliff ring: inside `elevationFadeInnerMeters` the country elevation is zero, reaching full
+   * strength at `elevationFadeOuterMeters`. Defaults to the origin for road-free fixtures.
+   */
+  readonly elevationFadeCenter: readonly [number, number];
+  readonly elevationFadeInnerMeters: number;
+  readonly elevationFadeOuterMeters: number;
   /** The volcano anchor (Hinode-dake): world position, peak height, base radius. */
   readonly volcano: {
     readonly position: readonly [number, number];
@@ -76,6 +92,12 @@ export interface TerrainConfig {
    * soil and rock. There is intentionally no snow layer in the current terrain renderer.
    */
   readonly alpineRocklineMeters: number;
+  /**
+   * The deepest gameplay ground: the heightfield is floored at this height so deep pockets
+   * cannot swallow a car past the vehicle's out-of-bounds reset line (-20 m). Valleys keep
+   * their shape above the floor; below it the ground flattens out.
+   */
+  readonly floorMeters: number;
   /**
    * Near-tier parallax occlusion (Phase 4): the closest LOD ring raymarches the
    * splat's blended scanned displacement so close ground has real depth.
@@ -106,6 +128,12 @@ export const TERRAIN_CONFIG: TerrainConfig = {
   skirtDepthMeters: 1.6,
   hillAmplitudeMeters: 24,
   hillWavelengthMeters: 420,
+  elevationAmplitudeMeters: 30,
+  elevationWavelengthMeters: 1700,
+  elevationWarpMeters: 380,
+  elevationFadeCenter: [0, 0],
+  elevationFadeInnerMeters: 600,
+  elevationFadeOuterMeters: 2800,
   volcano: {
     position: [-1500, -2100],
     heightMeters: 300,
@@ -116,6 +144,7 @@ export const TERRAIN_CONFIG: TerrainConfig = {
     blendRadiusMeters: 110,
   },
   alpineRocklineMeters: 190,
+  floorMeters: -16,
   pom: { steps: 12, depthMeters: 0.09, fadeStartMeters: 16, fadeEndMeters: 42 },
 };
 

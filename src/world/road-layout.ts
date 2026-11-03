@@ -27,6 +27,7 @@
 import type { RoadClass, RoadEdgeConfig, RoadNetworkConfig, RoadNodeConfig } from '../config/roads';
 import { AOHARA_JUNCTION_NODE_ID } from '../config/urban-district';
 import { homeCityAnchor, homeCityRoadGraph } from './city-content';
+import { plotSpotsForBlock, type BlockRect } from './urban-plots';
 import { REGION_CELL_METERS, type RegionPlan, type WorldPlan } from './world-plan';
 
 /**
@@ -41,6 +42,11 @@ const URBAN_ARTERIAL_HALF_WIDTH = 7;
 const URBAN_LOCAL_HALF_WIDTH = 3.2;
 const CITY_ACCESS_HALF_WIDTH = 4.5;
 const TOUGE_HALF_WIDTH = 3.4;
+/** Phase 10.1 variable routing: the narrow tail of the hierarchy. */
+const RESIDENTIAL_HALF_WIDTH = 2.2;
+const ALLEY_HALF_WIDTH = 1.6;
+const DRIVEWAY_HALF_WIDTH = 1.5;
+const ALLEY_SETBACK_METERS = 30;
 
 /** Grid geometry per archetype: nodes per side and street spacing, metres. */
 const GRID_NODES: Readonly<Record<'megacity' | 'urban-fringe' | 'small-town', number>> = {
@@ -225,37 +231,245 @@ export function buildRoadLayout(
           );
         }
       }
+      // ------------------------------------------------------------------
+      // Phase 10.1 two-phase grid: first decide every block's detail (a tight
+      // residential street, an alley, building plots with driveways), then build
+      // the ring streets as chains that pass through a split node at each
+      // connection point, so every narrow street is a real part of the road
+      // graph the solver, the traffic and the parked cars all drive on.
+      // ------------------------------------------------------------------
+      interface BlockDetail {
+        readonly sub?: { readonly axis: 0 | 1; readonly fraction: number };
+        readonly alley?: { readonly axis: 0 | 1 };
+        readonly spots: ReturnType<typeof plotSpotsForBlock>;
+      }
+      const blockDetails: BlockDetail[][] = [];
+      for (let r = 0; r < n - 1; r += 1) {
+        const row: BlockDetail[] = [];
+        for (let c = 0; c < n - 1; c += 1) {
+          const sw = gridNodes[r * n + c]!;
+          const se = gridNodes[r * n + c + 1]!;
+          const nw = gridNodes[(r + 1) * n + c]!;
+          const rect: BlockRect = { minX: sw.x, maxX: se.x, minZ: sw.z, maxZ: nw.z };
+          const blockSalt = regionSeed + ix * 131 + iz * 17 + r * 31 + c * 7;
+          const sub =
+            pick(blockSalt, 0xb1, 1) < 0.5
+              ? {
+                  axis: (pick(blockSalt, 0xb2, 2) < 0.5 ? 0 : 1) as 0 | 1,
+                  fraction: pick(blockSalt, 0xb3, 3) < 0.5 ? 1 / 3 : 2 / 3,
+                }
+              : undefined;
+          const alley =
+            pick(blockSalt, 0xb4, 4) < 0.28
+              ? { axis: (pick(blockSalt, 0xb5, 5) < 0.5 ? 0 : 1) as 0 | 1 }
+              : undefined;
+          const detail: BlockDetail = {
+            ...(sub === undefined ? {} : { sub }),
+            ...(alley === undefined ? {} : { alley }),
+            spots: plotSpotsForBlock(ix, iz, r, c, rect, regionSeed, URBAN_LOCAL_HALF_WIDTH),
+          };
+          row.push(detail);
+        }
+        blockDetails.push(row);
+      }
+      // Split points per ring segment: v{r}-{c} is the vertical segment (r,c)->(r+1,c)
+      // (a z coordinate), h{r}-{c} the horizontal one (r,c)->(r,c+1) (an x coordinate).
+      const vSplits = new Map<string, number[]>();
+      const hSplits = new Map<string, number[]>();
+      const addSplit = (map: Map<string, number[]>, key: string, coord: number): void => {
+        const list = map.get(key) ?? [];
+        list.push(coord);
+        map.set(key, list);
+      };
+      for (let r = 0; r < n - 1; r += 1) {
+        for (let c = 0; c < n - 1; c += 1) {
+          const detail = blockDetails[r]![c]!;
+          const z0 = gridNodes[r * n + c]!.z;
+          const z1 = gridNodes[(r + 1) * n + c]!.z;
+          const x0 = gridNodes[r * n + c]!.x;
+          const x1 = gridNodes[r * n + c + 1]!.x;
+          if (detail.sub !== undefined) {
+            if (detail.sub.axis === 0) {
+              const z = z0 + (z1 - z0) * detail.sub.fraction;
+              addSplit(vSplits, `v${r}-${c}`, z);
+              addSplit(vSplits, `v${r}-${c + 1}`, z);
+            } else {
+              const x = x0 + (x1 - x0) * detail.sub.fraction;
+              addSplit(hSplits, `h${r}-${c}`, x);
+              addSplit(hSplits, `h${r + 1}-${c}`, x);
+            }
+          }
+          if (detail.alley !== undefined) {
+            if (detail.alley.axis === 0) {
+              const z = z0 + ALLEY_SETBACK_METERS;
+              addSplit(vSplits, `v${r}-${c}`, z);
+              addSplit(vSplits, `v${r}-${c + 1}`, z);
+            } else {
+              const x = x0 + ALLEY_SETBACK_METERS;
+              addSplit(hSplits, `h${r}-${c}`, x);
+              addSplit(hSplits, `h${r + 1}-${c}`, x);
+            }
+          }
+          for (const p of detail.spots) {
+            if (p.side === 0) addSplit(hSplits, `h${r}-${c}`, p.curbX);
+            else if (p.side === 1) addSplit(vSplits, `v${r}-${c + 1}`, p.curbZ);
+            else if (p.side === 2) addSplit(hSplits, `h${r + 1}-${c}`, p.curbX);
+            else addSplit(vSplits, `v${r}-${c}`, p.curbZ);
+          }
+        }
+      }
+      // Tidy each segment's split points: sorted, clear of the grid nodes, spaced, capped.
+      const capSplits = (raw: readonly number[], endA: number, endB: number): number[] => {
+        const sorted = [...raw].sort((a, b) => a - b);
+        const result: number[] = [];
+        for (const coord of sorted) {
+          if (Math.abs(coord - endA) < 25 || Math.abs(coord - endB) < 25) continue;
+          if (result.length > 0 && Math.abs(coord - result[result.length - 1]!) < 8) continue;
+          result.push(coord);
+          if (result.length >= 3) break;
+        }
+        return result;
+      };
       const isGridArterial = (line: number, axis: 0 | 1): boolean =>
         pick(line, axis === 0 ? 0x11 : 0x22, regionSeed) < (archetype === 'megacity' ? 0.3 : 0.2);
+      const ringClass = (arterial: boolean): RoadClass =>
+        archetype === 'small-town' ? 'urban-local' : arterial ? 'urban-arterial' : 'urban-local';
+      const splitNodeKey = (segment: string, coord: number): string =>
+        `${segment}|${coord.toFixed(2)}`;
+      const splitNodes = new Map<string, RoadNodeConfig>();
+      const buildRingChain = (
+        segment: string,
+        a: RoadNodeConfig,
+        b: RoadNodeConfig,
+        axis: 0 | 1,
+        splits: readonly number[],
+      ): void => {
+        const arterial = isGridArterial(axis === 0 ? a.z : a.x, axis);
+        const halfWidth = arterial ? URBAN_ARTERIAL_HALF_WIDTH : URBAN_LOCAL_HALF_WIDTH;
+        let previous = a;
+        let k = 0;
+        for (const coord of capSplits(splits, axis === 0 ? a.x : a.z, axis === 0 ? b.x : b.z)) {
+          const id = `sp${ix}-${iz}-${segment}-${k}`;
+          k += 1;
+          const mid = addNode(id, axis === 0 ? coord : a.x, axis === 0 ? a.z : coord);
+          splitNodes.set(splitNodeKey(segment, coord), mid);
+          edges.push({
+            from: previous.id,
+            to: mid.id,
+            roadClass: ringClass(arterial),
+            halfWidthMeters: halfWidth,
+            maxGrade: 0.08,
+          });
+          previous = mid;
+        }
+        if (previous.id !== b.id) {
+          edges.push({
+            from: previous.id,
+            to: b.id,
+            roadClass: ringClass(arterial),
+            halfWidthMeters: halfWidth,
+            maxGrade: 0.08,
+          });
+        }
+      };
       for (let r = 0; r < n; r += 1) {
+        for (let c = 0; c < n - 1; c += 1) {
+          buildRingChain(
+            `h${r}-${c}`,
+            gridNodes[r * n + c]!,
+            gridNodes[r * n + c + 1]!,
+            0,
+            hSplits.get(`h${r}-${c}`) ?? [],
+          );
+        }
+      }
+      for (let r = 0; r < n - 1; r += 1) {
         for (let c = 0; c < n; c += 1) {
-          const node = gridNodes[r * n + c]!;
-          const edgeClass = (arterial: boolean): RoadClass =>
-            archetype === 'small-town'
-              ? 'urban-local'
-              : arterial
-                ? 'urban-arterial'
-                : 'urban-local';
-          if (c + 1 < n) {
-            edges.push({
-              from: node.id,
-              to: gridNodes[r * n + c + 1]!.id,
-              roadClass: edgeClass(isGridArterial(r, 0)),
-              ...(isGridArterial(r, 0)
-                ? { halfWidthMeters: URBAN_ARTERIAL_HALF_WIDTH }
-                : { halfWidthMeters: URBAN_LOCAL_HALF_WIDTH }),
-              maxGrade: 0.08,
-            });
+          buildRingChain(
+            `v${r}-${c}`,
+            gridNodes[r * n + c]!,
+            gridNodes[(r + 1) * n + c]!,
+            1,
+            vSplits.get(`v${r}-${c}`) ?? [],
+          );
+        }
+      }
+      // The narrow connections between the split nodes.
+      for (let r = 0; r < n - 1; r += 1) {
+        for (let c = 0; c < n - 1; c += 1) {
+          const detail = blockDetails[r]![c]!;
+          const z0 = gridNodes[r * n + c]!.z;
+          const z1 = gridNodes[(r + 1) * n + c]!.z;
+          const x0 = gridNodes[r * n + c]!.x;
+          const x1 = gridNodes[r * n + c + 1]!.x;
+          if (detail.sub !== undefined) {
+            const coord =
+              detail.sub.axis === 0
+                ? z0 + (z1 - z0) * detail.sub.fraction
+                : x0 + (x1 - x0) * detail.sub.fraction;
+            const a =
+              detail.sub.axis === 0
+                ? splitNodes.get(splitNodeKey(`v${r}-${c}`, coord))
+                : splitNodes.get(splitNodeKey(`h${r}-${c}`, coord));
+            const b =
+              detail.sub.axis === 0
+                ? splitNodes.get(splitNodeKey(`v${r}-${c + 1}`, coord))
+                : splitNodes.get(splitNodeKey(`h${r + 1}-${c}`, coord));
+            if (a !== undefined && b !== undefined && a.id !== b.id) {
+              edges.push({
+                from: a.id,
+                to: b.id,
+                roadClass: 'urban-local',
+                halfWidthMeters: RESIDENTIAL_HALF_WIDTH,
+                maxGrade: 0.06,
+              });
+            }
           }
-          if (r + 1 < n) {
+          if (detail.alley !== undefined) {
+            const coord =
+              detail.alley.axis === 0 ? z0 + ALLEY_SETBACK_METERS : x0 + ALLEY_SETBACK_METERS;
+            const a =
+              detail.alley.axis === 0
+                ? splitNodes.get(splitNodeKey(`v${r}-${c}`, coord))
+                : splitNodes.get(splitNodeKey(`h${r}-${c}`, coord));
+            const b =
+              detail.alley.axis === 0
+                ? splitNodes.get(splitNodeKey(`v${r}-${c + 1}`, coord))
+                : splitNodes.get(splitNodeKey(`h${r + 1}-${c}`, coord));
+            if (a !== undefined && b !== undefined && a.id !== b.id) {
+              edges.push({
+                from: a.id,
+                to: b.id,
+                roadClass: 'urban-alley',
+                halfWidthMeters: ALLEY_HALF_WIDTH,
+                maxGrade: 0.06,
+              });
+            }
+          }
+          // Driveways: from the split node at the pavement edge to the lot front (a dead
+          // end in the graph, which the solver and the ribbon both handle).
+          for (let spot = 0; spot < detail.spots.length; spot += 1) {
+            const p = detail.spots[spot]!;
+            const segment =
+              p.side === 0
+                ? `h${r}-${c}`
+                : p.side === 1
+                  ? `v${r}-${c + 1}`
+                  : p.side === 2
+                    ? `h${r + 1}-${c}`
+                    : `v${r}-${c}`;
+            const coord = p.side === 0 || p.side === 2 ? p.curbX : p.curbZ;
+            const curb = splitNodes.get(splitNodeKey(segment, coord));
+            if (curb === undefined) {
+              continue; // the split was capped out of this segment
+            }
+            const front = addNode(`pf${ix}-${iz}-${r}-${c}-${spot}`, p.x, p.z);
             edges.push({
-              from: node.id,
-              to: gridNodes[(r + 1) * n + c]!.id,
-              roadClass: edgeClass(isGridArterial(c, 1)),
-              ...(isGridArterial(c, 1)
-                ? { halfWidthMeters: URBAN_ARTERIAL_HALF_WIDTH }
-                : { halfWidthMeters: URBAN_LOCAL_HALF_WIDTH }),
-              maxGrade: 0.08,
+              from: curb.id,
+              to: front.id,
+              roadClass: 'urban-alley',
+              halfWidthMeters: DRIVEWAY_HALF_WIDTH,
+              maxGrade: 0.1,
             });
           }
         }
