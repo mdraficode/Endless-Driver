@@ -441,6 +441,19 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
     },
   },
   {
+    // Phase 10.4 (C4): the street dressing of the streamed cities — clutter props and
+    // neon signs per live block, plus the skid-mark streaks on the home-city junctions.
+    label: 'Street dressing',
+    format: (snapshot) => {
+      const stats = snapshot.contentStats;
+      const cities = stats.massingCitiesLive;
+      if (cities === undefined) {
+        return '—';
+      }
+      return `${cities} cities · ${stats.massingCityClutter ?? 0} clutter · ${stats.massingCityNeonSigns ?? 0} signs · ${stats.skidMarkStreaks ?? 0} skids`;
+    },
+  },
+  {
     // Phase 10.2: the world's secret corners — how many hideouts exist, how many are built
     // near the player right now, and how many cars are parked inside them.
     label: 'Hideouts',

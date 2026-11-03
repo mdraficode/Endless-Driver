@@ -82,6 +82,38 @@ export const URBAN_CITY_CONFIG = {
     },
   },
 
+  /**
+   * Phase 10.4 (C4): the dry damage layer on urban asphalt — potholes and broad grime
+   * patches, world-anchored so they cannot follow the car. Composed over the scanned
+   * maps and the wet-look nodes; never touches traction (the grip comes from surfaces).
+   */
+  roadWear: {
+    /** Periodic texture domain in metres (world anchoring), same family as the wet patches. */
+    tileSizeMeters: 160,
+    textureResolution: 512,
+    /** Potholes: small, dark, irregular. */
+    potholeCellMeters: 10,
+    potholeSpawnProbability: 0.1,
+    potholeMinRadiusMeters: 0.25,
+    potholeMaxRadiusMeters: 0.9,
+    potholeAlpha: 0.8,
+    potholeFeatherMeters: 0.14,
+    /** Grime: broad, very soft, low-contrast film variation. */
+    grimeCellMeters: 26,
+    grimeSpawnProbability: 0.5,
+    grimeMinRadiusMeters: 4,
+    grimeMaxRadiusMeters: 9,
+    grimeAlpha: 0.13,
+    grimeFeatherMeters: 3.2,
+    seed: 0x5eed42,
+    /** How strongly the mask darkens the albedo (1 = unchanged, lower = darker). */
+    potholeAlbedoMultiplier: 0.45,
+    /** Worn asphalt roughness target blended in at full mask. */
+    wornRoughness: 0.95,
+    /** Fraction of the mask that drives the worn-roughness blend. */
+    wornRoughnessStrength: 0.7,
+  },
+
   optics: {
     /**
      * Gaussian diffraction tuning (owner direction: the halo must be *visible*). The street

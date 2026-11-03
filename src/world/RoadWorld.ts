@@ -8,8 +8,25 @@ import {
   Object3D,
   type BufferGeometry,
 } from 'three';
-import { MeshPhysicalNodeMaterial, MeshStandardNodeMaterial, type Node } from 'three/webgpu';
-import { float, mix, mrt, positionLocal, sin, texture, uniform, uv, vec2, vec4 } from 'three/tsl';
+import {
+  MeshPhysicalNodeMaterial,
+  MeshStandardNodeMaterial,
+  type Node,
+  MeshBasicNodeMaterial,
+} from 'three/webgpu';
+import {
+  float,
+  mix,
+  mrt,
+  positionLocal,
+  sin,
+  texture,
+  uniform,
+  uv,
+  vec2,
+  vec4,
+  smoothstep,
+} from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { configureTiledSurface, SurfaceTextureLibrary } from '../assets/SurfaceTextureLibrary';
@@ -17,6 +34,7 @@ import type { AssetResolution } from '../assets/AssetManifest';
 import { surfaceAssetIdAtResolution } from '../config/asset-resolution';
 import { createArchitecturalMaterial } from './architectural-materials';
 import { bindScannedPbrMaps } from './scanned-pbr';
+import { createRoadWearMaskTexture, createRoadWearNode } from './road-decals';
 import { createRoadWetPatchMaskTexture, createRoadWetnessNode } from './road-wet-patches';
 import { resolveUrbanWetness, URBAN_CITY_CONFIG } from '../config/urban-city';
 import { clamp } from '../shared/math';
@@ -34,6 +52,8 @@ export interface RoadWorldStats {
   roadMeshes: number;
   urbanSidewalkEdges: number;
   urbanCrosswalkIntersections: number;
+  /** Phase 10.4 (C4): the skid-mark streaks instanced on junction approaches. */
+  skidMarkStreaks: number;
   roadSurfacesLoaded: 0 | 1;
   /** Current Aohara-only visual wet-look blend; not a physical surface condition. */
   urbanWetLook: number;
@@ -225,6 +245,130 @@ function createUrbanIntersectionMarkings(
 }
 
 /**
+ * Phase 10.4 (C4): skid-mark streaks on the urban junction approaches — one faded
+ * 0.55 x ~7 m streak per approach per lane side, placed just past the crossing so the
+ * corner reads as driven. Deterministic per network (a hash of the node id), instanced
+ * in a single batch like the crosswalks.
+ */
+const SKID_STREAK_LENGTH_METERS = 7;
+
+function hashNodeId(id: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < id.length; i += 1) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+function hashUnit(value: number): number {
+  let h = value | 0;
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
+  return ((h ^ (h >>> 16)) >>> 0) / 0x1_0000_0000;
+}
+
+export function createSkidMarkBatch(network: RoadNetwork): {
+  readonly mesh: InstancedMesh | null;
+  readonly streakCount: number;
+} {
+  const streaks: {
+    x: number;
+    y: number;
+    z: number;
+    yaw: number;
+    length: number;
+  }[] = [];
+  for (const node of network.nodes) {
+    // The same axis collection the crosswalks use: one travel axis per incoming street.
+    const axes: { x: number; z: number; halfWidthMeters: number }[] = [];
+    for (const edge of network.edges) {
+      if (!isUrbanRoad(edge) || (edge.from !== node.id && edge.to !== node.id)) {
+        continue;
+      }
+      const from = network.nodeById(edge.from);
+      const to = network.nodeById(edge.to);
+      if (from === null || to === null) continue;
+      const length = Math.hypot(to.x - from.x, to.z - from.z) || 1;
+      // The axis must point OUT of this node: reverse it for the far end of the edge.
+      const flip = edge.from === node.id ? 1 : -1;
+      const x = (flip * (to.x - from.x)) / length;
+      const z = (flip * (to.z - from.z)) / length;
+      const match = axes.find((axis) => Math.abs(axis.x * x + axis.z * z) > 0.985);
+      if (match === undefined) {
+        axes.push({ x, z, halfWidthMeters: edge.halfWidthMeters });
+      } else {
+        match.halfWidthMeters = Math.max(match.halfWidthMeters, edge.halfWidthMeters);
+      }
+    }
+    if (axes.length < 2) continue;
+    const nodeSeed = hashNodeId(node.id);
+    for (const axis of axes) {
+      // How far the crossing corner sits out along this approach.
+      let approachMeters = 0;
+      for (const other of axes) {
+        if (other === axis) continue;
+        const cross = Math.abs(axis.x * other.z - axis.z * other.x);
+        if (cross < 0.15) continue;
+        approachMeters = Math.max(approachMeters, other.halfWidthMeters / cross);
+      }
+      for (const side of [-1, 1] as const) {
+        const streakSeed =
+          nodeSeed ^
+          Math.imul(axis.x > 0 ? 0x9e37 : 0x85eb, 0x9e3779b9) ^
+          Math.imul(side === 1 ? 0x51 : 0x52, 0x85ebca6b);
+        const jitter = hashUnit(streakSeed);
+        const length = SKID_STREAK_LENGTH_METERS * (0.8 + 0.4 * hashUnit(streakSeed ^ 0x77));
+        const centreAlong = approachMeters + axis.halfWidthMeters + 4 + length / 2;
+        // Only on approaches with enough street left.
+        if (centreAlong + length / 2 > 45) continue;
+        streaks.push({
+          x:
+            node.x +
+            axis.x * centreAlong +
+            axis.z * side * axis.halfWidthMeters * (0.55 + 0.2 * jitter),
+          y: node.y + PAINT_LIFT + 0.004,
+          z:
+            node.z +
+            axis.z * centreAlong -
+            axis.x * side * axis.halfWidthMeters * (0.55 + 0.2 * jitter),
+          yaw: Math.atan2(axis.x, axis.z),
+          length,
+        });
+      }
+    }
+  }
+  if (streaks.length === 0) {
+    return { mesh: null, streakCount: 0 };
+  }
+  const material = new MeshBasicNodeMaterial();
+  material.name = 'urban-skid-marks';
+  material.color.set(0x141619);
+  material.transparent = true;
+  material.depthWrite = false;
+  material.opacityNode = float(0.2).mul(
+    float(1).sub(smoothstep(0.35, 1, positionLocal.z.div(SKID_STREAK_LENGTH_METERS / 2).abs())),
+  );
+  const mesh = new InstancedMesh(
+    new BoxGeometry(1, 0.02, SKID_STREAK_LENGTH_METERS),
+    material,
+    streaks.length,
+  );
+  mesh.name = 'urban-skid-marks';
+  mesh.frustumCulled = false;
+  const transform = new Object3D();
+  streaks.forEach((streak, index) => {
+    transform.position.set(streak.x, streak.y, streak.z);
+    transform.scale.set(0.55, 1, streak.length / SKID_STREAK_LENGTH_METERS);
+    transform.rotation.set(0, streak.yaw, 0);
+    transform.updateMatrix();
+    mesh.setMatrixAt(index, transform.matrix);
+  });
+  mesh.instanceMatrix.needsUpdate = true;
+  return { mesh, streakCount: streaks.length };
+}
+
+/**
  * Visual road network: ribbon meshes laid over the carved terrain corridor.
  *
  * Geometry comes from the same solved profile the height function carves. Per-edge road classes
@@ -257,6 +401,15 @@ export class RoadWorld {
 
   readonly #urbanWetPatchMask: Node<'float'>;
 
+  readonly #roadWearMaskTexture: DataTexture;
+
+  readonly #roadWearMask: Node<'float'>;
+
+  /** Phase 10.4 (C4): the skid-mark streak batch (urban junction approaches). */
+  readonly #skidMarkMesh: InstancedMesh | null;
+
+  readonly #skidMarkStreaks: number;
+
   #baseUrbanWetness: number = URBAN_CITY_CONFIG.wetRoad.wetnessDay;
 
   #surfaceWetness = 0;
@@ -281,6 +434,8 @@ export class RoadWorld {
     this.#ownsSurfaceTextures = surfaceTextures === undefined;
     this.#wetPatchMaskTexture = createRoadWetPatchMaskTexture();
     this.#urbanWetPatchMask = createRoadWetnessNode(this.#wetPatchMaskTexture, this.#urbanWetness);
+    this.#roadWearMaskTexture = createRoadWearMaskTexture();
+    this.#roadWearMask = createRoadWearNode(this.#roadWearMaskTexture);
 
     this.#asphaltMaterial = new MeshStandardNodeMaterial();
     this.#asphaltMaterial.name = 'aohara-asphalt';
@@ -301,16 +456,22 @@ export class RoadWorld {
     this.#urbanAsphaltMaterial.color.set(0x34383b);
     this.#urbanAsphaltMaterial.roughness = URBAN_CITY_CONFIG.wetRoad.dryRoughness;
     this.#urbanAsphaltMaterial.metalness = 0.025;
+    // Phase 10.4 (C4): the dry damage layer sits under the wet look — worn asphalt is
+    // darker, rougher and has less clearcoat where the mask says it is damaged.
+    const wear = this.#roadWearMask;
     this.#urbanAsphaltMaterial.roughnessNode = mix(
       float(URBAN_CITY_CONFIG.wetRoad.dryRoughness),
       float(URBAN_CITY_CONFIG.wetRoad.wetRoughness),
       this.#urbanWetPatchMask,
+    ).mix(
+      float(URBAN_CITY_CONFIG.roadWear.wornRoughness),
+      wear.mul(URBAN_CITY_CONFIG.roadWear.wornRoughnessStrength),
     );
     this.#urbanAsphaltMaterial.clearcoatNode = mix(
       float(URBAN_CITY_CONFIG.wetRoad.dryClearcoat),
       float(URBAN_CITY_CONFIG.wetRoad.wetClearcoat),
       this.#urbanWetPatchMask,
-    );
+    ).mul(mix(float(1), float(0.35), wear));
     this.#urbanAsphaltMaterial.clearcoatRoughnessNode = mix(
       float(URBAN_CITY_CONFIG.wetRoad.dryClearcoatRoughness),
       float(URBAN_CITY_CONFIG.wetRoad.wetClearcoatRoughness),
@@ -321,9 +482,15 @@ export class RoadWorld {
       this.#urbanAsphaltMaterial.color.g,
       this.#urbanAsphaltMaterial.color.b,
       1,
-    ).mul(
-      mix(float(1), float(URBAN_CITY_CONFIG.wetRoad.wetAlbedoMultiplier), this.#urbanWetPatchMask),
-    );
+    )
+      .mul(
+        mix(
+          float(1),
+          float(URBAN_CITY_CONFIG.wetRoad.wetAlbedoMultiplier),
+          this.#urbanWetPatchMask,
+        ),
+      )
+      .mul(mix(float(1), float(URBAN_CITY_CONFIG.roadWear.potholeAlbedoMultiplier), wear));
     this.#urbanAsphaltMaterial.mrtNode = wetRoadMaskOutput
       ? mrt({ wetRoadMask: this.#urbanWetPatchMask })
       : null;
@@ -447,6 +614,9 @@ export class RoadWorld {
     const urbanMarkings = createUrbanIntersectionMarkings(network, markingMaterial);
     this.#urbanSidewalkEdges = urbanSidewalkEdges;
     this.#urbanCrosswalkIntersections = urbanMarkings.intersectionCount;
+    const skidMarks = createSkidMarkBatch(network);
+    this.#skidMarkMesh = skidMarks.mesh;
+    this.#skidMarkStreaks = skidMarks.streakCount;
 
     const group = new Group();
     group.name = 'road-network';
@@ -500,6 +670,10 @@ export class RoadWorld {
     if (urbanMarkings.mesh !== null) {
       this.#meshes.push(urbanMarkings.mesh);
       group.add(urbanMarkings.mesh);
+    }
+    if (this.#skidMarkMesh !== null) {
+      this.#meshes.push(this.#skidMarkMesh);
+      group.add(this.#skidMarkMesh);
     }
     this.object = group;
   }
@@ -608,6 +782,22 @@ export class RoadWorld {
           this.#urbanWetPatchMask,
         );
       }
+      // Phase 10.4 (C4): the dry damage layer stays on top of the scanned maps.
+      this.#urbanAsphaltMaterial.colorNode = (
+        this.#urbanAsphaltMaterial.colorNode as Node<'vec4'>
+      ).mul(
+        mix(
+          float(1),
+          float(URBAN_CITY_CONFIG.roadWear.potholeAlbedoMultiplier),
+          this.#roadWearMask,
+        ),
+      );
+      this.#urbanAsphaltMaterial.roughnessNode = (
+        this.#urbanAsphaltMaterial.roughnessNode as Node<'float'>
+      ).mix(
+        float(URBAN_CITY_CONFIG.roadWear.wornRoughness),
+        this.#roadWearMask.mul(URBAN_CITY_CONFIG.roadWear.wornRoughnessStrength),
+      );
       this.#urbanAsphaltMaterial.needsUpdate = true;
     }
 
@@ -628,6 +818,7 @@ export class RoadWorld {
       roadMeshes: this.#meshes.length,
       urbanSidewalkEdges: this.#urbanSidewalkEdges,
       urbanCrosswalkIntersections: this.#urbanCrosswalkIntersections,
+      skidMarkStreaks: this.#skidMarkStreaks,
       roadSurfacesLoaded: this.#surfacesLoaded,
       urbanWetLook: Number(this.#urbanWetness.value.toFixed(3)),
     };
@@ -652,6 +843,7 @@ export class RoadWorld {
       material.dispose();
     }
     this.#wetPatchMaskTexture.dispose();
+    this.#roadWearMaskTexture.dispose();
     if (this.#ownsSurfaceTextures) {
       this.#surfaceTextures.dispose();
     }

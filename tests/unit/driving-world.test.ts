@@ -60,7 +60,8 @@ describe('Aohara driving-world integration', () => {
       urbanSidewalkEdges: 104,
       urbanCrosswalkIntersections: 28,
       urbanWetLook: 0.85,
-      roadMeshes: 8,
+      // Phase 10.4 (C4): the skid-mark batch is the ninth resident mesh.
+      roadMeshes: 9,
     });
     const stats = content.getContentStats?.();
     if (stats === undefined) {

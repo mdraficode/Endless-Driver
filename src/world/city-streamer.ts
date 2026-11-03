@@ -16,6 +16,7 @@ import { ROAD_WINDOW_CELLS } from './road-layout';
 import { massingCityForRegion, type MassingCitySpec } from './city-content';
 import { computeRegionPedestrians, type RegionPedestrianData } from './pedestrians';
 import { MassingCityWorld } from './urban-massing';
+import { computeRegionClutter } from './urban-clutter';
 import type { WorldPlan } from './world-plan';
 import type { TownCarProbe, TownHit } from './town';
 import type { TerrainSampler } from './terrain-height';
@@ -109,16 +110,22 @@ export class CityStreamer {
         Math.hypot(candidate.x - focus.x, candidate.z - focus.z) < BUILD_RADIUS_METERS,
     );
     if (next === undefined) return;
+    // Phase 10.4 (C4): the street clutter of this block is resolved with it.
+    const network = this.#terrainSampler.roadNetwork;
+    const clutter =
+      network !== undefined
+        ? computeRegionClutter(next.spec, network, this.#tier, next.seed)
+        : undefined;
     const city = new MassingCityWorld(next.spec, this.#tier, {
       nightGain: this.nightGain,
       baseY: this.#terrainSampler.heightAt(next.x, next.z),
+      ...(clutter === undefined ? {} : { clutter }),
     });
     this.#attach(city);
     this.#live.set(next.regionId, city);
     this.#lru.push(next.regionId);
     // The pedestrians of this block rise with it: sidewalks from the solved roads,
     // activity nodes from the region seed.
-    const network = this.#terrainSampler.roadNetwork;
     if (this.#pedestrians !== undefined && network !== undefined) {
       this.#pedestrians.setRegion(computeRegionPedestrians(next.spec, network, next.seed));
     }

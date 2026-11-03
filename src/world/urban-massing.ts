@@ -10,10 +10,12 @@
  * `CityStreamer`.
  */
 import {
+  BufferAttribute,
   BoxGeometry,
   Color,
   Group,
   InstancedMesh,
+  Mesh,
   Object3D,
   PlaneGeometry,
   PointLight,
@@ -21,10 +23,11 @@ import {
   type BufferGeometry,
   type Material,
 } from 'three';
-import { uniform, vec4 } from 'three/tsl';
+import { uniform, vec4, vertexColor } from 'three/tsl';
 import { MeshBasicNodeMaterial, type UniformNode } from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createArchitecturalMaterial } from './architectural-materials';
+import type { RegionClutterData } from './urban-clutter';
 import { collideCarWithStaticBoxes, type StaticBuildingBox } from './static-building-collision';
 import type { TierId } from '../config/tiers';
 import type { TownCarProbe, TownHit } from './town';
@@ -152,6 +155,8 @@ export class MassingCityWorld {
   #pointLights: PointLight[] = [];
   #collisionBoxes: StaticBuildingBox[] = [];
   #disposed = false;
+  #clutterCount = 0;
+  #neonSignCount = 0;
 
   constructor(
     spec: MassingCitySpec,
@@ -160,13 +165,15 @@ export class MassingCityWorld {
       readonly nightGain: UniformNode<'float', number>;
       /** Ground elevation under the city centre (the shared terrain sampler). */
       readonly baseY: number;
+      /** Phase 10.4 (C4): street clutter + neon signs for this region. */
+      readonly clutter?: RegionClutterData;
     },
   ) {
     this.#spec = spec;
     this.#tier = tier;
     this.root.name = `massing-city-${spec.regionId}`;
     this.root.position.set(spec.x, options.baseY + 0.57, spec.z);
-    this.#build(options.nightGain);
+    this.#build(options.nightGain, options.clutter);
   }
 
   /** Static building collision, in world space (same contract as town/Aohara hits). */
@@ -180,6 +187,8 @@ export class MassingCityWorld {
       massingCityTowers: this.#spec.towers.length,
       massingCityInfill: this.#spec.infill.length,
       massingCityPointLights: this.#pointLights.length,
+      massingCityClutter: this.#clutterCount,
+      massingCityNeonSigns: this.#neonSignCount,
     };
   }
 
@@ -203,7 +212,7 @@ export class MassingCityWorld {
     return value;
   }
 
-  #build(nightGain: UniformNode<'float', number>): void {
+  #build(nightGain: UniformNode<'float', number>, clutter: RegionClutterData | undefined): void {
     const spec = this.#spec;
     const unitBox = this.#track(new BoxGeometry(1, 1, 1), this.#geometries);
     const transform = new Object3D();
@@ -626,6 +635,150 @@ export class MassingCityWorld {
         light.position.set(lamp.x, WORLD_BASE_Y + 7.6, lamp.z);
         this.root.add(light);
         this.#pointLights.push(light);
+      }
+    }
+
+    // --- Phase 10.4 (C4): street clutter + neon signs. Two merged vertex-colored
+    // geometries (the pedestrian-visuals pattern): one standard-material draw for the
+    // debris/crates/bins/hydrants/barrels, one night-emissive draw for the signs. ---
+    if (clutter !== undefined) {
+      const clutterBoxes: BufferGeometry[] = [];
+      const signBoxes: BufferGeometry[] = [];
+      const localY = (worldY: number): number => worldY - this.root.position.y;
+      const addTintedBox = (
+        size: [number, number, number],
+        centre: [number, number, number],
+        hex: number,
+        yaw: number,
+        target: BufferGeometry[],
+      ): void => {
+        const geometry = new BoxGeometry(...size);
+        const color = new Color(hex);
+        const vertexCount = geometry.getAttribute('position').count;
+        const tint = new Float32Array(vertexCount * 3);
+        for (let v = 0; v < vertexCount; v += 1) {
+          tint[v * 3] = color.r;
+          tint[v * 3 + 1] = color.g;
+          tint[v * 3 + 2] = color.b;
+        }
+        geometry.setAttribute('color', new BufferAttribute(tint, 3));
+        geometry.rotateY(yaw);
+        geometry.translate(centre[0], centre[1], centre[2]);
+        target.push(geometry);
+      };
+      for (const item of clutter.clutter) {
+        const y = localY(item.y);
+        if (item.kind === 'debris') {
+          addTintedBox(
+            [0.6 * item.scale, 0.22 * item.scale, 0.6 * item.scale],
+            [item.x, y + 0.11 * item.scale, item.z],
+            0x45423d,
+            item.yaw + 0.4,
+            clutterBoxes,
+          );
+        } else if (item.kind === 'crate') {
+          addTintedBox(
+            [0.72 * item.scale, 0.72 * item.scale, 0.72 * item.scale],
+            [item.x, y + 0.36 * item.scale, item.z],
+            0x5b4d3a,
+            item.yaw,
+            clutterBoxes,
+          );
+          if (item.scale > 1.1) {
+            addTintedBox(
+              [0.55 * item.scale, 0.5 * item.scale, 0.55 * item.scale],
+              [item.x, y + 0.97 * item.scale, item.z],
+              0x514636,
+              item.yaw + 0.3,
+              clutterBoxes,
+            );
+          }
+        } else if (item.kind === 'bin') {
+          addTintedBox(
+            [0.5 * item.scale, 0.85 * item.scale, 0.5 * item.scale],
+            [item.x, y + 0.43 * item.scale, item.z],
+            0x2f3a44,
+            item.yaw,
+            clutterBoxes,
+          );
+        } else if (item.kind === 'barrel') {
+          addTintedBox(
+            [0.55 * item.scale, 1.05 * item.scale, 0.55 * item.scale],
+            [item.x, y + 0.53 * item.scale, item.z],
+            0x3a3f46,
+            item.yaw,
+            clutterBoxes,
+          );
+        } else {
+          addTintedBox(
+            [0.34 * item.scale, 0.8 * item.scale, 0.34 * item.scale],
+            [item.x, y + 0.4 * item.scale, item.z],
+            0x8f2f2a,
+            item.yaw,
+            clutterBoxes,
+          );
+        }
+      }
+      for (const sign of clutter.signs) {
+        const y = localY(sign.y);
+        addTintedBox(
+          [sign.widthMeters, sign.heightMeters, 0.16],
+          [sign.x, y, sign.z],
+          sign.colorHex,
+          sign.yaw,
+          signBoxes,
+        );
+      }
+      const merge = (boxes: BufferGeometry[]): BufferGeometry | null => {
+        if (boxes.length === 0) return null;
+        const merged = mergeGeometries(boxes, false);
+        for (const box of boxes) box.dispose();
+        return merged;
+      };
+      const clutterGeometry = merge(clutterBoxes);
+      if (clutterGeometry !== null) {
+        this.#geometries.push(clutterGeometry);
+        const material = this.#track(
+          (() => {
+            const m = createArchitecturalMaterial({
+              name: `massing-clutter-${spec.regionId}`,
+              colorHex: 0xffffff,
+              roughness: 0.88,
+              metalness: 0.08,
+              detailAmplitude: 0.012,
+              clearcoat: 0.05,
+              clearcoatRoughness: 0.5,
+            });
+            m.colorNode = vec4(vertexColor(), 1);
+            return m;
+          })(),
+          this.#materials,
+        );
+        const mesh = new Mesh(clutterGeometry, material);
+        mesh.name = `massing-clutter-${spec.regionId}`;
+        mesh.frustumCulled = false;
+        mesh.castShadow = true;
+        this.root.add(mesh);
+        this.#clutterCount = clutter.clutter.length;
+      }
+      const signGeometry = merge(signBoxes);
+      if (signGeometry !== null) {
+        this.#geometries.push(signGeometry);
+        const material = this.#track(
+          (() => {
+            const m = new MeshBasicNodeMaterial();
+            m.name = `massing-neon-signs-${spec.regionId}`;
+            m.toneMapped = false;
+            m.colorNode = vec4(vertexColor().mul(nightGain).mul(1.8), 1);
+            return m;
+          })(),
+          this.#materials,
+        );
+        const mesh = new Mesh(signGeometry, material);
+        mesh.name = `massing-neon-signs-${spec.regionId}`;
+        mesh.frustumCulled = false;
+        this.root.add(mesh);
+        this.#neonSignCount = clutter.signs.length;
       }
     }
   }

@@ -240,7 +240,8 @@ describe('road network graph', () => {
   it('batches roads, city sidewalks and crossings into a bounded mesh set', () => {
     const roads = new RoadWorld(network);
     const stats = roads.getStats();
-    expect(stats.roadMeshes).toBeLessThanOrEqual(8);
+    // Phase 10.4 (C4): the skid-mark batch is the ninth resident mesh (urban networks only).
+    expect(stats.roadMeshes).toBeLessThanOrEqual(9);
     // Phase 8.4a: one fewer block (the plaza) removes three sidewalk edges from the 4×4 grid.
     // Phase 8.4b: the boulevard's four arterial edges and its street splits add sidewalks,
     // and its crossings join the counted intersections.
