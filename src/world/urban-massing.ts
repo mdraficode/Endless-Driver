@@ -23,11 +23,12 @@ import {
 } from 'three';
 import { uniform, vec4 } from 'three/tsl';
 import { MeshBasicNodeMaterial, type UniformNode } from 'three/webgpu';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createArchitecturalMaterial } from './architectural-materials';
 import { collideCarWithStaticBoxes, type StaticBuildingBox } from './static-building-collision';
 import type { TierId } from '../config/tiers';
 import type { TownCarProbe, TownHit } from './town';
-import type { MassingCitySpec } from './city-content';
+import type { MassingCitySpec, MassingPlot } from './city-content';
 
 /** The city's ground lift above the solved road datum (Aohara's WORLD_BASE_Y convention). */
 const WORLD_BASE_Y = -0.55;
@@ -44,6 +45,64 @@ interface WindowQuad {
   readonly z: number;
   /** Yaw so the unit plane faces outward from the tower face. */
   readonly yaw: number;
+}
+
+interface FencePanel {
+  readonly x: number;
+  readonly z: number;
+  readonly yaw: number;
+}
+
+/** 1.5 m fence panels ringing a lot (two posts + two rails per panel, merged). */
+function buildFencePanelGeometry(): BufferGeometry {
+  const post = new BoxGeometry(0.07, 1.5, 0.07);
+  post.translate(-0.72, 0, 0);
+  const post2 = new BoxGeometry(0.07, 1.5, 0.07);
+  post2.translate(0.72, 0, 0);
+  const rail = new BoxGeometry(1.5, 0.05, 0.04);
+  rail.translate(0, 0.55, 0);
+  const rail2 = new BoxGeometry(1.5, 0.05, 0.04);
+  rail2.translate(0, 1.1, 0);
+  const merged = mergeGeometries([post, post2, rail, rail2], false);
+  post.dispose();
+  post2.dispose();
+  rail.dispose();
+  rail2.dispose();
+  if (merged === null) {
+    throw new Error('fence panel merge failed');
+  }
+  return merged;
+}
+
+/** The fence ring panels for one lot, centred on the building (local frame before the yaw). */
+function fenceRingsForLot(plot: MassingPlot): readonly FencePanel[] {
+  const panels: FencePanel[] = [];
+  const w = plot.widthMeters + 2;
+  const d = plot.depthMeters + 2;
+  const cos = Math.cos(plot.yaw);
+  const sin = Math.sin(plot.yaw);
+  const push = (lx: number, lz: number, yaw: number): void => {
+    // The panel geometry runs along local X; rotate by the lot yaw plus the side's turn.
+    panels.push({ x: lx * cos - lz * sin, z: lx * sin + lz * cos, yaw: plot.yaw + yaw });
+  };
+  const halfW = w / 2;
+  const halfD = d / 2;
+  // The street front is the local -Z side; a driveway gap is left in its middle.
+  const gapHalf = plot.widthMeters / 2 + 1.2;
+  for (let x = -halfW; x < halfW; x += 1.5) {
+    if (Math.abs(x) <= gapHalf) {
+      // Skip the front (street-side) panel; keep the back one.
+      push(x, halfD, 0);
+      continue;
+    }
+    push(x, -halfD, 0);
+    push(x, halfD, 0);
+  }
+  for (let z = -halfD; z < halfD; z += 1.5) {
+    push(-halfW, z, Math.PI / 2);
+    push(halfW, z, Math.PI / 2);
+  }
+  return panels;
 }
 
 /** Infallible hash in [0, 1) for window/lamp selection. */
@@ -367,6 +426,144 @@ export class MassingCityWorld {
       });
       mesh.instanceMatrix.needsUpdate = true;
       this.root.add(mesh);
+    }
+
+    // --- Phase 10.2 plot dressing: lot-front buildings, lot fences and front pathways. ---
+    if (spec.plots.length > 0) {
+      const plotFacade = this.#track(
+        createArchitecturalMaterial({
+          name: `massing-plot-facades-${spec.regionId}`,
+          colorHex: 0x39424e,
+          roughness: 0.78,
+          metalness: 0.1,
+          detailAmplitude: 0.02,
+          clearcoat: 0.1,
+          clearcoatRoughness: 0.4,
+        }),
+        this.#materials,
+      );
+      const plotRoof = this.#track(
+        createArchitecturalMaterial({
+          name: `massing-plot-roofs-${spec.regionId}`,
+          colorHex: 0x20262e,
+          roughness: 0.85,
+          metalness: 0.08,
+          detailAmplitude: 0.016,
+          clearcoat: 0.06,
+          clearcoatRoughness: 0.5,
+        }),
+        this.#materials,
+      );
+      const heights: Record<MassingPlot['kind'], number> = { garage: 5, house: 6.5, shop: 4.5 };
+      const facades = new InstancedMesh(unitBox, plotFacade, spec.plots.length);
+      const roofs = new InstancedMesh(unitBox, plotRoof, spec.plots.length);
+      facades.name = `massing-plot-facades-${spec.regionId}`;
+      roofs.name = `massing-plot-roofs-${spec.regionId}`;
+      facades.castShadow = true;
+      facades.receiveShadow = true;
+      facades.frustumCulled = false;
+      roofs.frustumCulled = false;
+      spec.plots.forEach((plot, index) => {
+        const height = heights[plot.kind];
+        // The plot spot marks the building FRONT (set back from the curb); the box centre
+        // sits half a depth further into the lot (the back direction is (sin yaw, cos yaw)).
+        const backX = Math.sin(plot.yaw) * (plot.depthMeters / 2);
+        const backZ = Math.cos(plot.yaw) * (plot.depthMeters / 2);
+        const cx = plot.x + backX;
+        const cz = plot.z + backZ;
+        transform.position.set(cx, WORLD_BASE_Y + height / 2, cz);
+        transform.scale.set(plot.widthMeters, height, plot.depthMeters);
+        transform.rotation.set(0, plot.yaw, 0);
+        transform.updateMatrix();
+        facades.setMatrixAt(index, transform.matrix);
+        transform.position.set(cx, WORLD_BASE_Y + height + 0.25, cz);
+        transform.scale.set(plot.widthMeters + 0.4, 0.5, plot.depthMeters + 0.4);
+        transform.updateMatrix();
+        roofs.setMatrixAt(index, transform.matrix);
+        this.#collisionBoxes.push({
+          x: spec.x + cx,
+          z: spec.z + cz,
+          yaw: plot.yaw,
+          halfWidth: plot.widthMeters / 2,
+          halfDepth: plot.depthMeters / 2,
+        });
+      });
+      facades.instanceMatrix.needsUpdate = true;
+      roofs.instanceMatrix.needsUpdate = true;
+      this.root.add(facades);
+      this.root.add(roofs);
+      // Lot fences: a ring of 1.5 m panels around each lot.
+      const fenceMaterial = this.#track(
+        createArchitecturalMaterial({
+          name: `massing-plot-fences-${spec.regionId}`,
+          colorHex: 0x2c333b,
+          roughness: 0.5,
+          metalness: 0.55,
+          detailAmplitude: 0.008,
+          clearcoat: 0.2,
+          clearcoatRoughness: 0.35,
+        }),
+        this.#materials,
+      );
+      const fenceGeometry = this.#track(buildFencePanelGeometry(), this.#geometries);
+      let fenceCount = 0;
+      for (const plot of spec.plots) {
+        fenceCount += fenceRingsForLot(plot).length;
+      }
+      const fences = new InstancedMesh(fenceGeometry, fenceMaterial, Math.max(1, fenceCount));
+      fences.name = `massing-plot-fences-${spec.regionId}`;
+      fences.frustumCulled = false;
+      let fenceIndex = 0;
+      for (const plot of spec.plots) {
+        const backX = Math.sin(plot.yaw) * (plot.depthMeters / 2);
+        const backZ = Math.cos(plot.yaw) * (plot.depthMeters / 2);
+        const cx = plot.x + backX;
+        const cz = plot.z + backZ;
+        for (const panel of fenceRingsForLot(plot)) {
+          transform.position.set(cx + panel.x, WORLD_BASE_Y + 0.75, cz + panel.z);
+          transform.scale.set(1, 1, 1);
+          transform.rotation.set(0, panel.yaw, 0);
+          transform.updateMatrix();
+          fences.setMatrixAt(fenceIndex++, transform.matrix);
+        }
+      }
+      fences.count = fenceIndex;
+      fences.instanceMatrix.needsUpdate = true;
+      this.root.add(fences);
+      // Front pathways: a concrete strip from the lot front toward the sidewalk.
+      const pathMaterial = this.#track(
+        createArchitecturalMaterial({
+          name: `massing-plot-paths-${spec.regionId}`,
+          colorHex: 0x62686e,
+          roughness: 0.9,
+          metalness: 0.02,
+          detailAmplitude: 0.02,
+          clearcoat: 0.03,
+          clearcoatRoughness: 0.6,
+        }),
+        this.#materials,
+      );
+      const paths = new InstancedMesh(unitBox, pathMaterial, spec.plots.length);
+      paths.name = `massing-plot-paths-${spec.regionId}`;
+      paths.frustumCulled = false;
+      spec.plots.forEach((plot, index) => {
+        // The front normal is (-sin yaw, -cos yaw): the path runs from the building front
+        // line out to the pavement edge. Rotating by yaw + PI aims the strip's local +Z
+        // along that normal.
+        const fx = -Math.sin(plot.yaw);
+        const fz = -Math.cos(plot.yaw);
+        transform.position.set(
+          plot.x + fx * (plot.depthMeters / 2 + 2.25),
+          WORLD_BASE_Y + 0.06,
+          plot.z + fz * (plot.depthMeters / 2 + 2.25),
+        );
+        transform.scale.set(1.2, 0.1, 4.5);
+        transform.rotation.set(0, plot.yaw + Math.PI, 0);
+        transform.updateMatrix();
+        paths.setMatrixAt(index, transform.matrix);
+      });
+      paths.instanceMatrix.needsUpdate = true;
+      this.root.add(paths);
     }
 
     // --- Street lamps: half the grid nodes get poles; a tier-budgeted few carry lights. ---

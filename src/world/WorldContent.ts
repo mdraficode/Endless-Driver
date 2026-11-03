@@ -93,6 +93,8 @@ export interface SceneContentContext {
    * Absent for standalone look-dev scenes and unit fixtures, which keep the fixed Hinode data.
    */
   readonly worldPlan?: import('./world-plan').WorldPlan;
+  /** Phase 10.2: the world's hideout placements (empty for fixture scenes). */
+  readonly hideouts?: readonly import('./hideouts').HideoutSpec[];
   readonly config: RenderConfig;
   readonly worldConfig: WorldConfig;
   /** Shared Rapier world for content-owned dynamic actors, such as city traffic. */

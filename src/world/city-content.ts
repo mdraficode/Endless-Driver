@@ -12,6 +12,7 @@ import type { RoadEdgeConfig, RoadNodeConfig } from '../config/roads';
 import { AOHARA_KIT_EDGES, AOHARA_KIT_NODES } from '../config/roads';
 import { AOHARA_DISTRICT_CONFIG, aoharaRowOffsetMeters } from '../config/urban-district';
 import type { RegionPlan, WorldPlan } from './world-plan';
+import { plotSpotsForBlock } from './urban-plots';
 
 // ---------------------------------------------------------------------------
 // Home city: the Aohara kit, moved.
@@ -136,6 +137,23 @@ export interface MassingLamp {
   readonly z: number;
 }
 
+/** A building lot front (Phase 10.2): the driveway ends here, the massing builds the front here. */
+export interface MassingPlot {
+  readonly x: number;
+  readonly z: number;
+  readonly yaw: number;
+  readonly kind: 'garage' | 'house' | 'shop';
+  readonly widthMeters: number;
+  readonly depthMeters: number;
+}
+
+/** A block's dressing flag: dense blocks run claustrophobic (Phase 10.2). */
+export interface MassingBlock {
+  readonly x: number;
+  readonly z: number;
+  readonly dense: boolean;
+}
+
 export interface MassingCitySpec {
   readonly regionId: string;
   /** District centre (world), where the region's road grid sits. */
@@ -146,6 +164,8 @@ export interface MassingCitySpec {
   readonly towers: readonly MassingTower[];
   readonly infill: readonly MassingInfill[];
   readonly lamps: readonly MassingLamp[];
+  readonly plots: readonly MassingPlot[];
+  readonly blocks: readonly MassingBlock[];
 }
 
 /**
@@ -163,6 +183,8 @@ export function massingCityForRegion(region: RegionPlan): MassingCitySpec {
       towers: [],
       infill: [],
       lamps: [],
+      plots: [],
+      blocks: [],
     };
   }
   const isMegacity = region.archetype === 'megacity';
@@ -176,6 +198,8 @@ export function massingCityForRegion(region: RegionPlan): MassingCitySpec {
   const towers: MassingTower[] = [];
   const infill: MassingInfill[] = [];
   const lamps: MassingLamp[] = [];
+  const plots: MassingPlot[] = [];
+  const blocks: MassingBlock[] = [];
 
   // Lamps at every grid node (the renderer trims to tier budget).
   for (let r = 0; r < n; r += 1) {
@@ -195,6 +219,28 @@ export function massingCityForRegion(region: RegionPlan): MassingCitySpec {
       const coreBoost = Math.max(0, 1 - coreDistance);
 
       const u = (k: number): number => stableUnit(blockSeed, k, seed);
+      // Phase 10.2: ~a quarter of blocks are dense backstreet blocks — claustrophobic,
+      // low, and pushed to the block edges.
+      const dense = u(77) < 0.25;
+      blocks.push({ x: blockCenterX, z: blockCenterZ, dense });
+      // The lot fronts: the same plotSpotsForBlock the road layout aims driveways at, so a
+      // driveway always ends in front of a building the massing actually places.
+      const blockRect = {
+        minX: (c - (n - 1) / 2) * spacing,
+        minZ: (r - (n - 1) / 2) * spacing,
+        maxX: (c - (n - 1) / 2 + 1) * spacing,
+        maxZ: (r - (n - 1) / 2 + 1) * spacing,
+      };
+      for (const p of plotSpotsForBlock(region.ix, region.iz, r, c, blockRect, seed, 3.2)) {
+        plots.push({
+          x: p.x,
+          z: p.z,
+          yaw: p.yaw,
+          kind: p.kind,
+          widthMeters: p.widthMeters,
+          depthMeters: p.depthMeters,
+        });
+      }
       // Towers: two per block in the megacity, ~70% of blocks elsewhere.
       const towerCount = isMegacity ? 2 : u(1) < 0.7 ? 1 : 0;
       for (let t = 0; t < towerCount; t += 1) {
@@ -241,16 +287,38 @@ export function massingCityForRegion(region: RegionPlan): MassingCitySpec {
         });
       }
 
-      // Infill: two to four low buildings per block, denser in the core.
-      const infillCount = 2 + Math.floor(u(61) * (2 + coreBoost * 2));
+      // Infill: two to four low buildings per block, denser in the core; dense blocks add
+      // two more low masses hugging the block edges, and never crowd a lot front.
+      const infillCount = 2 + Math.floor(u(61) * (2 + coreBoost * 2)) + (dense ? 2 : 0);
       for (let i = 0; i < infillCount; i += 1) {
         const ui = (k: number): number => stableUnit(blockSeed, 71 + i * 13 + k, seed);
+        let ix = blockCenterX + (ui(1) - 0.5) * (spacing - 40);
+        let iz = blockCenterZ + (ui(2) - 0.5) * (spacing - 40);
+        if (dense) {
+          const side = Math.floor(ui(8) * 4);
+          const along = (ui(9) - 0.5) * (spacing - 30);
+          if (side === 0) iz = blockCenterZ - spacing / 2 + 16;
+          else if (side === 1) ix = blockCenterX + spacing / 2 - 16;
+          else if (side === 2) iz = blockCenterZ + spacing / 2 - 16;
+          else ix = blockCenterX - spacing / 2 + 16;
+          if (side === 0 || side === 2) ix = blockCenterX + along;
+          else iz = blockCenterZ + along;
+        }
+        const crowded = plots.some(
+          (p) =>
+            p.x >= blockRect.minX &&
+            p.x <= blockRect.maxX &&
+            p.z >= blockRect.minZ &&
+            p.z <= blockRect.maxZ &&
+            Math.hypot(p.x - ix, p.z - iz) < 14,
+        );
+        if (crowded) continue;
         infill.push({
-          x: blockCenterX + (ui(1) - 0.5) * (spacing - 40),
-          z: blockCenterZ + (ui(2) - 0.5) * (spacing - 40),
+          x: ix,
+          z: iz,
           width: 10 + ui(3) * 8,
           depth: 10 + ui(4) * 8,
-          height: 5 + ui(5) * (isMegacity ? 9 : 6),
+          height: 5 + ui(5) * (dense ? 4 : isMegacity ? 9 : 6),
           color: MASSING_ROOF_COLORS[Math.floor(ui(6) * MASSING_ROOF_COLORS.length)] ?? 0x263039,
         });
       }
@@ -266,5 +334,7 @@ export function massingCityForRegion(region: RegionPlan): MassingCitySpec {
     towers,
     infill,
     lamps,
+    plots,
+    blocks,
   };
 }

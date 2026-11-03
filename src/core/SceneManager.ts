@@ -72,6 +72,8 @@ export interface SceneManagerOptions {
   readonly renderer?: object;
   /** The generated world plan (Phase 10); the driving world streams its cities from it. */
   readonly worldPlan?: import('../world/world-plan').WorldPlan;
+  /** Phase 10.2: the world's hideout placements, streamed by the driving world. */
+  readonly hideouts?: readonly import('../world/hideouts').HideoutSpec[];
 }
 
 export interface SceneDiagnostics {
@@ -230,6 +232,7 @@ export class SceneManager {
         ? { trafficIntensity: options.trafficIntensity }
         : {}),
       ...(options.worldPlan !== undefined ? { worldPlan: options.worldPlan } : {}),
+      ...(options.hideouts !== undefined ? { hideouts: options.hideouts } : {}),
     });
     this.scene.userData['wetRoadSurface'] = this.#content.wetRoadSurface ?? false;
 

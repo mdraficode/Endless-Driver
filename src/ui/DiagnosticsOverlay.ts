@@ -428,6 +428,19 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
     },
   },
   {
+    // Phase 10.2: the world's secret corners — how many hideouts exist, how many are built
+    // near the player right now, and how many cars are parked inside them.
+    label: 'Hideouts',
+    format: (snapshot) => {
+      const stats = snapshot.contentStats;
+      const placed = stats.hideoutsPlaced;
+      if (placed === undefined) {
+        return '—';
+      }
+      return `${stats.hideoutsBuilt ?? 0}/${placed} built · ${stats.hideoutCars ?? 0} cars`;
+    },
+  },
+  {
     label: 'Camera',
     format: (snapshot) =>
       `${snapshot.cameraView}${snapshot.cameraMode === 'chase' ? orbitSuffix(snapshot) : ''} · ${snapshot.cameraFov.toFixed(1)}° fov · ${snapshot.cameraPosition.x.toFixed(0)}, ${snapshot.cameraPosition.y.toFixed(0)}, ${snapshot.cameraPosition.z.toFixed(0)}`,

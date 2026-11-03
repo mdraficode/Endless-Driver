@@ -22,10 +22,22 @@ export interface CityPlateau {
  * `cityPlateau` moves the levelled urban core (Phase 10: the generated home city); omitted,
  * it stays at the hand-placed Aohara position so existing callers keep today's behaviour.
  */
+export interface TerrainPit {
+  readonly x: number;
+  readonly z: number;
+  readonly radiusMeters: number;
+  readonly depthMeters: number;
+}
+
+/**
+ * `pits` (Phase 10.2): local depressions carved out of the heightfield — the sunken garage
+ * floors. Applied after the road carve so a road can never dip through a pit.
+ */
 export function createWorldTerrainSampler(
   terrainConfig: TerrainConfig,
   roadConfig: RoadNetworkConfig,
   cityPlateau?: CityPlateau,
+  pits: readonly TerrainPit[] = [],
 ): TerrainSampler {
   const plateau: CityPlateau = cityPlateau ?? {
     x: AOHARA_DISTRICT_CONFIG.centerX,
@@ -59,22 +71,44 @@ export function createWorldTerrainSampler(
   };
   const network = buildRoadNetwork(roadConfig, baseHeightAt);
 
+  const pitDepthAt = (x: number, z: number): number => {
+    let depth = 0;
+    for (const pit of pits) {
+      const distance = Math.hypot(x - pit.x, z - pit.z);
+      if (distance >= pit.radiusMeters) {
+        continue;
+      }
+      // Full depth at the centre, smooth rim out to the radius.
+      const t = distance / pit.radiusMeters;
+      const blend = (1 - t) * (1 - t) * (3 - 2 * (1 - t));
+      depth = Math.max(depth, pit.depthMeters * blend);
+    }
+    return depth;
+  };
+
   const heightAt = (x: number, z: number): number => {
     const road = network.sample(x, z);
     const baseHeight = baseHeightAt(x, z);
+    let height: number;
     if (road === null) {
-      return baseHeight;
+      height = baseHeight;
+    } else {
+      const influence = roadInfluence(
+        roadConfig,
+        road.distance,
+        road.halfWidthMeters,
+        road.shoulderMeters,
+      );
+      if (influence <= 0) {
+        height = baseHeight;
+      } else {
+        height = baseHeight + (road.elevation - baseHeight) * influence;
+      }
     }
-    const influence = roadInfluence(
-      roadConfig,
-      road.distance,
-      road.halfWidthMeters,
-      road.shoulderMeters,
-    );
-    if (influence <= 0) {
-      return baseHeight;
+    if (pits.length > 0) {
+      height -= pitDepthAt(x, z);
     }
-    return baseHeight + (road.elevation - baseHeight) * influence;
+    return height;
   };
 
   return {

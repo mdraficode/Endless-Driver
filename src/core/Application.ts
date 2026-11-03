@@ -25,6 +25,7 @@ import type { TerrainSampler } from '../world/terrain-height';
 import { OriginManager } from '../world/origin';
 import { applyCollisionResponse, TreeCollisionField } from '../world/tree-collision';
 import { createWorldTerrainSampler } from '../world/world-terrain';
+import { hideoutPits, placeHideouts, type HideoutSpec } from '../world/hideouts';
 import type { RapierModule } from '../physics/RapierModule';
 import {
   warmupProgressAsymptotic,
@@ -348,6 +349,8 @@ export class Application {
   /** Phase 10: this session's generated world (diagnostics, scene context). */
   readonly #worldPlan: import('../world/world-plan').WorldPlan;
   readonly #worldSeed: number;
+  /** Phase 10.2: this world's hideouts (garage/warehouse/junkyard placements). */
+  readonly #hideouts: readonly HideoutSpec[];
 
   constructor(options: ApplicationOptions) {
     this.#tier = options.tier ?? { id: DEFAULT_TIER, reason: 'unresolved' };
@@ -368,6 +371,11 @@ export class Application {
     // One terrain sampler feeds the visual chunks (via SceneManager's content) and the
     // physics heightfields: ground you see and ground you drive on are the same function.
     // The city plateau follows the generated anchor; the heightfield seed is its own stream.
+    // Phase 10.2: the world's hideouts are placed before the terrain so the sunken garage
+    // floors are pits carved into the shared heightfield (terrain, physics and visuals
+    // agree by construction).
+    const hideouts = placeHideouts(plan, roadLayout, worldSeed);
+    this.#hideouts = hideouts;
     const terrainSampler = createWorldTerrainSampler(
       terrainConfigForTier(this.#tier.id, terrainSeedFor(worldSeed)),
       roadLayout.config,
@@ -377,6 +385,7 @@ export class Application {
         flatRadiusMeters: anchor.flatRadiusMeters,
         blendRadiusMeters: anchor.blendRadiusMeters,
       },
+      hideoutPits(hideouts),
     );
     this.#terrainSampler = terrainSampler;
     this.#treeField = new TreeCollisionField(terrainSampler);
@@ -415,6 +424,7 @@ export class Application {
         ? { trafficIntensity: options.trafficIntensity }
         : {}),
       worldPlan: this.#worldPlan,
+      hideouts: this.#hideouts,
     });
     this.#engine.setGodraysLight(this.#scene.godraysLight);
 

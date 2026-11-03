@@ -14,6 +14,7 @@ import { VegetationWorld } from './vegetation';
 import { nearestSmallTownDistrict, setPlanDistricts } from './plan-districts';
 import { ROAD_WINDOW_CELLS } from './road-layout';
 import { ParkedTrafficWorld } from './parked-traffic';
+import { HideoutWorld } from './hideout-world';
 import type { AssetResolution } from '../assets/AssetManifest';
 import type { SceneContent, SceneContentContext } from './WorldContent';
 
@@ -143,6 +144,16 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
     root.add(parkedTraffic.root);
   }
 
+  // Phase 10.2: the world's hideouts (garage/warehouse/junkyard), streamed in and out like
+  // the massing cities. Generated worlds only.
+  const hideoutWorld =
+    plan === null || context.hideouts === undefined || context.hideouts.length === 0
+      ? null
+      : new HideoutWorld(context.hideouts, terrainSampler);
+  if (hideoutWorld !== null) {
+    root.add(hideoutWorld.root);
+  }
+
   return {
     root,
     kind: 'driving',
@@ -152,6 +163,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       roads?.setDaylight(state);
       aohara?.setDaylight(state);
       cityStreamer?.setDaylight(state);
+      hideoutWorld?.setDaylight(state);
     },
     update: (deltaSeconds) => aohara?.update(deltaSeconds),
     updateStreaming: (focus, velocity, deltaSeconds) => {
@@ -160,6 +172,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       town.updateStreaming(focus, deltaSeconds ?? 0);
       aohara?.updateStreaming(focus);
       cityStreamer?.update(focus);
+      hideoutWorld?.update(focus);
     },
     prepareInitial: async (focus, velocity = { x: 0, z: 0 }, onProgress) => {
       aohara?.updateStreaming(focus);
@@ -190,6 +203,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       ...(aohara?.collide(car) ?? []),
       ...(hinodeTouge?.collide(car) ?? []),
       ...(cityStreamer?.collideTown(car) ?? []),
+      ...(hideoutWorld?.collideTown(car) ?? []),
     ],
     applyVegetationHits: (events) => {
       vegetation.applyHits(events);
@@ -226,6 +240,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       const urbanStats = aohara?.getContentStats() ?? {};
       const tougeStats = hinodeTouge?.getContentStats() ?? {};
       const cityStreamerStats = cityStreamer?.getContentStats() ?? {};
+      const hideoutStats = hideoutWorld?.getContentStats() ?? {};
       const parkedStats = parkedTraffic === null ? {} : { parkedTrafficCars: parkedTraffic.count };
       const groundCoverInstances = vegetationStats.groundCoverInstances ?? 0;
       const groundCoverBudget = vegetationStats.groundCoverInstanceBudget ?? 0;
@@ -240,6 +255,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
         ...urbanStats,
         ...tougeStats,
         ...cityStreamerStats,
+        ...hideoutStats,
         ...parkedStats,
         worldEnrichmentInstances: groundCoverInstances + streetFurnitureInstances,
         worldEnrichmentInstanceBudget: groundCoverBudget + streetFurnitureBudget,
@@ -257,6 +273,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       aohara?.dispose();
       cityStreamer?.dispose();
       parkedTraffic?.dispose();
+      hideoutWorld?.dispose();
       setPlanDistricts(null);
       setTownDistrict(null);
       const geometries = new Set<BufferGeometry>();
