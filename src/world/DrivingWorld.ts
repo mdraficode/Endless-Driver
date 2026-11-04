@@ -71,8 +71,15 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
     initialReadyRing: terrainInitialRing,
   });
   root.add(terrain.root);
-  const distantMountains = new DistantMountainWorld(terrainSampler);
-  root.add(distantMountains.root);
+  // The hand-placed ridgelines belong to the retired fixture world only. In the generated
+  // endless world the car can drive to their fixed world positions: they carry no
+  // collision, they are DoubleSide shells, and the plan now cities and roads the ground
+  // they sit on — a mountain the car passes through with a hollow roof over it. The
+  // generated world has its own real high ground (volcano, pass regions, fBm highlands).
+  const distantMountains = plan === null ? new DistantMountainWorld(terrainSampler) : null;
+  if (distantMountains !== null) {
+    root.add(distantMountains.root);
+  }
   // Road ribbons exist only when the shared sampler carries the carved network; the
   // mesh-less samplers used by unit fixtures simply stay roadless.
   const roads =
@@ -354,7 +361,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
     sampleHeight: (x, z) => terrainSampler.heightAt(x, z),
     getContentStats: () => {
       const terrainStats = terrain.getContentStats();
-      const mountainStats = distantMountains.getContentStats();
+      const mountainStats = distantMountains?.getContentStats() ?? {};
       const roadStats = roads?.getStats() ?? {};
       const vegetationStats = vegetation.getContentStats();
       const wildernessStats = wildernessTracks.getContentStats();

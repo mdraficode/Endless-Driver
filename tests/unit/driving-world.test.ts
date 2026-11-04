@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { GROUND_COVER_CONFIG } from '../../src/config/ground-cover';
+import { homeCityAnchor } from '../../src/world/city-content';
+import { buildRoadLayout } from '../../src/world/road-layout';
+import { createWorldPlan, terrainSeedFor } from '../../src/world/world-plan';
+import { terrainConfigForTier } from '../../src/config/terrain';
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
 import {
   URBAN_ACTIVITY_TIER_BUDGET,
@@ -117,5 +121,41 @@ describe('Aohara driving-world integration', () => {
     content.update?.(1);
     content.dispose();
     expect(content.root.getObjectByName('aohara-street-furniture')).toBeUndefined();
+  });
+});
+
+describe('generated driving world (Phase 10 pass 3)', () => {
+  it('has no hand-placed mountain shells: the endless world has real high ground', () => {
+    // The retired fixture's ridgelines sit at fixed world positions inside the generated
+    // city field. They carry no collision and are DoubleSide shells, so a car that reaches
+    // them passes through and finds a hollow roof over it. Generated worlds must not mount
+    // them; the fixture world (no plan) keeps them for its look.
+    const plan = createWorldPlan(20261102);
+    const anchor = homeCityAnchor(plan);
+    const { config } = buildRoadLayout(plan);
+    const terrainSampler = createWorldTerrainSampler(
+      terrainConfigForTier('C', terrainSeedFor(20261102)),
+      config,
+      {
+        x: anchor.x,
+        z: anchor.z,
+        flatRadiusMeters: anchor.flatRadiusMeters,
+        blendRadiusMeters: anchor.blendRadiusMeters,
+      },
+      [],
+    );
+    const content = createDrivingWorld({
+      config: RENDER_CONFIG,
+      worldConfig: WORLD_CONFIG,
+      terrainSampler,
+      qualityTier: 'C',
+      surfaceState: resolveSurfaceState('clear'),
+      worldPlan: plan,
+    });
+    expect(content.root.getObjectByName('DistantMountainWorld')).toBeFalsy();
+    expect(content.getContentStats?.()).not.toHaveProperty('distantMountainRanges');
+    // The real generated world still carries its own high ground: the volcano and the
+    // sampled terrain, not the shells.
+    expect(terrainSampler.config.volcano).toBeDefined();
   });
 });
