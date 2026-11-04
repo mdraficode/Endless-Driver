@@ -154,6 +154,10 @@ export class MassingCityWorld {
   #materials: Material[] = [];
   #pointLights: PointLight[] = [];
   #collisionBoxes: StaticBuildingBox[] = [];
+  /** Phase 10 pass 3: the street clutter stops the car too — a bin is a bin. */
+  #clutterBoxes: StaticBuildingBox[] = [];
+  #baseY = 0;
+  #heightAt: ((x: number, z: number) => number) | null = null;
   #disposed = false;
   #clutterCount = 0;
   #neonSignCount = 0;
@@ -165,12 +169,20 @@ export class MassingCityWorld {
       readonly nightGain: UniformNode<'float', number>;
       /** Ground elevation under the city centre (the shared terrain sampler). */
       readonly baseY: number;
+      /**
+       * Phase 10 pass 3: the shared (carved) terrain height. When supplied, every
+       * building, fence and lamp follows the local ground instead of the single datum at
+       * the district centre — a 4 km city on rolling terrain must not float or bury.
+       */
+      readonly heightAt?: (x: number, z: number) => number;
       /** Phase 10.4 (C4): street clutter + neon signs for this region. */
       readonly clutter?: RegionClutterData;
     },
   ) {
     this.#spec = spec;
     this.#tier = tier;
+    this.#baseY = options.baseY;
+    this.#heightAt = options.heightAt ?? null;
     this.root.name = `massing-city-${spec.regionId}`;
     this.root.position.set(spec.x, options.baseY + 0.57, spec.z);
     this.#build(options.nightGain, options.clutter);
@@ -179,7 +191,10 @@ export class MassingCityWorld {
   /** Static building collision, in world space (same contract as town/Aohara hits). */
   collideTown(car: TownCarProbe): readonly TownHit[] {
     if (this.#disposed) return [];
-    return collideCarWithStaticBoxes(car, this.#collisionBoxes);
+    return [
+      ...collideCarWithStaticBoxes(car, this.#collisionBoxes),
+      ...collideCarWithStaticBoxes(car, this.#clutterBoxes),
+    ];
   }
 
   getContentStats(): Readonly<Record<string, number>> {
@@ -216,6 +231,10 @@ export class MassingCityWorld {
     const spec = this.#spec;
     const unitBox = this.#track(new BoxGeometry(1, 1, 1), this.#geometries);
     const transform = new Object3D();
+    // Phase 10 pass 3: local ground lift against the single district datum (0 without a
+    // sampler — the flat home-city behaviour and the test fixtures).
+    const lift = (lx: number, lz: number): number =>
+      this.#heightAt === null ? 0 : this.#heightAt(spec.x + lx, spec.z + lz) - this.#baseY;
 
     // --- Towers: one instanced batch per facade colour (Aohara's grouping). ---
     const groups = new Map<number, number[]>();
@@ -248,7 +267,11 @@ export class MassingCityWorld {
       for (const i of indices) {
         const tower = spec.towers[i]!;
         const bodyHeight = tower.crown ? tower.height - tower.crown.height : tower.height;
-        transform.position.set(tower.x, WORLD_BASE_Y + bodyHeight / 2, tower.z);
+        transform.position.set(
+          tower.x,
+          WORLD_BASE_Y + lift(tower.x, tower.z) + bodyHeight / 2,
+          tower.z,
+        );
         transform.scale.set(tower.width, bodyHeight, tower.depth);
         transform.rotation.set(0, 0, 0);
         transform.updateMatrix();
@@ -256,7 +279,7 @@ export class MassingCityWorld {
         if (tower.crown) {
           transform.position.set(
             tower.x + (tower.crown.offsetX ?? 0),
-            WORLD_BASE_Y + tower.height - tower.crown.height / 2,
+            WORLD_BASE_Y + lift(tower.x, tower.z) + tower.height - tower.crown.height / 2,
             tower.z + (tower.crown.offsetZ ?? 0),
           );
           transform.scale.set(tower.crown.width, tower.crown.height, tower.crown.depth);
@@ -299,7 +322,7 @@ export class MassingCityWorld {
       if (tower.crown) {
         transform.position.set(
           tower.x,
-          WORLD_BASE_Y + tower.height - tower.crown.height + 0.2,
+          WORLD_BASE_Y + lift(tower.x, tower.z) + tower.height - tower.crown.height + 0.2,
           tower.z,
         );
         transform.scale.set(tower.width + 0.5, 0.4, tower.depth + 0.5);
@@ -308,14 +331,18 @@ export class MassingCityWorld {
         roofs.setMatrixAt(capIndex++, transform.matrix);
         transform.position.set(
           tower.x + (tower.crown.offsetX ?? 0),
-          WORLD_BASE_Y + tower.height + 0.35,
+          WORLD_BASE_Y + lift(tower.x, tower.z) + tower.height + 0.35,
           tower.z + (tower.crown.offsetZ ?? 0),
         );
         transform.scale.set(tower.crown.width + 0.5, 0.7, tower.crown.depth + 0.5);
         transform.updateMatrix();
         roofs.setMatrixAt(capIndex++, transform.matrix);
       } else {
-        transform.position.set(tower.x, WORLD_BASE_Y + tower.height + 0.35, tower.z);
+        transform.position.set(
+          tower.x,
+          WORLD_BASE_Y + lift(tower.x, tower.z) + tower.height + 0.35,
+          tower.z,
+        );
         transform.scale.set(tower.width + 0.5, 0.7, tower.depth + 0.5);
         transform.rotation.set(0, 0, 0);
         transform.updateMatrix();
@@ -425,7 +452,7 @@ export class MassingCityWorld {
       mesh.receiveShadow = true;
       mesh.frustumCulled = false;
       spec.infill.forEach((box, index) => {
-        transform.position.set(box.x, WORLD_BASE_Y + box.height / 2, box.z);
+        transform.position.set(box.x, WORLD_BASE_Y + lift(box.x, box.z) + box.height / 2, box.z);
         transform.scale.set(box.width, box.height, box.depth);
         transform.rotation.set(0, 0, 0);
         transform.updateMatrix();
@@ -485,12 +512,12 @@ export class MassingCityWorld {
         const backZ = Math.cos(plot.yaw) * (plot.depthMeters / 2);
         const cx = plot.x + backX;
         const cz = plot.z + backZ;
-        transform.position.set(cx, WORLD_BASE_Y + height / 2, cz);
+        transform.position.set(cx, WORLD_BASE_Y + lift(cx, cz) + height / 2, cz);
         transform.scale.set(plot.widthMeters, height, plot.depthMeters);
         transform.rotation.set(0, plot.yaw, 0);
         transform.updateMatrix();
         facades.setMatrixAt(index, transform.matrix);
-        transform.position.set(cx, WORLD_BASE_Y + height + 0.25, cz);
+        transform.position.set(cx, WORLD_BASE_Y + lift(cx, cz) + height + 0.25, cz);
         transform.scale.set(plot.widthMeters + 0.4, 0.5, plot.depthMeters + 0.4);
         transform.updateMatrix();
         roofs.setMatrixAt(index, transform.matrix);
@@ -534,7 +561,7 @@ export class MassingCityWorld {
         const cx = plot.x + backX;
         const cz = plot.z + backZ;
         for (const panel of fenceRingsForLot(plot)) {
-          transform.position.set(cx + panel.x, WORLD_BASE_Y + 0.75, cz + panel.z);
+          transform.position.set(cx + panel.x, WORLD_BASE_Y + lift(cx, cz) + 0.75, cz + panel.z);
           transform.scale.set(1, 1, 1);
           transform.rotation.set(0, panel.yaw, 0);
           transform.updateMatrix();
@@ -568,7 +595,7 @@ export class MassingCityWorld {
         const fz = -Math.cos(plot.yaw);
         transform.position.set(
           plot.x + fx * (plot.depthMeters / 2 + 2.25),
-          WORLD_BASE_Y + 0.06,
+          WORLD_BASE_Y + lift(plot.x, plot.z) + 0.06,
           plot.z + fz * (plot.depthMeters / 2 + 2.25),
         );
         transform.scale.set(1.2, 0.1, 4.5);
@@ -615,12 +642,12 @@ export class MassingCityWorld {
       heads.name = `massing-lamp-heads-${spec.regionId}`;
       heads.frustumCulled = false;
       lampPositions.forEach((lamp, index) => {
-        transform.position.set(lamp.x, WORLD_BASE_Y + 3.75, lamp.z);
+        transform.position.set(lamp.x, WORLD_BASE_Y + lift(lamp.x, lamp.z) + 3.75, lamp.z);
         transform.rotation.set(0, 0, 0);
         transform.scale.set(1, 1, 1);
         transform.updateMatrix();
         poles.setMatrixAt(index, transform.matrix);
-        transform.position.set(lamp.x, WORLD_BASE_Y + 7.5, lamp.z);
+        transform.position.set(lamp.x, WORLD_BASE_Y + lift(lamp.x, lamp.z) + 7.5, lamp.z);
         transform.updateMatrix();
         heads.setMatrixAt(index, transform.matrix);
       });
@@ -637,7 +664,7 @@ export class MassingCityWorld {
         const lamp = ordered[i] ? lampPositions[ordered[i]!.index] : undefined;
         if (lamp === undefined) continue;
         const light = new PointLight(STREET_LAMP_COLOR, 55, 160, 2);
-        light.position.set(lamp.x, WORLD_BASE_Y + 7.6, lamp.z);
+        light.position.set(lamp.x, WORLD_BASE_Y + lift(lamp.x, lamp.z) + 7.6, lamp.z);
         this.root.add(light);
         this.#pointLights.push(light);
       }
@@ -673,6 +700,23 @@ export class MassingCityWorld {
       };
       for (const item of clutter.clutter) {
         const y = localY(item.y);
+        const clutterHalf: number =
+          item.kind === 'debris'
+            ? 0.35
+            : item.kind === 'crate'
+              ? 0.36
+              : item.kind === 'bin'
+                ? 0.26
+                : item.kind === 'barrel'
+                  ? 0.28
+                  : 0.18;
+        this.#clutterBoxes.push({
+          x: spec.x + item.x,
+          z: spec.z + item.z,
+          yaw: item.yaw,
+          halfWidth: clutterHalf * item.scale,
+          halfDepth: clutterHalf * item.scale,
+        });
         if (item.kind === 'debris') {
           addTintedBox(
             [0.6 * item.scale, 0.22 * item.scale, 0.6 * item.scale],

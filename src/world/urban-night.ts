@@ -727,6 +727,60 @@ export function buildAoharaTowerSpecs(): readonly TowerSpec[] {
 
 const AOHARA_CITY_TOWERS = buildAoharaTowerSpecs();
 
+/**
+ * Phase 10 pass 3: the kit's towers are fixed in city-local space, but in a generated world
+ * the city-access connectors land where the graph routes them — and a connector can shave a
+ * tower corner. Shrink (and in the worst case drop) any tower whose footprint would stand on
+ * the pavement, so the entrance road is never blocked by a facade. Pure in the network, so
+ * the same world always clears the same towers.
+ */
+export function clearTowersAgainstRoads(
+  towers: readonly TowerSpec[],
+  network:
+    | {
+        sample(
+          x: number,
+          z: number,
+        ): { readonly distance: number; readonly halfWidthMeters: number } | null;
+      }
+    | undefined,
+  originX: number,
+  originZ: number,
+): readonly TowerSpec[] {
+  if (network === undefined) {
+    return towers;
+  }
+  const clear = (w: number, d: number, x: number, z: number): boolean => {
+    const probes: readonly (readonly [number, number])[] = [
+      [0, 0],
+      [w / 2, 0],
+      [-w / 2, 0],
+      [0, d / 2],
+      [0, -d / 2],
+      [w / 2, d / 2],
+      [-w / 2, -d / 2],
+    ];
+    return probes.every(([dx, dz]) => {
+      const sample = network.sample(originX + x + dx, originZ + z + dz);
+      return sample === null || sample.distance > sample.halfWidthMeters + 0.5;
+    });
+  };
+  const out: TowerSpec[] = [];
+  for (const tower of towers) {
+    let width = tower.width;
+    let depth = tower.depth;
+    let ok = clear(width, depth, tower.x, tower.z);
+    while (!ok && (width > 10 || depth > 10)) {
+      if (width >= depth) width = Math.max(10, width - 2);
+      else depth = Math.max(10, depth - 2);
+      ok = clear(width, depth, tower.x, tower.z);
+    }
+    if (!ok) continue;
+    out.push(width === tower.width && depth === tower.depth ? tower : { ...tower, width, depth });
+  }
+  return out;
+}
+
 function buildCityBuildingSpecs(networkIntegrated: boolean): readonly CityBuildingSpec[] {
   if (networkIntegrated) {
     const shopColors = [0x46535b, 0x554a42, 0x47554d, 0x4a4a5b] as const;
@@ -2079,7 +2133,9 @@ export class UrbanNightWorld implements SceneContent {
     this.#cityOriginX = originX;
     this.#cityOriginZ = originZ;
     this.root.position.set(originX, originY, originZ);
-    this.#towers = this.#networkIntegrated ? AOHARA_CITY_TOWERS : LOOKDEV_TOWERS;
+    this.#towers = this.#networkIntegrated
+      ? clearTowersAgainstRoads(AOHARA_CITY_TOWERS, options.roadNetwork, originX, originZ)
+      : LOOKDEV_TOWERS;
     this.#cityBlockCount = this.#networkIntegrated
       ? (AOHARA_GRID_ROWS.length - 1) * (AOHARA_GRID_COLUMNS.length - 1)
       : 1;

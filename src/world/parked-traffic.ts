@@ -13,6 +13,8 @@ import { TRAFFIC_VEHICLE_CLASSES, type TrafficVehicleClass } from '../config/tra
 import type { TierId } from '../config/tiers';
 import { createTrafficVehicleModel } from './traffic-vehicle-models';
 import type { RoadEdge, RoadNetwork } from './road-network';
+import { collideCarWithStaticBoxes, type StaticBuildingBox } from './static-building-collision';
+import type { TownCarProbe, TownHit } from './town';
 
 export interface ParkedCarPlacement {
   readonly x: number;
@@ -186,6 +188,8 @@ export class ParkedTrafficWorld {
   readonly count: number;
   #meshes: InstancedMesh[] = [];
   #materials: MeshPhysicalNodeMaterial[] = [];
+  /** Phase 10 pass 3: the parked cars are solid — the car meets them like any building. */
+  #boxes: StaticBuildingBox[] = [];
 
   constructor(network: RoadNetwork, options: ParkedTrafficOptions = {}) {
     const tier: TierId = options.tier ?? 'C';
@@ -236,12 +240,25 @@ export class ParkedTrafficWorld {
         quaternion.set(0, Math.sin(p.yaw), 0, Math.cos(p.yaw)).normalize();
         matrix.compose(position, quaternion, scale);
         mesh.setMatrixAt(i, matrix);
+        // Box yaw -p.yaw puts the half-width axis across the car and halfDepth along it.
+        this.#boxes.push({
+          x: p.x,
+          z: p.z,
+          yaw: -p.yaw,
+          halfWidth: 0.95,
+          halfDepth: 2.3,
+        });
       }
       mesh.instanceMatrix.needsUpdate = true;
       this.#meshes.push(mesh);
       this.root.add(mesh);
     }
     this.count = used;
+  }
+
+  /** Static car collision, in world space (same contract as town/Aohara hits). */
+  collideTown(car: TownCarProbe): readonly TownHit[] {
+    return collideCarWithStaticBoxes(car, this.#boxes);
   }
 
   dispose(): void {

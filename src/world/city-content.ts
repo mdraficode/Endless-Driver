@@ -13,6 +13,11 @@ import { AOHARA_KIT_EDGES, AOHARA_KIT_NODES } from '../config/roads';
 import { AOHARA_DISTRICT_CONFIG, aoharaRowOffsetMeters } from '../config/urban-district';
 import type { RegionPlan, WorldPlan } from './world-plan';
 import { plotSpotsForBlock } from './urban-plots';
+import {
+  clearSubBlockCenters,
+  footprintTouchesBlockRoads,
+  urbanBlockDetail,
+} from './urban-block-detail';
 
 // ---------------------------------------------------------------------------
 // Home city: the Aohara kit, moved.
@@ -176,7 +181,47 @@ export interface MassingCitySpec {
  * Generates the massing content for one urban region (megacity or urban-fringe).
  * Pure in the region: the same plan always yields the same city.
  */
-export function massingCityForRegion(region: RegionPlan): MassingCitySpec {
+export interface MassingCityOptions {
+  /**
+   * Phase 10 pass 3: the solved road network. When present, placements are also cleared
+   * against the real pavements — the sub-division/alley corridors plus any city-access or
+   * ring connector that the generated graph routed across the block field.
+   */
+  readonly network?: {
+    sample(
+      x: number,
+      z: number,
+    ): { readonly distance: number; readonly halfWidthMeters: number } | null;
+  };
+}
+
+export function massingCityForRegion(
+  region: RegionPlan,
+  options: MassingCityOptions = {},
+): MassingCitySpec {
+  const network = options.network;
+  const clearOfRoads = (x: number, z: number, halfWidth: number, halfDepth: number): boolean => {
+    if (network === undefined) {
+      return true;
+    }
+    const probes: readonly (readonly [number, number])[] = [
+      [0, 0],
+      [halfWidth, 0],
+      [-halfWidth, 0],
+      [0, halfDepth],
+      [0, -halfDepth],
+      [halfWidth, halfDepth],
+      [-halfWidth, -halfDepth],
+    ];
+    for (const [dx, dz] of probes) {
+      const sample = network.sample(x + dx, z + dz);
+      // Outside the pavement: a corner may kiss the curb, never stand on the asphalt.
+      if (sample !== null && sample.distance <= sample.halfWidthMeters) {
+        return false;
+      }
+    }
+    return true;
+  };
   if (region.archetype !== 'megacity' && region.archetype !== 'urban-fringe') {
     return {
       regionId: region.id,
@@ -228,6 +273,29 @@ export function massingCityForRegion(region: RegionPlan): MassingCitySpec {
       // Phase 10.2: ~a quarter of blocks are dense backstreet blocks — claustrophobic,
       // low, and pushed to the block edges.
       const dense = u(77) < (isSlum ? 0.6 : 0.25);
+      // Phase 10 pass 3: the same sub-division/alley roll the road layout makes for this
+      // block — buildings are placed in the clear spans, never on the corridor.
+      const blockDetail = urbanBlockDetail(seed, region.ix, region.iz, r, c, isSlum);
+      const blockRelMinX = (c - (n - 1) / 2) * spacing;
+      const blockRelMinZ = (r - (n - 1) / 2) * spacing;
+      const relCenter = spacing / 2;
+      // The clear candidate spots for this block: the sub-block centre grid, each kept
+      // only if it clears the block's own corridors AND (when a network is supplied) the
+      // real solved pavements. Every building in the block picks from this list.
+      const xGrid = clearSubBlockCenters(blockDetail, spacing, 1);
+      const zGrid = clearSubBlockCenters(blockDetail, spacing, 0);
+      const clearSpots: { x: number; z: number }[] = [];
+      for (const gx of xGrid) {
+        for (const gz of zGrid) {
+          if (footprintTouchesBlockRoads(blockDetail, spacing, gx, gz, 6, 6)) {
+            continue;
+          }
+          if (!clearOfRoads(districtX + blockRelMinX + gx, districtZ + blockRelMinZ + gz, 6, 6)) {
+            continue;
+          }
+          clearSpots.push({ x: gx, z: gz });
+        }
+      }
       blocks.push({ x: blockCenterX, z: blockCenterZ, dense });
       // The lot fronts: the same plotSpotsForBlock the road layout aims driveways at, so a
       // driveway always ends in front of a building the massing actually places.
@@ -272,10 +340,82 @@ export function massingCityForRegion(region: RegionPlan): MassingCitySpec {
         const height = isSlum
           ? 9 + ut(19) * 7
           : (MASSING_TOWER_HEIGHTS[heightIndex] ?? MASSING_TOWER_HEIGHTS[0]!);
-        const towerWidth = isSlum
+        let towerWidth = isSlum
           ? 12 + ut(13) * 8
           : (isMegacity ? 28 : 22) + ut(13) * (isMegacity ? 8 : 6);
         const towerDepth = Math.min(30 + ut(17) * 10, spacing / 3 - 9);
+        // Phase 10 pass 3: sit in a clear spot of the sub-block — never on the sub-division,
+        // the alley, or a connector the generated graph routed across the block. Without
+        // any corridor the classic ±35 m offset stands, with a nearer fallback.
+        // With corridors, the clear spots are the candidates; the classic ±35 m offset is
+        // an extra candidate for the no-corridor block (and its near fallback).
+        const spotCandidates: { x: number; z: number }[] =
+          clearSpots.length > 0
+            ? [...clearSpots].sort(
+                (a, b) =>
+                  (side === -1 ? a.x - b.x : b.x - a.x) ||
+                  Math.abs(a.z - relCenter) - Math.abs(b.z - relCenter),
+              )
+            : [
+                { x: relCenter + side * 35 + (ut(7) - 0.5) * 6, z: relCenter },
+                { x: relCenter + side * 12 + (ut(7) - 0.5) * 6, z: relCenter },
+              ];
+        let towerRelX: number | undefined;
+        let towerRelZ: number | undefined;
+        for (const cand of spotCandidates) {
+          if (
+            footprintTouchesBlockRoads(
+              blockDetail,
+              spacing,
+              cand.x,
+              cand.z,
+              towerWidth / 2,
+              towerDepth / 2,
+            )
+          ) {
+            continue;
+          }
+          if (
+            !clearOfRoads(
+              districtX + blockRelMinX + cand.x,
+              districtZ + blockRelMinZ + cand.z,
+              towerWidth / 2,
+              towerDepth / 2,
+            )
+          ) {
+            continue;
+          }
+          towerRelX = cand.x;
+          towerRelZ = cand.z;
+          break;
+        }
+        // A narrow mass still fits where the full width would straddle a corridor.
+        if (towerRelX === undefined) {
+          for (const cand of spotCandidates) {
+            if (
+              footprintTouchesBlockRoads(blockDetail, spacing, cand.x, cand.z, 6, towerDepth / 2)
+            ) {
+              continue;
+            }
+            if (
+              !clearOfRoads(
+                districtX + blockRelMinX + cand.x,
+                districtZ + blockRelMinZ + cand.z,
+                6,
+                towerDepth / 2,
+              )
+            ) {
+              continue;
+            }
+            towerRelX = cand.x;
+            towerRelZ = cand.z;
+            towerWidth = 12;
+            break;
+          }
+        }
+        if (towerRelX === undefined || towerRelZ === undefined) {
+          continue; // the block is too crowded for this mass; the next one still stands
+        }
         const crownStyle = ut(23);
         const crown: MassingCrown =
           crownStyle < 0.5
@@ -298,8 +438,8 @@ export function massingCityForRegion(region: RegionPlan): MassingCitySpec {
                   height: 8 + 4 * ut(37),
                 };
         towers.push({
-          x: blockCenterX + side * 35 + (ut(7) - 0.5) * 6,
-          z: blockCenterZ,
+          x: blockRelMinX + towerRelX,
+          z: blockRelMinZ + towerRelZ,
           width: towerWidth,
           depth: towerDepth,
           height,
@@ -337,11 +477,44 @@ export function massingCityForRegion(region: RegionPlan): MassingCitySpec {
             Math.hypot(p.x - ix, p.z - iz) < 14,
         );
         if (crowded) continue;
+        const iw = (isSlum ? 8 : 10) + ui(3) * (isSlum ? 6 : 8);
+        const id = (isSlum ? 8 : 10) + ui(4) * (isSlum ? 6 : 8);
+        // Phase 10 pass 3: never sit on a sub-division, an alley, or a routed connector —
+        // move into the nearest clear spot, or drop the mass rather than straddle a road.
+        let relIx = ix - blockRelMinX;
+        let relIz = iz - blockRelMinZ;
+        const clearHere =
+          !footprintTouchesBlockRoads(blockDetail, spacing, relIx, relIz, iw / 2, id / 2) &&
+          clearOfRoads(districtX + ix, districtZ + iz, iw / 2, id / 2);
+        if (!clearHere) {
+          const ordered = [...clearSpots].sort(
+            (a, b) => Math.hypot(a.x - relIx, a.z - relIz) - Math.hypot(b.x - relIx, b.z - relIz),
+          );
+          let placed = false;
+          for (const spot of ordered) {
+            if (
+              footprintTouchesBlockRoads(blockDetail, spacing, spot.x, spot.z, iw / 2, id / 2) ||
+              !clearOfRoads(
+                districtX + blockRelMinX + spot.x,
+                districtZ + blockRelMinZ + spot.z,
+                iw / 2,
+                id / 2,
+              )
+            ) {
+              continue;
+            }
+            relIx = spot.x;
+            relIz = spot.z;
+            placed = true;
+            break;
+          }
+          if (!placed) continue;
+        }
         infill.push({
-          x: ix,
-          z: iz,
-          width: (isSlum ? 8 : 10) + ui(3) * (isSlum ? 6 : 8),
-          depth: (isSlum ? 8 : 10) + ui(4) * (isSlum ? 6 : 8),
+          x: blockRelMinX + relIx,
+          z: blockRelMinZ + relIz,
+          width: iw,
+          depth: id,
           height: isSlum || dense ? 4 + ui(5) * 4 : 5 + ui(5) * (isMegacity ? 9 : 6),
           color: MASSING_ROOF_COLORS[Math.floor(ui(6) * MASSING_ROOF_COLORS.length)] ?? 0x263039,
         });

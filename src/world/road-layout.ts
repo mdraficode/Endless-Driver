@@ -28,6 +28,7 @@ import type { RoadClass, RoadEdgeConfig, RoadNetworkConfig, RoadNodeConfig } fro
 import { AOHARA_JUNCTION_NODE_ID } from '../config/urban-district';
 import { homeCityAnchor, homeCityRoadGraph } from './city-content';
 import { plotSpotsForBlock, type BlockRect } from './urban-plots';
+import { ALLEY_SETBACK_METERS, urbanBlockDetail } from './urban-block-detail';
 import { REGION_CELL_METERS, type RegionPlan, type WorldPlan } from './world-plan';
 
 /**
@@ -54,7 +55,6 @@ const TOUGE_HALF_WIDTH = 3.4;
 const RESIDENTIAL_HALF_WIDTH = 2.2;
 const ALLEY_HALF_WIDTH = 1.6;
 const DRIVEWAY_HALF_WIDTH = 1.5;
-const ALLEY_SETBACK_METERS = 30;
 
 /** Grid geometry per archetype: nodes per side and street spacing, metres. */
 const GRID_NODES: Readonly<Record<'megacity' | 'urban-fringe' | 'small-town', number>> = {
@@ -284,21 +284,10 @@ export function buildRoadLayout(
           const se = gridNodes[r * n + c + 1]!;
           const nw = gridNodes[(r + 1) * n + c]!;
           const rect: BlockRect = { minX: sw.x, maxX: se.x, minZ: sw.z, maxZ: nw.z };
-          const blockSalt = regionSeed + ix * 131 + iz * 17 + r * 31 + c * 7;
-          const sub =
-            pick(blockSalt, 0xb1, 1) < (isSlum ? 0.62 : 0.5)
-              ? {
-                  axis: (pick(blockSalt, 0xb2, 2) < 0.5 ? 0 : 1) as 0 | 1,
-                  fraction: pick(blockSalt, 0xb3, 3) < 0.5 ? 1 / 3 : 2 / 3,
-                }
-              : undefined;
-          const alley =
-            pick(blockSalt, 0xb4, 4) < (isSlum ? 0.55 : 0.28)
-              ? { axis: (pick(blockSalt, 0xb5, 5) < 0.5 ? 0 : 1) as 0 | 1 }
-              : undefined;
+          // The shared block-detail roll (urban-block-detail.ts): the massing city clears
+          // its towers and infill against exactly these sub-divisions and alleys.
           const detail: BlockDetail = {
-            ...(sub === undefined ? {} : { sub }),
-            ...(alley === undefined ? {} : { alley }),
+            ...urbanBlockDetail(regionSeed, ix, iz, r, c, isSlum),
             spots: plotSpotsForBlock(ix, iz, r, c, rect, regionSeed, URBAN_LOCAL_HALF_WIDTH),
           };
           row.push(detail);

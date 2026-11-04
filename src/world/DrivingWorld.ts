@@ -311,6 +311,8 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       ...(aohara?.collide(car) ?? []),
       ...(hinodeTouge?.collide(car) ?? []),
       ...(cityStreamer?.collideTown(car) ?? []),
+      // Phase 10 pass 3: the parked cars are solid too.
+      ...(parkedTraffic?.collideTown(car) ?? []),
       ...(hideoutWorld?.collideTown(car) ?? []),
     ],
     collideFauna: (car, deltaSeconds) => {

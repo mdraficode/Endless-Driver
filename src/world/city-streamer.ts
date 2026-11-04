@@ -71,6 +71,9 @@ export class CityStreamer {
     this.#terrainSampler = terrainSampler;
     this.#attach = options.attach;
     this.#detach = options.detach;
+    // Phase 10 pass 3: the specs clear their placements against the solved network, so
+    // no building ever straddles a drivable road.
+    const network = this.#terrainSampler.roadNetwork;
     // Urban regions inside the road window (the home cell is the full kit city, not massing).
     for (let iz = -ROAD_WINDOW_CELLS; iz <= ROAD_WINDOW_CELLS; iz += 1) {
       for (let ix = -ROAD_WINDOW_CELLS; ix <= ROAD_WINDOW_CELLS; ix += 1) {
@@ -82,7 +85,10 @@ export class CityStreamer {
           x: region.district.centerX,
           z: region.district.centerZ,
           seed: region.seed,
-          spec: massingCityForRegion(region),
+          spec:
+            network === undefined
+              ? massingCityForRegion(region)
+              : massingCityForRegion(region, { network }),
         });
       }
     }
@@ -119,6 +125,8 @@ export class CityStreamer {
     const city = new MassingCityWorld(next.spec, this.#tier, {
       nightGain: this.nightGain,
       baseY: this.#terrainSampler.heightAt(next.x, next.z),
+      // Phase 10 pass 3: the carved surface — buildings stand on the local ground.
+      heightAt: (x, z) => this.#terrainSampler.heightAt(x, z),
       ...(clutter === undefined ? {} : { clutter }),
     });
     this.#attach(city);
