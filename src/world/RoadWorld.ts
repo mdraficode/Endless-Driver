@@ -6,6 +6,7 @@ import {
   InstancedMesh,
   Mesh,
   Object3D,
+  Vector4,
   type BufferGeometry,
 } from 'three';
 import {
@@ -388,6 +389,11 @@ export class RoadWorld {
   readonly #shoulderMaterial: MeshStandardNodeMaterial;
 
   readonly #urbanAsphaltMaterial: MeshPhysicalNodeMaterial;
+  /** Uniform albedo tint (value in the UBO, out of the shader body). */
+  readonly #dryAlbedoTint = uniform(
+    new Vector4(...URBAN_CITY_CONFIG.wetRoad.dryAlbedoTint, 1),
+    'vec4',
+  );
 
   readonly #sidewalkMaterial: MeshPhysicalNodeMaterial;
 
@@ -762,7 +768,7 @@ export class RoadWorld {
       // The same CC0 maps carry hard-asphalt microdetail across both dry and wet parts. Only the
       // irregular patch mask darkens the albedo or blends the packed roughness toward standing water.
       bindScannedPbrMaps(this.#urbanAsphaltMaterial, asphalt, roadUv, {
-        albedoTint: vec4(...URBAN_CITY_CONFIG.wetRoad.dryAlbedoTint, 1).mul(macroTint),
+        albedoTint: this.#dryAlbedoTint.mul(macroTint),
         normalStrength: 0.65,
       });
       const scannedAlbedo = this.#urbanAsphaltMaterial.colorNode as Node<'vec4'> | null;
@@ -844,6 +850,7 @@ export class RoadWorld {
     }
     this.#wetPatchMaskTexture.dispose();
     this.#roadWearMaskTexture.dispose();
+    this.#dryAlbedoTint.dispose?.();
     if (this.#ownsSurfaceTextures) {
       this.#surfaceTextures.dispose();
     }

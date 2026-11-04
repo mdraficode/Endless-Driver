@@ -15,6 +15,7 @@ import {
   SphereGeometry,
   Sprite,
   Vector3,
+  Vector4,
   type BufferGeometry,
 } from 'three';
 import {
@@ -1872,6 +1873,14 @@ export class UrbanNightWorld implements SceneContent {
   readonly #tier: TierId;
   readonly #nightGain = uniform(0);
   readonly #wetness = uniform(URBAN_CITY_CONFIG.wetRoad.wetnessDay);
+  // Uniform, not inlined literals: the tint values ride in the UBO instead of the shader
+  // body, so materials bound with them keep a value-independent program signature
+  // (the fragment-stage count the Startup line measures).
+  readonly #dryAlbedoTint = uniform(
+    new Vector4(...URBAN_CITY_CONFIG.wetRoad.dryAlbedoTint, 1),
+    'vec4',
+  );
+  readonly #sidewalkTint = uniform(new Vector4(0.65, 0.68, 0.72, 1), 'vec4');
   #wetPatchMaskTexture: DataTexture | null = null;
   #wetRoadMaskNode: Node<'float'> | null = null;
   readonly #streetLightGain = uniform(1);
@@ -2191,7 +2200,7 @@ export class UrbanNightWorld implements SceneContent {
           {
             repeat: binding.repeat,
             normalStrength: 0.65,
-            albedoTint: vec4(...URBAN_CITY_CONFIG.wetRoad.dryAlbedoTint, 1),
+            albedoTint: this.#dryAlbedoTint,
           },
         );
         const wetRoadMask = this.#wetRoadMaskNode;
@@ -2226,7 +2235,7 @@ export class UrbanNightWorld implements SceneContent {
         {
           repeat: [3, Math.max(1, Math.round(URBAN_CITY_CONFIG.avenue.lengthMeters / 2))],
           normalStrength: 0.54,
-          albedoTint: vec4(0.65, 0.68, 0.72, 1),
+          albedoTint: this.#sidewalkTint,
         },
       );
     }
@@ -2730,6 +2739,8 @@ export class UrbanNightWorld implements SceneContent {
     this.#backstreetFrontages?.dispose();
     this.#backstreetProps?.dispose();
     this.#wetPatchMaskTexture?.dispose();
+    this.#dryAlbedoTint.dispose?.();
+    this.#sidewalkTint.dispose?.();
     if (this.#ownsSurfaceTextures) {
       this.#surfaceTextures.dispose();
     }
