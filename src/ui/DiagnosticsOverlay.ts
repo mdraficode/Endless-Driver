@@ -467,6 +467,18 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
     },
   },
   {
+    // Phase 7.2: the procedural wilderness tracks far outside the city — how many dirt
+    // trails are resident in the stream window, and in how many chunks.
+    label: 'Wilderness',
+    format: (snapshot) => {
+      const stats = snapshot.contentStats;
+      if (stats.wildernessTracks === undefined) {
+        return '—';
+      }
+      return `${stats.wildernessTracks} trails · ${stats.wildernessTrackChunks ?? 0} chunks`;
+    },
+  },
+  {
     // Phase 10.5 (C5): the player's active region's emergent events — speed traps, drift
     // zones and the smashable boards (with how many are already smashed), plus the streamed
     // cities' AI traffic fleet and its routes.

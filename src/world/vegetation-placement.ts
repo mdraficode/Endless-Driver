@@ -7,6 +7,7 @@ import { VEGETATION_SPECIES } from './districts';
 import { speciesMultipliersAt, canopyScaleAt } from './plan-districts';
 import { TRAIL_NETWORK_CONFIG } from '../config/trails';
 import { trailAt } from './trails';
+import { WILDERNESS_TRACKS_CONFIG, wildernessTrailAt } from './wilderness-tracks';
 import type { TerrainSampler } from './terrain-height';
 
 /**
@@ -121,12 +122,20 @@ export function generateChunkVegetation(
       // must be drivable); inside the canopy band only tall trees may stand, so
       // the trail tunnels under the crowns instead of crossing open ground.
       const trail = trailAt(x, z);
+      // Phase 7.2: the wilderness corridors clear the same way, on a slightly narrower band.
+      const wilderness = wildernessTrailAt(sampler.config, x, z);
       let canopyOnly = false;
       if (trail !== null) {
         if (trail.distance < TRAIL_NETWORK_CONFIG.clearInnerMeters) {
           continue;
         }
         canopyOnly = trail.distance < TRAIL_NETWORK_CONFIG.canopyOuterMeters;
+      }
+      if (wilderness !== null) {
+        if (wilderness.distance < WILDERNESS_TRACKS_CONFIG.clearInnerMeters) {
+          continue;
+        }
+        canopyOnly = canopyOnly || wilderness.distance < 8;
       }
       const height = sampler.heightAt(x, z);
       const normal = sampler.normalAt(x, z);

@@ -9,6 +9,7 @@ import {
 } from './terrain-height';
 import { groundTintAt } from './plan-districts';
 import { trailInfluenceAt } from './trails';
+import { wildernessTrailInfluenceAt } from './wilderness-tracks';
 
 /**
  * Chunk mesh construction: a heightfield grid sampled from the world height function, plus
@@ -112,7 +113,11 @@ export function buildChunkGeometryData(
     const variation = terrainVariationAt(config, x, z);
     const patch = terrainPatchAt(config, x, z);
     const districtTint = groundTintAt(x, z);
+    // Phase 7.2: the wilderness tracks paint a worn-dirt colour band. The weights (and
+    // therefore tire grip) read the authored routes alone — a trampled path grips
+    // like the ground it is worn into, so the band is visual only.
     const trail = trailInfluenceAt(x, z);
+    const colorTrail = Math.max(trail, wildernessTrailInfluenceAt(config, x, z));
     const color = terrainColorAt(
       config,
       height,
@@ -121,7 +126,7 @@ export function buildChunkGeometryData(
       occlusion,
       districtTint,
       patch,
-      trail,
+      colorTrail,
     );
     districts[index * 3] = districtTint[0];
     districts[index * 3 + 1] = districtTint[1];

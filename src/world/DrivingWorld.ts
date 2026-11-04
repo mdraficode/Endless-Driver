@@ -11,6 +11,7 @@ import { TerrainWorld } from './TerrainWorld';
 import { HinodeTougeWorld } from './hinode-touge';
 import { TownWorld, setTownDistrict } from './town';
 import { VegetationWorld } from './vegetation';
+import { WildernessTracksWorld } from './wilderness-tracks-world';
 import { nearestSmallTownDistrict, setPlanDistricts } from './plan-districts';
 import { ROAD_WINDOW_CELLS } from './road-layout';
 import { ParkedTrafficWorld } from './parked-traffic';
@@ -93,6 +94,10 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
   const detailScale = qualityTier === 'C' ? 0.6 : qualityTier === 'B' ? 0.85 : 1;
   const vegetation = new VegetationWorld(terrainSampler, undefined, detailScale, qualityTier);
   root.add(vegetation.root);
+  // Phase 7.2: the wilderness track ribbons — the packed-earth cores of the dirt bands the
+  // terrain splats out past the city edge (wilderness-tracks.ts owns the pure routes).
+  const wildernessTracks = new WildernessTracksWorld(terrainSampler, qualityTier);
+  root.add(wildernessTracks.root);
   // Scanned CC0 trees are optional visual upgrades. Keep the authored species for the first
   // playable frame; the composition root starts GLB download/decode after the loading overlay hides.
   let scannedAssetsStarted = false;
@@ -220,6 +225,10 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
     updateStreaming: (focus, velocity, deltaSeconds, player) => {
       terrain.updateStreaming(focus, velocity);
       vegetation.updateStreaming(focus, velocity, deltaSeconds ?? 0);
+      wildernessTracks.updateStreaming(
+        focus,
+        velocity === undefined ? { x: 0, z: 0 } : { x: velocity.x, z: velocity.z },
+      );
       town.updateStreaming(focus, deltaSeconds ?? 0);
       aohara?.updateStreaming(focus);
       cityStreamer?.update(focus);
@@ -318,6 +327,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       const mountainStats = distantMountains.getContentStats();
       const roadStats = roads?.getStats() ?? {};
       const vegetationStats = vegetation.getContentStats();
+      const wildernessStats = wildernessTracks.getContentStats();
       const townStats = town.getContentStats();
       const urbanStats = aohara?.getContentStats() ?? {};
       const tougeStats = hinodeTouge?.getContentStats() ?? {};
@@ -345,6 +355,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
         ...parkedStats,
         ...trafficStats,
         ...eventStats,
+        ...wildernessStats,
         worldEnrichmentInstances: groundCoverInstances + streetFurnitureInstances,
         worldEnrichmentInstanceBudget: groundCoverBudget + streetFurnitureBudget,
         /** Number of static instance pools; this is not a measured draw-call count. */
@@ -357,6 +368,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       terrain.dispose();
       roads?.dispose();
       vegetation.dispose();
+      wildernessTracks.dispose();
       town.dispose();
       aohara?.dispose();
       cityStreamer?.dispose();
