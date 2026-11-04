@@ -163,6 +163,22 @@ function buildChunkTracks(terrain: TerrainConfig, cx: number, cz: number): Track
     midSlopeEndMeters,
     roadAvoidanceMeters,
   } = WILDERNESS_TRACKS_CONFIG;
+  // Phase 10 pass 2: richer networks where the ground is high — more scree lines above
+  // the rockline, a little more trail through the mid-slope bamboo band.
+  let chunkMaxH = -Infinity;
+  for (const [fx, fz] of [
+    [0, 0],
+    [1, 0],
+    [0, 1],
+    [1, 1],
+    [0.5, 0.5],
+  ] as const) {
+    chunkMaxH = Math.max(chunkMaxH, heightAt(originX + fx * size, originZ + fz * size));
+  }
+  const tracksTarget =
+    maxTracksPerChunk +
+    (chunkMaxH >= terrain.alpineRocklineMeters ? 2 : 0) +
+    (chunkMaxH >= midSlopeStartMeters && chunkMaxH < terrain.alpineRocklineMeters ? 1 : 0);
 
   const slopeAt = (x: number, z: number): number => {
     const eps = 2.5;
@@ -180,16 +196,19 @@ function buildChunkTracks(terrain: TerrainConfig, cx: number, cz: number): Track
   };
 
   // Poisson-disc starts inside the chunk interior, deterministic rejection sampling.
+  // High ground packs tighter: the thin scree lines need less separation than the
+  // worn lowland trails.
+  const startSpacing = chunkMaxH >= terrain.alpineRocklineMeters ? 40 : minStartSpacingMeters;
   const starts: { x: number; z: number }[] = [];
   const randomStarts = createTrackRandom(chunkSeed ^ 0x7a11e5);
-  for (let attempt = 0; attempt < 96 && starts.length < maxTracksPerChunk; attempt += 1) {
+  for (let attempt = 0; attempt < 96 && starts.length < tracksTarget; attempt += 1) {
     const x = originX + startMarginMeters + randomStarts() * (size - 2 * startMarginMeters);
     const z = originZ + startMarginMeters + randomStarts() * (size - 2 * startMarginMeters);
     let ok = true;
     for (const s of starts) {
       const ddx = s.x - x;
       const ddz = s.z - z;
-      if (ddx * ddx + ddz * ddz < minStartSpacingMeters * minStartSpacingMeters) {
+      if (ddx * ddx + ddz * ddz < startSpacing * startSpacing) {
         ok = false;
         break;
       }

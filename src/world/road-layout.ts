@@ -586,17 +586,19 @@ export function buildRoadLayout(
         });
       }
     } else {
-      // Mountain pass: one switchback-style pass road across the cell.
-      const from = nearestNode(
-        skeletonNodes,
-        lineCoord(ix - 1),
-        region.centerZ + (pick(21, 22, regionSeed) - 0.5) * 2000,
-      );
-      const to = nearestNode(
-        skeletonNodes,
-        lineCoord(ix),
-        region.centerZ + (pick(23, 24, regionSeed) - 0.5) * 2000,
-      );
+      // Mountain pass: a true switchback, generalized from the Hinode touge (Phase 10
+      // pass 2). The road enters on the lower contour, climbs the slope at each hairpin
+      // and doubles back along the upper contour, so every world's passes read as real
+      // mountain roads: two hairpins, three contour legs, a climb at each U.
+      const off = 420 + pick(21, 22, regionSeed) * 320;
+      const turnW = 420 + pick(23, 24, regionSeed) * 360;
+      const zA = region.centerZ - off * 0.75 + (pick(25, 26, regionSeed) - 0.5) * 500;
+      const zB = zA + off;
+      const zC = zB + off;
+      const ha = region.centerX - 250 + (pick(27, 28, regionSeed) - 0.5) * 500;
+      const hb = ha - turnW;
+      const from = nearestNode(skeletonNodes, lineCoord(ix - 1), zA);
+      const to = nearestNode(skeletonNodes, lineCoord(ix), zC);
       if (from.id !== to.id) {
         edges.push({
           from: from.id,
@@ -605,14 +607,10 @@ export function buildRoadLayout(
           maxGrade: 0.15,
           halfWidthMeters: TOUGE_HALF_WIDTH,
           via: [
-            [
-              region.centerX - 600 + (pick(25, 26, regionSeed) - 0.5) * 500,
-              region.centerZ + (pick(27, 28, regionSeed) - 0.5) * 1200,
-            ],
-            [
-              region.centerX + 600 + (pick(29, 30, regionSeed) - 0.5) * 500,
-              region.centerZ + (pick(31, 32, regionSeed) - 0.5) * 1200,
-            ],
+            [ha, zA],
+            [ha, zB],
+            [hb, zB],
+            [hb, zC],
           ],
         });
       }

@@ -256,6 +256,40 @@ describe('wilderness track ribbon streaming', () => {
   });
 });
 
+describe('wilderness track density by altitude (Phase 10 pass 2)', () => {
+  it('highland chunks carry a richer network than lowland chunks', () => {
+    const sampler = createTerrainSampler(TERRAIN_CONFIG);
+    const rockline = TERRAIN_CONFIG.alpineRocklineMeters;
+    // Scan candidate chunks near the volcano (the world's high ground) for a
+    // rockline-crossing chunk, and compare with the known lowland chunk (16, 4).
+    let high: [number, number] | null = null;
+    let highMax = 0;
+    for (let cx = -14; cx <= -9; cx += 1) {
+      for (let cz = -18; cz <= -14; cz += 1) {
+        let maxH = 0;
+        for (const [fx, fz] of [
+          [0, 0],
+          [1, 0],
+          [0, 1],
+          [1, 1],
+          [0.5, 0.5],
+        ] as const) {
+          maxH = Math.max(maxH, sampler.heightAt(cx * SIZE + fx * SIZE, cz * SIZE + fz * SIZE));
+        }
+        if (maxH > rockline && maxH > highMax) {
+          highMax = maxH;
+          high = [cx, cz];
+        }
+      }
+    }
+    expect(high).not.toBeNull();
+    const lowland = wildernessTracksForChunk(TERRAIN_CONFIG, 16, 4).length;
+    const highland = wildernessTracksForChunk(TERRAIN_CONFIG, high![0], high![1]).length;
+    expect(lowland).toBeLessThanOrEqual(WILDERNESS_TRACKS_CONFIG.maxTracksPerChunk);
+    expect(highland).toBeGreaterThan(lowland);
+  });
+});
+
 function polylineLength(track: WildernessTrack): number {
   let total = 0;
   for (let i = 1; i < track.points.length; i += 1) {

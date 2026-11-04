@@ -216,3 +216,42 @@ describe('highway road class (Phase 10 pass 2)', () => {
     expect(seen.size).toBe(config.nodes.length);
   });
 });
+
+describe('switchback pass roads (Phase 10 pass 2)', () => {
+  it('every touge edge is a two-hairpin switchback with a real climb', () => {
+    for (const seed of [20261102, 4242, 777]) {
+      const { config } = layoutFor(seed);
+      const touges = config.edges.filter((edge) => edge.roadClass === 'touge');
+      for (const edge of touges) {
+        const via = edge.via ?? [];
+        expect(via.length).toBeGreaterThanOrEqual(4);
+        const [a, b, c, d] = via as [number, number][];
+        expect(a).toBeDefined();
+        // Hairpin 1: a vertical climb at constant x, then the upper contour leg
+        // doubling back west at constant z, then the second climb.
+        expect(Math.abs(a![0] - b![0])).toBeLessThan(1e-6);
+        expect(Math.abs(b![1] - c![1])).toBeLessThan(1e-6);
+        expect(Math.abs(c![0] - d![0])).toBeLessThan(1e-6);
+        expect(c![0]).toBeLessThan(b![0]); // the contour leg runs back west
+        // Two climbs: the road spans well over 800 m of contour offset.
+        expect(d![1] - a![1]).toBeGreaterThan(600);
+      }
+    }
+  });
+
+  it('solves grade-limited across the hairpins', () => {
+    const { config } = layoutFor(20261102);
+    const network = buildRoadNetwork(config, () => 0);
+    const touges = network.edges.filter((edge) => edge.roadClass === 'touge');
+    if (touges.length === 0) return;
+    for (const edge of touges) {
+      for (let i = 1; i < edge.points.length; i += 1) {
+        const p = edge.points[i - 1]!;
+        const q = edge.points[i]!;
+        const run = Math.hypot(q.x - p.x, q.z - p.z);
+        if (run < 0.01) continue;
+        expect(Math.abs(q.y - p.y) / run).toBeLessThanOrEqual(0.15 + 1e-6);
+      }
+    }
+  });
+});
