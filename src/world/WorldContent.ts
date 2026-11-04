@@ -86,6 +86,15 @@ export interface SceneContent {
   applyVegetationHits?(events: readonly TreeHitEvent[]): void;
   /** Town collision (buildings/poles), evaluated beside the tree field. */
   collideTown?(car: TownCarProbe, deltaSeconds: number): readonly TownHit[];
+  /**
+   * Phase 7.3: fauna charge contact (the wild boar/deer/monkey sprint). Evaluated
+   * like town before the physics step; the response is a light momentum nudge —
+   * the animal never damages the car.
+   */
+  collideFauna?(
+    car: import('./fauna').FaunaCarProbe,
+    deltaSeconds: number,
+  ): readonly import('./fauna').FaunaHit[];
   /** Gives content the collision field's per-plant truth for rebuilds. */
   setVegetationStateProvider?(
     provider: ((key: string) => TreeVisualState | undefined) | null,

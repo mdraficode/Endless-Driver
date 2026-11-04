@@ -24,6 +24,7 @@ import { PhysicsWorld } from '../physics/PhysicsWorld';
 import type { TerrainSampler } from '../world/terrain-height';
 import { OriginManager } from '../world/origin';
 import { applyCollisionResponse, TreeCollisionField } from '../world/tree-collision';
+import { applyFaunaResponse } from '../world/fauna';
 import { createWorldTerrainSampler } from '../world/world-terrain';
 import { hideoutPits, placeHideouts, type HideoutSpec } from '../world/hideouts';
 import type { RapierModule } from '../physics/RapierModule';
@@ -1446,6 +1447,32 @@ export class Application {
         );
       if (strongestTownHit !== null) {
         this.#carVisual.triggerImpact(strongestTownHit.impactSpeed, strongestTownHit.lateralOffset);
+      }
+      // 1c. Fauna charges (Phase 7.3): a telegraphed side sprint across the path. The
+      // response is the animal's own momentum — a light nudge and the chassis shudder,
+      // never damage, never health.
+      const faunaHits = this.#scene.collideFauna(
+        {
+          x: carWorldX,
+          z: carWorldZ,
+          yaw: yawFromQuat(this.#car.rotation),
+          velocityX: linvel.x,
+          velocityZ: linvel.z,
+        },
+        delta,
+      );
+      if (faunaHits.length > 0) {
+        for (const hit of faunaHits) {
+          applyFaunaResponse(this.#car.body, hit);
+        }
+        const strongestFauna = faunaHits.reduce((best, hit) =>
+          hit.impactSpeed > best.impactSpeed ? hit : best,
+        );
+        // Capped: the shudder reads as a solid glancing blow, not a wall.
+        this.#carVisual.triggerImpact(
+          Math.min(strongestFauna.impactSpeed, 14),
+          strongestFauna.lateralOffset,
+        );
       }
     }
 

@@ -647,6 +647,14 @@ export class SceneManager {
     return this.#content.collideTown?.(car, deltaSeconds) ?? [];
   }
 
+  /** Phase 7.3: fauna charge contact via the content, when the world has a fauna field. */
+  collideFauna(
+    car: import('../world/fauna').FaunaCarProbe,
+    deltaSeconds: number,
+  ): readonly import('../world/fauna').FaunaHit[] {
+    return this.#content.collideFauna?.(car, deltaSeconds) ?? [];
+  }
+
   /** Forwards vegetation destruction events to the content, when it has any. */
   applyVegetationHits(events: readonly TreeHitEvent[]): void {
     this.#content.applyVegetationHits?.(events);

@@ -12,6 +12,8 @@ import { HinodeTougeWorld } from './hinode-touge';
 import { TownWorld, setTownDistrict } from './town';
 import { VegetationWorld } from './vegetation';
 import { WildernessTracksWorld } from './wilderness-tracks-world';
+import { FaunaField } from './fauna';
+import { FaunaWorld } from './fauna-world';
 import { nearestSmallTownDistrict, setPlanDistricts } from './plan-districts';
 import { ROAD_WINDOW_CELLS } from './road-layout';
 import { ParkedTrafficWorld } from './parked-traffic';
@@ -98,6 +100,17 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
   // terrain splats out past the city edge (wilderness-tracks.ts owns the pure routes).
   const wildernessTracks = new WildernessTracksWorld(terrainSampler, qualityTier);
   root.add(wildernessTracks.root);
+  // Phase 7.3: the fauna charges — the pure state machine (fauna.ts) is advanced pre-physics
+  // by Application via `collideFauna`; this world mirrors the active charge one frame behind.
+  const faunaField = new FaunaField({
+    terrainSeed: terrainSampler.config.seed,
+    chunkSizeMeters: terrainSampler.config.chunkSizeMeters,
+    qualityTier,
+  });
+  const faunaWorld = new FaunaWorld(terrainSampler);
+  root.add(faunaWorld.root);
+  /** Toasts armed by the field this frame, drained into the next event-message consume. */
+  const faunaToasts: { text: string; tone: 'info' | 'error' }[] = [];
   // Scanned CC0 trees are optional visual upgrades. Keep the authored species for the first
   // playable frame; the composition root starts GLB download/decode after the loading overlay hides.
   let scannedAssetsStarted = false;
@@ -252,6 +265,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
           drifting: false,
         },
       );
+      faunaWorld.update(faunaField, deltaSeconds ?? 0);
     },
     configureRenderer: (backend, renderer) => {
       gpuTraffic?.configureBackend(backend, renderer as never);
@@ -264,7 +278,10 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
     },
     zoneGripModifier: (x, z) => eventManager?.zoneGripModifier(x, z) ?? 1,
     consumeBoostDelta: () => eventManager?.consumeBoostDelta() ?? 0,
-    consumeEventMessages: () => eventManager?.consumeMessages() ?? [],
+    consumeEventMessages: () => {
+      const fauna = faunaToasts.splice(0);
+      return [...(eventManager?.consumeMessages() ?? []), ...fauna];
+    },
     prepareInitial: async (focus, velocity = { x: 0, z: 0 }, onProgress) => {
       aohara?.updateStreaming(focus);
       let terrainProgress = 0;
@@ -296,6 +313,17 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       ...(cityStreamer?.collideTown(car) ?? []),
       ...(hideoutWorld?.collideTown(car) ?? []),
     ],
+    collideFauna: (car, deltaSeconds) => {
+      const frame = faunaField.advanceAndCollide(car, deltaSeconds);
+      for (const spawned of frame.spawned) {
+        faunaToasts.push({ text: spawned.toast, tone: 'info' });
+        faunaWorld.rustleAt(spawned.charge.x, spawned.charge.z);
+      }
+      if (frame.leaves.length > 0) {
+        faunaWorld.queueLeaves(frame.leaves);
+      }
+      return frame.hits;
+    },
     applyVegetationHits: (events) => {
       vegetation.applyHits(events);
     },
@@ -328,6 +356,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       const roadStats = roads?.getStats() ?? {};
       const vegetationStats = vegetation.getContentStats();
       const wildernessStats = wildernessTracks.getContentStats();
+      const faunaStats = faunaWorld.getContentStats();
       const townStats = town.getContentStats();
       const urbanStats = aohara?.getContentStats() ?? {};
       const tougeStats = hinodeTouge?.getContentStats() ?? {};
@@ -355,6 +384,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
         ...parkedStats,
         ...trafficStats,
         ...eventStats,
+        ...faunaStats,
         ...wildernessStats,
         worldEnrichmentInstances: groundCoverInstances + streetFurnitureInstances,
         worldEnrichmentInstanceBudget: groundCoverBudget + streetFurnitureBudget,
@@ -369,6 +399,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       roads?.dispose();
       vegetation.dispose();
       wildernessTracks.dispose();
+      faunaWorld.dispose();
       town.dispose();
       aohara?.dispose();
       cityStreamer?.dispose();
