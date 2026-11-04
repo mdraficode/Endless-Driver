@@ -1344,9 +1344,6 @@ function buildWindowCandidates(
     // crown's base sit on the crown's faces instead of the body's.
     const crown = tower.crown;
     const crownStart = crown ? tower.height - crown.height : tower.height;
-    // Phase 8.4c: tiered towers have no body wall above the first setback — window rows
-    // straddling the body top are skipped like the crown-base floor (same straddle rule).
-    const bodyWindowTop = tower.windowTopMeters ?? tower.height;
     const facesFor = (centerX: number, centerZ: number, width: number, depth: number) => {
       const xColumns = Math.max(
         2,
@@ -1400,20 +1397,66 @@ function buildWindowCandidates(
           crown.depth,
         )
       : null;
+    // Upper face stops, ascending by base: the crown (monoliths) or the tier stack (tiered
+    // towers). Rows above a stop's base sit on that volume's faces, like the crown did.
+    const upperFaceStops: {
+      readonly start: number;
+      readonly faces: ReturnType<typeof facesFor>;
+    }[] = [];
+    if (crownFaces !== null) {
+      upperFaceStops.push({ start: crownStart, faces: crownFaces });
+    } else {
+      let upperY = tower.windowTopMeters ?? tower.height;
+      for (const tier of tower.tiers ?? []) {
+        upperFaceStops.push({
+          start: upperY,
+          faces: facesFor(
+            tower.x + (tier.offsetX ?? 0),
+            tower.z + (tier.offsetZ ?? 0),
+            tier.width,
+            tier.depth,
+          ),
+        });
+        upperY += tier.height;
+      }
+    }
     // Phase 8.3d: per-tower occupancy — some towers glow after hours, others sit dark.
     const towerLitness = 0.35 + 0.5 * stableUnit(towerIndex, 613, 701);
     const towerTone: 'warm' | 'cool' = stableUnit(towerIndex, 719, 823) < 0.6 ? 'cool' : 'warm';
     for (let floor = 1; floor < floors; floor += 1) {
       const rowY = 3.1 + floor * floorSpacingMeters;
-      if (rowY + 0.85 > bodyWindowTop - 0.25) continue;
-      let faces = bodyFaces;
-      if (crownFaces) {
-        if (rowY - 0.85 >= crownStart + 0.25) {
-          faces = crownFaces;
-        } else if (rowY + 0.85 > crownStart - 0.25) {
-          continue; // the floor straddling the crown base keeps the edge clean
+      // Phase 8.3f/8.4c: a row sits on the faces of the volume it lives in (body, crown or
+      // tier). A row straddling a setback base keeps the edge clean and is skipped; this
+      // reproduces the crown straddle rule exactly for monoliths.
+      const rowBottom = rowY - 0.85;
+      const rowTop = rowY + 0.85;
+      let faces:
+        | {
+            readonly x: number;
+            readonly z: number;
+            readonly yaw: number;
+            readonly columns: number;
+            readonly along: 'x' | 'z';
+            readonly length: number;
+          }[]
+        | null = null;
+      let straddlesSetback = false;
+      for (const stop of upperFaceStops) {
+        if (rowTop > stop.start - 0.25 && rowBottom < stop.start + 0.25) {
+          straddlesSetback = true;
+          break;
         }
       }
+      if (!straddlesSetback) {
+        faces = bodyFaces;
+        for (let stopIndex = upperFaceStops.length - 1; stopIndex >= 0; stopIndex -= 1) {
+          if (rowY >= upperFaceStops[stopIndex]!.start) {
+            faces = upperFaceStops[stopIndex]!.faces;
+            break;
+          }
+        }
+      }
+      if (!faces) continue;
       for (let sideIndex = 0; sideIndex < faces.length; sideIndex += 1) {
         const side = faces[sideIndex]!;
         // The +Z face is the authored front (the night accents light it too); prefer it in cuts.
