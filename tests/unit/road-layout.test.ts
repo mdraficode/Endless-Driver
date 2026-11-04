@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildRoadLayout, ROAD_WINDOW_CELLS } from '../../src/world/road-layout';
 import { createWorldPlan, REGION_CELL_METERS } from '../../src/world/world-plan';
 import { buildRoadNetwork } from '../../src/world/road-network';
+import { buildBarrierGeometry } from '../../src/world/road-geometry';
 import { AOHARA_JUNCTION_NODE_ID } from '../../src/config/urban-district';
 import { homeCityAnchor, proceduralSpawn } from '../../src/world/city-content';
 
@@ -121,5 +122,97 @@ describe('road-layout', () => {
     const t0 = performance.now();
     buildRoadNetwork(config, baseHeight);
     expect(performance.now() - t0).toBeLessThan(1500);
+  });
+});
+
+describe('highway road class (Phase 10 pass 2)', () => {
+  it('designates seeded highway lines that run through open country', () => {
+    for (const seed of [20261102, 4242, 777]) {
+      const { config } = layoutFor(seed);
+      const highways = config.edges.filter((edge) => edge.roadClass === 'highway');
+      // The 3×3 window has 8 cell-boundary lines (4 vertical + 4 horizontal); with a 30%
+      // designation and open-country stretches, some worlds get none — but across these
+      // seeds at least one must, and the geometry is verified wherever one exists.
+      for (const edge of highways) {
+        expect(edge.halfWidthMeters).toBe(8);
+        expect(edge.shoulderMeters).toBe(3.5);
+        expect(edge.maxGrade).toBe(0.05);
+        expect(edge.via).toBeUndefined();
+      }
+    }
+    // At least one of these seeds grows a highway in the window.
+    const total = [20261102, 4242, 777].reduce((sum, seed) => {
+      return (
+        sum + layoutFor(seed).config.edges.filter((edge) => edge.roadClass === 'highway').length
+      );
+    }, 0);
+    expect(total).toBeGreaterThan(0);
+  });
+
+  it('never runs through a megacity or urban-fringe region', () => {
+    const plan = createWorldPlan(20261102);
+    const { config } = layoutFor(20261102);
+    const byId = new Map(config.nodes.map((node) => [node.id, node]));
+    for (const edge of config.edges) {
+      if (edge.roadClass !== 'highway') continue;
+      const from = byId.get(edge.from)!;
+      const to = byId.get(edge.to)!;
+      // The whole segment midpoint must be open country.
+      const mid = { x: (from.x + to.x) / 2, z: (from.z + to.z) / 2 };
+      const archetype = plan.regionAt(mid.x, mid.z).archetype;
+      expect(['rural', 'small-town']).toContain(archetype);
+    }
+  });
+
+  it('solves flat: the highway profile respects its 5% grade', () => {
+    const { config } = layoutFor(20261102);
+    const network = buildRoadNetwork(config, () => 0);
+    for (const edge of network.edges) {
+      if (edge.roadClass !== 'highway') continue;
+      for (let i = 1; i < edge.points.length; i += 1) {
+        const a = edge.points[i - 1]!;
+        const b = edge.points[i]!;
+        const run = Math.hypot(b.x - a.x, b.z - a.z);
+        if (run < 0.01) continue;
+        expect(Math.abs(b.y - a.y) / run).toBeLessThanOrEqual(0.05 + 1e-6);
+      }
+    }
+  });
+
+  it('builds barrier walls that hug the shoulders above the deck', () => {
+    const { config } = layoutFor(20261102);
+    const network = buildRoadNetwork(config, () => 10);
+    const highway = network.edges.find((edge) => edge.roadClass === 'highway');
+    if (highway === undefined) return; // seed has no highway in the window
+    const barrier = buildBarrierGeometry(highway, 1.0, 0.3, 11.45);
+    const positions = barrier.getAttribute('position');
+    expect(positions.count).toBe(highway.points.length * 4);
+    for (let i = 0; i < positions.count; i += 1) {
+      const y = positions.getY(i);
+      expect(y).toBeGreaterThanOrEqual(10 - 1e-6);
+      expect(y).toBeLessThanOrEqual(11.5 + 1e-6);
+    }
+  });
+
+  it('keeps the network one connected component with highways present', () => {
+    const { config, spawnNodeId } = layoutFor(777);
+    const adjacency = new Map<string, string[]>();
+    for (const node of config.nodes) adjacency.set(node.id, []);
+    for (const edge of config.edges) {
+      adjacency.get(edge.from)!.push(edge.to);
+      adjacency.get(edge.to)!.push(edge.from);
+    }
+    const seen = new Set<string>([spawnNodeId]);
+    const queue = [spawnNodeId];
+    while (queue.length > 0) {
+      const id = queue.pop()!;
+      for (const next of adjacency.get(id)!) {
+        if (!seen.has(next)) {
+          seen.add(next);
+          queue.push(next);
+        }
+      }
+    }
+    expect(seen.size).toBe(config.nodes.length);
   });
 });

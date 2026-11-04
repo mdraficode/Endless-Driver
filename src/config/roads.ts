@@ -16,7 +16,14 @@ import {
 } from './urban-district';
 
 export type RoadClass =
-  'rural' | 'touge' | 'city-access' | 'urban-local' | 'urban-arterial' | 'urban-alley';
+  | 'rural'
+  | 'touge'
+  | 'city-access'
+  | 'urban-local'
+  | 'urban-arterial'
+  | 'urban-alley'
+  /** Phase 10 pass 2: the wide, flat, barrier-edged long-distance connector. */
+  | 'highway';
 
 /** Optional volcano-side switchback start; the default remains Aohara Central Avenue. */
 export const HINODE_TOUGE_START = {

@@ -42,6 +42,7 @@ import { clamp } from '../shared/math';
 import type { DaylightState } from '../environment/EnvironmentClock';
 import type { RoadNetwork } from './road-network';
 import {
+  buildBarrierGeometry,
   buildDashGeometry,
   buildRibbonGeometry,
   markingTrimsForEdge,
@@ -64,6 +65,9 @@ export interface RoadWorldStats {
 // the same solved elevation, so these only need to beat depth precision — but they are
 // stacked (shoulder below asphalt below paint) so every layer wins its overlap cleanly.
 const SHOULDER_LIFT = 0.05;
+// Phase 10 pass 2: the highway barrier wall.
+const HIGHWAY_BARRIER_HEIGHT = 1.0;
+const HIGHWAY_BARRIER_WIDTH = 0.3;
 const ASPHALT_LIFT = 0.09;
 const PAINT_LIFT = 0.13;
 const SIDEWALK_LIFT = 0.14;
@@ -520,6 +524,7 @@ export class RoadWorld {
     const markingGeometries: BufferGeometry[] = [];
     const centerlineGeometries: BufferGeometry[] = [];
     const urbanSidewalkGeometries: BufferGeometry[] = [];
+    const barrierGeometries: BufferGeometry[] = [];
     let urbanSidewalkEdges = 0;
 
     for (const edge of network.edges) {
@@ -553,6 +558,19 @@ export class RoadWorld {
       } else {
         asphaltGeometries.push(asphaltGeometry);
       }
+      // Phase 10 pass 2: the highway's concrete barrier walls, both shoulders.
+      if (edge.roadClass === 'highway') {
+        for (const side of [-1, 1] as const) {
+          barrierGeometries.push(
+            buildBarrierGeometry(
+              edge,
+              HIGHWAY_BARRIER_HEIGHT,
+              HIGHWAY_BARRIER_WIDTH,
+              side * (halfWidthMeters + shoulderMeters - 0.55),
+            ),
+          );
+        }
+      }
       const markingEdge =
         edge.roadClass === 'urban-alley'
           ? null
@@ -573,7 +591,10 @@ export class RoadWorld {
           );
         }
       }
-      if (edge.roadClass === 'urban-arterial' && markingEdge !== null) {
+      if (
+        (edge.roadClass === 'urban-arterial' || edge.roadClass === 'highway') &&
+        markingEdge !== null
+      ) {
         for (const side of [-1, 1] as const) {
           centerlineGeometries.push(
             buildRibbonGeometry(markingEdge, 0.11, PAINT_LIFT, side * 0.18),
@@ -668,6 +689,18 @@ export class RoadWorld {
       centerlineMaterial,
       'road-urban-centerlines',
     );
+    if (barrierGeometries.length > 0) {
+      const barrierMaterial = new MeshStandardNodeMaterial();
+      barrierMaterial.name = 'highway-barrier-concrete';
+      barrierMaterial.color.set(0x9aa0a6);
+      barrierMaterial.roughness = 0.82;
+      barrierMaterial.metalness = 0;
+      add(
+        mergeGeometryBatch(barrierGeometries, 'highway-barrier-batch'),
+        barrierMaterial,
+        'highway-barriers',
+      );
+    }
     add(
       mergeGeometryBatch(urbanSidewalkGeometries, 'aohara-sidewalks-batch'),
       this.#sidewalkMaterial,

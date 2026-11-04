@@ -39,6 +39,12 @@ export const ROAD_WINDOW_CELLS = 1;
 
 /** Arterial half-widths, metres — tuned to Aohara's proportions. */
 const URBAN_ARTERIAL_HALF_WIDTH = 7;
+/** Phase 10 pass 2: the highway class — wide, flat, barrier-edged long connectors. */
+const HIGHWAY_HALF_WIDTH = 8;
+const HIGHWAY_SHOULDER = 3.5;
+const HIGHWAY_MAX_GRADE = 0.05;
+/** Share of the cell-boundary lines designated as highway lines (seeded per world). */
+const HIGHWAY_LINE_FRACTION = 0.3;
 const URBAN_LOCAL_HALF_WIDTH = 3.2;
 const CITY_ACCESS_HALF_WIDTH = 4.5;
 const TOUGE_HALF_WIDTH = 3.4;
@@ -140,12 +146,34 @@ export function buildRoadLayout(
     if (archetype === 'small-town') return 'city-access';
     return 'rural';
   };
+  // Phase 10 pass 2: the highway lines. A seeded subset of the arterial skeleton lines
+  // becomes a dedicated highway wherever it runs through open country — the long straight
+  // connectors between the region cores. The designation is pure in the line coordinate,
+  // so every cell agrees on a shared line.
+  const worldSeed = plan.seed;
+  const isHighwayLine = (line: number, vertical: boolean): boolean =>
+    pick(line, vertical ? 0x7a11 : 0x7a22, worldSeed) < HIGHWAY_LINE_FRACTION;
   const addSkeletonEdge = (
     from: RoadNodeConfig,
     to: RoadNodeConfig,
     x: number,
     z: number,
+    highwayLine: boolean,
   ): void => {
+    // A highway only runs where the ground is open: rural fields and small-town bypasses.
+    // Through the cities the same line stays the urban arterial it always was.
+    const archetype = plan.regionAt(x, z).archetype;
+    if (highwayLine && (archetype === 'rural' || archetype === 'small-town')) {
+      edges.push({
+        from: from.id,
+        to: to.id,
+        roadClass: 'highway',
+        halfWidthMeters: HIGHWAY_HALF_WIDTH,
+        shoulderMeters: HIGHWAY_SHOULDER,
+        maxGrade: HIGHWAY_MAX_GRADE,
+      });
+      return;
+    }
     const cls = segmentClass(x, z);
     edges.push({
       from: from.id,
@@ -160,7 +188,7 @@ export function buildRoadLayout(
       const a = intersections.get(`${k},${m}`)!;
       const b = intersections.get(`${k},${m + 1}`)!;
       const zMid = lineCoord(m) + REGION_CELL_METERS / 2;
-      addSkeletonEdge(a, b, lineCoord(k), zMid);
+      addSkeletonEdge(a, b, lineCoord(k), zMid, isHighwayLine(k, true));
     }
   }
   for (let m = kMin; m <= kMax; m += 1) {
@@ -168,7 +196,7 @@ export function buildRoadLayout(
       const a = intersections.get(`${k},${m}`)!;
       const b = intersections.get(`${k + 1},${m}`)!;
       const xMid = lineCoord(k) + REGION_CELL_METERS / 2;
-      addSkeletonEdge(a, b, xMid, lineCoord(m));
+      addSkeletonEdge(a, b, xMid, lineCoord(m), isHighwayLine(m, false));
     }
   }
 

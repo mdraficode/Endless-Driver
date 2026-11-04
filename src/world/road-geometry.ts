@@ -304,6 +304,7 @@ const BANK_DESIGN_SPEED: Readonly<Record<RoadEdge['roadClass'], number>> = {
   'urban-local': 16,
   'urban-arterial': 26,
   'urban-alley': 8,
+  highway: 30,
 };
 const GRAVEITY_METER_PER_SECOND_SQUARED = 9.81;
 const MAX_BANK_METERS = 0.5;
@@ -387,6 +388,63 @@ export function buildRibbonGeometry(
   const geometry = new BufferGeometry();
   geometry.setAttribute('position', new BufferAttribute(positions, 3));
   geometry.setAttribute('uv', new BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+/**
+ * A continuous concrete barrier wall along an edge (Phase 10 pass 2 highways): a vertical
+ * prism ribbon — bottom and top quads on each face plus the walking top — following the
+ * solved profile, offset to the edge line by `centerOffsetMeters`.
+ */
+export function buildBarrierGeometry(
+  edge: RoadEdge,
+  heightMeters: number,
+  widthMeters: number,
+  centerOffsetMeters = 0,
+  yOffset = 0,
+): BufferGeometry {
+  const { points } = edge;
+  const half = widthMeters / 2;
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  for (let index = 0; index < points.length; index += 1) {
+    const point = points[index]!;
+    const side = sideOf(tangentAt(points, index));
+    const cx = point.x + side.x * centerOffsetMeters;
+    const cz = point.z + side.z * centerOffsetMeters;
+    const baseY = point.y + yOffset;
+    // Four corners per sample: bottom-left, top-left, bottom-right, top-right.
+    positions.push(
+      cx - side.x * half,
+      baseY,
+      cz - side.z * half,
+      cx - side.x * half,
+      baseY + heightMeters,
+      cz - side.z * half,
+      cx + side.x * half,
+      baseY,
+      cz + side.z * half,
+      cx + side.x * half,
+      baseY + heightMeters,
+      cz + side.z * half,
+    );
+    uvs.push(0, 0, 0, 1, 1, 0, 1, 1);
+  }
+  const indices: number[] = [];
+  for (let index = 0; index + 1 < points.length; index += 1) {
+    const a = index * 4;
+    const b = a + 4;
+    // Left face, right face, top face.
+    indices.push(a, a + 1, b, b, b + 1, b + 2);
+    indices.push(a + 2, a + 3, b + 2, b + 2, b + 3, b + 2);
+    indices.push(a + 1, b + 1, a + 3, a + 3, b + 1, b + 3);
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
+  geometry.setAttribute('uv', new BufferAttribute(new Float32Array(uvs), 2));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
