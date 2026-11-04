@@ -4,6 +4,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import { URBAN_FACADE_KIT_TIER_BUDGET } from '../config/urban-city';
 import type { TierId } from '../config/tiers';
+import { topTowerVolume } from './tower-volumes';
 import { createArchitecturalMaterial } from './architectural-materials';
 
 /**
@@ -134,6 +135,16 @@ export interface FacadeKitTowerRef {
     readonly offsetX?: number;
     readonly offsetZ?: number;
   };
+  /** Phase 8.4c: set-back tier stack on top of the body (tiered towers carry no crown). */
+  readonly tiers?: readonly {
+    readonly width: number;
+    readonly depth: number;
+    readonly height: number;
+    readonly offsetX?: number;
+    readonly offsetZ?: number;
+  }[];
+  /** Phase 8.4c: top of the main body in metres — fins and mid glass stop here. */
+  readonly windowTopMeters?: number;
 }
 
 export interface FacadeKitPlacement {
@@ -632,9 +643,10 @@ export function generateFacadeKitPlacements(
   });
 
   towers.forEach((tower, towerIndex) => {
-    // Phase 8.3f: set-back crown — the fins run the body height only, the crown band sits on
-    // the crown face, and the mast stands on the crown roof.
-    const bodyHeight = tower.crown ? tower.height - tower.crown.height : tower.height;
+    // Phase 8.3f/8.4c: the fins run the body height only — the body top is where the crown
+    // (or the first tier) begins.
+    const bodyHeight =
+      tower.windowTopMeters ?? (tower.crown ? tower.height - tower.crown.height : tower.height);
     // Curtain-wall fins wrap the four corners and the front/back centrelines of every
     // high-rise. Corner fins sit on the face line; centre fins stand 0.05 m proud along the
     // face normal so the 0.22 m section reads as a mullion against the glass.
@@ -671,27 +683,26 @@ export function generateFacadeKitPlacements(
         },
       });
     }
-    // Crown glass band marks the curtain-wall head against the rooftop — on the set-back
-    // crown face (and its offset) when the tower carries one.
-    const crownCenterX = tower.x + (tower.crown?.offsetX ?? 0);
-    const crownCenterZ = tower.z + (tower.crown?.offsetZ ?? 0);
-    const bandWidth = tower.crown ? tower.crown.width + 0.12 : tower.width + 0.12;
-    const bandDepth = tower.crown ? tower.crown.depth + 0.12 : tower.depth + 0.12;
+    // Phase 8.4c: the head glass band marks the curtain-wall head against the rooftop —
+    // on the topmost volume (set-back crown or top tier, with its offset).
+    const topVolume = topTowerVolume(tower);
+    const topCenterX = topVolume.x;
+    const topCenterZ = topVolume.z;
     candidates['glass-band'].push({
       rank: stableUnit(towerIndex, 41, 1033),
       placement: {
         element: 'glass-band',
         buildingIndex: -1,
         towerIndex,
-        x: tower.crown ? crownCenterX : tower.x,
+        x: topCenterX,
         y: FACADE_KIT_BASE_Y + tower.height - 2.2,
-        z: tower.crown ? crownCenterZ : tower.z,
+        z: topCenterZ,
         yaw: 0,
-        scale: [bandWidth, 1.3, bandDepth],
+        scale: [topVolume.width + 0.12, 1.3, topVolume.depth + 0.12],
       },
     });
-    // Phase 8.3 mid spandrel: a band at two-thirds height so the tower reads as a stack of
-    // floors rather than one glass slab.
+    // Phase 8.3 mid spandrel: a band on the main body (two-thirds height, but clear of the
+    // first setback on tiered towers) so the tower reads as a stack of floors.
     candidates['glass-band'].push({
       rank: stableUnit(towerIndex, 43, 1035),
       placement: {
@@ -699,18 +710,20 @@ export function generateFacadeKitPlacements(
         buildingIndex: -1,
         towerIndex,
         x: tower.x,
-        y: FACADE_KIT_BASE_Y + tower.height * (2 / 3),
+        y: FACADE_KIT_BASE_Y + Math.min(tower.height * (2 / 3), bodyHeight - 2),
         z: tower.z,
         yaw: 0,
         scale: [tower.width + 0.12, 1.1, tower.depth + 0.12],
       },
     });
     // Phase 8.3d: a rooftop mast on every tower — the skyline needs verticals, and a thin
-    // pole does not repeat the box-on-box read the penthouses did.
-    const mastCenterX = tower.crown ? crownCenterX : tower.x;
-    const mastCenterZ = tower.crown ? crownCenterZ : tower.z;
-    const mastWidth = tower.crown ? tower.crown.width : tower.width;
-    const mastDepth = tower.crown ? tower.crown.depth : tower.depth;
+    // pole does not repeat the box-on-box read the penthouses did. It stands on the
+    // topmost volume; the tallest anchors get a bolder fin (Phase 8.4c).
+    const mastCenterX = topCenterX;
+    const mastCenterZ = topCenterZ;
+    const mastWidth = topVolume.width;
+    const mastDepth = topVolume.depth;
+    const mastHeight = Math.max(3, tower.height * (tower.height >= 90 ? 0.09 : 0.05));
     candidates.mast.push({
       rank: stableUnit(towerIndex, 45, 1037),
       placement: {
@@ -721,7 +734,7 @@ export function generateFacadeKitPlacements(
         y: FACADE_KIT_BASE_Y + tower.height,
         z: mastCenterZ + (stableUnit(towerIndex, 2202, 2211) - 0.5) * mastDepth * 0.4,
         yaw: 0,
-        scale: [1, Math.max(3, tower.height * 0.05), 1],
+        scale: [1, mastHeight, 1],
       },
     });
   });

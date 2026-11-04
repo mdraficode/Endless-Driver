@@ -38,6 +38,8 @@ import {
 import { generateAoharaAlleyFacadePlacements } from '../../src/world/urban-alley-frontages';
 import { generateAoharaAlleyPropPlacements } from '../../src/world/urban-backstreets';
 import { generateAoharaStreetFurniturePlacements } from '../../src/world/urban-furniture';
+import { buildAoharaTowerSpecs } from '../../src/world/urban-night';
+import { topTowerVolume, towerVolumes } from '../../src/world/tower-volumes';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
 import type { RoadNetwork } from '../../src/world/road-network';
 import {
@@ -1096,9 +1098,13 @@ describe('Aohara city night-lighting rules', () => {
           0,
         );
       expect(stats.highRiseBuildings).toBe(29);
-      // 29 bodies + 29 crowns (every tower carries one since 8.3g).
-      expect(sumByPrefix('aohara-high-rise-facades-')).toBe(29 * 2);
-      // Each facade box gets exactly one roof cap (terrace + crown cap when crowned).
+      // Phase 8.4c: each tower renders as its volume chain (body + crown, or body + two tiers).
+      const towerVolumeCount = buildAoharaTowerSpecs().reduce(
+        (total, tower) => total + towerVolumes(tower).length,
+        0,
+      );
+      expect(sumByPrefix('aohara-high-rise-facades-')).toBe(towerVolumeCount);
+      // Each facade volume gets exactly one roof cap.
       expect(sumByPrefix('aohara-rooftop-caps')).toBe(sumByPrefix('aohara-high-rise-facades-'));
       const totalBuildings =
         (stats.infillBuildings ?? 0) +
@@ -1463,5 +1469,64 @@ describe('Aohara city night-lighting rules', () => {
       }
     }
     city.dispose();
+  });
+});
+
+describe('Aohara high-rise massing (Phase 8.4c)', () => {
+  const specs = buildAoharaTowerSpecs();
+
+  it('keeps the dominant towers on the 29-tower skyline', () => {
+    expect(specs.length).toBe(29);
+  });
+
+  it('gives every tower a volume chain whose last volume reaches the full height', () => {
+    for (const tower of specs) {
+      const volumes = towerVolumes(tower);
+      expect(volumes.length).toBeGreaterThanOrEqual(1);
+      const expectedBodyTop =
+        tower.windowTopMeters ?? (tower.crown ? tower.height - tower.crown.height : tower.height);
+      expect(volumes[0]!.top).toBeCloseTo(expectedBodyTop, 6);
+      expect(volumes[volumes.length - 1]!.top).toBeCloseTo(tower.height, 6);
+      // each volume sits on the one below it
+      for (let i = 1; i < volumes.length; i += 1) {
+        expect(volumes[i]!.base).toBeCloseTo(volumes[i - 1]!.top, 6);
+      }
+    }
+  });
+
+  it('replaces the crown with two set-back tiers on the mid-rise-and-above towers', () => {
+    let tiered = 0;
+    for (const tower of specs) {
+      if (tower.height >= 72) {
+        tiered += 1;
+        expect(tower.crown).toBeUndefined();
+        expect(tower.tiers?.length).toBe(2);
+        const [middle, top] = tower.tiers!;
+        // set-back: strictly narrower than the body and than each other
+        expect(middle!.width).toBeLessThan(tower.width);
+        expect(middle!.depth).toBeLessThan(tower.depth);
+        expect(top!.width).toBeLessThan(middle!.width);
+        expect(top!.depth).toBeLessThan(middle!.depth);
+        // offsets stay inside the body footprint
+        expect(Math.abs(middle!.offsetX ?? 0)).toBeLessThanOrEqual(
+          (tower.width - middle!.width) / 2 + 1e-6,
+        );
+        expect(Math.abs(top!.offsetX ?? 0)).toBeLessThanOrEqual(
+          (tower.width - top!.width) / 2 + 1e-6,
+        );
+        // windows stop at the first setback
+        expect(tower.windowTopMeters).toBeGreaterThan(0);
+        expect(tower.windowTopMeters).toBeLessThan(tower.height);
+        const expectedTop = tower.height - middle!.height - top!.height;
+        expect(tower.windowTopMeters).toBeCloseTo(expectedTop, 6);
+        // the top volume is the smaller tier
+        const topVolume = topTowerVolume(tower);
+        expect(topVolume.width).toBeCloseTo(top!.width, 6);
+      } else {
+        expect(tower.tiers).toBeUndefined();
+        expect(tower.windowTopMeters).toBeUndefined();
+      }
+    }
+    expect(tiered).toBeGreaterThanOrEqual(10);
   });
 });

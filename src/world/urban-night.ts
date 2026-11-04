@@ -80,6 +80,7 @@ import {
 } from './static-building-collision';
 import { createArchitecturalMaterial } from './architectural-materials';
 import { FacadeKitWorld, upperVolumeOf, type BuildingMassingRef } from './building-facades';
+import { topTowerVolume, towerVolumes } from './tower-volumes';
 import { bindScannedPbrMaps } from './scanned-pbr';
 import { createRoadWetPatchMaskTexture, createRoadWetnessNode } from './road-wet-patches';
 import { UrbanStreetFurniture } from './urban-furniture';
@@ -110,6 +111,20 @@ interface TowerSpec {
     readonly offsetX?: number;
     readonly offsetZ?: number;
   };
+  /**
+   * Phase 8.4c (bolder structure): set-back tiers stacked on the body, bottom to top (the
+   * body plus tiers fill the full `height`). A tower with tiers carries no `crown`; the
+   * facade kit and night accent target its topmost tier.
+   */
+  readonly tiers?: readonly {
+    readonly width: number;
+    readonly depth: number;
+    readonly height: number;
+    readonly offsetX?: number;
+    readonly offsetZ?: number;
+  }[];
+  /** Top of the main body (metres, from ground); window floors and curtain fins stop here. */
+  readonly windowTopMeters?: number;
 }
 
 /** Compact skyline retained by the standalone night-lighting look-dev block. */
@@ -132,7 +147,12 @@ const LOOKDEV_TOWERS: readonly TowerSpec[] = [
     depth: 22,
     height: 82,
     color: 0x202b36,
-    crown: { width: 13, depth: 14, height: 20, offsetX: 4.5, offsetZ: 3 },
+    // Phase 8.4c: the downtown core joins the generated towers on the tiered massing.
+    tiers: [
+      { width: 17, depth: 18, height: 18, offsetX: 2, offsetZ: 1.5 },
+      { width: 12.5, depth: 14, height: 15, offsetX: 3, offsetZ: 2.2 },
+    ],
+    windowTopMeters: 49,
   },
   {
     x: -31,
@@ -150,7 +170,11 @@ const LOOKDEV_TOWERS: readonly TowerSpec[] = [
     depth: 27,
     height: 100,
     color: 0x202b36,
-    crown: { width: 15, depth: 17, height: 24 },
+    tiers: [
+      { width: 18, depth: 21, height: 21, offsetX: 1, offsetZ: 1.5 },
+      { width: 13, depth: 15, height: 18, offsetX: 2, offsetZ: 3 },
+    ],
+    windowTopMeters: 61,
   },
   {
     x: 31,
@@ -159,7 +183,11 @@ const LOOKDEV_TOWERS: readonly TowerSpec[] = [
     depth: 26,
     height: 74,
     color: 0x27333e,
-    crown: { width: 14, depth: 16, height: 16, offsetX: -4.5, offsetZ: 3.5 },
+    tiers: [
+      { width: 18, depth: 20, height: 16, offsetX: -2, offsetZ: 2 },
+      { width: 13, depth: 15, height: 13, offsetX: -3.5, offsetZ: 3 },
+    ],
+    windowTopMeters: 45,
   },
   {
     x: 31,
@@ -168,7 +196,11 @@ const LOOKDEV_TOWERS: readonly TowerSpec[] = [
     depth: 24,
     height: 96,
     color: 0x202b36,
-    crown: { width: 16, depth: 14, height: 22 },
+    tiers: [
+      { width: 19, depth: 18, height: 21 },
+      { width: 14, depth: 13, height: 17 },
+    ],
+    windowTopMeters: 58,
   },
   {
     x: 31,
@@ -186,7 +218,11 @@ const LOOKDEV_TOWERS: readonly TowerSpec[] = [
     depth: 28,
     height: 86,
     color: 0x27333e,
-    crown: { width: 15, depth: 17, height: 18, offsetX: 5, offsetZ: -4 },
+    tiers: [
+      { width: 19, depth: 22, height: 19, offsetX: 2, offsetZ: -2 },
+      { width: 14, depth: 16, height: 15, offsetX: 3.5, offsetZ: -3 },
+    ],
+    windowTopMeters: 52,
   },
 ];
 
@@ -550,7 +586,7 @@ function streetLampPaletteIndex(position: readonly [number, number, number]): nu
 const CITY_FACADE_PALETTE = [0x202b36, 0x27333e, 0x30343e, 0x3a3735] as const;
 const CITY_TOWER_HEIGHTS = [34, 44, 58, 72, 90, 116, 142] as const;
 
-function buildAoharaTowerSpecs(): readonly TowerSpec[] {
+export function buildAoharaTowerSpecs(): readonly TowerSpec[] {
   const towers: TowerSpec[] = [...LOOKDEV_TOWERS];
   for (let rowIndex = 0; rowIndex < AOHARA_GRID_ROWS.length - 1; rowIndex += 1) {
     for (let columnIndex = 0; columnIndex < AOHARA_GRID_COLUMNS.length - 1; columnIndex += 1) {
@@ -617,6 +653,46 @@ function buildAoharaTowerSpecs(): readonly TowerSpec[] {
                   depth: towerDepth * (0.8 + 0.1 * stableUnit(seed, side, 1115)),
                   height: 8 + 4 * stableUnit(seed, side, 1117),
                 };
+        // Phase 8.4c (bolder structure): the mid-rise-and-above towers stop reading as flat
+        // prisms. Two set-back tiers replace the single crown (the body plus the tiers fill
+        // the full height); the collider keeps the original bounding footprint.
+        let tierVolumes:
+          | readonly {
+              readonly width: number;
+              readonly depth: number;
+              readonly height: number;
+              readonly offsetX?: number;
+              readonly offsetZ?: number;
+            }[]
+          | undefined;
+        let windowTop: number | undefined;
+        if (towerHeight >= 72) {
+          const middleHeight = Math.max(
+            14,
+            towerHeight * 0.22 * (0.85 + 0.3 * stableUnit(seed, side, 3417)),
+          );
+          const topHeight = Math.max(
+            12,
+            towerHeight * 0.18 * (0.85 + 0.3 * stableUnit(seed, side, 3419)),
+          );
+          const middleWidth = towerWidth * (0.74 + 0.08 * stableUnit(seed, side, 3421));
+          const topWidth = middleWidth * 0.72;
+          const middleDepth = towerDepth * (0.74 + 0.08 * stableUnit(seed, side, 3423));
+          const topDepth = middleDepth * 0.72;
+          // The set-back shifts the tiers toward one side of the body, clamped so neither
+          // volume overhangs the body footprint (the collider keeps the original box).
+          const middleInset = (towerWidth - middleWidth) / 2;
+          const tierShift =
+            (stableUnit(seed, side, 3413) < 0.5 ? -1 : 1) *
+            middleInset *
+            Math.min(1, (towerWidth * 0.13) / middleInset) *
+            stableUnit(seed, side, 3415);
+          tierVolumes = [
+            { width: middleWidth, depth: middleDepth, height: middleHeight, offsetX: tierShift },
+            { width: topWidth, depth: topDepth, height: topHeight, offsetX: tierShift * 1.4 },
+          ];
+          windowTop = towerHeight - middleHeight - topHeight;
+        }
         towers.push({
           x: blockCenterX + side * 35 + xJitter,
           z: blockCenterZ + zJitter,
@@ -624,7 +700,10 @@ function buildAoharaTowerSpecs(): readonly TowerSpec[] {
           depth: towerDepth,
           height: towerHeight,
           color: CITY_FACADE_PALETTE[colorIndex] ?? CITY_FACADE_PALETTE[0],
-          crown,
+          // A tiered tower carries no crown: the tiers are its upper volumes.
+          ...(tierVolumes === undefined ? { crown } : {}),
+          ...(tierVolumes === undefined ? {} : { tiers: tierVolumes }),
+          ...(windowTop === undefined ? {} : { windowTopMeters: windowTop }),
         });
       }
     }
@@ -1265,6 +1344,9 @@ function buildWindowCandidates(
     // crown's base sit on the crown's faces instead of the body's.
     const crown = tower.crown;
     const crownStart = crown ? tower.height - crown.height : tower.height;
+    // Phase 8.4c: tiered towers have no body wall above the first setback — window rows
+    // straddling the body top are skipped like the crown-base floor (same straddle rule).
+    const bodyWindowTop = tower.windowTopMeters ?? tower.height;
     const facesFor = (centerX: number, centerZ: number, width: number, depth: number) => {
       const xColumns = Math.max(
         2,
@@ -1323,6 +1405,7 @@ function buildWindowCandidates(
     const towerTone: 'warm' | 'cool' = stableUnit(towerIndex, 719, 823) < 0.6 ? 'cool' : 'warm';
     for (let floor = 1; floor < floors; floor += 1) {
       const rowY = 3.1 + floor * floorSpacingMeters;
+      if (rowY + 0.85 > bodyWindowTop - 0.25) continue;
       let faces = bodyFaces;
       if (crownFaces) {
         if (rowY - 0.85 >= crownStart + 0.25) {
@@ -2945,28 +3028,20 @@ export class UrbanNightWorld implements SceneContent {
         clearcoat: 0.16,
         clearcoatRoughness: 0.32,
       });
-      // Phase 8.3f: body + set-back crown, same instanced batch per colour.
-      const crownCount = group.reduce((total, tower) => total + (tower.crown ? 1 : 0), 0);
-      const mesh = new InstancedMesh(unitBox, wall, group.length + crownCount);
+      // Phase 8.3f/8.4c: body + set-back crown or tiered upper volumes, same instanced
+      // batch per colour.
+      const volumeCount = group.reduce((total, tower) => total + towerVolumes(tower).length, 0);
+      const mesh = new InstancedMesh(unitBox, wall, volumeCount);
       mesh.name = `aohara-high-rise-facades-${paletteIndex}`;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.frustumCulled = false;
       let instanceIndex = 0;
       for (const tower of group) {
-        const bodyHeight = tower.crown ? tower.height - tower.crown.height : tower.height;
-        transform.position.set(tower.x, WORLD_BASE_Y + bodyHeight / 2, tower.z);
-        transform.scale.set(tower.width, bodyHeight, tower.depth);
-        transform.rotation.set(0, 0, 0);
-        transform.updateMatrix();
-        mesh.setMatrixAt(instanceIndex++, transform.matrix);
-        if (tower.crown) {
-          transform.position.set(
-            tower.x + (tower.crown.offsetX ?? 0),
-            WORLD_BASE_Y + tower.height - tower.crown.height / 2,
-            tower.z + (tower.crown.offsetZ ?? 0),
-          );
-          transform.scale.set(tower.crown.width, tower.crown.height, tower.crown.depth);
+        for (const volume of towerVolumes(tower)) {
+          transform.position.set(volume.x, WORLD_BASE_Y + volume.height / 2, volume.z);
+          transform.scale.set(volume.width, volume.height, volume.depth);
+          transform.rotation.set(0, 0, 0);
           transform.updateMatrix();
           mesh.setMatrixAt(instanceIndex++, transform.matrix);
         }
@@ -2985,38 +3060,27 @@ export class UrbanNightWorld implements SceneContent {
       clearcoat: 0.08,
       clearcoatRoughness: 0.42,
     });
-    const capCount = towers.reduce((total, tower) => total + (tower.crown ? 2 : 1), 0);
+    // A dark slab on top of every volume: the body top reads as a terrace around the
+    // upper volumes, and each set-back tier gets its own head slab.
+    const capCount = towers.reduce((total, tower) => total + towerVolumes(tower).length, 0);
     const roofs = new InstancedMesh(unitBox, roofMaterial, capCount);
     roofs.name = 'aohara-rooftop-caps';
     roofs.frustumCulled = false;
     let capIndex = 0;
     for (const tower of towers) {
-      if (tower.crown) {
-        // The body top reads as a dark terrace around the set-back crown.
+      const volumes = towerVolumes(tower);
+      volumes.forEach((volume, volumeIndex) => {
+        const topmost = volumeIndex === volumes.length - 1;
         transform.position.set(
-          tower.x,
-          WORLD_BASE_Y + tower.height - tower.crown.height + 0.2,
-          tower.z,
+          volume.x,
+          WORLD_BASE_Y + volume.top + (topmost ? 0.35 : 0.2),
+          volume.z,
         );
-        transform.scale.set(tower.width + 0.5, 0.4, tower.depth + 0.5);
+        transform.scale.set(volume.width + 0.5, topmost ? 0.7 : 0.4, volume.depth + 0.5);
         transform.rotation.set(0, 0, 0);
         transform.updateMatrix();
         roofs.setMatrixAt(capIndex++, transform.matrix);
-        transform.position.set(
-          tower.x + (tower.crown.offsetX ?? 0),
-          WORLD_BASE_Y + tower.height + 0.35,
-          tower.z + (tower.crown.offsetZ ?? 0),
-        );
-        transform.scale.set(tower.crown.width + 0.5, 0.7, tower.crown.depth + 0.5);
-        transform.updateMatrix();
-        roofs.setMatrixAt(capIndex++, transform.matrix);
-      } else {
-        transform.position.set(tower.x, WORLD_BASE_Y + tower.height + 0.35, tower.z);
-        transform.scale.set(tower.width + 0.5, 0.7, tower.depth + 0.5);
-        transform.rotation.set(0, 0, 0);
-        transform.updateMatrix();
-        roofs.setMatrixAt(capIndex++, transform.matrix);
-      }
+      });
     }
     roofs.instanceMatrix.needsUpdate = true;
     this.root.add(roofs);
@@ -3048,9 +3112,10 @@ export class UrbanNightWorld implements SceneContent {
         NIGHT_DECORATION_PALETTE[
           Math.floor(towerIndex / towerStride) % NIGHT_DECORATION_PALETTE.length
         ]!;
-      // Phase 8.3f: the verticals stop at the body top — above the crown base the set-back
-      // crown has no wall behind the body-edge strips, so they would float.
-      const bodyTop = tower.crown ? tower.height - tower.crown.height : tower.height;
+      // Phase 8.3f/8.4c: the verticals stop at the body top — above the crown base (or the
+      // first tier setback) there is no wall behind the body-edge strips, so they would float.
+      const bodyTop =
+        tower.windowTopMeters ?? (tower.crown ? tower.height - tower.crown.height : tower.height);
       const stripHeight = Math.max(8, bodyTop - 5);
       const frontZ = tower.z + tower.depth / 2 + 0.1;
       for (const side of [-1, 1] as const) {
@@ -3063,17 +3128,14 @@ export class UrbanNightWorld implements SceneContent {
       }
       // The top band rides the crown's front face — an offset crown may sit behind the body
       // front, and a band there would float in mid-air.
-      const crownCenterX = tower.x + (tower.crown?.offsetX ?? 0);
-      const crownFrontZ =
-        tower.z +
-        (tower.crown?.offsetZ ?? 0) +
-        (tower.crown ? tower.crown.depth : tower.depth) / 2 +
-        0.1;
-      const bandWidth = (tower.crown ? tower.crown.width : tower.width) * 0.78;
+      // Phase 8.4c: the crown strip band lands on the topmost volume (crown or top tier).
+      const topVolume = topTowerVolume(tower);
+      const crownFrontZ = topVolume.z + topVolume.depth / 2 + 0.1;
+      const bandWidth = topVolume.width * 0.78;
       addTransform(towerGroups, color, {
-        x: tower.crown ? crownCenterX : tower.x,
+        x: topVolume.x,
         y: WORLD_BASE_Y + tower.height - 0.7,
-        z: tower.crown ? crownFrontZ : frontZ,
+        z: crownFrontZ,
         scale: [bandWidth, 0.14, 0.12],
       });
     });
