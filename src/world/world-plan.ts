@@ -17,7 +17,7 @@ import { createTerrainSampler } from './terrain-height';
 import { TERRAIN_CONFIG, type TerrainConfig } from '../config/terrain';
 
 /** Bump whenever plan semantics change; the world key is seed + version (plan §5). */
-export const WORLD_PLAN_VERSION = 1;
+export const WORLD_PLAN_VERSION = 2;
 
 /** Macro-cell edge, metres. Regions tile the plane on this lattice. */
 export const REGION_CELL_METERS = 4000;
@@ -60,6 +60,9 @@ export const URBAN_FRINGE_BLOCK_METERS = 80;
 export type RegionArchetype =
   'megacity' | 'urban-fringe' | 'small-town' | 'rural' | 'mountain-pass';
 
+/** Phase 10 pass 2: the colony's dense, dim, backstreets-first variant. */
+export type RegionSubArchetype = 'slum-colony';
+
 /** Soft-disc district influence (same shape as config/districts.ts districts). */
 export interface PlannedDistrict {
   readonly id: string;
@@ -92,6 +95,8 @@ export interface RegionPlan {
   readonly archetype: RegionArchetype;
   /** Region seed: a separate stream from the world seed (plan §5). */
   readonly seed: number;
+  /** Phase 10 pass 2: urban-fringe cells only. */
+  readonly subArchetype?: RegionSubArchetype;
   /** Urban cells only. */
   readonly cityGrid?: CityGrid;
   /** One soft-disc district per cell. */
@@ -368,6 +373,12 @@ export function createWorldPlan(seed: number): WorldPlan {
     }
     // The home district hugs the spawn: a large core with small jitter, so the start is
     // always in the middle of the vast city, not at its edge.
+    // Phase 10 pass 2: ~a third of the colonies grow into slum-colonies — dense,
+    // narrow, dim, backstreets-first. Deterministic per region seed.
+    let subArchetype: RegionSubArchetype | undefined;
+    if (archetype === 'urban-fringe' && hash2(0x51, 0x52, regionSeed) < 0.35) {
+      subArchetype = 'slum-colony';
+    }
     const jitter = ix === 0 && iz === 0 ? 0.15 : 0.35;
     const district: PlannedDistrict = {
       id: `d-${id}`,
@@ -389,6 +400,7 @@ export function createWorldPlan(seed: number): WorldPlan {
       centerZ,
       archetype,
       seed: regionSeed,
+      ...(subArchetype !== undefined ? { subArchetype } : {}),
       ...(cityGrid !== undefined ? { cityGrid } : {}),
       district,
     };

@@ -119,7 +119,7 @@ export function computeRegionClutter(
   });
   const clutter: ClutterSpec[] = [];
   const signs: NeonSignSpec[] = [];
-  const clutterBudget = CLUTTER_BUDGET[tier] ?? 70;
+  const clutterBudget = Math.round((CLUTTER_BUDGET[tier] ?? 70) * (spec.clutterDensity ?? 1));
   const signBudget = SIGN_BUDGET[tier] ?? 24;
 
   for (let i = 0; i < edges.length; i += 1) {
@@ -128,8 +128,9 @@ export function computeRegionClutter(
     for (let slot = 0; slot < slots; slot += 1) {
       if (clutter.length >= clutterBudget) break;
       const salt = regionSeed + i * 131 + slot * 17;
-      // ~70% of candidate slots actually carry a prop.
-      if (pick(slot, 0x11, salt) > 0.7) continue;
+      // ~70% of candidate slots actually carry a prop — the slum-colony denser.
+      const propChance = Math.min(0.95, 0.7 * (spec.clutterDensity ?? 1));
+      if (pick(slot, 0x11, salt) > propChance) continue;
       // Keep out of the junction approaches.
       const along =
         JUNCTION_CLEARANCE_METERS +
@@ -156,11 +157,13 @@ export function computeRegionClutter(
       const z = point.z + sideVector.z * side * (walkOffset + inset) - spec.z;
       const y = point.y + SIDEWALK_LIFT;
       const yaw = Math.atan2(tangent.x, tangent.z);
+      // The colony's streets skew to debris and crates; the city core keeps hydrants.
+      const slumBias = (spec.clutterDensity ?? 1) > 1 ? 0.12 : 0;
       const kindRoll = pick(slot, 0x15, salt);
       const kind: ClutterKind =
-        kindRoll < 0.38
+        kindRoll < 0.38 + slumBias
           ? 'debris'
-          : kindRoll < 0.6
+          : kindRoll < 0.6 + slumBias
             ? 'crate'
             : kindRoll < 0.75
               ? 'barrel'

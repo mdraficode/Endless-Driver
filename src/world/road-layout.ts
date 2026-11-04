@@ -39,6 +39,8 @@ export const ROAD_WINDOW_CELLS = 1;
 
 /** Arterial half-widths, metres — tuned to Aohara's proportions. */
 const URBAN_ARTERIAL_HALF_WIDTH = 7;
+/** Phase 10 pass 2: the slum-colony grid — tighter blocks than the fringe. */
+const SLUM_SPACING = 240;
 /** Phase 10 pass 2: the highway class — wide, flat, barrier-edged long connectors. */
 const HIGHWAY_HALF_WIDTH = 8;
 const HIGHWAY_SHOULDER = 3.5;
@@ -245,8 +247,11 @@ export function buildRoadLayout(
   function addRegionRoads(region: RegionPlan): void {
     const { ix, iz, seed: regionSeed, district, archetype } = region;
     if (archetype === 'megacity' || archetype === 'urban-fringe' || archetype === 'small-town') {
+      // Phase 10 pass 2: the slum-colony variant of the fringe — tighter blocks,
+      // backstreets everywhere, no boulevards.
+      const isSlum = region.subArchetype === 'slum-colony';
       const n = GRID_NODES[archetype];
-      const spacing = GRID_SPACING[archetype];
+      const spacing = isSlum ? SLUM_SPACING : GRID_SPACING[archetype];
       const gridNodes: RoadNodeConfig[] = [];
       for (let r = 0; r < n; r += 1) {
         for (let c = 0; c < n; c += 1) {
@@ -281,14 +286,14 @@ export function buildRoadLayout(
           const rect: BlockRect = { minX: sw.x, maxX: se.x, minZ: sw.z, maxZ: nw.z };
           const blockSalt = regionSeed + ix * 131 + iz * 17 + r * 31 + c * 7;
           const sub =
-            pick(blockSalt, 0xb1, 1) < 0.5
+            pick(blockSalt, 0xb1, 1) < (isSlum ? 0.62 : 0.5)
               ? {
                   axis: (pick(blockSalt, 0xb2, 2) < 0.5 ? 0 : 1) as 0 | 1,
                   fraction: pick(blockSalt, 0xb3, 3) < 0.5 ? 1 / 3 : 2 / 3,
                 }
               : undefined;
           const alley =
-            pick(blockSalt, 0xb4, 4) < 0.28
+            pick(blockSalt, 0xb4, 4) < (isSlum ? 0.55 : 0.28)
               ? { axis: (pick(blockSalt, 0xb5, 5) < 0.5 ? 0 : 1) as 0 | 1 }
               : undefined;
           const detail: BlockDetail = {
@@ -359,7 +364,8 @@ export function buildRoadLayout(
         return result;
       };
       const isGridArterial = (line: number, axis: 0 | 1): boolean =>
-        pick(line, axis === 0 ? 0x11 : 0x22, regionSeed) < (archetype === 'megacity' ? 0.3 : 0.2);
+        pick(line, axis === 0 ? 0x11 : 0x22, regionSeed) <
+        (isSlum ? 0.05 : archetype === 'megacity' ? 0.3 : 0.2);
       const ringClass = (arterial: boolean): RoadClass =>
         archetype === 'small-town' ? 'urban-local' : arterial ? 'urban-arterial' : 'urban-local';
       const splitNodeKey = (segment: string, coord: number): string =>

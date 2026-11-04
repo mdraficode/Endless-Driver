@@ -132,8 +132,7 @@ describe('massing plots and dense blocks', () => {
     const validYaw = (yaw: number): boolean =>
       [0, Math.PI / 2, Math.PI, -Math.PI / 2].some((k) => Math.abs(yaw - k) < 1e-9);
     let totalPlots = 0;
-    let totalBlocks = 0;
-    let totalDense = 0;
+    const denseWeights: { blocks: number; dense: number; upper: number }[] = [];
     for (const region of urbanRegions) {
       const spec = massingCityForRegion(region);
       // The lattice reach: the outer block edge is half the grid extent plus one spacing.
@@ -147,12 +146,19 @@ describe('massing plots and dense blocks', () => {
         expect(plot.depthMeters).toBeGreaterThan(8);
         totalPlots += 1;
       }
-      totalBlocks += spec.blocks.length;
-      totalDense += spec.blocks.filter((b) => b.dense).length;
+      // Phase 10 pass 2: the slum-colony runs ~60% dense by design; the rest ~25%.
+      const denseUpper = region.subArchetype === 'slum-colony' ? 0.8 : 0.4;
+      denseWeights.push({
+        blocks: spec.blocks.length,
+        dense: spec.blocks.filter((b) => b.dense).length,
+        upper: denseUpper,
+      });
     }
     expect(totalPlots).toBeGreaterThan(0);
-    // Roughly a quarter of blocks are dense; assert the band, not the exact roll.
-    expect(totalDense).toBeGreaterThan(totalBlocks * 0.1);
-    expect(totalDense).toBeLessThan(totalBlocks * 0.4);
+    // Assert the band per sub-archetype, not the exact roll.
+    for (const w of denseWeights) {
+      expect(w.dense).toBeGreaterThanOrEqual(w.blocks * 0.05);
+      expect(w.dense).toBeLessThan(w.blocks * w.upper);
+    }
   });
 });

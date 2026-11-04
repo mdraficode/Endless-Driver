@@ -155,6 +155,10 @@ export interface MassingBlock {
 }
 
 export interface MassingCitySpec {
+  /** Phase 10 pass 2: 0 = normal, 1 = fully dim — the slum-colony's window light. */
+  readonly windowDimming?: number;
+  /** Phase 10 pass 2: street-prop density multiplier (1 = normal, the colony runs ~1.6). */
+  readonly clutterDensity?: number;
   readonly regionId: string;
   /** District centre (world), where the region's road grid sits. */
   readonly x: number;
@@ -188,8 +192,10 @@ export function massingCityForRegion(region: RegionPlan): MassingCitySpec {
     };
   }
   const isMegacity = region.archetype === 'megacity';
+  // Phase 10 pass 2: the slum-colony grid matches the road layout's tighter 240 m blocks.
+  const isSlum = region.subArchetype === 'slum-colony';
   const n = isMegacity ? 9 : 6;
-  const spacing = isMegacity ? 240 : 320;
+  const spacing = isMegacity ? 240 : isSlum ? 240 : 320;
   const seed = region.seed;
   const districtX = region.district.centerX;
   const districtZ = region.district.centerZ;
@@ -221,7 +227,7 @@ export function massingCityForRegion(region: RegionPlan): MassingCitySpec {
       const u = (k: number): number => stableUnit(blockSeed, k, seed);
       // Phase 10.2: ~a quarter of blocks are dense backstreet blocks — claustrophobic,
       // low, and pushed to the block edges.
-      const dense = u(77) < 0.25;
+      const dense = u(77) < (isSlum ? 0.6 : 0.25);
       blocks.push({ x: blockCenterX, z: blockCenterZ, dense });
       // The lot fronts: the same plotSpotsForBlock the road layout aims driveways at, so a
       // driveway always ends in front of a building the massing actually places.
@@ -241,18 +247,34 @@ export function massingCityForRegion(region: RegionPlan): MassingCitySpec {
           depthMeters: p.depthMeters,
         });
       }
-      // Towers: two per block in the megacity, ~70% of blocks elsewhere.
-      const towerCount = isMegacity ? 2 : u(1) < 0.7 ? 1 : 0;
+      // Towers: two per block in the megacity, ~70% of blocks elsewhere. The
+      // slum-colony packs two or three low, narrow masses into nearly every block.
+      const towerCount = isMegacity
+        ? 2
+        : isSlum
+          ? u(1) < 0.9
+            ? 2 + (u(59) < 0.4 ? 1 : 0)
+            : 1
+          : u(1) < 0.7
+            ? 1
+            : 0;
       for (let t = 0; t < towerCount; t += 1) {
         const side = t === 0 ? -1 : 1;
         const ut = (k: number): number => stableUnit(blockSeed, t * 31 + k, seed);
-        const heightBudget = (isMegacity ? 1 : 0.65) + coreBoost * (isMegacity ? 0.5 : 0.35);
+        const heightBudget = isSlum
+          ? 0.3 + coreBoost * 0.15
+          : (isMegacity ? 1 : 0.65) + coreBoost * (isMegacity ? 0.5 : 0.35);
         const heightIndex = Math.min(
           MASSING_TOWER_HEIGHTS.length - 1,
           Math.floor(ut(11) * MASSING_TOWER_HEIGHTS.length * heightBudget),
         );
-        const height = MASSING_TOWER_HEIGHTS[heightIndex] ?? MASSING_TOWER_HEIGHTS[0]!;
-        const towerWidth = (isMegacity ? 28 : 22) + ut(13) * (isMegacity ? 8 : 6);
+        // The colony's towers are not towers at all: a 2–5 storey sea of low masses.
+        const height = isSlum
+          ? 9 + ut(19) * 7
+          : (MASSING_TOWER_HEIGHTS[heightIndex] ?? MASSING_TOWER_HEIGHTS[0]!);
+        const towerWidth = isSlum
+          ? 12 + ut(13) * 8
+          : (isMegacity ? 28 : 22) + ut(13) * (isMegacity ? 8 : 6);
         const towerDepth = Math.min(30 + ut(17) * 10, spacing / 3 - 9);
         const crownStyle = ut(23);
         const crown: MassingCrown =
@@ -289,12 +311,14 @@ export function massingCityForRegion(region: RegionPlan): MassingCitySpec {
 
       // Infill: two to four low buildings per block, denser in the core; dense blocks add
       // two more low masses hugging the block edges, and never crowd a lot front.
-      const infillCount = 2 + Math.floor(u(61) * (2 + coreBoost * 2)) + (dense ? 2 : 0);
+      const infillCount = isSlum
+        ? 4 + Math.floor(u(61) * 3) + (dense ? 2 : 0)
+        : 2 + Math.floor(u(61) * (2 + coreBoost * 2)) + (dense ? 2 : 0);
       for (let i = 0; i < infillCount; i += 1) {
         const ui = (k: number): number => stableUnit(blockSeed, 71 + i * 13 + k, seed);
         let ix = blockCenterX + (ui(1) - 0.5) * (spacing - 40);
         let iz = blockCenterZ + (ui(2) - 0.5) * (spacing - 40);
-        if (dense) {
+        if (dense || isSlum) {
           const side = Math.floor(ui(8) * 4);
           const along = (ui(9) - 0.5) * (spacing - 30);
           if (side === 0) iz = blockCenterZ - spacing / 2 + 16;
@@ -316,9 +340,9 @@ export function massingCityForRegion(region: RegionPlan): MassingCitySpec {
         infill.push({
           x: ix,
           z: iz,
-          width: 10 + ui(3) * 8,
-          depth: 10 + ui(4) * 8,
-          height: 5 + ui(5) * (dense ? 4 : isMegacity ? 9 : 6),
+          width: (isSlum ? 8 : 10) + ui(3) * (isSlum ? 6 : 8),
+          depth: (isSlum ? 8 : 10) + ui(4) * (isSlum ? 6 : 8),
+          height: isSlum || dense ? 4 + ui(5) * 4 : 5 + ui(5) * (isMegacity ? 9 : 6),
           color: MASSING_ROOF_COLORS[Math.floor(ui(6) * MASSING_ROOF_COLORS.length)] ?? 0x263039,
         });
       }
@@ -326,6 +350,7 @@ export function massingCityForRegion(region: RegionPlan): MassingCitySpec {
   }
 
   return {
+    ...(isSlum ? { windowDimming: 0.6, clutterDensity: 1.6 } : {}),
     regionId: region.id,
     x: districtX,
     z: districtZ,

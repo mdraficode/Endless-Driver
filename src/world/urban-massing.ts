@@ -329,7 +329,10 @@ export class MassingCityWorld {
     // --- Lit windows: sparse quads on tower faces, two tone families. ---
     const warm: WindowQuad[] = [];
     const cool: WindowQuad[] = [];
-    const litChance = this.#spec.streetSpacing > 250 ? 0.16 : 0.12;
+    // Phase 10 pass 2: the slum-colony runs dim — fewer lit windows, and the light that
+    // is lit is a warmer, fainter amber.
+    const dimming = Math.min(1, this.#spec.windowDimming ?? 0);
+    const litChance = (this.#spec.streetSpacing > 250 ? 0.16 : 0.12) * (1 - 0.55 * dimming);
     for (
       let i = 0;
       i < spec.towers.length && warm.length + cool.length < MAX_WINDOW_INSTANCES;
@@ -356,15 +359,17 @@ export class MassingCityWorld {
               face.normal === 0
                 ? { x: tower.x + along, y, z: face.fixed, yaw: 0 }
                 : { x: face.fixed, y, z: tower.z + along, yaw: Math.PI / 2 };
-            (cellHash(i, r, c, 0xa11) < 0.8 ? warm : cool).push(quad);
+            (cellHash(i, r, c, 0xa11) < 0.8 + 0.1 * dimming ? warm : cool).push(quad);
           }
         }
       }
     }
     const windowGeometry = this.#track(new PlaneGeometry(2.0, 2.6), this.#geometries);
+    const warmGain = 1 - 0.45 * dimming;
+    const coolGain = (1 - 0.45 * dimming) * (1 - 0.5 * dimming);
     const warmMaterial = this.#track(
       createMassingWindowMaterial(
-        [1.0, 0.56, 0.25],
+        [1.0 * warmGain, 0.56 * warmGain, 0.25 * warmGain],
         nightGain,
         `massing-warm-windows-${spec.regionId}`,
       ),
@@ -372,7 +377,7 @@ export class MassingCityWorld {
     );
     const coolMaterial = this.#track(
       createMassingWindowMaterial(
-        [0.62, 0.78, 1.0],
+        [0.62 * coolGain, 0.78 * coolGain, 1.0 * coolGain],
         nightGain,
         `massing-cool-windows-${spec.regionId}`,
       ),
