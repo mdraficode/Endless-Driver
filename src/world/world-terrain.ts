@@ -4,6 +4,9 @@ import { AOHARA_DISTRICT_CONFIG } from '../config/urban-district';
 import { createTerrainSampler, terrainNormalAt, type TerrainSampler } from './terrain-height';
 import { buildRoadNetwork, roadInfluence } from './road-network';
 
+/** Phase 10 pass 2: the flat deck shelf extends this many metres past the shoulder. */
+const BRIDGE_DECK_SHOULDER_EXTRA = 5;
+
 export interface CityPlateau {
   readonly x: number;
   readonly z: number;
@@ -103,6 +106,20 @@ export function createWorldTerrainSampler(
         height = baseHeight;
       } else {
         height = baseHeight + (road.elevation - baseHeight) * influence;
+      }
+      // Phase 10 pass 2: a bridge deck reads as a structure — the flat shelf extends a
+      // few metres past the shoulder before blending back to the natural valley, while
+      // the height under the road stays the deck (the physics surface the car rides).
+      if (road.onBridge) {
+        const deckInfluence = roadInfluence(
+          roadConfig,
+          road.distance,
+          road.halfWidthMeters,
+          road.shoulderMeters + BRIDGE_DECK_SHOULDER_EXTRA,
+        );
+        if (deckInfluence > influence) {
+          height = baseHeight + (road.elevation - baseHeight) * deckInfluence;
+        }
       }
     }
     if (pits.length > 0) {

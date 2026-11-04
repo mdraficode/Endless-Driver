@@ -53,6 +53,22 @@ export interface RoadSample {
   readonly roadClass: RoadClass;
   readonly halfWidthMeters: number;
   readonly shoulderMeters: number;
+  /** Phase 10 pass 2: the deck of a bridge span — the terrain holds the deck height. */
+  readonly onBridge: boolean;
+}
+
+/**
+ * A bridge span (Phase 10 pass 2): the solved profile holds a deck this many metres above
+ * the natural ground over a continuous run of points — a deep dip the road crosses on a
+ * deck instead of cutting a causeway through.
+ */
+export interface BridgeSpan {
+  readonly edgeId: string;
+  readonly roadClass: RoadClass;
+  readonly halfWidthMeters: number;
+  readonly shoulderMeters: number;
+  /** Deck points in travel order, with the natural ground height under each. */
+  readonly points: readonly (RoadPoint & { readonly baseY: number })[];
 }
 
 export interface RoadNetwork {
@@ -60,6 +76,8 @@ export interface RoadNetwork {
   readonly edges: readonly RoadEdge[];
   readonly nodes: readonly RoadNode[];
   readonly totalLengthMeters: number;
+  /** Phase 10 pass 2: the bridge spans, with deck and base heights for the visuals. */
+  readonly bridgeSpans: readonly BridgeSpan[];
   /** Nearest centreline sample, or `null` when no segment is indexed near (x, z). */
   sample(x: number, z: number): RoadSample | null;
   /** Node ids reachable in one edge (graph adjacency for connectivity checks). */
@@ -272,6 +290,46 @@ export function buildRoadNetwork(
   }));
   const nodeLookup = new Map(nodes.map((node) => [node.id, node]));
 
+  // Phase 10 pass 2: bridge spans — runs of profile points whose deck holds well above
+  // the natural ground (a deep dip crossed on a deck). One point per side is required to
+  // be deck to count a segment as bridge, so the deck never starts mid-segment.
+  // Shallow bumps (6–10 m) are causeways — the carve raises the roadbed through them. A
+  // bridge needs a real ravine: the natural ground well over a dozen metres under the deck.
+  const BRIDGE_CLEARANCE_METERS = 12;
+  const BRIDGE_MIN_RUN = 3;
+  const bridgePoints = new Map<string, Set<number>>();
+  const bridgeSpans: BridgeSpan[] = [];
+  for (const edge of edges) {
+    const flags = new Set<number>();
+    let runStart = -1;
+    for (let i = 0; i <= edge.points.length; i += 1) {
+      const point = edge.points[i];
+      const isDeck =
+        point !== undefined && point.y - baseHeightAt(point.x, point.z) > BRIDGE_CLEARANCE_METERS;
+      if (isDeck) {
+        if (runStart < 0) runStart = i;
+        flags.add(i);
+      } else if (runStart >= 0) {
+        if (i - runStart >= BRIDGE_MIN_RUN) {
+          bridgeSpans.push({
+            edgeId: edge.id,
+            roadClass: edge.roadClass,
+            halfWidthMeters: edge.halfWidthMeters,
+            shoulderMeters: edge.shoulderMeters,
+            points: edge.points.slice(runStart, i).map((p) => ({
+              ...p,
+              baseY: baseHeightAt(p.x, p.z),
+            })),
+          });
+        }
+        runStart = -1;
+      }
+    }
+    if (flags.size > 0) {
+      bridgePoints.set(edge.id, flags);
+    }
+  }
+
   // Spatial index over segments, expanded by the blend width so `sample` finds every
   // segment that could influence a query point.
   interface Segment {
@@ -285,6 +343,7 @@ export function buildRoadNetwork(
     readonly roadClass: RoadClass;
     readonly halfWidthMeters: number;
     readonly shoulderMeters: number;
+    readonly onBridge: boolean;
   }
   const segments: Segment[] = [];
   const index = new Map<string, number[]>();
@@ -305,6 +364,9 @@ export function buildRoadNetwork(
         roadClass: edge.roadClass,
         halfWidthMeters: edge.halfWidthMeters,
         shoulderMeters: edge.shoulderMeters,
+        onBridge:
+          (bridgePoints.get(edge.id)?.has(indexOfPoint) ?? false) &&
+          (bridgePoints.get(edge.id)?.has(indexOfPoint + 1) ?? false),
       });
       const expand = config.blendWidthMeters;
       const minCx = Math.floor((Math.min(a.x, b.x) - expand) / INDEX_CELL_METERS);
@@ -353,6 +415,7 @@ export function buildRoadNetwork(
           roadClass: segment.roadClass,
           halfWidthMeters: segment.halfWidthMeters,
           shoulderMeters: segment.shoulderMeters,
+          onBridge: segment.onBridge,
         };
       }
     }
@@ -364,6 +427,7 @@ export function buildRoadNetwork(
     edges,
     nodes,
     totalLengthMeters: edges.reduce((sum, edge) => sum + edge.lengthMeters, 0),
+    bridgeSpans,
     sample,
     neighboursOf(nodeId: string): readonly string[] {
       const result: string[] = [];

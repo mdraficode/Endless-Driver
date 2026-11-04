@@ -40,7 +40,7 @@ import { createRoadWetPatchMaskTexture, createRoadWetnessNode } from './road-wet
 import { resolveUrbanWetness, URBAN_CITY_CONFIG } from '../config/urban-city';
 import { clamp } from '../shared/math';
 import type { DaylightState } from '../environment/EnvironmentClock';
-import type { RoadNetwork } from './road-network';
+import type { RoadEdge, RoadNetwork } from './road-network';
 import {
   buildBarrierGeometry,
   buildDashGeometry,
@@ -689,16 +689,62 @@ export class RoadWorld {
       centerlineMaterial,
       'road-urban-centerlines',
     );
+    // Phase 10 pass 2: the bridge spans — barrier walls on both deck edges and concrete
+    // piers from the deck down into the valley. Both merge into the single barrier batch.
+    for (const span of network.bridgeSpans) {
+      const subEdge: RoadEdge = {
+        id: `${span.edgeId}-span`,
+        from: span.edgeId,
+        to: `${span.edgeId}-end`,
+        roadClass: span.roadClass,
+        maxGrade: 0,
+        halfWidthMeters: span.halfWidthMeters,
+        shoulderMeters: span.shoulderMeters,
+        points: span.points,
+        lengthMeters: 0,
+      };
+      for (const side of [-1, 1] as const) {
+        barrierGeometries.push(
+          buildBarrierGeometry(
+            subEdge,
+            HIGHWAY_BARRIER_HEIGHT,
+            HIGHWAY_BARRIER_WIDTH,
+            side * (span.halfWidthMeters + span.shoulderMeters - 0.55),
+          ),
+        );
+      }
+      // Piers: one every ~20 m of deck, embedded into the valley floor.
+      const spanLength =
+        span.points[span.points.length - 1]!.alongMeters - span.points[0]!.alongMeters;
+      const pierCount = Math.max(2, Math.ceil(spanLength / 20) + 1);
+      for (let p = 0; p < pierCount; p += 1) {
+        const along = span.points[0]!.alongMeters + (spanLength * (p + 0.5)) / pierCount;
+        let nearest = span.points[0]!;
+        for (const point of span.points) {
+          if (Math.abs(point.alongMeters - along) < Math.abs(nearest.alongMeters - along)) {
+            nearest = point;
+          }
+        }
+        const topY = nearest.y;
+        const bottomY = nearest.baseY - 0.8;
+        if (topY - bottomY < 2) continue; // a shallow crossing is cut, not bridged
+        // A true canyon crossing: the deck spans the gap open — no forest of needle piers.
+        if (topY - bottomY > 25) continue;
+        const pier = new BoxGeometry(2.2, topY - bottomY, 2.2);
+        pier.translate(nearest.x, (topY + bottomY) / 2, nearest.z);
+        barrierGeometries.push(pier);
+      }
+    }
     if (barrierGeometries.length > 0) {
       const barrierMaterial = new MeshStandardNodeMaterial();
-      barrierMaterial.name = 'highway-barrier-concrete';
+      barrierMaterial.name = 'concrete-barrier';
       barrierMaterial.color.set(0x9aa0a6);
       barrierMaterial.roughness = 0.82;
       barrierMaterial.metalness = 0;
       add(
-        mergeGeometryBatch(barrierGeometries, 'highway-barrier-batch'),
+        mergeGeometryBatch(barrierGeometries, 'concrete-barrier-batch'),
         barrierMaterial,
-        'highway-barriers',
+        'concrete-barriers',
       );
     }
     add(
