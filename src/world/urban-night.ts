@@ -450,10 +450,9 @@ export function sampleAoharaAlleySitterSlots(
       const normalX = -sample.tangentZ;
       const normalZ = sample.tangentX;
       const side = t < 0.5 ? -1 : 1;
-      const offset = Math.min(
-        0.45 * edge.halfWidthMeters,
-        Math.max(0.2, edge.halfWidthMeters - 0.45),
-      );
+      // Just outside the paved carriage-way, on the strip in front of the facade wall:
+      // inside the pavement the backstreet traffic would drive over the sitter.
+      const offset = edge.halfWidthMeters + 0.5;
       candidates.push({
         x: sample.x + normalX * side * offset,
         z: sample.z + normalZ * side * offset,

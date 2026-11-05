@@ -1216,8 +1216,11 @@ describe('Aohara city night-lighting rules', () => {
     expect(clearFrontageMeters).toBeLessThan(plannedFrontageMeters);
     // Preserve rows across most of each passage while masking the parts with no safe road-edge
     // gap. Phase 8.4b: the grand boulevard's right-of-way trims the shells it would cut,
-    // which lowers the floor from the 8.4a 0.74 to 0.70.
-    expect(clearFrontageMeters / plannedFrontageMeters).toBeGreaterThan(0.7);
+    // which lowers the floor from the 8.4a 0.74 to 0.70. The full-footprint clearance
+    // (wall line and far side against every pavement) opens a little more, 0.70 → 0.69.
+    // The rendered-corner clearance rule (a span that straddles a bend swings its end
+    // corners onto the pavement it fronts) trims the straddling ends, 0.69 → 0.68.
+    expect(clearFrontageMeters / plannedFrontageMeters).toBeGreaterThan(0.68);
 
     const city = new UrbanNightWorld('B', {
       position: [AOHARA_DISTRICT_CONFIG.centerX, 0, AOHARA_DISTRICT_CONFIG.centerZ],

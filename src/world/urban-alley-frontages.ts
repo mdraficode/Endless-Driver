@@ -35,6 +35,31 @@ const FACADE_ACCESS_SETBACK_METERS = 16.5;
 const FACADE_HUB_SETBACK_METERS = 14;
 const FACADE_COURTYARD_SETBACK_METERS = 1.25;
 const FACADE_BASE_Y = -0.55;
+/**
+ * The alley frontages only dress the home district, and only inside its flat plateau
+ * (flatRadius 920 m): the rowhouses stand on the district datum, so any ground that
+ * departs from it — the blend ring and the rolling country beyond — would bury or
+ * float them.
+ */
+const FRONTAGE_HOME_RADIUS_METERS = 900;
+/**
+ * A run is cut only at a true corner (this sharp a direction change at a single
+ * vertex). The solved edges are dense Catmull-Rom curves whose gentle vertices must
+ * not fragment the rowhouses into stubs; right-angle alley corners are what fling a
+ * straight module's far corners across the pavement of the leg it turns onto.
+ */
+const FRONTAGE_BEND_SPLIT_DEGREES = 80;
+/**
+ * Corner margin against the rowhouse's own alley: the designed 3.2 m wall gap minus
+ * a tolerance — a straight module on a curved alley may swing its end corners across
+ * the arc it fronts, and that must open the passage instead of straddling the road.
+ */
+/**
+ * Margin by which every rendered corner of a frontage shell must clear every road's
+ * right-of-way (its own alley included): a car's contact circle can reach just past
+ * the pavement edge, so a corner inside this could be touched at the wheel.
+ */
+const FACADE_OTHER_EDGE_CORNER_MARGIN = 1.25;
 const FACADE_WALL_HEIGHT_METERS = 8.6;
 const FACADE_MODULE_LENGTH_METERS: Readonly<Record<TierId, number>> = {
   C: 14,
@@ -127,7 +152,126 @@ function roadFrameAt(edge: RoadEdge, distanceMeters: number): RoadFrame {
   };
 }
 
+/**
+ * Clearance against every pavement near the point, not only the nearest centreline.
+ * `network.sample` reports the single closest centreline: a point can sit on the
+ * pavement of a wide boulevard while a narrower street's centreline is closer, and
+ * the nearest-only test then passes it. The generated home district runs wide
+ * boulevards and city-access roads through the block, so the facade points are
+ * verified against every road whose right-of-way could reach them.
+ */
+const PAVEMENT_QUERY_CACHE = new WeakMap<
+  RoadNetwork,
+  (
+    x: number,
+    z: number,
+    options?: {
+      readonly ignoreEdgeId?: string;
+      readonly onlyEdgeId?: string;
+      readonly earlyExitMeters?: number;
+    },
+  ) => number
+>();
+const PAVEMENT_QUERY_CELL_METERS = 16;
+
+/**
+ * The margin (metres) by which the point clears every road's right-of-way
+ * (pavement + shoulder) — or a negative number when it is inside one. `ignoreEdgeId`
+ * skips the edge the caller is deliberately fronting (the rowhouse's own alley keeps
+ * its designed 3.2 m wall gap).
+ */
+function pavementClearanceQuery(network: RoadNetwork): (
+  x: number,
+  z: number,
+  options?: {
+    readonly ignoreEdgeId?: string;
+    readonly onlyEdgeId?: string;
+    readonly earlyExitMeters?: number;
+  },
+) => number {
+  const cached = PAVEMENT_QUERY_CACHE.get(network);
+  if (cached !== undefined) return cached;
+  const cellMap = new Map<string, number[]>();
+  const addCell = (cx: number, cz: number, edgeIndex: number): void => {
+    const key = `${cx}:${cz}`;
+    const list = cellMap.get(key);
+    if (list === undefined) cellMap.set(key, [edgeIndex]);
+    else list.push(edgeIndex);
+  };
+  network.edges.forEach((edge, edgeIndex) => {
+    for (let i = 0; i + 1 < edge.points.length; i += 1) {
+      const a = edge.points[i]!;
+      const b = edge.points[i + 1]!;
+      const c0x = Math.floor(a.x / PAVEMENT_QUERY_CELL_METERS);
+      const c1x = Math.floor(b.x / PAVEMENT_QUERY_CELL_METERS);
+      const c0z = Math.floor(a.z / PAVEMENT_QUERY_CELL_METERS);
+      const c1z = Math.floor(b.z / PAVEMENT_QUERY_CELL_METERS);
+      const steps =
+        Math.max(Math.abs(c1x - c0x), Math.abs(c1z - c0z)) * PAVEMENT_QUERY_CELL_METERS + 1;
+      for (let s = 0; s <= steps; s += 1) {
+        const t = s / Math.max(1, steps);
+        addCell(
+          Math.floor((a.x + (b.x - a.x) * t) / PAVEMENT_QUERY_CELL_METERS),
+          Math.floor((a.z + (b.z - a.z) * t) / PAVEMENT_QUERY_CELL_METERS),
+          edgeIndex,
+        );
+      }
+    }
+  });
+  const query = (
+    x: number,
+    z: number,
+    options?: {
+      readonly ignoreEdgeId?: string;
+      readonly onlyEdgeId?: string;
+      readonly earlyExitMeters?: number;
+    },
+  ): number => {
+    const cx = Math.floor(x / PAVEMENT_QUERY_CELL_METERS);
+    const cz = Math.floor(z / PAVEMENT_QUERY_CELL_METERS);
+    const candidates = new Set<number>();
+    for (let dz = -1; dz <= 1; dz += 1) {
+      for (let dx = -1; dx <= 1; dx += 1) {
+        const list = cellMap.get(`${cx + dx}:${cz + dz}`);
+        if (list !== undefined) for (const edgeIndex of list) candidates.add(edgeIndex);
+      }
+    }
+    let bestMargin = Infinity;
+    for (const edgeIndex of candidates) {
+      const edge = network.edges[edgeIndex]!;
+      if (options?.ignoreEdgeId !== undefined && edge.id === options.ignoreEdgeId) continue;
+      if (options?.onlyEdgeId !== undefined && edge.id !== options.onlyEdgeId) continue;
+      const rightOfWay = edge.halfWidthMeters + edge.shoulderMeters;
+      const earlyExitMeters = options?.earlyExitMeters;
+      for (let i = 0; i + 1 < edge.points.length; i += 1) {
+        const ax = edge.points[i]!.x;
+        const az = edge.points[i]!.z;
+        const bx = edge.points[i + 1]!.x;
+        const bz = edge.points[i + 1]!.z;
+        const dx = bx - ax;
+        const dz = bz - az;
+        const lengthSq = dx * dx + dz * dz;
+        let t = lengthSq === 0 ? 0 : ((x - ax) * dx + (z - az) * dz) / lengthSq;
+        t = Math.max(0, Math.min(1, t));
+        const dist = Math.hypot(x - (ax + dx * t), z - (az + dz * t)) - rightOfWay;
+        if (dist < bestMargin) bestMargin = dist;
+        if (earlyExitMeters !== undefined && bestMargin <= earlyExitMeters) {
+          return bestMargin;
+        }
+      }
+    }
+    return bestMargin;
+  };
+  PAVEMENT_QUERY_CACHE.set(network, query);
+  return query;
+}
+
 function hasFacadeRoadClearance(network: RoadNetwork, x: number, z: number): boolean {
+  // Nearest-centreline test, as the original design: in the dense backstreet the
+  // rowhouses legitimately stand well inside 2.55 m of the courtyard and hub links
+  // behind the wall line, and the all-pavement variant trims those spans away. The
+  // all-pavement rule still applies where a rendered corner could actually meet a
+  // road, in the corner validation pass over the final placements.
   const nearestRoad = network.sample(x, z);
   if (
     nearestRoad !== null &&
@@ -201,6 +345,7 @@ const FACADE_PLACEMENT_CACHE = new WeakMap<
 export function generateAoharaAlleyFacadePlacements(
   network: RoadNetwork,
   tier: TierId,
+  origin?: readonly [number, number],
 ): readonly UrbanAlleyFacadePlacement[] {
   const cachedPlacements = FACADE_PLACEMENT_CACHE.get(network)?.get(tier);
   if (cachedPlacements !== undefined) return cachedPlacements;
@@ -210,164 +355,312 @@ export function generateAoharaAlleyFacadePlacements(
   const alleyEdges = network.edges.filter((edge) => edge.roadClass === 'urban-alley');
 
   alleyEdges.forEach((edge, edgeIndex) => {
+    // The alley frontages are the home city's backstreet character. In the generated
+    // world the solved network spans the whole 12 km road window, so without a radius
+    // the home kit would line every neighbouring district's alleys with rowhouses at a
+    // single fixed height — buried or floating on the rolling ground, doubled over the
+    // streamed massing cities, with phantom colliders in the wilderness. Keep them on
+    // the home district, where the flat plateau makes the fixed datum correct.
+    if (origin !== undefined) {
+      const mid = roadFrameAt(edge, edge.lengthMeters / 2);
+      if (Math.hypot(mid.x - origin[0], mid.z - origin[1]) > FRONTAGE_HOME_RADIUS_METERS) return;
+    }
     const run = facadeRunFor(edge);
-    const availableLength = Math.max(0, edge.lengthMeters - run.start - run.end);
-    if (availableLength < 1) return;
-    const moduleCount = Math.max(1, Math.ceil(availableLength / targetModuleLength));
-    const moduleLength = availableLength / moduleCount;
     const wallColor = choosePalette(FACADE_WALL_PALETTE, edgeIndex, 1637);
     const roofColor = choosePalette(FACADE_ROOF_PALETTE, edgeIndex, 1657);
     const wallOffsetMeters = edge.halfWidthMeters + FACADE_WALL_GAP_METERS;
     const wallCenterOffset = wallOffsetMeters - 0.05 + FACADE_WALL_THICKNESS_METERS / 2;
 
-    for (let moduleIndex = 0; moduleIndex < moduleCount; moduleIndex += 1) {
-      const moduleStartMeters = run.start + moduleIndex * moduleLength;
-      const moduleEndMeters =
-        moduleIndex === moduleCount - 1
-          ? edge.lengthMeters - run.end
-          : moduleStartMeters + moduleLength;
-      const sampleCount = Math.max(
-        1,
-        Math.ceil((moduleEndMeters - moduleStartMeters) / FACADE_ROAD_SAMPLE_METERS),
-      );
-      const sampleDistances = Array.from(
-        { length: sampleCount + 1 },
-        (_, sampleIndex) =>
-          moduleStartMeters + ((moduleEndMeters - moduleStartMeters) * sampleIndex) / sampleCount,
-      );
-      const sampleFrames = sampleDistances.map((distance) => roadFrameAt(edge, distance));
-      const depthMeters = FACADE_BUILDING_DEPTH_METERS;
-      const heightMeters = 9.2 + stableUnit(edgeIndex, moduleIndex, 1669) * 4.1;
+    // Cut the frontage run at every interior bend: a straight building module that
+    // straddles a corner samples its frame on one leg of the bend and ends on the
+    // other, swinging its far corners across the pavement of the leg it turns onto.
+    // Each straight segment gets its own modules; the span clearance logic (including
+    // the far-side footprint check) trims the corners themselves.
+    const segmentBounds: number[] = [run.start];
+    {
+      let arc = 0;
+      for (let pointIndex = 1; pointIndex < edge.points.length; pointIndex += 1) {
+        const previous = edge.points[pointIndex - 1]!;
+        const current = edge.points[pointIndex]!;
+        arc += Math.hypot(current.x - previous.x, current.z - previous.z);
+        if (pointIndex >= edge.points.length - 1) continue;
+        const next = edge.points[pointIndex + 1]!;
+        const v1x = current.x - previous.x;
+        const v1z = current.z - previous.z;
+        const v2x = next.x - current.x;
+        const v2z = next.z - current.z;
+        const length1 = Math.hypot(v1x, v1z);
+        const length2 = Math.hypot(v2x, v2z);
+        if (length1 < 0.01 || length2 < 0.01) continue;
+        const cosine = (v1x * v2x + v1z * v2z) / (length1 * length2);
+        const turnDegrees = (Math.acos(Math.max(-1, Math.min(1, cosine))) * 180) / Math.PI;
+        if (turnDegrees >= FRONTAGE_BEND_SPLIT_DEGREES) segmentBounds.push(arc);
+      }
+    }
+    segmentBounds.push(edge.lengthMeters - run.end);
 
-      for (const side of [-1, 1] as const) {
-        const clearSamples = sampleFrames.map((frame) =>
-          hasFacadeRoadClearance(
-            network,
-            frame.x + frame.normalX * side * wallCenterOffset,
-            frame.z + frame.normalZ * side * wallCenterOffset,
-          ),
+    for (let segmentIndex = 0; segmentIndex < segmentBounds.length - 1; segmentIndex += 1) {
+      const segmentStartMeters = segmentBounds[segmentIndex]!;
+      const segmentEndMeters = segmentBounds[segmentIndex + 1]!;
+      const availableLength = Math.max(0, segmentEndMeters - segmentStartMeters);
+      if (availableLength < 1) continue;
+      const moduleCount = Math.max(1, Math.ceil(availableLength / targetModuleLength));
+      const moduleLength = availableLength / moduleCount;
+
+      for (let moduleIndex = 0; moduleIndex < moduleCount; moduleIndex += 1) {
+        const moduleStartMeters = segmentStartMeters + moduleIndex * moduleLength;
+        const moduleEndMeters =
+          moduleIndex === moduleCount - 1 ? segmentEndMeters : moduleStartMeters + moduleLength;
+        const sampleCount = Math.max(
+          1,
+          Math.ceil((moduleEndMeters - moduleStartMeters) / FACADE_ROAD_SAMPLE_METERS),
         );
-        let spanIndex = 0;
-        const appendSpan = (
-          startAlongMeters: number,
-          endAlongMeters: number,
-          spanWallOffsetMeters: number,
-        ): void => {
-          if (endAlongMeters - startAlongMeters < 0.1) return;
-          const alongMeters = (startAlongMeters + endAlongMeters) / 2;
-          const frame = roadFrameAt(edge, alongMeters);
-          const yaw = Math.atan2(-frame.tangentZ, frame.tangentX);
-          const centerOffset = spanWallOffsetMeters + depthMeters / 2 - 0.05;
-          placements.push({
-            id: `${edge.id}:${side}:${moduleIndex}:${spanIndex}`,
-            roadEdgeId: edge.id,
-            side,
-            alongMeters,
-            startAlongMeters,
-            endAlongMeters,
-            x: frame.x + frame.normalX * side * centerOffset,
-            z: frame.z + frame.normalZ * side * centerOffset,
-            yaw,
-            tangentX: frame.tangentX,
-            tangentZ: frame.tangentZ,
-            normalX: frame.normalX,
-            normalZ: frame.normalZ,
-            halfWidthMeters: edge.halfWidthMeters,
-            wallOffsetMeters: spanWallOffsetMeters,
-            widthMeters: endAlongMeters - startAlongMeters,
-            depthMeters,
-            heightMeters,
-            color: wallColor,
-            roofColor,
-          });
-          spanIndex += 1;
-        };
+        const sampleDistances = Array.from(
+          { length: sampleCount + 1 },
+          (_, sampleIndex) =>
+            moduleStartMeters + ((moduleEndMeters - moduleStartMeters) * sampleIndex) / sampleCount,
+        );
+        const sampleFrames = sampleDistances.map((distance) => roadFrameAt(edge, distance));
+        const depthMeters = FACADE_BUILDING_DEPTH_METERS;
+        const heightMeters = 9.2 + stableUnit(edgeIndex, moduleIndex, 1669) * 4.1;
 
-        let fullModuleWallOffset: number | null = clearSamples.every(Boolean)
-          ? wallOffsetMeters
-          : null;
-        // Nudge a whole module only if a nearby setback clears every sample; otherwise keep only
-        // the clear spans at the tight frontage line and open the small conflicting road pocket.
-        if (fullModuleWallOffset === null) {
-          const minimumWallOffset =
-            edge.halfWidthMeters +
-            edge.shoulderMeters +
-            FACADE_MIN_ROAD_CLEARANCE_METERS -
-            0.05 +
-            FACADE_WALL_THICKNESS_METERS / 2;
-          const checkpointIndices = [
-            ...new Set([
-              0,
-              Math.round(sampleCount / 4),
-              Math.round(sampleCount / 2),
-              Math.round((sampleCount * 3) / 4),
-              sampleCount,
-            ]),
-          ];
-          for (
-            let step = 1;
-            step * FACADE_MODULE_ADJUSTMENT_STEP_METERS <= FACADE_MODULE_MAX_ADJUSTMENT_METERS &&
-            fullModuleWallOffset === null;
-            step += 1
-          ) {
-            const delta = step * FACADE_MODULE_ADJUSTMENT_STEP_METERS;
-            for (const candidateOffset of [wallOffsetMeters - delta, wallOffsetMeters + delta]) {
-              if (candidateOffset < minimumWallOffset) continue;
-              const candidateCenterOffset =
-                candidateOffset - 0.05 + FACADE_WALL_THICKNESS_METERS / 2;
-              const hasClearCheckpoints = checkpointIndices.every((sampleIndex) => {
-                const frame = sampleFrames[sampleIndex]!;
-                return hasFacadeRoadClearance(
-                  network,
-                  frame.x + frame.normalX * side * candidateCenterOffset,
-                  frame.z + frame.normalZ * side * candidateCenterOffset,
-                );
+        for (const side of [-1, 1] as const) {
+          // The building shell stands a full depth behind the wall line, and the generated
+          // world runs city-access connectors and sub-divisions through the block — a road
+          // can clear the wall line yet pass under the shell's far corners. The wall line
+          // and the far side of the footprint must be clear at every sample; the rendered
+          // corners are then checked in appendSpan and the span is shrunk until clean.
+          const shellLineClear = (frame: RoadFrame, centerOffsetMeters: number): boolean => {
+            const wallX = frame.x + frame.normalX * side * centerOffsetMeters;
+            const wallZ = frame.z + frame.normalZ * side * centerOffsetMeters;
+            const farX = frame.x + frame.normalX * side * (centerOffsetMeters + depthMeters);
+            const farZ = frame.z + frame.normalZ * side * (centerOffsetMeters + depthMeters);
+            return (
+              hasFacadeRoadClearance(network, wallX, wallZ) &&
+              hasFacadeRoadClearance(network, farX, farZ)
+            );
+          };
+          const clearSamples = sampleFrames.map((frame) => shellLineClear(frame, wallCenterOffset));
+          let spanIndex = 0;
+          const appendSpan = (
+            initialStartAlongMeters: number,
+            initialEndAlongMeters: number,
+            spanWallOffsetMeters: number,
+          ): void => {
+            // Shrink-to-fit corner pass: the four rendered corners of the span (width along
+            // the wall tangent, depth along the wall normal) must clear every other road's
+            // right-of-way by the car-touch margin and their own alley by the wall-gap
+            // margin. A span whose ends over-reach a courtyard or hub link is trimmed
+            // 0.1 m at a time from both ends — keeping the street continuous up to just
+            // before the corner would meet a road — and dropped if it disappears.
+            let startAlongMeters = initialStartAlongMeters;
+            let endAlongMeters = initialEndAlongMeters;
+            if (endAlongMeters - startAlongMeters < 0.1) return;
+            if ((globalThis as Record<string, unknown>)['DISABLE_SHRINK']) {
+              const alongMeters = (startAlongMeters + endAlongMeters) / 2;
+              const frame = roadFrameAt(edge, alongMeters);
+              const centerOffset = spanWallOffsetMeters + depthMeters / 2 - 0.05;
+              placements.push({
+                id: `${edge.id}:${side}:${segmentIndex}:${moduleIndex}:${spanIndex}`,
+                roadEdgeId: edge.id,
+                side,
+                alongMeters,
+                startAlongMeters,
+                endAlongMeters,
+                x: frame.x + frame.normalX * side * centerOffset,
+                z: frame.z + frame.normalZ * side * centerOffset,
+                yaw: Math.atan2(-frame.tangentZ, frame.tangentX),
+                tangentX: frame.tangentX,
+                tangentZ: frame.tangentZ,
+                normalX: frame.normalX,
+                normalZ: frame.normalZ,
+                halfWidthMeters: edge.halfWidthMeters,
+                wallOffsetMeters: spanWallOffsetMeters,
+                widthMeters: endAlongMeters - startAlongMeters,
+                depthMeters,
+                heightMeters,
+                color: wallColor,
+                roofColor,
               });
-              if (!hasClearCheckpoints) continue;
-              const hasClearModule = sampleFrames.every((frame) =>
-                hasFacadeRoadClearance(
-                  network,
-                  frame.x + frame.normalX * side * candidateCenterOffset,
-                  frame.z + frame.normalZ * side * candidateCenterOffset,
-                ),
-              );
-              if (hasClearModule) {
-                fullModuleWallOffset = candidateOffset;
+              spanIndex += 1;
+              return;
+            }
+            const pavementQuery = pavementClearanceQuery(network);
+            let cornersClean = false;
+            for (let shrinkPass = 0; shrinkPass < 80; shrinkPass += 1) {
+              const alongMeters = (startAlongMeters + endAlongMeters) / 2;
+              const probeFrame = roadFrameAt(edge, alongMeters);
+              const probeCenterOffset = spanWallOffsetMeters + depthMeters / 2 - 0.05;
+              const probeX = probeFrame.x + probeFrame.normalX * side * probeCenterOffset;
+              const probeZ = probeFrame.z + probeFrame.normalZ * side * probeCenterOffset;
+              const probeWidth = endAlongMeters - startAlongMeters;
+              let startTight = false;
+              let endTight = false;
+              for (const alongSign of [-0.5, 0.5] as const) {
+                for (const depthSign of [-0.5, 0.5] as const) {
+                  const cornerX =
+                    probeX +
+                    probeFrame.tangentX * probeWidth * alongSign +
+                    probeFrame.normalX * depthMeters * depthSign;
+                  const cornerZ =
+                    probeZ +
+                    probeFrame.tangentZ * probeWidth * alongSign +
+                    probeFrame.normalZ * depthMeters * depthSign;
+                  // Every rendered corner must clear every road's right-of-way by the
+                  // car-touch margin — including its own alley: a span that straddles a
+                  // bend swings its near-side end corners across the wall gap onto the
+                  // pavement it fronts, which the wall-line checks cannot see.
+                  const cornerTight =
+                    pavementQuery(cornerX, cornerZ, {
+                      earlyExitMeters: FACADE_OTHER_EDGE_CORNER_MARGIN,
+                    }) < FACADE_OTHER_EDGE_CORNER_MARGIN;
+                  if (!cornerTight) continue;
+                  if (alongSign < 0) startTight = true;
+                  else endTight = true;
+                }
+              }
+              if (!startTight && !endTight) {
+                cornersClean = true;
                 break;
+              }
+              if (startTight) startAlongMeters += 0.1;
+              if (endTight) endAlongMeters -= 0.1;
+              if (endAlongMeters - startAlongMeters < 0.4) return;
+            }
+            if (!cornersClean) return;
+            const alongMeters = (startAlongMeters + endAlongMeters) / 2;
+            const frame = roadFrameAt(edge, alongMeters);
+            const yaw = Math.atan2(-frame.tangentZ, frame.tangentX);
+            const centerOffset = spanWallOffsetMeters + depthMeters / 2 - 0.05;
+            placements.push({
+              id: `${edge.id}:${side}:${segmentIndex}:${moduleIndex}:${spanIndex}`,
+              roadEdgeId: edge.id,
+              side,
+              alongMeters,
+              startAlongMeters,
+              endAlongMeters,
+              x: frame.x + frame.normalX * side * centerOffset,
+              z: frame.z + frame.normalZ * side * centerOffset,
+              yaw,
+              tangentX: frame.tangentX,
+              tangentZ: frame.tangentZ,
+              normalX: frame.normalX,
+              normalZ: frame.normalZ,
+              halfWidthMeters: edge.halfWidthMeters,
+              wallOffsetMeters: spanWallOffsetMeters,
+              widthMeters: endAlongMeters - startAlongMeters,
+              depthMeters,
+              heightMeters,
+              color: wallColor,
+              roofColor,
+            });
+            spanIndex += 1;
+          };
+
+          let fullModuleWallOffset: number | null = clearSamples.every(Boolean)
+            ? wallOffsetMeters
+            : null;
+          // Nudge a whole module only if a nearby setback clears every sample; otherwise keep only
+          // the clear spans at the tight frontage line and open the small conflicting road pocket.
+          if (fullModuleWallOffset === null) {
+            const minimumWallOffset =
+              edge.halfWidthMeters +
+              edge.shoulderMeters +
+              FACADE_MIN_ROAD_CLEARANCE_METERS -
+              0.05 +
+              FACADE_WALL_THICKNESS_METERS / 2;
+            const checkpointIndices = [
+              ...new Set([
+                0,
+                Math.round(sampleCount / 4),
+                Math.round(sampleCount / 2),
+                Math.round((sampleCount * 3) / 4),
+                sampleCount,
+              ]),
+            ];
+            for (
+              let step = 1;
+              step * FACADE_MODULE_ADJUSTMENT_STEP_METERS <= FACADE_MODULE_MAX_ADJUSTMENT_METERS &&
+              fullModuleWallOffset === null;
+              step += 1
+            ) {
+              const delta = step * FACADE_MODULE_ADJUSTMENT_STEP_METERS;
+              for (const candidateOffset of [wallOffsetMeters - delta, wallOffsetMeters + delta]) {
+                if (candidateOffset < minimumWallOffset) continue;
+                const candidateCenterOffset =
+                  candidateOffset - 0.05 + FACADE_WALL_THICKNESS_METERS / 2;
+                const hasClearCheckpoints = checkpointIndices.every((sampleIndex) =>
+                  shellLineClear(sampleFrames[sampleIndex]!, candidateCenterOffset),
+                );
+                if (!hasClearCheckpoints) continue;
+                const hasClearModule = sampleFrames.every((frame) =>
+                  shellLineClear(frame, candidateCenterOffset),
+                );
+                if (hasClearModule) {
+                  fullModuleWallOffset = candidateOffset;
+                  break;
+                }
               }
             }
           }
-        }
 
-        if (fullModuleWallOffset !== null) {
-          appendSpan(moduleStartMeters, moduleEndMeters, fullModuleWallOffset);
-          continue;
-        }
+          if (fullModuleWallOffset !== null) {
+            appendSpan(moduleStartMeters, moduleEndMeters, fullModuleWallOffset);
+            continue;
+          }
 
-        let clearRunStart = -1;
-        for (let intervalIndex = 0; intervalIndex < sampleCount; intervalIndex += 1) {
-          const intervalClear = clearSamples[intervalIndex] && clearSamples[intervalIndex + 1];
-          if (intervalClear) {
-            if (clearRunStart < 0) clearRunStart = intervalIndex;
-          } else if (clearRunStart >= 0) {
+          let clearRunStart = -1;
+          for (let intervalIndex = 0; intervalIndex < sampleCount; intervalIndex += 1) {
+            const intervalClear = clearSamples[intervalIndex] && clearSamples[intervalIndex + 1];
+            if (intervalClear) {
+              if (clearRunStart < 0) clearRunStart = intervalIndex;
+            } else if (clearRunStart >= 0) {
+              appendSpan(
+                sampleDistances[clearRunStart]!,
+                sampleDistances[intervalIndex]!,
+                wallOffsetMeters,
+              );
+              clearRunStart = -1;
+            }
+          }
+          if (clearRunStart >= 0) {
             appendSpan(
               sampleDistances[clearRunStart]!,
-              sampleDistances[intervalIndex]!,
+              sampleDistances[sampleCount]!,
               wallOffsetMeters,
             );
-            clearRunStart = -1;
           }
-        }
-        if (clearRunStart >= 0) {
-          appendSpan(
-            sampleDistances[clearRunStart]!,
-            sampleDistances[sampleCount]!,
-            wallOffsetMeters,
-          );
         }
       }
     }
   });
+
+  // A straight module on a curved alley swings its outer corners across the pavement
+  // of whatever road the turn leads onto — the per-sample wall-line checks miss the
+  // sagitta. Validate the rendered corners of every placement against every other
+  // road's right-of-way and open the passage where a shell cannot stand clear.
+  const query = pavementClearanceQuery(network);
+  const validated = placements.filter((placement) => {
+    // The rendered box keeps its width along the wall tangent and its depth along the
+    // wall normal (see the instanced matrix below), so the corners are exactly these
+    // four points — yaw-trig approximations of those axes sheared the corner probes.
+    for (const alongSign of [-0.5, 0.5] as const) {
+      for (const depthSign of [-0.5, 0.5] as const) {
+        const cornerX =
+          placement.x +
+          placement.tangentX * placement.widthMeters * alongSign +
+          placement.normalX * placement.depthMeters * depthSign;
+        const cornerZ =
+          placement.z +
+          placement.tangentZ * placement.widthMeters * alongSign +
+          placement.normalZ * placement.depthMeters * depthSign;
+        if (query(cornerX, cornerZ) < FACADE_OTHER_EDGE_CORNER_MARGIN) return false;
+      }
+    }
+    return true;
+  });
+  placements.length = 0;
+  for (const placement of validated) placements.push(placement);
 
   let cachedByTier = FACADE_PLACEMENT_CACHE.get(network);
   if (cachedByTier === undefined) {
@@ -640,12 +933,12 @@ export class UrbanAlleyFrontages {
 
   constructor(tier: TierId, network: RoadNetwork, origin: readonly [number, number, number]) {
     this.root.name = 'aohara-backstreet-frontages';
-    this.placements = generateAoharaAlleyFacadePlacements(network, tier);
+    const [originX, , originZ] = origin;
+    this.placements = generateAoharaAlleyFacadePlacements(network, tier, [originX, originZ]);
     const visiblePlacements = this.placements;
     this.collisionBoxes = makeCollisionBoxes(network, visiblePlacements);
     this.propClearanceFootprints = makePropClearanceFootprints(network, visiblePlacements);
     this.#buildCollisionIndex();
-    const [originX, , originZ] = origin;
     const wallGeometry = createContinuousWallGeometry(network, visiblePlacements, originX, originZ);
     const wallMaterial = new MeshStandardNodeMaterial();
     wallMaterial.name = 'aohara-continuous-alley-facade-material';
