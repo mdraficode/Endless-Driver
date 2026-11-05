@@ -26,7 +26,7 @@ let sampler: TerrainSampler | null = null;
 context.onmessage = (event) => {
   const message = event.data;
   if (message.type === 'init') {
-    sampler = createGenerationSampler(message.terrain, message.road);
+    sampler = createGenerationSampler(message.terrain, message.road, message.plateau, message.pits);
     return;
   }
   if (sampler === null) {

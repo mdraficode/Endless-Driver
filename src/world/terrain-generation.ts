@@ -2,7 +2,7 @@ import type { RoadNetworkConfig } from '../config/roads';
 import type { TerrainConfig } from '../config/terrain';
 import { buildChunkGeometryData, type ChunkGeometryData } from './terrain-geometry';
 import { createTerrainSampler, type TerrainSampler } from './terrain-height';
-import { createWorldTerrainSampler } from './world-terrain';
+import { createWorldTerrainSampler, type CityPlateau, type TerrainPit } from './world-terrain';
 
 /**
  * The generation protocol shared by the main thread and the worker entry.
@@ -18,6 +18,8 @@ export interface TerrainGenerationInit {
   readonly type: 'init';
   readonly terrain: TerrainConfig;
   readonly road: RoadNetworkConfig | null;
+  readonly plateau?: CityPlateau;
+  readonly pits?: readonly TerrainPit[];
 }
 
 export interface TerrainGenerationRequest {
@@ -43,8 +45,11 @@ export type TerrainWorkerMessage = TerrainGenerationInit | TerrainGenerationRequ
 export function createGenerationSampler(
   terrain: TerrainConfig,
   road: RoadNetworkConfig | null,
+  plateau?: CityPlateau,
+  pits?: readonly TerrainPit[],
 ): TerrainSampler {
-  return road === null ? createTerrainSampler(terrain) : createWorldTerrainSampler(terrain, road);
+  if (road === null) return createTerrainSampler(terrain);
+  return createWorldTerrainSampler(terrain, road, plateau, pits);
 }
 
 /** Handles one request against a prepared sampler. Extracted so it is unit-testable off-worker. */

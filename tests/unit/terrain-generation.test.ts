@@ -50,6 +50,44 @@ describe('generation sampler determinism', () => {
     );
   });
 
+  it('carries the city plateau and pits to the worker, or the city chunks are raw terrain', () => {
+    // Regression: the generated home city sits on a levelled plateau with sunken
+    // hideout pits. The worker rebuilds its sampler from the init message, so the
+    // plateau and pits must travel with it — without them the worker's chunks are
+    // natural terrain (up to the local hill relief above the deck) and the car
+    // drives through grassy terrain that visually swallows it.
+    const plateau = { x: 120, z: -80, flatRadiusMeters: 300, blendRadiusMeters: 700 };
+    const pits = [{ x: 140, z: -60, radiusMeters: 40, depthMeters: 9 }];
+    const gameSampler = createWorldTerrainSampler(
+      TERRAIN_CONFIG,
+      ROAD_NETWORK_CONFIG,
+      plateau,
+      pits,
+    );
+    const workerSampler = createGenerationSampler(
+      TERRAIN_CONFIG,
+      ROAD_NETWORK_CONFIG,
+      gameSampler.plateau,
+      gameSampler.pits,
+    );
+    for (const [cx, cz, segments] of [
+      [4, -2, 32], // inside the plateau
+      [-6, 6, 16], // outside, natural ground with pits nearby
+    ] as const) {
+      expectChunkEqual(
+        buildChunkGeometryData(gameSampler, cx, cz, segments),
+        buildChunkGeometryData(workerSampler, cx, cz, segments),
+      );
+    }
+    // And the old init (no plateau, no pits) must NOT match — proves the test is live.
+    const staleWorkerSampler = createGenerationSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
+    const fresh = buildChunkGeometryData(gameSampler, 4, -2, 32);
+    const stale = buildChunkGeometryData(staleWorkerSampler, 4, -2, 32);
+    expect(Array.from(fresh.positions).slice(0, 32)).not.toEqual(
+      Array.from(stale.positions).slice(0, 32),
+    );
+  });
+
   it('answers protocol requests with echo fields and all buffers transferable', () => {
     const sampler = createGenerationSampler(TERRAIN_CONFIG, null);
     const result = handleGenerationRequest(sampler, {

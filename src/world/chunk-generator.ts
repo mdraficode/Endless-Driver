@@ -1,6 +1,7 @@
 import type { RoadNetworkConfig } from '../config/roads';
 import type { TerrainConfig } from '../config/terrain';
 import type { TerrainSampler } from './terrain-height';
+import type { CityPlateau, TerrainPit } from './world-terrain';
 import { chunkKey } from './terrain-chunks';
 import type { TerrainGenerationResult } from './terrain-generation';
 
@@ -78,7 +79,16 @@ export class ChunkGenerator {
         worker.onerror = () => {
           this.#failToSync();
         };
-        worker.postMessage({ type: 'init', terrain: terrainConfig, road: roadConfig });
+        const init: {
+          type: 'init';
+          terrain: TerrainConfig;
+          road: RoadNetworkConfig | null;
+          plateau?: CityPlateau;
+          pits?: readonly TerrainPit[];
+        } = { type: 'init', terrain: terrainConfig, road: roadConfig };
+        if (sampler.plateau !== undefined) init.plateau = sampler.plateau;
+        if (sampler.pits !== undefined) init.pits = sampler.pits;
+        worker.postMessage(init);
         this.#slots.push(slot);
       }
       this.#mode = 'worker';

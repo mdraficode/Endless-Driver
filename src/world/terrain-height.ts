@@ -1,5 +1,6 @@
 import type { TerrainConfig } from '../config/terrain';
 import type { RoadNetwork, RoadSample } from './road-network';
+import type { CityPlateau, TerrainPit } from './world-terrain';
 
 /**
  * The one height function of the world.
@@ -28,6 +29,14 @@ export interface TerrainSampler {
   roadAt?(x: number, z: number): RoadSample | null;
   /** The carved road network, when present (road ribbon meshes are built from it). */
   readonly roadNetwork?: RoadNetwork;
+  /**
+   * The city plateau and sunken-garage pits this sampler was built with
+   * (`world-terrain.ts`). Carried on the sampler so off-thread chunk generation can
+   * rebuild the identical sampler from configs alone — the ground you see must be the
+   * ground you drive on, whichever thread builds a chunk.
+   */
+  readonly plateau?: CityPlateau;
+  readonly pits?: readonly TerrainPit[];
 }
 
 /** Unit surface normal of any height function, by central differences. */

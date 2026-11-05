@@ -134,5 +134,7 @@ export function createWorldTerrainSampler(
     config: terrainConfig,
     roadAt: (x: number, z: number) => network.sample(x, z),
     roadNetwork: network,
+    plateau,
+    pits,
   };
 }
