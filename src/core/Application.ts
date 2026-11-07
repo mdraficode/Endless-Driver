@@ -703,6 +703,11 @@ export class Application {
     this.#weatherDynamics.setPreset(preset);
   }
 
+  /** The preset the weather dynamics are currently easing towards (the menu's named setting). */
+  get weatherPreset(): WeatherPreset {
+    return this.#weatherDynamics.preset;
+  }
+
   get car(): Car {
     return this.#car;
   }

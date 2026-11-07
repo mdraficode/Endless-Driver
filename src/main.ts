@@ -5,6 +5,7 @@ import { WORLD_CONFIG } from './config/world';
 import { DEFAULT_SPAWN_ID, SPAWN_POINTS } from './config/spawns';
 import {
   readGamePreferences,
+  resolveBootWeatherCondition,
   saveGamePreferences,
   type GamePreferences,
 } from './config/game-preferences';
@@ -34,7 +35,7 @@ import { urlForSpawn } from './ui/StartLocationSelector';
 import { PauseMenu } from './ui/PauseMenu';
 import { BoostGauge } from './ui/BoostGauge';
 import { yawFromQuat } from './shared/vector';
-import { readWeatherPreset } from './environment/SurfaceState';
+import { readWeatherPresetOverride } from './environment/SurfaceState';
 import { readSeasonRequest } from './environment/seasons';
 import { EnvironmentClock } from './environment/EnvironmentClock';
 
@@ -414,7 +415,12 @@ async function startDrivingScene(restarting = false): Promise<void> {
       ...(spawnId === undefined ? {} : { spawnId }),
       carModel: preferences.carModel,
       trafficIntensity: preferences.trafficIntensity,
-      weather: readWeatherPreset(window.location.search),
+      // Phase 8 settings: a `?weather=` launch override beats the saved condition, which
+      // beats the dry default — so a saved 'rain' launches already wet and rainy.
+      weather: resolveBootWeatherCondition(
+        readWeatherPresetOverride(window.location.search),
+        preferences.weather,
+      ),
       ...(seasonRequest === null ? {} : { season: seasonRequest }),
       cameraMode: preferences.cameraMode,
       steeringSensitivity: preferences.steeringSensitivity,
@@ -489,6 +495,8 @@ async function startDrivingScene(restarting = false): Promise<void> {
         currentSpawnId: diagnostics.spawnId,
         defaultSpawnId: diagnostics.spawnId === undefined ? DEFAULT_SPAWN_ID : diagnostics.spawnId,
         ...(diagnostics.worldSeed !== undefined ? { worldSeed: diagnostics.worldSeed } : {}),
+        weather: activeApplication.weatherPreset,
+        ...(diagnostics.season !== undefined ? { worldSeason: diagnostics.season } : {}),
         activeTier: tier.id,
         activeRenderer: diagnostics.rendererBackend,
         activeTrafficVehicleCount: trafficVehicleCountFor(tier.id, preferences.trafficIntensity),
@@ -527,6 +535,11 @@ async function startDrivingScene(restarting = false): Promise<void> {
           if (key === 'nightMood' && typeof value === 'boolean') {
             activeApplication.setNightMood(value);
             clearTimeOverrideFromUrl();
+          }
+          if (key === 'weather') {
+            // The dynamics ramp wetness/rain/overcast to the new target: a live transition,
+            // never a pop, and the car is untouched through it.
+            activeApplication.setWeatherPreset(value as GamePreferences['weather']);
           }
           return saved;
         },

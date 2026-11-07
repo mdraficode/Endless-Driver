@@ -6,6 +6,8 @@ export type TrafficIntensity = 'off' | 'light' | 'standard' | 'busy';
 export type PlayerCarModel = 'generic-sport-coupe' | 'kaminari-gt-roadster';
 export type SteeringSensitivity = 'relaxed' | 'standard' | 'responsive';
 export type TouchSteeringMode = 'wheel' | 'arrows';
+/** The named weather condition (Phase 8 settings slice); structurally the runtime WeatherPreset. */
+export type WeatherPreference = 'clear' | 'rain' | 'storm';
 
 export const TOUCH_CONTROL_SCALE_MIN_PERCENT = 70;
 export const TOUCH_CONTROL_SCALE_MAX_PERCENT = 140;
@@ -23,6 +25,8 @@ export interface GamePreferences {
   readonly touchControlScalePercent: number;
   /** Persistent live lighting preset; off preserves the daytime default. */
   readonly nightMood: boolean;
+  /** Named weather condition for the next launch; applies live in the menu, no restart. */
+  readonly weather: WeatherPreference;
 }
 
 export interface PreferenceStorage {
@@ -47,6 +51,7 @@ export const DEFAULT_GAME_PREFERENCES: Readonly<GamePreferences> = {
   touchSteeringMode: 'arrows',
   touchControlScalePercent: 120,
   nightMood: true,
+  weather: 'clear',
 };
 
 const TRAFFIC_INTENSITIES: readonly TrafficIntensity[] = ['off', 'light', 'standard', 'busy'];
@@ -58,6 +63,7 @@ const STEERING_SENSITIVITIES: readonly SteeringSensitivity[] = [
   'responsive',
 ];
 const TOUCH_STEERING_MODES: readonly TouchSteeringMode[] = ['wheel', 'arrows'];
+const WEATHER_CONDITIONS: readonly WeatherPreference[] = ['clear', 'rain', 'storm'];
 
 /** User-facing steering scales applied after the input manager's smoothing. */
 export const STEERING_SENSITIVITY_SCALE: Readonly<Record<SteeringSensitivity, number>> = {
@@ -130,6 +136,11 @@ export function readGamePreferences(storage?: PreferenceStorage): GamePreference
         typeof parsed['nightMood'] === 'boolean'
           ? parsed['nightMood']
           : DEFAULT_GAME_PREFERENCES.nightMood,
+      // Older saved objects have no weather field: they keep the dry default, so a saved
+      // 'rain' from a newer build is the only thing that can override it.
+      weather: isWeatherPreference(parsed['weather'])
+        ? parsed['weather']
+        : DEFAULT_GAME_PREFERENCES.weather,
     };
   } catch {
     return { ...DEFAULT_GAME_PREFERENCES };
@@ -165,4 +176,21 @@ export function isSteeringSensitivity(value: unknown): value is SteeringSensitiv
 
 export function isTouchSteeringMode(value: unknown): value is TouchSteeringMode {
   return TOUCH_STEERING_MODES.includes(value as TouchSteeringMode);
+}
+
+export function isWeatherPreference(value: unknown): value is WeatherPreference {
+  return WEATHER_CONDITIONS.includes(value as WeatherPreference);
+}
+
+/**
+ * Boot precedence for the weather condition: an explicit `?weather=` launch override wins,
+ * then the owner's saved setting, which defaults to clear. The same condition both drives
+ * the launch surface state and the menu's live switch, so a saved 'rain' launches already
+ * wet and rainy.
+ */
+export function resolveBootWeatherCondition(
+  urlOverride: WeatherPreference | null,
+  preference: WeatherPreference,
+): WeatherPreference {
+  return urlOverride ?? preference;
 }

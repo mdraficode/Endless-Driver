@@ -4,6 +4,7 @@ import type { TierId } from '../config/tiers';
 import type { TierReason } from '../core/QualityTier';
 import { formatProgramInventory, type ProgramInventory } from '../core/program-inventory';
 import type { WeatherPreset } from '../environment/SurfaceState';
+import type { SeasonId } from '../environment/seasons';
 
 /**
  * Diagnostics HUD.
@@ -202,7 +203,7 @@ export interface DiagnosticsSnapshot {
   readonly cameraFov: number;
   readonly weather: WeatherPreset;
   /** The world's season (Phase 7), so the report says which Hinode season is on. */
-  readonly season: string;
+  readonly season: SeasonId;
   /** Normalized wetness of the active weather preset (0 = dry, 1 = saturated). */
   readonly wetness: number;
   /** Mean effective grip multiplier across wheels currently contacting the ground. */

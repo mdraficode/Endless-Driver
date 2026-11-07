@@ -11,7 +11,9 @@ import type {
   SteeringSensitivity,
   TouchSteeringMode,
   TrafficIntensity,
+  WeatherPreference,
 } from '../config/game-preferences';
+import type { SeasonId } from '../environment/seasons';
 import type { SpawnPoint } from '../config/spawns';
 import type { TierId } from '../config/tiers';
 
@@ -40,6 +42,10 @@ export interface PauseMenuOptions {
   readonly defaultSpawnId: string;
   /** Phase 10: the seed behind this session's generated world (shown for sharing via ?seed=). */
   readonly worldSeed?: number;
+  /** Phase 8 settings: the weather condition the world is currently easing towards. */
+  readonly weather: WeatherPreference;
+  /** Phase 7: the world's seeded season (shown, not switchable — the seed owns it). */
+  readonly worldSeason?: SeasonId;
   readonly activeTier: TierId;
   readonly activeRenderer: string;
   readonly activeTrafficVehicleCount: number;
@@ -90,6 +96,20 @@ const STEERING_CHOICES: readonly { value: SteeringSensitivity; label: string }[]
   { value: 'standard', label: 'Standard' },
   { value: 'responsive', label: 'Responsive — quicker steering' },
 ];
+
+/** Named weather conditions (Phase 8 settings slice); applied live, never a restart. */
+export const WEATHER_CHOICES: readonly { value: WeatherPreference; label: string }[] = [
+  { value: 'clear', label: 'Clear — dry roads' },
+  { value: 'rain', label: 'Rain — wet roads, looser grip' },
+  { value: 'storm', label: 'Storm — full rain, darker sky' },
+];
+
+const SEASON_LABELS: Readonly<Record<SeasonId, string>> = {
+  spring: 'Spring',
+  summer: 'Summer',
+  autumn: 'Autumn',
+  winter: 'Winter',
+};
 
 const TOUCH_STEERING_CHOICES: readonly { value: TouchSteeringMode; label: string }[] = [
   { value: 'wheel', label: 'Virtual steering wheel' },
@@ -404,6 +424,13 @@ export class PauseMenu {
       'CITY TRAFFIC',
       `${this.#options.activeTrafficVehicleCount} vehicles · ${this.#trafficLabel(this.#initialPreferences.trafficIntensity)}`,
     );
+    if (this.#options.worldSeason !== undefined) {
+      this.#appendStat(
+        statusGrid,
+        'WORLD SEASON',
+        `${SEASON_LABELS[this.#options.worldSeason]} — set by this world's seed`,
+      );
+    }
     const nightPanel = document.createElement('section');
     nightPanel.className = 'pause-menu-night-panel';
     const nightCopy = document.createElement('div');
@@ -442,15 +469,47 @@ export class PauseMenu {
     syncNightToggle();
     nightPanel.append(nightCopy, nightToggle);
 
+    const weatherPanel = document.createElement('section');
+    weatherPanel.className = 'pause-menu-night-panel';
+    const weatherCopy = document.createElement('div');
+    weatherCopy.className = 'pause-menu-night-copy';
+    const weatherTitle = document.createElement('strong');
+    weatherTitle.textContent = 'Weather';
+    const weatherDescription = document.createElement('span');
+    weatherDescription.textContent =
+      'Clear, rain or storm. The world eases into the new conditions as you drive — no restart.';
+    weatherCopy.append(weatherTitle, weatherDescription);
+    const weatherField = document.createElement('label');
+    weatherField.className = 'pause-menu-field';
+    const weatherSelect = document.createElement('select');
+    weatherSelect.className = 'pause-menu-select';
+    weatherSelect.setAttribute('aria-label', 'Weather condition');
+    for (const choice of WEATHER_CHOICES) {
+      const option = document.createElement('option');
+      option.value = choice.value;
+      option.textContent = choice.label;
+      weatherSelect.append(option);
+    }
+    weatherSelect.value = String(this.#preferences.weather);
+    weatherSelect.addEventListener('change', () => {
+      const selected = WEATHER_CHOICES.find((choice) => choice.value === weatherSelect.value);
+      if (selected !== undefined) {
+        this.#setPreference('weather', selected.value);
+        weatherSelect.value = String(selected.value);
+      }
+    });
+    weatherField.append(weatherSelect);
+    weatherPanel.append(weatherCopy, weatherField);
+
     const callout = document.createElement('div');
     callout.className = 'pause-menu-callout';
     const calloutTitle = document.createElement('strong');
     calloutTitle.textContent = 'Your options are remembered';
     const calloutText = document.createElement('span');
     calloutText.textContent =
-      'Changes are saved as you make them. Touch layout, button size, Night Mood and car model apply immediately; restart for steering response, start camera, traffic or graphics changes.';
+      'Changes are saved as you make them. Weather, touch layout, button size, Night Mood and car model apply immediately; restart for steering response, start camera, traffic or graphics changes. The season belongs to this world: each seed has its own.';
     callout.append(calloutTitle, calloutText);
-    page.append(heading, intro, statusGrid, nightPanel, callout);
+    page.append(heading, intro, statusGrid, nightPanel, weatherPanel, callout);
   }
 
   #renderSpawn(page: HTMLElement): void {

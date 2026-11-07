@@ -3,6 +3,7 @@ import {
   DEFAULT_GAME_PREFERENCES,
   GAME_PREFERENCES_STORAGE_KEY,
   readGamePreferences,
+  resolveBootWeatherCondition,
   saveGamePreferences,
   STEERING_SENSITIVITY_SCALE,
   type PreferenceStorage,
@@ -50,6 +51,7 @@ describe('persistent game preferences', () => {
       touchSteeringMode: 'arrows',
       touchControlScalePercent: 130,
       nightMood: true,
+      weather: DEFAULT_GAME_PREFERENCES.weather,
     });
   });
 
@@ -109,6 +111,7 @@ describe('persistent game preferences', () => {
       touchSteeringMode: 'arrows',
       touchControlScalePercent: 135,
       nightMood: true,
+      weather: 'storm',
     } as const;
 
     expect(saveGamePreferences(preferences, storage)).toBe(true);
@@ -130,5 +133,34 @@ describe('persistent game preferences', () => {
     expect(STEERING_SENSITIVITY_SCALE.relaxed).toBeLessThan(1);
     expect(STEERING_SENSITIVITY_SCALE.standard).toBe(1);
     expect(STEERING_SENSITIVITY_SCALE.responsive).toBeGreaterThan(1);
+  });
+
+  it('keeps the named weather condition saved, defaults it to clear, and rejects unknown values', () => {
+    const storage = new MemoryStorage();
+
+    // A device that never chose a weather condition stays dry.
+    expect(readGamePreferences(storage).weather).toBe('clear');
+    expect(DEFAULT_GAME_PREFERENCES.weather).toBe('clear');
+
+    // An older saved record without a weather field keeps the dry default.
+    storage.setItem(GAME_PREFERENCES_STORAGE_KEY, JSON.stringify({ nightMood: true }));
+    expect(readGamePreferences(storage).weather).toBe('clear');
+
+    // A saved storm survives the round-trip.
+    storage.setItem(GAME_PREFERENCES_STORAGE_KEY, JSON.stringify({ weather: 'rain' }));
+    expect(readGamePreferences(storage).weather).toBe('rain');
+    const stored = readGamePreferences(storage);
+    expect(saveGamePreferences({ ...stored, weather: 'storm' }, storage)).toBe(true);
+    expect(readGamePreferences(storage).weather).toBe('storm');
+
+    // Unknown values fall back to clear instead of corrupting the record.
+    storage.setItem(GAME_PREFERENCES_STORAGE_KEY, JSON.stringify({ weather: 'hail' }));
+    expect(readGamePreferences(storage).weather).toBe('clear');
+  });
+
+  it('resolves the boot weather: a launch override beats the saved condition', () => {
+    expect(resolveBootWeatherCondition(null, 'rain')).toBe('rain');
+    expect(resolveBootWeatherCondition('clear', 'rain')).toBe('clear');
+    expect(resolveBootWeatherCondition('storm', 'clear')).toBe('storm');
   });
 });

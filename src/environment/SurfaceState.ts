@@ -44,10 +44,18 @@ export function resolveSurfaceState(weather: WeatherPreset, wetness?: number): S
   return { weather: base.weather, wetness: clamp(Number.isFinite(wetness) ? wetness : 0, 0, 1) };
 }
 
+/**
+ * Reads the Phase 7 driving-scene override, or `null` when the URL carries no usable value —
+ * so callers can tell "the launch requested this weather" from "nothing was requested".
+ */
+export function readWeatherPresetOverride(search: string): WeatherPreset | null {
+  const raw = new URLSearchParams(search).get('weather')?.toLowerCase();
+  return WEATHER_PRESETS.includes(raw as WeatherPreset) ? (raw as WeatherPreset) : null;
+}
+
 /** Reads the Phase 7 driving-scene override. Unsupported values safely retain clear conditions. */
 export function readWeatherPreset(search: string): WeatherPreset {
-  const raw = new URLSearchParams(search).get('weather')?.toLowerCase();
-  return WEATHER_PRESETS.includes(raw as WeatherPreset) ? (raw as WeatherPreset) : 'clear';
+  return readWeatherPresetOverride(search) ?? 'clear';
 }
 
 /**
