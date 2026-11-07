@@ -402,8 +402,18 @@ export class Application {
     // agree by construction).
     const hideouts = placeHideouts(plan, roadLayout, worldSeed);
     this.#hideouts = hideouts;
+    // The world's volcano (Phase 10 tail): the terrain config carries the plan's per-seed
+    // anchor so visuals, physics and the generation worker all raise the same cone.
+    const terrainConfig = {
+      ...terrainConfigForTier(this.#tier.id, terrainSeedFor(worldSeed)),
+      volcano: {
+        position: [plan.volcano.x, plan.volcano.z] as const,
+        heightMeters: plan.volcano.heightMeters,
+        radiusMeters: plan.volcano.radiusMeters,
+      },
+    };
     const terrainSampler = createWorldTerrainSampler(
-      terrainConfigForTier(this.#tier.id, terrainSeedFor(worldSeed)),
+      terrainConfig,
       roadLayout.config,
       {
         x: anchor.x,
@@ -671,6 +681,11 @@ export class Application {
   }
 
   /** The shared terrain sampler (roads, heights, districts) — HUD maps read it. */
+  /** The world's volcano anchor (Phase 10 tail); the minimap points at it. */
+  get worldVolcano(): { readonly x: number; readonly z: number; readonly radiusMeters: number } {
+    return this.#worldPlan.volcano;
+  }
+
   get terrainSampler(): TerrainSampler {
     return this.#terrainSampler;
   }

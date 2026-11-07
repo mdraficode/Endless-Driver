@@ -6,9 +6,13 @@ import {
   WORLD_PLAN_VERSION,
   createWorldPlan,
   planArchetypeCounts,
+  terrainSeedFor,
+  volcanoForWorld,
   type RegionArchetype,
   type RegionPlan,
 } from '../../src/world/world-plan';
+import { TERRAIN_CONFIG } from '../../src/config/terrain';
+import { createTerrainSampler } from '../../src/world/terrain-height';
 
 /** The serializable subset of a region, for deep comparisons. */
 function snapshot(r: RegionPlan): Record<string, unknown> {
@@ -192,5 +196,60 @@ describe('world-plan', () => {
     const b = plan.regionAtCell(1, 1);
     expect(a.seed).not.toBe(b.seed);
     expect(a.seed).not.toBe(1234);
+  });
+});
+
+describe('per-seed volcano (Phase 10 tail)', () => {
+  it('is deterministic and carries through the plan', () => {
+    const a = volcanoForWorld(20261102, WORLD_PLAN_VERSION);
+    const b = volcanoForWorld(20261102, WORLD_PLAN_VERSION);
+    expect(a).toEqual(b);
+    const plan = createWorldPlan(20261102);
+    expect(plan.volcano).toEqual(a);
+    // A different world rolls a different anchor.
+    const other = createWorldPlan(777001);
+    const otherAnchor = volcanoForWorld(777001, WORLD_PLAN_VERSION);
+    expect(other.volcano).toEqual(otherAnchor);
+    expect(otherAnchor.x !== a.x || otherAnchor.z !== a.z).toBe(true);
+  });
+
+  it('keeps the cone outside the home city and the peak within a real drive', () => {
+    for (let seed = 1; seed <= 24; seed += 1) {
+      const v = volcanoForWorld(seed, WORLD_PLAN_VERSION);
+      const distance = Math.hypot(v.x, v.z);
+      // The base edge stays clear of the home city block; the peak stays reachable.
+      expect(distance - v.radiusMeters).toBeGreaterThanOrEqual(1550);
+      expect(distance).toBeLessThanOrEqual(1600 + 1300 + 3400 + 1);
+      expect(v.heightMeters).toBeGreaterThanOrEqual(260);
+      expect(v.heightMeters).toBeLessThanOrEqual(340);
+      expect(v.radiusMeters).toBeGreaterThanOrEqual(1000);
+      expect(v.radiusMeters).toBeLessThanOrEqual(1300);
+    }
+  });
+
+  it('raises real high ground where the plan says it does', () => {
+    const seed = 424242;
+    const plan = createWorldPlan(seed);
+    const v = plan.volcano;
+    const sampler = createTerrainSampler({
+      ...TERRAIN_CONFIG,
+      seed: terrainSeedFor(seed),
+      volcano: {
+        position: [v.x, v.z] as const,
+        heightMeters: v.heightMeters,
+        radiusMeters: v.radiusMeters,
+      },
+    });
+    const peak = sampler.heightAt(v.x, v.z);
+    const far = sampler.heightAt(v.x * 2.2, v.z * 2.2);
+    expect(peak).toBeGreaterThan(120);
+    expect(peak - far).toBeGreaterThan(60);
+  });
+
+  it('keeps the old fixed anchor inside the same envelope', () => {
+    // The retired hand-placed world's volcano (−1500, −2100, r 1150) was 2583 m out.
+    const distance = Math.hypot(-1500, -2100);
+    expect(distance - 1150).toBeGreaterThanOrEqual(1550 - 200);
+    expect(distance).toBeLessThanOrEqual(1600 + 1300 + 3400 + 1);
   });
 });

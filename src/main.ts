@@ -444,9 +444,20 @@ async function startDrivingScene(restarting = false): Promise<void> {
     const mapParam = new URLSearchParams(window.location.search).get('map');
     if (mapParam !== '0') {
       try {
+        // The generated world's volcano moves per seed: the minimap's Volcano View
+        // points at a overlook toward it from this launch's actual anchor.
+        const volcano = activeApplication.worldVolcano;
+        const volcanoDistance = Math.hypot(volcano.x, volcano.z) || 1;
+        const volcanoViewT = (0.8 * volcano.radiusMeters) / volcanoDistance;
         minimap = new Minimap({
           sampler: activeApplication.terrainSampler,
           ...(appRoot === null ? {} : { parent: appRoot }),
+          poiOverrides: {
+            'volcano-view': {
+              x: volcano.x * (1 - volcanoViewT),
+              z: volcano.z * (1 - volcanoViewT),
+            },
+          },
           getPose: () => {
             const pose = activeApplication.car.getInterpolatedPose(
               activeApplication.physics.interpolationAlpha,

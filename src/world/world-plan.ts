@@ -30,6 +30,32 @@ export function terrainSeedFor(worldSeed: number): number {
   return (Math.imul(worldSeed, 0x9e3779b9) ^ 0x7e55d) | 0;
 }
 
+/**
+ * The world's volcano anchor, deterministic in the seed. The cone's base edge stays at
+ * least ~1.6 km from the origin (the home city's block), the peak sits 2.2–5.8 km out
+ * so every world has a landmark within a real drive, and height/radius vary per seed so
+ * no two Hinode-dake look alike. The old fixed anchor (−1500, −2100) sits inside this
+ * same envelope.
+ */
+export function volcanoForWorld(
+  worldSeed: number,
+  generatorVersion = 1,
+): {
+  readonly x: number;
+  readonly z: number;
+  readonly heightMeters: number;
+  readonly radiusMeters: number;
+} {
+  const stream = (worldSeed ^ (generatorVersion * 0x9e3779b1)) | 0;
+  const angle = hash2(1, 7, stream) * Math.PI * 2;
+  const radiusMeters = Math.round(1000 + hash2(2, 9, stream) * 300);
+  const distance = 1600 + radiusMeters + hash2(3, 11, stream) * 3400;
+  const x = Math.round(Math.cos(angle) * distance);
+  const z = Math.round(Math.sin(angle) * distance);
+  const heightMeters = Math.round(260 + hash2(4, 13, stream) * 80);
+  return { x, z, heightMeters, radiusMeters };
+}
+
 /** Highest terrain point over a cell (5×5 probe). A world's passes live where the ground is high. */
 const cellMaxHeight = (
   sampler: ReturnType<typeof createTerrainSampler>,
@@ -120,6 +146,17 @@ export interface WorldPlan {
     readonly region: RegionArchetype;
     /** Road class the layout should prefer for the spawn edge. */
     readonly preferredClass: 'urban-arterial' | 'urban-local';
+  };
+  /**
+   * This world's Hinode-dake (the big volcano). Deterministic in the seed: every world
+   * gets its own landmark, always a drive away but never inside the home city's reach,
+   * and the mountain-pass regions follow it by construction (they are found by height).
+   */
+  readonly volcano: {
+    readonly x: number;
+    readonly z: number;
+    readonly heightMeters: number;
+    readonly radiusMeters: number;
   };
 }
 
@@ -317,9 +354,18 @@ export function createWorldPlan(seed: number): WorldPlan {
   const worldSeed = seed | 0;
   // Built lazily on the first high cell probe; pure math, no renderer needed.
   let terrainSampler: ReturnType<typeof createTerrainSampler> | null = null;
+  const volcano = volcanoForWorld(worldSeed, WORLD_PLAN_VERSION);
   const probeTerrain = (): ReturnType<typeof createTerrainSampler> => {
     if (terrainSampler === null) {
-      const config: TerrainConfig = { ...TERRAIN_CONFIG, seed: terrainSeedFor(worldSeed) };
+      const config: TerrainConfig = {
+        ...TERRAIN_CONFIG,
+        seed: terrainSeedFor(worldSeed),
+        volcano: {
+          position: [volcano.x, volcano.z] as const,
+          heightMeters: volcano.heightMeters,
+          radiusMeters: volcano.radiusMeters,
+        },
+      };
       terrainSampler = createTerrainSampler(config);
     }
     return terrainSampler;
@@ -426,6 +472,7 @@ export function createWorldPlan(seed: number): WorldPlan {
       region: 'megacity',
       preferredClass: 'urban-arterial',
     },
+    volcano,
   };
 }
 

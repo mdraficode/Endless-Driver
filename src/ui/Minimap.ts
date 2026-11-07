@@ -49,6 +49,11 @@ export interface MinimapOptions {
   readonly parent?: HTMLElement;
   /** CSS size in pixels; the backing store is doubled for sharpness. */
   readonly sizeCss?: number;
+  /**
+   * Per-id position overrides for the named places: the generated world's volcano moves
+   * per seed, and the minimap's "Volcano View" must point at it, not the old anchor.
+   */
+  readonly poiOverrides?: Readonly<Record<string, { readonly x: number; readonly z: number }>>;
 }
 
 export class Minimap {
@@ -56,6 +61,7 @@ export class Minimap {
 
   readonly #sampler: TerrainSampler;
   readonly #getPose: () => MinimapPose;
+  readonly #pois: readonly PointOfInterest[];
   readonly #size: number;
   readonly #base: HTMLCanvasElement;
   readonly #ctx: CanvasRenderingContext2D;
@@ -69,6 +75,10 @@ export class Minimap {
   constructor(options: MinimapOptions) {
     this.#sampler = options.sampler;
     this.#getPose = options.getPose;
+    this.#pois = POINTS_OF_INTEREST.map((poi) => {
+      const override = options.poiOverrides?.[poi.id];
+      return override === undefined ? poi : { ...poi, x: override.x, z: override.z };
+    });
     this.#size = options.sizeCss ?? 168;
 
     this.canvas = document.createElement('canvas');
@@ -115,20 +125,20 @@ export class Minimap {
 
   /** Cycles the navigation target by hand; returns the newly selected POI. */
   cycleTarget(): PointOfInterest {
-    this.#targetIndex = (this.#targetIndex + 1) % POINTS_OF_INTEREST.length;
-    return POINTS_OF_INTEREST[this.#targetIndex]!;
+    this.#targetIndex = (this.#targetIndex + 1) % this.#pois.length;
+    return this.#pois[this.#targetIndex]!;
   }
 
   get target(): PointOfInterest | null {
-    return this.#targetIndex >= 0 ? (POINTS_OF_INTEREST[this.#targetIndex] ?? null) : null;
+    return this.#targetIndex >= 0 ? (this.#pois[this.#targetIndex] ?? null) : null;
   }
 
   #pickNearestTarget(): void {
     const pose = this.#getPose();
     let best = -1;
     let bestDistance = Number.POSITIVE_INFINITY;
-    for (let i = 0; i < POINTS_OF_INTEREST.length; i += 1) {
-      const poi = POINTS_OF_INTEREST[i]!;
+    for (let i = 0; i < this.#pois.length; i += 1) {
+      const poi = this.#pois[i]!;
       if (this.#visited.has(poi.id)) {
         continue;
       }
@@ -276,8 +286,8 @@ export class Minimap {
     };
 
     // POI diamonds: visited dim, target bright, others quiet.
-    for (let i = 0; i < POINTS_OF_INTEREST.length; i += 1) {
-      const poi = POINTS_OF_INTEREST[i]!;
+    for (let i = 0; i < this.#pois.length; i += 1) {
+      const poi = this.#pois[i]!;
       const [sx, sy] = toScreen(poi.x, poi.z);
       if (sx < -20 || sy < -20 || sx > size + 20 || sy > size + 20) continue;
       const isTarget = i === this.#targetIndex;
@@ -304,7 +314,7 @@ export class Minimap {
     // current target — driving through a district on the way somewhere else is
     // still having been there). Reaching the target retargets to the next one.
     let retarget = false;
-    for (const poi of POINTS_OF_INTEREST) {
+    for (const poi of this.#pois) {
       if (this.#visited.has(poi.id)) continue;
       if (Math.hypot(poi.x - pose.x, poi.z - pose.z) < poi.radiusMeters) {
         this.#visited.add(poi.id);
