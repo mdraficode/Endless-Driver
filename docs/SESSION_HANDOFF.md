@@ -3387,11 +3387,13 @@ incremental commits on top of a5aada3; suite grew 847/109 → **872/113** green.
   frame so the spray fades with the rain.
 
 ### Open Phase 7 items (all owner-gated or constraint-blocked)
+
 - Dust storm (needs a fog-free visibility approach), night-rain light pooling, GI go/no-go,
   per-tier budget measurement on-device. Visual verification of all three commits is the
   owner's gate — headless sandbox has no WebGL.
 
 ### Owner device pass — ask for
+
 1. Launch with no params: is the world visibly in a season (trees/ground/light differ
    per launch; `?seed=424242` twice = same season)?
 2. `?weather=storm` — rain, darker sky, looser grip (diagnostics row: "… · storm · 100% wet");
@@ -3399,3 +3401,57 @@ incremental commits on top of a5aada3; suite grew 847/109 → **872/113** green.
    `'clear'` — does the weather transition smoothly without the car jumping?
 3. `?season=winter` vs `?season=autumn` — bare brown-grey vs maple; winter ground NOT white.
 4. Tire spray when driving >20 km/h in rain; tier C FPS with full storm.
+
+## Generated-world tail items (2026-11-07)
+
+Owner-approved follow-up to the Phase 7 sequence: the two generated-world gaps the owner
+flagged — every launch had the volcano at the same place, and non-home cities had no
+night lighting of their own.
+
+### Per-seed volcano position
+
+`volcanoForWorld(worldSeed, generatorVersion)` in `src/world/world-plan.ts` (pure, `hash2`
+family, stream `(worldSeed ^ (generatorVersion * 0x9e3779b1)) | 0`): angle = hash(1,7)·2π,
+cone radius 1000–1300 m, apex distance = world edge (1600 m base) + radius + 0–3400 m,
+height 260–340 m. The plan carries the volcano; the terrain sampler spreads it into
+`terrainConfig` (main thread **and** the chunk worker — `TerrainWorld` passes the sampler
+config, so both sides build the same mountain), the minimap gets a `poiOverrides` marker,
+and `main.ts` adds a `volcano-view` studio view (0.8×radius toward the origin). Seed
+20261104 anchor: (−4082, −4329), height 338, radius 1153 — verified deterministic across
+separate processes. 4 new tests in `tests/unit/world-plan.test.ts` (determinism + carry,
+24-seed envelope, `heightAt` integration, old fixed anchor stays inside the envelope).
+
+### Massing flares for non-home cities
+
+`src/world/urban-massing.ts`: `CITY_FLARES` per tier (A 8 / B 5 / C 3) — one tracked
+`SpriteNodeMaterial` per streamed city (shared night gain with the Aohara lights,
+`STREET_LAMP_COLOR`, starburst texture tiered by `URBAN_NIGHT_TIER_BUDGET`), sprites at
+the ordered street-lamp heads (scale 3.1, names `massing-flare-<regionId>-N`), stat
+`massingCityFlares`. Built in the city-streamer constructor path so flares appear with
+their city (no pop-in hitch). `src/world/urban-night.ts` exports `createFlareMaterial`.
+3 new assertions in `tests/unit/city-streamer.test.ts` (flare cap per tier, sprite
+count, tier-A range).
+
+### Traffic corner-cut fix (root cause of the phase10-5 regression)
+
+The per-seed volcano moved the mountain-pass cell for seed 20261104
+((0,−1) → (−1,−1)), which changed the first-found urban region the phase10-5 fixture
+picks. On the new region, one city bus left the pavement: `sampleChain` in
+`src/world/traffic-routes.ts` sampled each street chain at `step = spacing/10` metres and
+jumped straight from one chain's last sample to the next chain's first sample — a chord
+across the intersection corner up to 2·step metres (64 m on urban-fringe streets). The
+fix anchors the polyline to every corner node, so turns happen at the junction centre on
+the pavement. `tests/unit/phase10-5-emergent-world.test.ts`: the fixture now selects the
+first urban region with both derived routes **and** bonus boards (deterministic under
+plan changes), and the on-road assertion (`distance ≤ halfWidth + 1.5 m`) now holds for
+every route in the region.
+
+**Gate:** full `npm run check` — Prettier, ESLint, GLSL guard, both TypeScript checks,
+113 test files / 877 tests, asset verification, production build — all green.
+
+### Owner device pass — ask for
+
+1. Launch twice with the same seed: the volcano is at the same spot both times; a
+   different seed puts it somewhere else (the minimap marks it).
+2. Night, drive from Aohara into a neighbouring district: the massing city glows with
+   its own street-lamp flares (tier C shows 3, not 0), no pop when the city streams in.
