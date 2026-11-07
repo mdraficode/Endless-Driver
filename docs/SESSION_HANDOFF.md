@@ -3354,3 +3354,48 @@ shown in the pause menu and diagnostics. The hand-placed Hinode/Aohara world is 
 3. Tier C FPS.
 4. Does the distant city materialise as you drive toward it (and free memory as you leave)?
 5. A `?seed=` reload giving the identical world.
+
+## Phase 7 completion — Season & Rain (shipped 2026-11-07, 3 commits, CI ✓✓✓, Pages live)
+
+Owner-ordered first phase ("Do Season & Rain update first", 2026-11-06). Shipped as three
+incremental commits on top of a5aada3; suite grew 847/109 → **872/113** green.
+
+- **66f2fe3 — the world's season.** `src/environment/seasons.ts` (pure): 4 seasons with
+  presentation (foliage/ground tints, exposure scale, grade tint, sun scale, per-surface
+  grip mods) + `seasonForWorld(seed)` deterministic per world + `?season=` override.
+  One master geometry set: `applySeasonFoliageTint` bakes the palette into the authored
+  vertex colours via the existing `foliageMask` attribute (VegetationWorld constructor
+  param; `setSeasonTint` re-applies at runtime) — **no new shader program**. Daylight
+  carries exposure×season and grade×season; sun/ambient ×season.sunScale (night stays
+  the owner's neutral reference). Surface: `applySeasonSurface` after the weather state
+  (autumn mud soil 0.85, winter damp asphalt 0.96, summer = bit-for-bit baseline).
+  Diagnostics row shows the season. **Standing constraint honored: winter is dormant
+  brown-grey, NO snow/white ground** — a test pins winter tints under white (owner
+  2026-10-19 "non-white and snow-free" overrides spec §6's snow/ice).
+- **1ab95a5 — rain, storm, live transitions.** `src/environment/weather-dynamics.ts`:
+  preset (clear/rain/storm) is a target; fixed-rate ramps ease wetness (physics + road
+  sheen), rainIntensity (particles), overcast (sky haze, sun disc out, exposure −18%,
+  grade −10%) — **no pops, the car is never touched**. `src/environment/rain.ts`:
+  instanced streak volume around the car, tier-scaled A 1600 / B 1000 / C 550, one
+  transparent material prewarmed (probe drop while hidden). `?weather=storm` saturates
+  every surface: matched-speed asphalt reads clear 1.000 > rain 0.813 > storm 0.78.
+  `Application.setWeatherPreset` for runtime switching. Dust deferred: the scene has no
+  fog by owner direction (2026-10-16), so a dust haze needs a different visibility pass.
+- **5e36a76 — tire spray.** Pure gate `resolveTireSprayRate(wetness, forwardSpeed)`:
+  wet > 0.2 and speed > 6 m/s, smooth ramp to 22 puffs/s; new bounded GPU pool
+  (C 18 / B 32 / A 44, WebGL2-disabled like the others); fed by the live wetness each
+  frame so the spray fades with the rain.
+
+### Open Phase 7 items (all owner-gated or constraint-blocked)
+- Dust storm (needs a fog-free visibility approach), night-rain light pooling, GI go/no-go,
+  per-tier budget measurement on-device. Visual verification of all three commits is the
+  owner's gate — headless sandbox has no WebGL.
+
+### Owner device pass — ask for
+1. Launch with no params: is the world visibly in a season (trees/ground/light differ
+   per launch; `?seed=424242` twice = same season)?
+2. `?weather=storm` — rain, darker sky, looser grip (diagnostics row: "… · storm · 100% wet");
+   `?weather=rain` mid-drive via console: `application.setWeatherPreset('storm')` then
+   `'clear'` — does the weather transition smoothly without the car jumping?
+3. `?season=winter` vs `?season=autumn` — bare brown-grey vs maple; winter ground NOT white.
+4. Tire spray when driving >20 km/h in rain; tier C FPS with full storm.
