@@ -16,7 +16,11 @@ import type { TierId } from '../config/tiers';
 import { rotateVec3ByQuat, vec3, type Vec3 } from '../shared/vector';
 import type { VehiclePose, VehicleTelemetry, WheelState } from './types';
 import { GpuParticlePool } from './GpuParticlePool';
-import { resolveAirflowIntensity, resolveTireSmokeStrength } from './vehicle-effects';
+import {
+  resolveAirflowIntensity,
+  resolveTireSprayRate,
+  resolveTireSmokeStrength,
+} from './vehicle-effects';
 
 /**
  * Fixed-capacity GPU vehicle effects. Emitter decisions and spawn payloads are prepared on the CPU;
@@ -31,9 +35,13 @@ export class CarEffects {
   readonly #smoke: GpuParticlePool;
   readonly #sparks: GpuParticlePool;
   readonly #airflow: GpuParticlePool;
+  readonly #spray: GpuParticlePool;
+  /** The live surface wetness from the weather transition (Phase 7 tire spray). */
+  #wetness = 0;
+  #sprayAccumulator = 0;
   #renderer: WebGPURenderer | null = null;
   #configuredBackend: RendererBackendName | null = null;
-  #lastSpawnRequests = { smoke: 0, sparks: 0, airflow: 0 };
+  #lastSpawnRequests = { smoke: 0, sparks: 0, airflow: 0, spray: 0 };
   readonly #rotatedLocal = vec3();
   readonly #randomState = { value: 0x6d2b79f5 };
   readonly #wheelLayout = VEHICLE_CONFIG.wheels;
@@ -74,7 +82,21 @@ export class CarEffects {
       1,
       7,
     );
-    this.root.add(this.#airflow.mesh, this.#smoke.mesh, this.#sparks.mesh);
+    // The wet-road spray shares the soft smoke texture: small, fast, short-lived droplets.
+    this.#spray = new GpuParticlePool(
+      'tire-spray',
+      capacity.spray,
+      this.#smokeTexture,
+      NormalBlending,
+      1,
+      9,
+    );
+    this.root.add(this.#airflow.mesh, this.#smoke.mesh, this.#sparks.mesh, this.#spray.mesh);
+  }
+
+  /** The weather transition drives this each frame; the spray emitter reads it. */
+  setSurfaceWetness(wetness: number): void {
+    this.#wetness = Math.min(1, Math.max(0, wetness));
   }
 
   get simulationMode(): 'pending' | 'webgpu-compute' | 'webgl2-disabled' {
@@ -96,6 +118,7 @@ export class CarEffects {
     this.#smoke.setComputeEnabled(enabled);
     this.#sparks.setComputeEnabled(enabled);
     this.#airflow.setComputeEnabled(enabled);
+    this.#spray.setComputeEnabled(enabled);
     this.reset();
   }
 
@@ -111,7 +134,7 @@ export class CarEffects {
     }
     const renderer = this.#renderer;
     if (renderer === null) {
-      this.#lastSpawnRequests = { smoke: 0, sparks: 0, airflow: 0 };
+      this.#lastSpawnRequests = { smoke: 0, sparks: 0, airflow: 0, spray: 0 };
       return;
     }
 
@@ -119,10 +142,12 @@ export class CarEffects {
     this.#smoke.beginFrame();
     this.#sparks.beginFrame();
     this.#airflow.beginFrame();
+    this.#spray.beginFrame();
 
     if (dt > 0) {
       this.#updateExhaust(dt, pose, telemetry, linearVelocity);
       this.#updateTireSmoke(dt, pose, telemetry, wheels, linearVelocity);
+      this.#updateTireSpray(dt, pose, telemetry, wheels, linearVelocity);
       this.#updateShiftSparks(pose, telemetry, linearVelocity);
       this.#updateAirflow(dt, pose, telemetry, linearVelocity);
     }
@@ -144,18 +169,26 @@ export class CarEffects {
       0.12,
     );
     this.#airflow.prepareCompute(dt, 0, 0);
+    this.#spray.prepareCompute(
+      dt,
+      -VEHICLE_EFFECTS_CONFIG.tireSpray.gravityMetersPerSecondSquared,
+      VEHICLE_EFFECTS_CONFIG.tireSpray.dragPerSecond,
+    );
     renderer.compute([
       this.#smoke.computeNode,
       this.#sparks.computeNode,
       this.#airflow.computeNode,
+      this.#spray.computeNode,
     ]);
     this.#smoke.finishCompute();
     this.#sparks.finishCompute();
     this.#airflow.finishCompute();
+    this.#spray.finishCompute();
     this.#lastSpawnRequests = {
       smoke: this.#smoke.spawnRequests,
       sparks: this.#sparks.spawnRequests,
       airflow: this.#airflow.spawnRequests,
+      spray: this.#spray.spawnRequests,
     };
   }
 
@@ -200,13 +233,15 @@ export class CarEffects {
     this.#smoke.reset();
     this.#sparks.reset();
     this.#airflow.reset();
+    this.#spray.reset();
     this.#exhaustAccumulator = 0;
     this.#airflowAccumulator = 0;
+    this.#sprayAccumulator = 0;
     this.#tireAccumulators.fill(0);
     this.#exhaustOutlet = 0;
     this.#lastGear = 1;
     this.#randomState.value = 0x6d2b79f5;
-    this.#lastSpawnRequests = { smoke: 0, sparks: 0, airflow: 0 };
+    this.#lastSpawnRequests = { smoke: 0, sparks: 0, airflow: 0, spray: 0 };
   }
 
   dispose(): void {
@@ -217,6 +252,7 @@ export class CarEffects {
     this.#smoke.dispose();
     this.#sparks.dispose();
     this.#airflow.dispose();
+    this.#spray.dispose();
     this.#smokeTexture.dispose();
     this.#streakTexture.dispose();
     this.root.clear();
@@ -266,6 +302,85 @@ export class CarEffects {
         this.#emitTirePuff(pose, velocity, local, strength);
       }
     }
+  }
+
+  #updateTireSpray(
+    dt: number,
+    pose: VehiclePose,
+    telemetry: VehicleTelemetry,
+    wheels: readonly WheelState[],
+    velocity: Vec3,
+  ): void {
+    const rate = resolveTireSprayRate(this.#wetness, telemetry.forwardSpeed);
+    if (rate <= 0) {
+      this.#sprayAccumulator = 0;
+      return;
+    }
+    const inContact: number[] = [];
+    for (let index = 0; index < 4; index += 1) {
+      if (wheels[index]?.inContact === true) {
+        inContact.push(index);
+      }
+    }
+    if (inContact.length === 0) {
+      this.#sprayAccumulator = 0;
+      return;
+    }
+    this.#sprayAccumulator += rate * dt;
+    while (this.#sprayAccumulator >= 1 && inContact.length > 0) {
+      this.#sprayAccumulator -= 1;
+      const wheel = wheels[inContact[Math.floor(this.#random() * inContact.length)]!];
+      if (wheel === undefined) {
+        continue;
+      }
+      const { halfTrack, frontZ, rearZ, anchorY, radius } = this.#wheelLayout;
+      this.#emitTireSpray(
+        pose,
+        velocity,
+        {
+          x: wheel.side * halfTrack,
+          y: anchorY - wheel.suspensionLength - radius,
+          z: wheel.isFront ? frontZ : rearZ,
+        },
+        wheel.side,
+      );
+    }
+  }
+
+  #emitTireSpray(pose: VehiclePose, velocity: Vec3, localPosition: Vec3, side: number): void {
+    const config = VEHICLE_EFFECTS_CONFIG.tireSpray;
+    const position = this.#localToSimulation(
+      {
+        x: localPosition.x + this.#randomSigned() * 0.1,
+        y: localPosition.y + 0.05,
+        z: localPosition.z + this.#randomSigned() * 0.12,
+      },
+      pose,
+    );
+    // The droplets inherit the car's speed and are thrown out, back and slightly up.
+    const relative = this.#rotateLocal(
+      {
+        x: side * config.lateralThrow * (0.4 + this.#random() * 0.6),
+        y: config.upwardThrow * this.#random(),
+        z: config.rearwardThrow + this.#random() * 0.7,
+      },
+      pose,
+    );
+    const startSize = this.#range(config.startSizeMeters.min, config.startSizeMeters.max);
+    const endSize = this.#range(config.endSizeMeters.min, config.endSizeMeters.max);
+    this.#spray.spawn({
+      position,
+      velocity: add(velocity, relative),
+      lifetime: this.#range(config.lifetimeSeconds.min, config.lifetimeSeconds.max),
+      startSizeX: startSize,
+      endSizeX: endSize,
+      startSizeY: startSize * 0.8,
+      endSizeY: endSize * 0.9,
+      opacity: config.opacity,
+      color: config.color,
+      roll: this.#randomSigned() * Math.PI,
+      fadeInSeconds: 0.03,
+    });
   }
 
   #updateShiftSparks(pose: VehiclePose, telemetry: VehicleTelemetry, velocity: Vec3): void {

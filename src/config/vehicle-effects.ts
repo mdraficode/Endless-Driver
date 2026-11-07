@@ -6,10 +6,10 @@ import type { TierId } from './tiers';
  */
 export const VEHICLE_EFFECTS_CONFIG = {
   particleCapacityByTier: {
-    C: { smoke: 32, sparks: 6, airflow: 4 },
-    B: { smoke: 64, sparks: 10, airflow: 10 },
-    A: { smoke: 88, sparks: 14, airflow: 16 },
-  } satisfies Record<TierId, { smoke: number; sparks: number; airflow: number }>,
+    C: { smoke: 32, sparks: 6, airflow: 4, spray: 18 },
+    B: { smoke: 64, sparks: 10, airflow: 10, spray: 32 },
+    A: { smoke: 88, sparks: 14, airflow: 16, spray: 44 },
+  } satisfies Record<TierId, { smoke: number; sparks: number; airflow: number; spray: number }>,
   exhaust: {
     /** Car-local exhaust outlet positions; +Z is the rear of the vehicle. */
     outlets: [
@@ -48,6 +48,23 @@ export const VEHICLE_EFFECTS_CONFIG = {
     localSpeedMetersPerSecond: { rear: { min: 2.4, max: 5 }, lateral: 1.1, vertical: 1.4 },
     gravityMetersPerSecondSquared: 4.5,
     opacity: 0.98,
+  },
+  tireSpray: {
+    /** Spray only when the surface is at least this wet (the live weather wetness). */
+    minimumWetness: 0.2,
+    minimumSpeedMps: 6,
+    fullSpeedMps: 30,
+    puffsPerSecondAtFullSpeed: 22,
+    lifetimeSeconds: { min: 0.35, max: 0.7 },
+    startSizeMeters: { min: 0.05, max: 0.09 },
+    endSizeMeters: { min: 0.16, max: 0.3 },
+    opacity: 0.3,
+    lateralThrow: 1.15,
+    rearwardThrow: 0.4,
+    upwardThrow: 0.8,
+    gravityMetersPerSecondSquared: 9.8,
+    dragPerSecond: 2.4,
+    color: 0xb8cdd8,
   },
   airflow: {
     startSpeedKph: 90,

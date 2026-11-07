@@ -45,6 +45,25 @@ export function resolveHighSpeedMotionBlurIntensity(
 }
 
 /**
+ * Puffs per second of the wet-road tire spray (Phase 7): zero until the surface is
+ * genuinely wet and the car is moving, then a smooth product of the wetness above the
+ * gate and the speed between the start and full gates. Reversing sprays nothing —
+ * the car must be moving forward.
+ */
+export function resolveTireSprayRate(wetness: number, forwardSpeedMps: number): number {
+  const config = VEHICLE_EFFECTS_CONFIG.tireSpray;
+  if (!Number.isFinite(wetness) || !Number.isFinite(forwardSpeedMps)) {
+    return 0;
+  }
+  if (wetness <= config.minimumWetness || forwardSpeedMps <= config.minimumSpeedMps) {
+    return 0;
+  }
+  const wetFactor = (wetness - config.minimumWetness) / (1 - config.minimumWetness);
+  const speedFactor = smoothStep(config.minimumSpeedMps, config.fullSpeedMps, forwardSpeedMps);
+  return config.puffsPerSecondAtFullSpeed * clamp(wetFactor, 0, 1) * speedFactor;
+}
+
+/**
  * 0..1 visual-only tire smoke response. A wheel must be loaded and moving; it smokes when the
  * tire is near its friction limit, the slip angle is large, or a rear handbrake is being held.
  */

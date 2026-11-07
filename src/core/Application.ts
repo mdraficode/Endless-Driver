@@ -1553,6 +1553,7 @@ export class Application {
     this.#daylightController.setOvercast(weather.overcast);
     this.#daylight = this.#daylightController.update(delta, this.#scene, this.#engine);
     this.#scene.setWeather(weather);
+    this.#carEffects.setSurfaceWetness(weather.wetness);
     this.#rainField.setIntensity(weather.rainIntensity);
     this.#rainField.update(delta, this.#car.position.x, this.#car.position.y, this.#car.position.z);
     this.#carVisual.setHeadlightsEnabled(this.#daylight.isNight);
@@ -1664,6 +1665,7 @@ export class Application {
     this.#daylightController.setOvercast(settleWeather.overcast);
     this.#daylight = this.#daylightController.update(0, this.#scene, this.#engine);
     this.#scene.setWeather(settleWeather);
+    this.#carEffects.setSurfaceWetness(settleWeather.wetness);
     this.#rainField.setIntensity(settleWeather.rainIntensity);
     this.#carVisual.setHeadlightsEnabled(this.#daylight.isNight);
   }

@@ -112,8 +112,8 @@ describe('GPU-compute vehicle effects', () => {
     });
     expect(effects.lastSpawnRequests.sparks).toBe(VEHICLE_EFFECTS_CONFIG.shiftSparks.countByTier.C);
     expect(calls.length).toBe(16);
-    expect(calls.every((batch) => batch.length === 3)).toBe(true);
-    expect(calls.at(-1)).toHaveLength(3);
+    expect(calls.every((batch) => batch.length === 4)).toBe(true);
+    expect(calls.at(-1)).toHaveLength(4);
     expect(calls.at(-1)?.every((node) => (node as { isComputeNode?: boolean }).isComputeNode)).toBe(
       true,
     );
@@ -123,10 +123,11 @@ describe('GPU-compute vehicle effects', () => {
     expect((effects.root.children[0] as { count: number }).count).toBe(budget.airflow);
     expect((effects.root.children[1] as { count: number }).count).toBe(budget.smoke);
     expect((effects.root.children[2] as { count: number }).count).toBe(budget.sparks);
+    expect((effects.root.children[3] as { count: number }).count).toBe(budget.spray);
 
     effects.shiftBy(256, -512);
     effects.reset();
-    expect(effects.lastSpawnRequests).toEqual({ smoke: 0, sparks: 0, airflow: 0 });
+    expect(effects.lastSpawnRequests).toEqual({ smoke: 0, sparks: 0, airflow: 0, spray: 0 });
     effects.dispose();
     expect(effects.root.children).toHaveLength(0);
   });
@@ -142,7 +143,7 @@ describe('GPU-compute vehicle effects', () => {
       effects.update(0.1, pose, telemetry, wheels, { x: 0, y: 0, z: -20 });
     }
     expect(calls).toHaveLength(0);
-    expect(effects.lastSpawnRequests).toEqual({ smoke: 0, sparks: 0, airflow: 0 });
+    expect(effects.lastSpawnRequests).toEqual({ smoke: 0, sparks: 0, airflow: 0, spray: 0 });
     effects.dispose();
   });
 });
