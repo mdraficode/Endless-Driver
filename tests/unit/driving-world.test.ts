@@ -125,6 +125,9 @@ describe('Aohara driving-world integration', () => {
 });
 
 describe('generated driving world (Phase 10 pass 3)', () => {
+  // A full tier-C driving world is built here; on CI runners under parallel load that
+  // takes longer than the 5 s default (it crossed 5 s twice), so this test carries its own
+  // budget. A genuine hang still fails.
   it('has no hand-placed mountain shells: the endless world has real high ground', () => {
     // The retired fixture's ridgelines sit at fixed world positions inside the generated
     // city field. They carry no collision and are DoubleSide shells, so a car that reaches
@@ -157,5 +160,5 @@ describe('generated driving world (Phase 10 pass 3)', () => {
     // The real generated world still carries its own high ground: the volcano and the
     // sampled terrain, not the shells.
     expect(terrainSampler.config.volcano).toBeDefined();
-  });
+  }, 20000);
 });
