@@ -71,6 +71,13 @@ import {
   type WeatherPreset,
 } from '../environment/SurfaceState';
 import {
+  applySeasonSurface,
+  resolveSeasonPresentation,
+  seasonForWorld,
+  type SeasonId,
+  type SeasonPresentation,
+} from '../environment/seasons';
+import {
   EnvironmentClock,
   type DaylightState,
   type EnvironmentClockOptions,
@@ -152,6 +159,12 @@ export interface ApplicationOptions {
   readonly trafficIntensity?: TrafficIntensity;
   /** Deterministic preset (`?weather=clear|rain`) drives tire response and the bounded Aohara road sheen. */
   readonly weather?: WeatherPreset;
+  /**
+   * The world's season (Phase 7): `?season=` overrides it for look-dev; absent, it is a
+   * deterministic function of the world seed, so every launch is a new prefecture in a
+   * new season and a re-launched seed reads in the same one.
+   */
+  readonly season?: SeasonId;
   /** Optional camera selected on startup. */
   readonly cameraMode?: CameraMode;
   /** Applied to normalized steering input after smoothing. */
@@ -352,6 +365,8 @@ export class Application {
   readonly #worldSeed: number;
   /** Phase 10.2: this world's hideouts (garage/warehouse/junkyard placements). */
   readonly #hideouts: readonly HideoutSpec[];
+  /** Phase 7: this world's season (presentation + surface response). */
+  #season: SeasonPresentation;
 
   constructor(options: ApplicationOptions) {
     this.#tier = options.tier ?? { id: DEFAULT_TIER, reason: 'unresolved' };
@@ -366,6 +381,8 @@ export class Application {
     // Phase 10: the generated world. One seed drives terrain, the road graph, the home
     // city's anchor, the districts and the vast city beyond; every launch is a new prefecture.
     const worldSeed = (options.worldSeed ?? (Math.random() * 0x7fffffff) | 0) | 0;
+    // Phase 7: one season per world, deterministic in the seed (dev override wins).
+    this.#season = resolveSeasonPresentation(options.season ?? seasonForWorld(worldSeed));
     const plan = createWorldPlan(worldSeed);
     const anchor = homeCityAnchor(plan);
     const roadLayout = buildRoadLayout(plan);
@@ -421,6 +438,7 @@ export class Application {
       renderer: this.#engine.renderer,
       qualityTier: this.#tier.id,
       surfaceState: this.#surfaceState,
+      season: this.#season,
       ...(options.trafficIntensity !== undefined
         ? { trafficIntensity: options.trafficIntensity }
         : {}),
@@ -439,7 +457,12 @@ export class Application {
       surfaceProvider: (x, z) => {
         const surface = this.#physics.surfaceAt(x, z);
         if (surface === null) return null;
-        const state = applySurfaceState(surface, this.#surfaceState);
+        // Season after weather: the season is the world's baseline response (autumn mud,
+        // winter damp), rain then acts on top of it.
+        const state = applySeasonSurface(
+          applySurfaceState(surface, this.#surfaceState),
+          this.#season,
+        );
         // The world's drift zones soften grip (Phase 10.5): world-space query, physics-space input.
         const zoneGrip = this.#scene.zoneGripModifier(
           x + this.#origin.offset.x,
@@ -508,7 +531,7 @@ export class Application {
     if (options.nightMood === true) {
       applyNightMoodToClock(this.#clock, true);
     }
-    this.#daylightController = new DaylightController(this.#clock);
+    this.#daylightController = new DaylightController(this.#clock, this.#season);
 
     this.#scene.setVegetationStateProvider((key) => this.#treeField.getVisualState(key));
 
@@ -1272,6 +1295,7 @@ export class Application {
             : this.#chaseCamera.view.label,
       cameraFov: activeCamera.fov,
       weather: this.#surfaceState.weather,
+      season: this.#season.id,
       wetness: this.#surfaceState.wetness,
       averageSurfaceGripModifier: telemetry.averageSurfaceGripModifier,
       averageSurfaceRollingResistance: telemetry.averageSurfaceRollingResistance,

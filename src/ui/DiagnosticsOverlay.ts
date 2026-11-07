@@ -201,6 +201,8 @@ export interface DiagnosticsSnapshot {
   readonly cameraOrbit: { readonly yawDegrees: number; readonly pitchDegrees: number };
   readonly cameraFov: number;
   readonly weather: WeatherPreset;
+  /** The world's season (Phase 7), so the report says which Hinode season is on. */
+  readonly season: string;
   /** Normalized wetness of the active weather preset (0 = dry, 1 = saturated). */
   readonly wetness: number;
   /** Mean effective grip multiplier across wheels currently contacting the ground. */
@@ -294,8 +296,8 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
     label: 'Weather',
     format: (snapshot) =>
       snapshot.wetness === 0
-        ? `${snapshot.weather} · dry`
-        : `${snapshot.weather} · ${(snapshot.wetness * 100).toFixed(0)}% wet`,
+        ? `${snapshot.season} · ${snapshot.weather} · dry`
+        : `${snapshot.season} · ${snapshot.weather} · ${(snapshot.wetness * 100).toFixed(0)}% wet`,
   },
   {
     label: 'Surface',

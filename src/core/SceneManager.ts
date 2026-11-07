@@ -60,6 +60,8 @@ export interface SceneManagerOptions {
   readonly qualityTier?: string;
   /** Current surface condition, forwarded to world content for coordinated visuals. */
   readonly surfaceState?: SurfaceState;
+  /** The world's season (Phase 7): light scaling here, content tints via the context. */
+  readonly season?: import('../environment/seasons').SeasonPresentation;
   /** Player-selected traffic amount, forwarded to the Aohara driving activity. */
   readonly trafficIntensity?: import('../config/game-preferences').TrafficIntensity;
   /**
@@ -145,6 +147,7 @@ export class SceneManager {
   readonly #disposables: readonly (() => void)[];
   #environment: EnvironmentAsset | null = null;
   #daylight: DaylightState | null = null;
+  #season: import('../environment/seasons').SeasonPresentation | null = null;
   readonly #sunDistance: number;
   #environmentTexture: Texture | null = null;
   #disposed = false;
@@ -228,12 +231,14 @@ export class SceneManager {
       ...(options.renderer !== undefined ? { renderer: options.renderer } : {}),
       ...(options.qualityTier !== undefined ? { qualityTier: options.qualityTier } : {}),
       ...(options.surfaceState !== undefined ? { surfaceState: options.surfaceState } : {}),
+      ...(options.season !== undefined ? { season: options.season } : {}),
       ...(options.trafficIntensity !== undefined
         ? { trafficIntensity: options.trafficIntensity }
         : {}),
       ...(options.worldPlan !== undefined ? { worldPlan: options.worldPlan } : {}),
       ...(options.hideouts !== undefined ? { hideouts: options.hideouts } : {}),
     });
+    this.#season = options.season ?? null;
     this.scene.userData['wetRoadSurface'] = this.#content.wetRoadSurface ?? false;
 
     this.scene.add(this.#sky, this.#moon, ambient, this.#sun, this.#sun.target, this.#content.root);
@@ -457,6 +462,9 @@ export class SceneManager {
       state.sunDirection.y,
       state.sunDirection.z,
     );
+    // The world's season rides on the sun: a cold, low winter sun, a hot summer one.
+    // Night (moonlight) is season-neutral so the night mood stays the owner's reference.
+    const sunScale = state.isNight ? 1 : (this.#season?.sunScale ?? 1);
     if (state.isNight) {
       const moonDirection = resolveMoonDirection(state.sunDirection);
       this.#moonDirection.set(moonDirection.x, moonDirection.y, moonDirection.z);
@@ -469,14 +477,13 @@ export class SceneManager {
       this.#sun.color.setHex(state.sunColorHex);
       // Daylight phase values multiply the tier's authored baseline; the moon reuses this same
       // shadow-casting directional light at a deliberately restrained fraction of that baseline.
-      this.#sun.intensity = scaleBaseline(this.#config.lighting.sunIntensity, state.sunIntensity);
+      this.#sun.intensity =
+        scaleBaseline(this.#config.lighting.sunIntensity, state.sunIntensity) * sunScale;
       this.#moon.visible = false;
     }
     this.#ambient.color.setHex(state.ambientColorHex);
-    this.#ambient.intensity = scaleBaseline(
-      this.#config.lighting.ambientIntensity,
-      state.ambientIntensity,
-    );
+    this.#ambient.intensity =
+      scaleBaseline(this.#config.lighting.ambientIntensity, state.ambientIntensity) * sunScale;
 
     // The sky model reads the vertical component as a distance, so the unit direction is scaled.
     const sunDistance = this.#config.atmosphere.sunDistance;

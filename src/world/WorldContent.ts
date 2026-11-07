@@ -155,6 +155,8 @@ export interface SceneContentContext {
   readonly qualityTier?: string;
   /** Current shared surface condition, forwarded to visuals without deriving physics from pixels. */
   readonly surfaceState?: SurfaceState;
+  /** The world's season (Phase 7), forwarded to content that re-parameterises its look. */
+  readonly season?: import('../environment/seasons').SeasonPresentation;
   /** Player-selected Aohara traffic amount; the activity system preserves tier-specific safety caps. */
   readonly trafficIntensity?: import('../config/game-preferences').TrafficIntensity;
 }

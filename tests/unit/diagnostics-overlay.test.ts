@@ -128,6 +128,7 @@ const SNAPSHOT = {
   steerAngleDegrees: 5,
   contactCount: 4,
   weather: 'clear',
+  season: 'summer',
   wetness: 0,
   averageSurfaceGripModifier: 1,
   averageSurfaceRollingResistance: 0.015,
@@ -200,7 +201,7 @@ describe('full-screen diagnostics report', () => {
     expect(report.get('Tier')).toBe('C · mobile · 1x shadow');
     expect(report.get('Renderer')).toBe('webgl2 · fxaa');
     expect(report.get('Resolution')).toBe('fxaa @ 90%');
-    expect(report.get('Weather')).toBe('clear · dry');
+    expect(report.get('Weather')).toBe('summer · clear · dry');
     expect(report.get('Surface')).toBe('grip 1.00× · RR 0.0150');
     expect(report.get('Graphics')).toBe('ok');
     expect(report.get('Frame errors')).toBe('none');
@@ -219,7 +220,7 @@ describe('full-screen diagnostics report', () => {
         metric.children[1]?.textContent,
       ]),
     );
-    expect(rainReport.get('Weather')).toBe('rain · 85% wet');
+    expect(rainReport.get('Weather')).toBe('summer · rain · 85% wet');
     expect(rainReport.get('Surface')).toBe('grip 0.81× · RR 0.0184');
 
     // A frame-handler exception is surfaced on its own row so a returning device report

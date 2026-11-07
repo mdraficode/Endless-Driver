@@ -30,6 +30,7 @@ import {
 } from '../config/ground-cover';
 import { VEGETATION_CHUNK_GENERATION_BUDGET_PER_FRAME } from '../config/vegetation-streaming';
 import type { TierId } from '../config/tiers';
+import type { SeasonRgb } from '../environment/seasons';
 import type { DaylightState } from '../environment/EnvironmentClock';
 import {
   createFoliageEmissiveNode,
@@ -131,6 +132,28 @@ const LEAF_TINTS: readonly (readonly [number, number, number])[] = [
   [0x356b42, 0x568a41, 0xf0bcd0],
   [0x274e31, 0x44702f, 0xdf93b2],
 ];
+
+/**
+ * Bakes a season's albedo into a geometry's existing vertex colours, following the
+ * foliage mask (trunks, cut wood and stones keep their base colours). One master
+ * geometry set, the season as a parameter — the Phase 7 "winteriser" requirement
+ * without a second authored palette.
+ */
+export function applySeasonFoliageTint(geometry: BufferGeometry, tint: SeasonRgb): void {
+  const color = geometry.getAttribute('color');
+  const mask = geometry.getAttribute('foliageMask');
+  if (color === undefined || mask === undefined) return;
+  for (let index = 0; index < color.count; index += 1) {
+    if (mask.getX(index) <= 0) continue;
+    color.setXYZ(
+      index,
+      color.getX(index) * tint.r,
+      color.getY(index) * tint.g,
+      color.getZ(index) * tint.b,
+    );
+  }
+  color.needsUpdate = true;
+}
 
 export function buildSpeciesGeometry(species: VegetationSpecies, variant: number): BufferGeometry {
   const tint = LEAF_TINTS[variant % LEAF_TINTS.length]!;
@@ -384,16 +407,27 @@ export class VegetationWorld {
   readonly #scannedCounts = new Map<InstancedMesh, number>();
   #scannedStump: ScannedPool[] | null = null;
 
+  /**
+   * The world's season tints (Phase 7): baked into the authored vertex colours at
+   * construction, so a whole forest reads in its season with no extra material or
+   * program. Absent means the master palette as authored (summer-baseline look).
+   */
+  #seasonTint: { readonly foliage: SeasonRgb; readonly ground: SeasonRgb } | null = null;
+  /** Untinted base colours per geometry, for the dev-HUD season re-apply. */
+  #baseColours = new Map<BufferGeometry, Float32Array>();
+
   constructor(
     sampler: TerrainSampler,
     config: VegetationConfig = VEGETATION_CONFIG,
     detailScale = 1,
     tier: TierId = 'A',
+    seasonTint?: { readonly foliage: SeasonRgb; readonly ground: SeasonRgb },
   ) {
     this.#sampler = sampler;
     this.#config = config;
     this.#detail = Math.min(1, Math.max(0.4, detailScale));
     this.#tier = tier;
+    this.#seasonTint = seasonTint ?? null;
     this.root.name = 'VegetationWorld';
 
     const material = new MeshStandardNodeMaterial();
@@ -414,6 +448,7 @@ export class VegetationWorld {
       const variants = vegetationVariantCount(species);
       for (let variant = 0; variant < variants; variant += 1) {
         const geometry = buildSpeciesGeometry(species, variant);
+        this.#tintSeason(geometry, this.#seasonTint?.foliage);
         const mesh = new InstancedMesh(
           geometry,
           material,
@@ -451,8 +486,10 @@ export class VegetationWorld {
     groundCoverMaterial.side = DoubleSide;
     groundCoverMaterial.name = 'ground-cover-district-understory-wind-backlight';
     for (const style of GROUND_COVER_STYLES) {
+      const coverGeometry = buildGroundCoverGeometry(style);
+      this.#tintSeason(coverGeometry, this.#seasonTint?.ground);
       const mesh = new InstancedMesh(
-        buildGroundCoverGeometry(style),
+        coverGeometry,
         groundCoverMaterial,
         GROUND_COVER_CONFIG.styleInstanceBudgetByTier[tier][style],
       );
@@ -474,7 +511,9 @@ export class VegetationWorld {
       }
       const variants = vegetationVariantCount(species);
       for (let variant = 0; variant < variants; variant += 1) {
-        const mesh = new InstancedMesh(buildCrownGeometry(species, variant), material, 40);
+        const crownGeometry = buildCrownGeometry(species, variant);
+        this.#tintSeason(crownGeometry, this.#seasonTint?.foliage);
+        const mesh = new InstancedMesh(crownGeometry, material, 40);
         mesh.castShadow = true;
         mesh.frustumCulled = false;
         mesh.count = 0;
@@ -492,13 +531,54 @@ export class VegetationWorld {
     this.root.add(stump);
     this.#stumpMesh = stump;
     for (const kind of ['wood', 'leaf', 'blossom'] as const) {
-      const mesh = new InstancedMesh(buildShardGeometry(kind), material, 260);
+      const shardGeometry = buildShardGeometry(kind);
+      this.#tintSeason(shardGeometry, this.#seasonTint?.foliage);
+      const mesh = new InstancedMesh(shardGeometry, material, 260);
       mesh.castShadow = true;
       mesh.frustumCulled = false;
       mesh.count = 0;
       mesh.name = `vegetation-shards-${kind}`;
       this.root.add(mesh);
       this.#shardMeshes.set(kind, mesh);
+    }
+  }
+
+  /**
+   * Bakes `tint` (or clears it back to the authored palette) into `geometry`'s vertex
+   * colours via the foliage mask, remembering the base colours so the dev-HUD season
+   * switch can re-apply a different season to the same world at runtime.
+   */
+  #tintSeason(geometry: BufferGeometry, tint: SeasonRgb | undefined): void {
+    const color = geometry.getAttribute('color');
+    if (color === undefined) return;
+    if (this.#baseColours.has(geometry)) {
+      const base = this.#baseColours.get(geometry)!;
+      color.array.set(base);
+    } else {
+      this.#baseColours.set(geometry, new Float32Array(color.array as Float32Array));
+    }
+    if (tint === undefined) return;
+    applySeasonFoliageTint(geometry, tint);
+  }
+
+  /**
+   * Re-applies a different season to the live geometries (dev-HUD `?season=` switch):
+   * the base vertex colours are restored, then the new tint is baked. Scanned-model
+   * pools keep their textured look (they adopt over the authored species later).
+   */
+  setSeasonTint(tint: { readonly foliage: SeasonRgb; readonly ground: SeasonRgb } | null): void {
+    this.#seasonTint = tint;
+    for (const { mesh } of this.#meshes) {
+      this.#tintSeason(mesh.geometry as BufferGeometry, tint?.foliage);
+    }
+    for (const { mesh } of this.#groundCoverMeshes) {
+      this.#tintSeason(mesh.geometry as BufferGeometry, tint?.ground);
+    }
+    for (const mesh of this.#crownMeshes.values()) {
+      this.#tintSeason(mesh.geometry as BufferGeometry, tint?.foliage);
+    }
+    for (const mesh of this.#shardMeshes.values()) {
+      this.#tintSeason(mesh.geometry as BufferGeometry, tint?.foliage);
     }
   }
 

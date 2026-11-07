@@ -101,7 +101,21 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
   // The detail scale pulls the scanned LOD rings in on modest devices: the deep
   // jungle canopy is the heaviest thing this world streams.
   const detailScale = qualityTier === 'C' ? 0.6 : qualityTier === 'B' ? 0.85 : 1;
-  const vegetation = new VegetationWorld(terrainSampler, undefined, detailScale, qualityTier);
+  // The world's season bakes into the master vegetation palette (Phase 7): one geometry
+  // set, the season as a parameter. Fixture scenes without a plan keep the authored look.
+  const season = context.season ?? null;
+  const vegetation = new VegetationWorld(
+    terrainSampler,
+    undefined,
+    detailScale,
+    qualityTier,
+    season === null
+      ? undefined
+      : {
+          foliage: season.foliageTint,
+          ground: season.groundTint,
+        },
+  );
   root.add(vegetation.root);
   // Phase 7.2: the wilderness track ribbons — the packed-earth cores of the dirt bands the
   // terrain splats out past the city edge (wilderness-tracks.ts owns the pure routes).

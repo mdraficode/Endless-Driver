@@ -35,6 +35,7 @@ import { PauseMenu } from './ui/PauseMenu';
 import { BoostGauge } from './ui/BoostGauge';
 import { yawFromQuat } from './shared/vector';
 import { readWeatherPreset } from './environment/SurfaceState';
+import { readSeasonRequest } from './environment/seasons';
 import { EnvironmentClock } from './environment/EnvironmentClock';
 
 export interface EndlessDriverDebugHandle {
@@ -381,6 +382,8 @@ async function startDrivingScene(restarting = false): Promise<void> {
 
     const spawnId = readSpawnRequest(window.location.search);
     const worldSeed = readWorldSeed(window.location.search);
+    // Phase 7: `?season=` overrides the world's seeded season for look-dev captures.
+    const seasonRequest = readSeasonRequest(window.location.search);
     const options: ApplicationOptions = {
       canvas,
       rapier,
@@ -412,6 +415,7 @@ async function startDrivingScene(restarting = false): Promise<void> {
       carModel: preferences.carModel,
       trafficIntensity: preferences.trafficIntensity,
       weather: readWeatherPreset(window.location.search),
+      ...(seasonRequest === null ? {} : { season: seasonRequest }),
       cameraMode: preferences.cameraMode,
       steeringSensitivity: preferences.steeringSensitivity,
       onBoostState: (state) => drivingBoostGauge?.update(state),

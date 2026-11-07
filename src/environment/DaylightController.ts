@@ -1,4 +1,5 @@
 import type { EnvironmentClock, DaylightState } from './EnvironmentClock';
+import type { SeasonPresentation } from './seasons';
 
 /**
  * The one place where a resolved time of day becomes light.
@@ -117,10 +118,13 @@ export function resolveGradeTint(
 
 export class DaylightController {
   readonly #clock: EnvironmentClock;
+  /** The world's season: exposure and grade are scaled towards it every frame. */
+  readonly #season: SeasonPresentation | null;
   #state: DaylightState;
 
-  constructor(clock: EnvironmentClock) {
+  constructor(clock: EnvironmentClock, season?: SeasonPresentation) {
     this.#clock = clock;
+    this.#season = season ?? null;
     this.#state = clock.daylight();
   }
 
@@ -150,13 +154,25 @@ export class DaylightController {
     this.#clock.update(deltaSeconds);
     const state = this.resolve();
     scene.applyDaylight(state);
-    engine.setExposure(state.exposure);
+    // The season rides on top of the time-of-day state: its exposure scale multiplies the
+    // resolved exposure, and its grade tint multiplies the day grade (both are
+    // "1 = neutral" multipliers, so a summer world is bit-for-bit the old exposure curve).
+    const exposureScale = this.#season?.exposureScale ?? 1;
     const { gradeStrengthBackdrop, gradeStrengthProcedural } = this.#clock.config;
+    const grade = resolveGradeTint(state, scene.skyMode, {
+      backdrop: gradeStrengthBackdrop,
+      procedural: gradeStrengthProcedural,
+    });
+    const seasonGrade = this.#season?.gradeTint;
+    engine.setExposure(state.exposure * exposureScale);
     engine.setGrade(
-      resolveGradeTint(state, scene.skyMode, {
-        backdrop: gradeStrengthBackdrop,
-        procedural: gradeStrengthProcedural,
-      }),
+      seasonGrade === undefined
+        ? grade
+        : {
+            r: grade.r * seasonGrade.r,
+            g: grade.g * seasonGrade.g,
+            b: grade.b * seasonGrade.b,
+          },
     );
     // The god-ray tint and the contact-shadow light are driven from the same state, here,
     // because this is the one place daylight becomes engine uniforms. The god-ray call was

@@ -9,6 +9,11 @@ import {
   resolveSurfaceState,
   type WeatherPreset,
 } from '../../src/environment/SurfaceState';
+import {
+  applySeasonSurface,
+  resolveSeasonPresentation,
+  type SeasonId,
+} from '../../src/environment/seasons';
 import { PhysicsWorld } from '../../src/physics/PhysicsWorld';
 import { loadRapier, type RapierModule } from '../../src/physics/RapierModule';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
@@ -154,5 +159,103 @@ describe('Phase 7 wet-surface vehicle coupling', () => {
     expect(wet.averageSurfaceRollingResistance).toBeCloseTo(0.0184, 4);
     expect(dry.lateralForce).toBeGreaterThan(0);
     expect(wet.lateralForce).toBeLessThan(dry.lateralForce * 0.95);
+  });
+});
+
+const DRY_SOIL: SurfaceResponse = {
+  id: 'soil',
+  gripModifier: 1,
+  rollingResistance: 0.02,
+};
+
+function seasonCornerResponse(surface: SurfaceResponse, season: SeasonId): CornerResponse {
+  const physics = new PhysicsWorld({ rapier, worldConfig: OPEN_WORLD });
+  const presentation = resolveSeasonPresentation(season);
+  const car = new Car({
+    rapier,
+    physics,
+    spawnPosition: [0, 1, 0],
+    spawnYaw: 0,
+    surfaceProvider: () => applySeasonSurface(surface, presentation),
+  });
+  const response = measureCornerResponse(physics, car);
+  car.dispose();
+  physics.dispose();
+  return response;
+}
+
+function fixedAoharaSeasonCornerResponse(season: SeasonId): CornerResponse {
+  const terrainSampler = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
+  const [x, z] = AOHARA_CALIBRATION_BOOKMARK.position;
+  const physics = new PhysicsWorld({ rapier, worldConfig: OPEN_WORLD });
+  physics.enableTerrain(terrainSampler);
+  physics.syncTerrain({ x, y: 0, z });
+  const presentation = resolveSeasonPresentation(season);
+  const car = new Car({
+    rapier,
+    physics,
+    spawnPosition: [x, terrainSampler.heightAt(x, z) + 0.7, z],
+    spawnYaw: AOHARA_CALIBRATION_BOOKMARK.heading,
+    surfaceProvider: (surfaceX, surfaceZ) => {
+      const surface = physics.surfaceAt(surfaceX, surfaceZ);
+      return surface === null ? null : applySeasonSurface(surface, presentation);
+    },
+  });
+  const response = measureCornerResponse(
+    physics,
+    car,
+    AOHARA_CALIBRATION_BOOKMARK.speedMetersPerSecond,
+    AOHARA_CALIBRATION_BOOKMARK.steer,
+  );
+  car.dispose();
+  physics.dispose();
+  return response;
+}
+
+describe('Phase 7 season-surface vehicle coupling', () => {
+  it('produces measurably less lateral tire force in the same autumn mud corner', () => {
+    const summer = seasonCornerResponse(DRY_SOIL, 'summer');
+    const autumn = seasonCornerResponse(DRY_SOIL, 'autumn');
+
+    expect(summer.speedKph).toBeCloseTo(autumn.speedKph, 1);
+    expect(summer.contactCount).toBe(4);
+    expect(autumn.contactCount).toBe(4);
+    expect(summer.averageSurfaceGripModifier).toBeCloseTo(1, 3);
+    expect(autumn.averageSurfaceGripModifier).toBeCloseTo(0.85, 3);
+    expect(summer.averageSurfaceRollingResistance).toBeCloseTo(0.02, 4);
+    expect(autumn.averageSurfaceRollingResistance).toBeCloseTo(0.025, 4);
+    expect(summer.lateralForce).toBeGreaterThan(0);
+    expect(autumn.lateralForce).toBeLessThan(summer.lateralForce * 0.95);
+  });
+
+  it('keeps the same winter corner gripier than autumn mud but looser than summer asphalt', () => {
+    const summer = seasonCornerResponse(DRY_ASPHALT, 'summer');
+    const winter = seasonCornerResponse(DRY_ASPHALT, 'winter');
+    const autumnSoil = seasonCornerResponse(DRY_SOIL, 'autumn');
+
+    expect(summer.averageSurfaceGripModifier).toBeGreaterThan(
+      winter.averageSurfaceGripModifier ?? 0,
+    );
+    expect(winter.averageSurfaceGripModifier).toBeGreaterThan(0.94);
+    expect(winter.averageSurfaceGripModifier).toBeLessThan(1);
+    // The seasons are physically distinct at matched speed: cold damp asphalt still
+    // grips better than autumn mud, and winter loses more lateral force than summer.
+    expect(winter.lateralForce).toBeLessThan(summer.lateralForce);
+    expect(winter.lateralForce).toBeGreaterThan(autumnSoil.lateralForce);
+  });
+
+  it('calibrates the same fixed Aohara junction distinct across seasons', () => {
+    const summer = fixedAoharaSeasonCornerResponse('summer');
+    const winter = fixedAoharaSeasonCornerResponse('winter');
+
+    expect(summer.wheelSurfaceIds).toEqual(['asphalt', 'asphalt', 'asphalt', 'asphalt']);
+    expect(winter.wheelSurfaceIds).toEqual(['asphalt', 'asphalt', 'asphalt', 'asphalt']);
+    expect(summer.speedKph).toBeCloseTo(winter.speedKph, 1);
+    // Summer is the baseline (1.0); the world's winter damp scales the same asphalt
+    // by 0.96 — the telemetry must show it at the same corner, same speed.
+    expect(summer.averageSurfaceGripModifier).toBeCloseTo(1, 3);
+    expect(winter.averageSurfaceGripModifier).toBeCloseTo(0.96, 3);
+    expect(summer.lateralForce).toBeGreaterThan(0);
+    expect(winter.lateralForce).toBeLessThan(summer.lateralForce * 0.99);
   });
 });
