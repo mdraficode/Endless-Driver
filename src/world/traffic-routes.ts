@@ -122,7 +122,12 @@ function flipEdge(edge: RoadEdge): RoadEdge {
   };
 }
 
-/** Uniformly samples a chain of edges at `step` metres into closed-loop-free points. */
+/**
+ * Uniformly samples a chain of edges at `step` metres into closed-loop-free points. The
+ * polyline is anchored to every corner node: without the anchor, the straight leg from one
+ * chain's last sample to the next chain's first sample would chord across the intersection
+ * corner (up to 2 × step metres), leaving the pavement.
+ */
 function sampleChain(
   chains: readonly EdgeGeometry[],
   step: number,
@@ -144,6 +149,12 @@ function sampleChain(
       const t = Math.max(0, Math.min(1, (s - a.s) / span));
       out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t, s });
       s += step;
+    }
+    // Anchor the corner node so the next chain's first sample connects along its street.
+    const end = chain.points[chain.points.length - 1]!;
+    const last = out[out.length - 1];
+    if (last === undefined || Math.hypot(end.x - last.x, end.z - last.z) > 1e-3) {
+      out.push({ x: end.x, y: end.y, z: end.z, s: total });
     }
     offset = step; // each subsequent chain resumes at its start
   }

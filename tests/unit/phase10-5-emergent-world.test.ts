@@ -15,17 +15,27 @@ const TEST_HEIGHT = (x: number, z: number): number =>
 const buildWorld = () => {
   const plan = createWorldPlan(20261104);
   const network = buildRoadNetwork(buildRoadLayout(plan).config, TEST_HEIGHT);
+  // Pick the first urban region that actually carries routes and event props. The
+  // per-seed volcano (Phase 10 tail) moves the mountain-pass cells around, so which
+  // urban region ends up with a full road loop set varies by seed — the fixtures pick
+  // on content, not on position.
   let region = null;
   for (let iz = -1; iz <= 1 && region === null; iz += 1) {
     for (let ix = -1; ix <= 1 && region === null; ix += 1) {
       if (ix === 0 && iz === 0) continue;
       const candidate = plan.regionAtCell(ix, iz);
-      if (candidate.archetype === 'megacity' || candidate.archetype === 'urban-fringe') {
-        region = candidate;
+      if (candidate.archetype !== 'megacity' && candidate.archetype !== 'urban-fringe') {
+        continue;
       }
+      const routes = deriveRegionRoutes(network, candidate).routes;
+      if (routes.length === 0) continue;
+      const events = computeRegionEvents(candidate, network);
+      if (events.bonusBoards.length === 0) continue;
+      region = candidate;
     }
   }
-  if (region === null) throw new Error('no urban region found in the test world');
+  if (region === null)
+    throw new Error('no urban region with routes and events found in the test world');
   return { plan, network, region };
 };
 
