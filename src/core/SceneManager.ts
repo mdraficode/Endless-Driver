@@ -148,6 +148,11 @@ export class SceneManager {
   #environment: EnvironmentAsset | null = null;
   #daylight: DaylightState | null = null;
   #season: import('../environment/seasons').SeasonPresentation | null = null;
+  /** Live overcast from the weather transition (0 clear .. 1 storm). */
+  #weatherOvercast = 0;
+  /** The clock-resolved sky base values, so the overcast modulation composes on top each frame. */
+  #skyBaseTurbidity = 0;
+  #skyBaseSunDisc = false;
   readonly #sunDistance: number;
   #environmentTexture: Texture | null = null;
   #disposed = false;
@@ -492,9 +497,10 @@ export class SceneManager {
       direction.y * sunDistance,
       direction.z * sunDistance,
     );
-    this.#sky.turbidity.value = state.turbidity;
+    this.#skyBaseTurbidity = state.turbidity;
+    this.#skyBaseSunDisc = state.showSunDisc;
     this.#sky.rayleigh.value = state.rayleigh;
-    this.#sky.showSunDisc.value = state.showSunDisc ? 1 : 0;
+    this.#applySkyOvercast();
 
     const environmentIntensity = scaleBaseline(
       this.#config.environment.intensity,
@@ -506,6 +512,28 @@ export class SceneManager {
     }
     this.#daylight = state;
     this.#content.setDaylight?.(state);
+  }
+
+  /**
+   * The live weather sample (the Phase 7 transition): overcast modulates the sky the
+   * `applyDaylight` call of this frame just set (haze up, sun disc out at ~half cover or
+   * more), and the wetness drives the wet-road sheen. The car is never touched.
+   */
+  setWeather(sample: import('../environment/weather-dynamics').WeatherSample): void {
+    if (sample.overcast === this.#weatherOvercast) {
+      this.#content.setSurfaceWetness?.(sample.wetness);
+      return;
+    }
+    this.#weatherOvercast = sample.overcast;
+    this.#applySkyOvercast();
+    this.#content.setSurfaceWetness?.(sample.wetness);
+  }
+
+  /** Haze the sky and hide the sun disc as the clouds close. */
+  #applySkyOvercast(): void {
+    const overcast = this.#weatherOvercast;
+    this.#sky.turbidity.value = this.#skyBaseTurbidity + 1.8 * overcast;
+    this.#sky.showSunDisc.value = this.#skyBaseSunDisc && overcast < 0.45 ? 1 : 0;
   }
 
   /**

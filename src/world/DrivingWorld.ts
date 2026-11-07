@@ -246,6 +246,11 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
     root,
     kind: 'driving',
     wetRoadSurface: roads !== null,
+    setSurfaceWetness: (wetness) => {
+      // Aohara's network-integrated streets are RoadWorld ribbons, so the one shared
+      // wetness uniform covers the whole drivable surface.
+      roads?.setSurfaceWetness(wetness);
+    },
     setDaylight: (state) => {
       vegetation.setDaylight(state);
       roads?.setDaylight(state);

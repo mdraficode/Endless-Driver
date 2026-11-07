@@ -77,6 +77,8 @@ import {
   type SeasonId,
   type SeasonPresentation,
 } from '../environment/seasons';
+import { WeatherDynamics } from '../environment/weather-dynamics';
+import { RainField } from '../environment/rain';
 import {
   EnvironmentClock,
   type DaylightState,
@@ -320,7 +322,10 @@ export class Application {
   readonly #onFirstFrame: (() => void) | null;
   readonly #tier: TierResolution;
   readonly #steeringSensitivity: SteeringSensitivity;
-  readonly #surfaceState: SurfaceState;
+  /** The live surface condition: the weather transition moves it each frame toward its preset. */
+  #surfaceState: SurfaceState;
+  readonly #weatherDynamics: WeatherDynamics;
+  readonly #rainField: RainField;
   readonly #clock: EnvironmentClock;
   readonly #daylightController: DaylightController;
   #daylight: DaylightState | null = null;
@@ -377,6 +382,9 @@ export class Application {
     this.#onBoostState = options.onBoostState ?? null;
     this.#buildTag = options.buildTag ?? null;
     this.#surfaceState = resolveSurfaceState(options.weather ?? 'clear');
+    // Phase 7 weather: the preset is the target; the dynamics ramp wetness, rain and
+    // overcast towards it. The world starts in equilibrium for its launch preset.
+    this.#weatherDynamics = new WeatherDynamics(this.#surfaceState.weather);
 
     // Phase 10: the generated world. One seed drives terrain, the road graph, the home
     // city's anchor, the districts and the vast city beyond; every launch is a new prefecture.
@@ -445,6 +453,11 @@ export class Application {
       worldPlan: this.#worldPlan,
       hideouts: this.#hideouts,
     });
+    // Phase 7 precipitation: the rain streaks live in the scene from the first frame, so the
+    // startup prewarm compiles their one material with the rest of the graph.
+    const rainBudget = this.#tier.id === 'A' ? 1600 : this.#tier.id === 'B' ? 1000 : 550;
+    this.#rainField = new RainField(rainBudget);
+    this.#scene.addObject(this.#rainField.root);
     this.#engine.setGodraysLight(this.#scene.godraysLight);
 
     this.#car = new Car({
@@ -666,6 +679,15 @@ export class Application {
     return this.#physics;
   }
 
+  /**
+   * Switches the active weather preset (Phase 7). The transition is a ramp — wetness,
+   * rain and overcast ease to the new target over a few seconds — never a pop: the car
+   * keeps its body, velocity and contact state through the whole change.
+   */
+  setWeatherPreset(preset: WeatherPreset): void {
+    this.#weatherDynamics.setPreset(preset);
+  }
+
   get car(): Car {
     return this.#car;
   }
@@ -872,6 +894,9 @@ export class Application {
       // pipelines the first frame draws with — one full-scene compile, never two.
       samplePrograms('frameGraph');
       this.#reportLoadingProgress(0.92, 'Warming up the graphics pipeline (first run is slower)…');
+      // The rain streaks are hidden in clear weather: probe their material into the
+      // pipeline now, or the first rain would compile live on a weak GPU.
+      this.#rainField.prepareCompilation();
       if (!this.#engine.prepareFrameGraph(this.#scene.scene, this.#activeCamera())) {
         this.#reportLoadingError(
           'The graphics pipeline could not be prepared; the game cannot start.',
@@ -930,6 +955,8 @@ export class Application {
         return;
       }
       this.#endSettleSweep(spawnPose);
+      // The warm-up is done: the rain returns to the weather it was launched with.
+      this.#rainField.setIntensity(this.#weatherDynamics.update(0).rainIntensity);
       mark('settle');
       samplePrograms('settle');
       this.#reportLoadingProgress(0.99, 'Starting the simulation…');
@@ -1518,8 +1545,16 @@ export class Application {
       this.#syncDebugCamera(settled, true);
     }
 
-    // 2b. Time advances, and time becomes light for the next frame.
+    // 2b. Time advances, and time becomes light for the next frame. The weather
+    // transition steps first: wetness (physics), overcast (light) and rain (particles)
+    // all ease toward the active preset, and the car is never touched by any of it.
+    const weather = this.#weatherDynamics.update(delta);
+    this.#surfaceState = resolveSurfaceState(this.#weatherDynamics.preset, weather.wetness);
+    this.#daylightController.setOvercast(weather.overcast);
     this.#daylight = this.#daylightController.update(delta, this.#scene, this.#engine);
+    this.#scene.setWeather(weather);
+    this.#rainField.setIntensity(weather.rainIntensity);
+    this.#rainField.update(delta, this.#car.position.x, this.#car.position.y, this.#car.position.z);
     this.#carVisual.setHeadlightsEnabled(this.#daylight.isNight);
 
     // 3. Presentation interpolates between the last two authoritative poses.
@@ -1624,7 +1659,12 @@ export class Application {
     // `update(0, …)` advances nothing (the clock is either frozen or has already been advanced this
     // frame) and still resolves and applies the light, so the pre-first-frame call and the per-frame
     // call are the same code path. Player headlights consume this same resolved night gate.
+    const settleWeather = this.#weatherDynamics.update(0);
+    this.#surfaceState = resolveSurfaceState(this.#weatherDynamics.preset, settleWeather.wetness);
+    this.#daylightController.setOvercast(settleWeather.overcast);
     this.#daylight = this.#daylightController.update(0, this.#scene, this.#engine);
+    this.#scene.setWeather(settleWeather);
+    this.#rainField.setIntensity(settleWeather.rainIntensity);
     this.#carVisual.setHeadlightsEnabled(this.#daylight.isNight);
   }
 

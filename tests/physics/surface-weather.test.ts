@@ -212,6 +212,25 @@ function fixedAoharaSeasonCornerResponse(season: SeasonId): CornerResponse {
   return response;
 }
 
+describe('Phase 7 weather-preset vehicle coupling', () => {
+  it('orders clear / rain / storm grip at the same speed on the same asphalt', () => {
+    const clear = cornerResponse('clear');
+    const rain = cornerResponse('rain');
+    const storm = cornerResponse('storm');
+
+    // The storm saturates the surface (wetness 1) where rain stops at 0.85, so the
+    // matched-speed corner must read strictly looser: clear > rain > storm.
+    expect(clear.averageSurfaceGripModifier).toBeCloseTo(1, 3);
+    expect(rain.averageSurfaceGripModifier).toBeCloseTo(0.813, 3);
+    expect(storm.averageSurfaceGripModifier).toBeCloseTo(0.78, 3);
+    expect(clear.averageSurfaceRollingResistance).toBeCloseTo(0.015, 4);
+    expect(rain.averageSurfaceRollingResistance).toBeCloseTo(0.0184, 4);
+    expect(storm.averageSurfaceRollingResistance).toBeCloseTo(0.019, 4);
+    expect(clear.lateralForce).toBeGreaterThan(rain.lateralForce);
+    expect(rain.lateralForce).toBeGreaterThan(storm.lateralForce);
+  });
+});
+
 describe('Phase 7 season-surface vehicle coupling', () => {
   it('produces measurably less lateral tire force in the same autumn mud corner', () => {
     const summer = seasonCornerResponse(DRY_SOIL, 'summer');

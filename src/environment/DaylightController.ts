@@ -120,6 +120,8 @@ export class DaylightController {
   readonly #clock: EnvironmentClock;
   /** The world's season: exposure and grade are scaled towards it every frame. */
   readonly #season: SeasonPresentation | null;
+  /** The live cloud cover (0 clear .. 1 full storm): dims exposure and flattens the grade. */
+  #overcast = 0;
   #state: DaylightState;
 
   constructor(clock: EnvironmentClock, season?: SeasonPresentation) {
@@ -135,6 +137,11 @@ export class DaylightController {
   /** The state applied to the last frame. */
   get state(): DaylightState {
     return this.#state;
+  }
+
+  /** Sets the live overcast (the weather transition drives it; the car is never touched). */
+  setOvercast(overcast: number): void {
+    this.#overcast = Math.min(1, Math.max(0, overcast));
   }
 
   /** Resolves daylight for the clock's current time and returns it, without applying it. */
@@ -164,16 +171,17 @@ export class DaylightController {
       procedural: gradeStrengthProcedural,
     });
     const seasonGrade = this.#season?.gradeTint;
-    engine.setExposure(state.exposure * exposureScale);
-    engine.setGrade(
-      seasonGrade === undefined
-        ? grade
-        : {
-            r: grade.r * seasonGrade.r,
-            g: grade.g * seasonGrade.g,
-            b: grade.b * seasonGrade.b,
-          },
-    );
+    // Overcast dims the light: exposure drops up to ~18% at a full storm and the grade
+    // flattens towards grey, composed after the season scales.
+    const overcast = this.#overcast;
+    const weatherExposure = 1 - 0.18 * overcast;
+    const weatherGrade = 1 - 0.1 * overcast;
+    engine.setExposure(state.exposure * exposureScale * weatherExposure);
+    engine.setGrade({
+      r: grade.r * (seasonGrade?.r ?? 1) * weatherGrade,
+      g: grade.g * (seasonGrade?.g ?? 1) * weatherGrade,
+      b: grade.b * (seasonGrade?.b ?? 1) * weatherGrade,
+    });
     // The god-ray tint and the contact-shadow light are driven from the same state, here,
     // because this is the one place daylight becomes engine uniforms. The god-ray call was
     // lost once (a recovered edit), leaving the effect in the chain with a permanently black

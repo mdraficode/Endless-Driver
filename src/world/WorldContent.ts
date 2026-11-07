@@ -32,6 +32,8 @@ export interface SceneContent {
   readonly wetRoadSurface?: boolean;
   /** Resolved clock/sun state for content-owned effects such as leaf backlighting. */
   setDaylight?(state: DaylightState): void;
+  /** Live surface wetness from the weather transition (Phase 7): drives the wet-road sheen. */
+  setSurfaceWetness?(wetness: number): void;
   /** Optional content-owned simulation/update hook, driven with the engine's clamped frame delta. */
   update?(deltaSeconds: number): void;
   /**

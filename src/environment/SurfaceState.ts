@@ -2,8 +2,10 @@ import { clamp } from '../shared/math';
 import type { SurfaceResponse } from '../vehicles/types';
 import type { TerrainSurfaceId } from '../world/terrain-surface';
 
-/** The first Phase 7 comparison presets. The wet road sheen uses wetness; precipitation and transitions remain separate. */
-export type WeatherPreset = 'clear' | 'rain';
+/** The Phase 7 comparison presets. `storm` saturates every surface (wetness 1); dust remains open (the scene has no fog by owner direction, so a dust haze needs a different visibility pass). */
+export type WeatherPreset = 'clear' | 'rain' | 'storm';
+
+export const WEATHER_PRESETS: readonly WeatherPreset[] = ['clear', 'rain', 'storm'];
 
 export interface SurfaceState {
   readonly weather: WeatherPreset;
@@ -14,6 +16,7 @@ export interface SurfaceState {
 const PRESET_STATES: Readonly<Record<WeatherPreset, SurfaceState>> = {
   clear: { weather: 'clear', wetness: 0 },
   rain: { weather: 'rain', wetness: 0.85 },
+  storm: { weather: 'storm', wetness: 1 },
 };
 
 interface WetSurfaceResponse {
@@ -32,14 +35,19 @@ const WET_SURFACE_RESPONSE: Readonly<Record<TerrainSurfaceId, WetSurfaceResponse
   rock: { gripRetention: 0.95, rollingResistanceIncrease: 0.002 },
 };
 
-/** Resolve a deterministic initial surface condition for a fixed comparison preset. */
-export function resolveSurfaceState(weather: WeatherPreset): SurfaceState {
-  return PRESET_STATES[weather];
+/** Resolve the surface condition for a preset, optionally at a live wetness (the weather transition). */
+export function resolveSurfaceState(weather: WeatherPreset, wetness?: number): SurfaceState {
+  const base = PRESET_STATES[weather];
+  if (wetness === undefined) {
+    return base;
+  }
+  return { weather: base.weather, wetness: clamp(Number.isFinite(wetness) ? wetness : 0, 0, 1) };
 }
 
 /** Reads the Phase 7 driving-scene override. Unsupported values safely retain clear conditions. */
 export function readWeatherPreset(search: string): WeatherPreset {
-  return new URLSearchParams(search).get('weather')?.toLowerCase() === 'rain' ? 'rain' : 'clear';
+  const raw = new URLSearchParams(search).get('weather')?.toLowerCase();
+  return WEATHER_PRESETS.includes(raw as WeatherPreset) ? (raw as WeatherPreset) : 'clear';
 }
 
 /**
