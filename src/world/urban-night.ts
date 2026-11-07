@@ -1282,7 +1282,7 @@ function addInstancedBoxes(
   return mesh;
 }
 
-function createFlareMaterial(
+export function createFlareMaterial(
   colorHex: number,
   nightGain: UniformNode<'float', number>,
   cardinalStrength: number,

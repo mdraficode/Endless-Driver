@@ -19,14 +19,17 @@ import {
   Object3D,
   PlaneGeometry,
   PointLight,
+  Sprite,
   Vector3,
   type BufferGeometry,
   type Material,
 } from 'three';
 import { uniform, vec4, vertexColor } from 'three/tsl';
-import { MeshBasicNodeMaterial, type UniformNode } from 'three/webgpu';
+import { MeshBasicNodeMaterial, type SpriteNodeMaterial, type UniformNode } from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createArchitecturalMaterial } from './architectural-materials';
+import { URBAN_CITY_CONFIG, URBAN_NIGHT_TIER_BUDGET } from '../config/urban-city';
+import { createFlareMaterial } from './urban-night';
 import type { RegionClutterData } from './urban-clutter';
 import { collideCarWithStaticBoxes, type StaticBuildingBox } from './static-building-collision';
 import type { TierId } from '../config/tiers';
@@ -38,6 +41,13 @@ const WORLD_BASE_Y = -0.55;
 const STREET_LAMP_COLOR = 0xffe0b0;
 /** Per-tier point-light count for a streamed city (Aohara tier C carries 6 for one city). */
 const CITY_POINT_LIGHTS: Readonly<Record<TierId, number>> = { A: 4, B: 3, C: 2 };
+/**
+ * Per-tier diffraction-flare count for a streamed city's street lamps. The home city's
+ * halogen flares are its signature night look; these give the massing cities the same
+ * read. They share Aohara's flare material (same program family, same PSF graph), so a
+ * streamed city adds no new shader stage.
+ */
+const CITY_FLARES: Readonly<Record<TierId, number>> = { A: 8, B: 5, C: 3 };
 /** Hard cap on lit window instances per city (one instanced draw each). */
 const MAX_WINDOW_INSTANCES = 15000;
 
@@ -153,6 +163,7 @@ export class MassingCityWorld {
   #geometries: BufferGeometry[] = [];
   #materials: Material[] = [];
   #pointLights: PointLight[] = [];
+  #flares: Sprite[] = [];
   #collisionBoxes: StaticBuildingBox[] = [];
   /** Phase 10 pass 3: the street clutter stops the car too — a bin is a bin. */
   #clutterBoxes: StaticBuildingBox[] = [];
@@ -202,6 +213,7 @@ export class MassingCityWorld {
       massingCityTowers: this.#spec.towers.length,
       massingCityInfill: this.#spec.infill.length,
       massingCityPointLights: this.#pointLights.length,
+      massingCityFlares: this.#flares.length,
       massingCityClutter: this.#clutterCount,
       massingCityNeonSigns: this.#neonSignCount,
     };
@@ -667,6 +679,36 @@ export class MassingCityWorld {
         light.position.set(lamp.x, WORLD_BASE_Y + lift(lamp.x, lamp.z) + 7.6, lamp.z);
         this.root.add(light);
         this.#pointLights.push(light);
+      }
+
+      // --- Diffraction flares: Aohara's halogen night look, on the nearest lamp heads.
+      // One shared material per city (same PSF graph as the home city's flares — the
+      // program is already compiled at startup), one sprite per flared lamp.
+      const flareCount = Math.min(CITY_FLARES[this.#tier] ?? 3, ordered.length);
+      if (flareCount > 0) {
+        const budget = URBAN_NIGHT_TIER_BUDGET[this.#tier];
+        const spatialGain = uniform(1);
+        const flareMaterial = this.#track(
+          createFlareMaterial(
+            STREET_LAMP_COLOR,
+            nightGain,
+            budget.cardinalStarburst,
+            budget.diagonalStarburst,
+            `massing-streetlight-${spec.regionId}-diffraction`,
+            spatialGain,
+          ),
+          this.#materials,
+        ) as SpriteNodeMaterial;
+        for (let i = 0; i < flareCount; i += 1) {
+          const lamp = ordered[i] ? lampPositions[ordered[i]!.index] : undefined;
+          if (lamp === undefined) continue;
+          const flare = new Sprite(flareMaterial);
+          flare.position.set(lamp.x, WORLD_BASE_Y + lift(lamp.x, lamp.z) + 7.6, lamp.z);
+          flare.scale.setScalar(URBAN_CITY_CONFIG.streetLamp.haloScaleMeters);
+          flare.name = `massing-flare-${spec.regionId}-${i + 1}`;
+          this.root.add(flare);
+          this.#flares.push(flare);
+        }
       }
     }
 

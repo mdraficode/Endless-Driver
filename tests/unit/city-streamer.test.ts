@@ -36,6 +36,21 @@ describe('urban-massing', () => {
     expect(city.root.children.length).toBeGreaterThan(3);
     expect(city.getContentStats().massingCityTowers).toBe(spec.towers.length);
     expect(city.getContentStats().massingCityPointLights).toBeLessThanOrEqual(2);
+    // The tier-C flare budget: at most 3 diffraction sprites, on real lamp heads.
+    expect(city.getContentStats().massingCityFlares).toBeLessThanOrEqual(3);
+    const flareSprites = city.root.children.filter((child) =>
+      child.name.startsWith('massing-flare-'),
+    );
+    expect(flareSprites.length).toBe(city.getContentStats().massingCityFlares);
+    city.dispose();
+  });
+
+  it('flares scale up with the tier budget', () => {
+    const { region } = anUrbanRegion(20261102, 'megacity');
+    const spec = massingCityForRegion(region);
+    const city = new MassingCityWorld(spec, 'A', { nightGain: nightGain(), baseY: 0 });
+    expect(city.getContentStats().massingCityFlares).toBeLessThanOrEqual(8);
+    expect(city.getContentStats().massingCityFlares).toBeGreaterThanOrEqual(3);
     city.dispose();
   });
 
