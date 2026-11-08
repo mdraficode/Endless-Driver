@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { Matrix4, Vector3 } from 'three';
+import {
+  InstancedMesh,
+  Matrix4,
+  Vector3,
+  type BufferGeometry,
+  type MeshBasicMaterial,
+} from 'three';
 import { uniform } from 'three/tsl';
 import {
   LIGHT_POOL_MAX_OPACITY,
@@ -115,7 +121,7 @@ describe('lightning schedule (seeded, deterministic)', () => {
     expect(flashRuns(rain).length).toBeGreaterThanOrEqual(2);
     // Same seed, same schedule — the rain preset only scales the amplitude by overcast.
     for (let i = 0; i < rain.length; i += 1) {
-      expect(rain[i]).toBeCloseTo(storm[i] * (0.4 + 0.6 * 0.55), 5);
+      expect(rain[i]!).toBeCloseTo(storm[i]! * (0.4 + 0.6 * 0.55), 5);
     }
   });
 
@@ -160,7 +166,7 @@ describe('light pool mesh (headless)', () => {
     expect(pools).not.toBeNull();
     expect(pools!.mesh.count).toBe(5);
     expect(pools!.material.opacity).toBe(0);
-    expect(pools!.geometry.attributes.position.count).toBe(4); // one quad
+    expect(pools!.geometry.getAttribute('position')?.count).toBe(4); // one quad
 
     // A broken lamp's pool goes dark; its neighbours are untouched.
     pools!.setLamp(2, 0);
@@ -200,26 +206,25 @@ describe('streamed-city light pools (integration)', () => {
     expect(poolCount).toBeGreaterThan(0);
     expect(poolCount).toBeLessThanOrEqual(spec.lamps.length);
 
+    const found = city.root.children.find((child) => child.name === 'light-pools');
+    expect(found).toBeDefined();
+    if (found === undefined) throw new Error('expected the light-pools layer');
+    const poolMesh = found as InstancedMesh<BufferGeometry, MeshBasicMaterial>;
+
     // Dry: invisible. Wet at full night: at the max opacity.
     city.setSurfaceWetness(0);
-    const pools = city.root.children.find((child) => child.name === 'light-pools');
-    expect(pools).toBeDefined();
-    expect((pools as { material: { opacity: number } }).material.opacity).toBe(0);
+    expect(poolMesh.material.opacity).toBe(0);
 
     city.setSurfaceWetness(1);
-    expect((pools as { material: { opacity: number } }).material.opacity).toBeCloseTo(
-      LIGHT_POOL_MAX_OPACITY,
-      6,
-    );
+    expect(poolMesh.material.opacity).toBeCloseTo(LIGHT_POOL_MAX_OPACITY, 6);
 
     // The night gain gates them: no pools at noon, wet or not.
     gain.value = 0;
     city.setSurfaceWetness(1);
-    expect((pools as { material: { opacity: number } }).material.opacity).toBe(0);
+    expect(poolMesh.material.opacity).toBe(0);
 
     // On the flat fixture the pools sit just above the pavement under the poles.
     city.root.updateMatrixWorld(true);
-    const poolMesh = pools! as import('three').InstancedMesh;
     const matrix = new Matrix4();
     poolMesh.getMatrixAt(0, matrix);
     const origin = new Vector3().setFromMatrixPosition(matrix);

@@ -10,7 +10,6 @@ import {
   PlaneGeometry,
   SRGBColorSpace,
   type BufferGeometry,
-  type Material,
 } from 'three';
 
 /**
@@ -88,7 +87,7 @@ export function lightPoolTexture(): DataTexture {
 
 export interface LightPoolHandle {
   readonly mesh: InstancedMesh;
-  readonly material: Material;
+  readonly material: MeshBasicMaterial;
   readonly geometry: BufferGeometry;
   /** Per-instance brightness (1 = lamp on, 0 = broken/dark); the global opacity stays the wetness term. */
   setLamp(index: number, brightness: number): void;
