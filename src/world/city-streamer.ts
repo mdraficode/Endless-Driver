@@ -74,6 +74,8 @@ export class CityStreamer {
     // Phase 10 pass 3: the specs clear their placements against the solved network, so
     // no building ever straddles a drivable road.
     const network = this.#terrainSampler.roadNetwork;
+    // Phase 10 pass 4: buildings also clear the garage pits (the ground there is sunken).
+    const pits = network?.garages.map((garage) => garage.pit) ?? [];
     // Urban regions inside the road window (the home cell is the full kit city, not massing).
     for (let iz = -ROAD_WINDOW_CELLS; iz <= ROAD_WINDOW_CELLS; iz += 1) {
       for (let ix = -ROAD_WINDOW_CELLS; ix <= ROAD_WINDOW_CELLS; ix += 1) {
@@ -88,7 +90,7 @@ export class CityStreamer {
           spec:
             network === undefined
               ? massingCityForRegion(region)
-              : massingCityForRegion(region, { network }),
+              : massingCityForRegion(region, { network, pits }),
         });
       }
     }

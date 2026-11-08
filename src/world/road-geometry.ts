@@ -306,6 +306,7 @@ const BANK_DESIGN_SPEED: Readonly<Record<RoadEdge['roadClass'], number>> = {
   'urban-arterial': 26,
   'urban-alley': 8,
   highway: 30,
+  garage: 5, // parking speed
 };
 const GRAVEITY_METER_PER_SECOND_SQUARED = 9.81;
 const MAX_BANK_METERS = 0.5;

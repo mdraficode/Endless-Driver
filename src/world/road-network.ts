@@ -1,4 +1,5 @@
 import type { RoadClass, RoadNetworkConfig } from '../config/roads';
+import { AOHARA_JUNCTION_NODE_ID } from '../config/urban-district';
 
 /**
  * The road graph: splines over the terrain with smoothed, grade-limited profiles.
@@ -87,6 +88,58 @@ export interface TunnelSpan {
   readonly points: readonly (RoadPoint & { readonly baseY: number })[];
 }
 
+/**
+ * A rectangular excavation carved into the shared heightfield (world-terrain): the garage
+ * floors live at its bottom, so the terrain, the physics and the visuals all agree on
+ * the pit by construction.
+ */
+export interface GaragePit {
+  readonly x: number;
+  readonly z: number;
+  /** Footprint yaw: local +z is the entrance-ramp direction. */
+  readonly yaw: number;
+  readonly halfWidth: number;
+  readonly halfDepth: number;
+  readonly rounding: number;
+  /** The depth fades to zero this far outside the footprint edge. */
+  readonly fade: number;
+  /** Depth below the local natural ground (reaches the lowest floor). */
+  readonly depth: number;
+  /**
+   * Absolute elevation of the flat pit bottom (the garage floor). The pit is carved
+   * down to this plane so the bottom is level even where the natural ground undulates.
+   */
+  readonly floorY: number;
+}
+
+/**
+ * An underground parking garage (Phase 10 pass 4): a single open floor of garage aisle
+ * edges (class `garage`) sunk into a rectangular pit, reached from the street by a
+ * max-grade ramp. The heightfield is single-valued, so the pit is carved down to one flat
+ * floor and the car drives a serpentine of narrow one-way aisles on it; the roof slab,
+ * rim walls, columns and the "P" portal are a visual sheet (see `garage-world.ts`).
+ */
+export interface GarageSpec {
+  readonly id: string;
+  /** Footprint centre, world metres. */
+  readonly x: number;
+  readonly z: number;
+  readonly yaw: number;
+  readonly widthMeters: number;
+  readonly depthMeters: number;
+  /** The single open floor elevation. */
+  readonly floorYs: readonly number[];
+  /** Street elevation at the entrance node. */
+  readonly entranceY: number;
+  readonly entranceNodeId: string;
+  /** Ramp direction (unit): the ramp runs from the entrance node along this vector. */
+  readonly rampDirX: number;
+  readonly rampDirZ: number;
+  /** Aisle rows in local z (parking bays and visuals hang off them). */
+  readonly aisleZs: readonly number[];
+  readonly pit: GaragePit;
+}
+
 export interface RoadNetwork {
   readonly config: RoadNetworkConfig;
   readonly edges: readonly RoadEdge[];
@@ -109,6 +162,8 @@ export interface RoadNetwork {
   readonly overpassEdgeIds: ReadonlySet<string>;
   /** Phase 10 pass 3: the tunnel spans, with floor and ground heights for the cap. */
   readonly tunnelSpans: readonly TunnelSpan[];
+  /** Phase 10 pass 4: the underground parking garages (pit + aisle roads). */
+  readonly garages: readonly GarageSpec[];
   /** Nearest centreline sample, or `null` when no segment is indexed near (x, z). */
   sample(x: number, z: number): RoadSample | null;
   /** Node ids reachable in one edge (graph adjacency for connectivity checks). */
@@ -631,6 +686,439 @@ function selectAndLiftOverpasses(
   return liftedEdgeIds;
 }
 
+// ---------------------------------------------------------------------------
+// Phase 10 pass 4: underground parking garages.
+//
+// A garage is a single open floor (class `garage` aisle edges) sunk into a
+// rectangular pit, reached from the street by a max-grade ramp. The heightfield is
+// single-valued, so only ONE level of deck can exist per (x, z): the pit is carved
+// down to a flat floor and the car drives a serpentine of aisles ON that floor.
+// (A raised second level is impossible — every road edge blends over the 30 m
+// `blendWidthMeters`, so an upper deck would lift the whole pit with it.) The roof
+// slab, rim walls, columns and the "P" portal are a visual sheet (see
+// `garage-world.ts`); the pit is carved into the shared heightfield so terrain,
+// physics and visuals agree by construction.
+// ---------------------------------------------------------------------------
+
+const GARAGE_MAX_PER_WORLD = 3;
+/** Floor drop below the entrance street, in metres (the ramp climbs it). */
+const GARAGE_LEVEL_DROP_METERS = 5;
+/** Footprint half extents, local metres (68 × 88 m slab). */
+const GARAGE_HALF_WIDTH_METERS = 34;
+const GARAGE_HALF_DEPTH_METERS = 44;
+/** Aisles stop this far short of the footprint edge. */
+const GARAGE_MARGIN_METERS = 5;
+/** Level floor at the entrance ramp before it starts descending. */
+const GARAGE_RAMP_APRON_METERS = 12;
+/** The street edge a garage may attach to must be at least this long. */
+const GARAGE_MIN_STREET_EDGE_METERS = 120;
+/** Home-city candidates: near the anchor, but clear of the spawn pad. */
+const GARAGE_HOME_RADIUS_METERS = 900;
+const GARAGE_MIN_HOME_DIST_METERS = 180;
+/** Junctions with more natural-ground spread than this keep both streets at grade. */
+const GARAGE_MAX_FLAT_SPREAD_METERS = 5;
+const GARAGE_PIT_ROUNDING_METERS = 10;
+const GARAGE_PIT_FADE_METERS = 8;
+/**
+ * Aisle edges are narrow one-way driving lanes (3.6 m): the parking bays between the
+ * rows hold the cars, and a wide aisle would leave no room for nose-in parking.
+ */
+const GARAGE_AISLE_HALF_WIDTH_METERS = 1.8;
+const GARAGE_AISLE_SHOULDER_METERS = 0.4;
+/** The entrance ramp is a proper driveway, wider than the interior aisles. */
+const GARAGE_RAMP_HALF_WIDTH_METERS = 2.6;
+const GARAGE_RAMP_SHOULDER_METERS = 0.8;
+
+interface PlanGaragesResult {
+  garages: GarageSpec[];
+  addedEdges: {
+    id: string;
+    from: string;
+    to: string;
+    roadClass: RoadClass;
+    maxGrade: number;
+    halfWidthMeters: number;
+    shoulderMeters: number;
+    points: MutablePoint[];
+  }[];
+  addedNodes: { id: string; x: number; z: number; y: number }[];
+}
+
+interface GaragePlacement {
+  readonly nodeId: string;
+  readonly nodeX: number;
+  readonly nodeZ: number;
+  readonly nodeY: number;
+  readonly rampDirX: number;
+  readonly rampDirZ: number;
+  readonly maxGrade: number;
+  readonly isHome: boolean;
+  readonly score: number;
+}
+
+/**
+ * Pick the world's garages (one in the home city, a seeded two in the generated
+ * cities) and plan their aisle roads. Pure with respect to the terrain: returns the
+ * placements plus the explicit edges/nodes to append; the caller appends them.
+ */
+function planGarages(
+  config: RoadNetworkConfig,
+  edges: {
+    id: string;
+    from: string;
+    to: string;
+    roadClass: RoadClass;
+    maxGrade: number;
+    points: MutablePoint[];
+  }[],
+  nodeElevation: Map<string, number>,
+  baseHeightAt: (x: number, z: number) => number,
+): PlanGaragesResult {
+  const empty: PlanGaragesResult = {
+    garages: [],
+    addedEdges: [],
+    addedNodes: [],
+  };
+  if (config.seed === undefined || config.garageAnchor === undefined) return empty;
+
+  const nodeConfig = new Map(config.nodes.map((node) => [node.id, node]));
+  const anchor = config.garageAnchor;
+  const candidates: GaragePlacement[] = [];
+
+  for (const node of config.nodes) {
+    if (node.id === AOHARA_JUNCTION_NODE_ID) continue; // the spawn junction stays clean
+    // The longest arterial edge at the node is the street the ramp leaves from.
+    let bestLength = 0;
+    let bestOther: { x: number; z: number; id: string } | null = null;
+    let bestGrade = config.maxGrade;
+    for (const edge of edges) {
+      const atFrom = edge.from === node.id;
+      const atTo = edge.to === node.id;
+      if (!atFrom && !atTo) continue;
+      if (edge.roadClass !== 'urban-arterial') continue;
+      let length = 0;
+      for (let i = 1; i < edge.points.length; i += 1) {
+        const p = edge.points[i];
+        const q = edge.points[i - 1];
+        if (!p || !q) continue;
+        length += Math.hypot(p.x - q.x, p.z - q.z);
+      }
+      if (length < GARAGE_MIN_STREET_EDGE_METERS || length <= bestLength) continue;
+      const otherNode = nodeConfig.get(atFrom ? edge.to : edge.from);
+      if (!otherNode) continue;
+      bestLength = length;
+      bestOther = { x: otherNode.x, z: otherNode.z, id: otherNode.id };
+      bestGrade = edge.maxGrade;
+    }
+    if (bestOther === null) continue;
+
+    const nodeY = nodeElevation.get(node.id) ?? baseHeightAt(node.x, node.z);
+    // The ramp leaves the node at right angles to the street; the descending side wins.
+    const axisX = bestOther.x - node.x;
+    const axisZ = bestOther.z - node.z;
+    const axis = Math.hypot(axisX, axisZ);
+    if (axis < 1) continue;
+    const perpX = -axisZ / axis;
+    const perpZ = axisX / axis;
+    const probe = [
+      baseHeightAt(node.x, node.z),
+      baseHeightAt(node.x + perpX * 60, node.z + perpZ * 60),
+      baseHeightAt(node.x - perpX * 60, node.z - perpZ * 60),
+    ];
+    const spread = Math.max(...probe) - Math.min(...probe);
+    if (spread > GARAGE_MAX_FLAT_SPREAD_METERS) continue;
+    const downSign =
+      baseHeightAt(node.x + perpX * 60, node.z + perpZ * 60) <=
+      baseHeightAt(node.x - perpX * 60, node.z - perpZ * 60)
+        ? 1
+        : -1;
+
+    // Pit-area flatness: the pit extends ~48–136 m from the node, beyond the probes
+    // above — the floors are derived from the node elevation, so the whole pit
+    // rectangle must be level too.
+    const rampRun = GARAGE_LEVEL_DROP_METERS / bestGrade;
+    const entryAlong = GARAGE_RAMP_APRON_METERS + rampRun;
+    const dirX = perpX * downSign;
+    const dirZ = perpZ * downSign;
+    const sideX = -dirZ;
+    const sideZ = dirX;
+    const entryPX = node.x + dirX * entryAlong;
+    const entryPZ = node.z + dirZ * entryAlong;
+    const pitEntryLocalZ = -GARAGE_HALF_DEPTH_METERS + 20;
+    const pitCX = entryPX + dirX * -pitEntryLocalZ;
+    const pitCZ = entryPZ + dirZ * -pitEntryLocalZ;
+    const pitProbe = [
+      [0, 0],
+      [GARAGE_HALF_WIDTH_METERS, GARAGE_HALF_DEPTH_METERS],
+      [-GARAGE_HALF_WIDTH_METERS, GARAGE_HALF_DEPTH_METERS],
+      [GARAGE_HALF_WIDTH_METERS, -GARAGE_HALF_DEPTH_METERS],
+      [-GARAGE_HALF_WIDTH_METERS, -GARAGE_HALF_DEPTH_METERS],
+    ]
+      .map(([lx, lz]) =>
+        baseHeightAt(
+          pitCX + sideX * (lx ?? 0) + dirX * (lz ?? 0),
+          pitCZ + sideZ * (lx ?? 0) + dirZ * (lz ?? 0),
+        ),
+      )
+      .concat([baseHeightAt(node.x + perpX * 82, node.z + perpZ * 82)]);
+    const pitSpread = Math.max(...pitProbe) - Math.min(...pitProbe);
+    if (pitSpread > GARAGE_MAX_FLAT_SPREAD_METERS) continue;
+
+    // A street that crosses the descending ramp at an angle would fight it for the
+    // corridor; a street running alongside is fine (the garage surface is
+    // authoritative in the sampler and the ramp reads as its driveway entrance).
+    {
+      let crossed = false;
+      outer: for (const edge of edges) {
+        if (edge.from === node.id && edge.to === bestOther.id) continue;
+        if (edge.to === node.id && edge.from === bestOther.id) continue;
+        const pts = edge.points;
+        if (pts.length < 2) continue;
+        const a = pts[0]!;
+        const b = pts[pts.length - 1]!;
+        const ex = b.x - a.x;
+        const ez = b.z - a.z;
+        const elen = Math.hypot(ex, ez);
+        if (elen < 1) continue;
+        const eDirX = ex / elen;
+        const eDirZ = ez / elen;
+        if (Math.abs(eDirX * dirX + eDirZ * dirZ) > 0.5) continue; // runs along the ramp
+        const segLen = entryAlong;
+        for (let i = 0; i < pts.length; i += 1) {
+          const q = pts[i]!;
+          const t = Math.max(
+            0,
+            Math.min(1, ((q.x - node.x) * dirX + (q.z - node.z) * dirZ) / segLen),
+          );
+          const along = t * segLen;
+          if (along <= 18) continue; // the flat apron may merge with streets
+          const px = node.x + dirX * along;
+          const pz = node.z + dirZ * along;
+          if (Math.hypot(q.x - px, q.z - pz) < 6) {
+            crossed = true;
+            break outer;
+          }
+        }
+      }
+      if (crossed) continue;
+    }
+
+    const distHome = Math.hypot(node.x - anchor.x, node.z - anchor.z);
+    const isHome = distHome < GARAGE_HOME_RADIUS_METERS;
+    if (isHome && distHome < GARAGE_MIN_HOME_DIST_METERS) continue;
+
+    candidates.push({
+      nodeId: node.id,
+      nodeX: node.x,
+      nodeZ: node.z,
+      nodeY,
+      rampDirX: perpX * downSign,
+      rampDirZ: perpZ * downSign,
+      maxGrade: bestGrade,
+      isHome,
+      score: bestLength,
+    });
+  }
+
+  if (candidates.length === 0) return empty;
+
+  // Seeded pick, then rank by roominess: at most one home-city garage, then a seeded two
+  // in the generated cities, far enough apart to be distinct landmarks.
+  const shuffled = [...candidates];
+  const shuffle = mulberry32((config.seed ?? 0) ^ 0x6a740e46);
+  for (let i = shuffled.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(shuffle() * (i + 1));
+    const a = shuffled[i];
+    const b = shuffled[j];
+    if (a && b) {
+      shuffled[i] = b;
+      shuffled[j] = a;
+    }
+  }
+  shuffled.sort((a, b) => b.score - a.score);
+  const chosen: GaragePlacement[] = [];
+  const home = shuffled.find((candidate) => candidate.isHome);
+  if (home) chosen.push(home);
+  for (const candidate of shuffled) {
+    if (chosen.length >= GARAGE_MAX_PER_WORLD) break;
+    if (candidate.isHome) continue;
+    if (
+      chosen.some(
+        (c) => !c.isHome && Math.hypot(c.nodeX - candidate.nodeX, c.nodeZ - candidate.nodeZ) < 3000,
+      )
+    ) {
+      continue;
+    }
+    chosen.push(candidate);
+  }
+
+  const garages: GarageSpec[] = [];
+  const addedEdges: PlanGaragesResult['addedEdges'] = [];
+  const addedNodes: PlanGaragesResult['addedNodes'] = [];
+
+  for (let g = 0; g < chosen.length; g += 1) {
+    const c = chosen[g]!;
+    const grade = c.maxGrade;
+    const levelDrop = GARAGE_LEVEL_DROP_METERS;
+    // The single open floor, one level below the entrance street.
+    const floorY = c.nodeY - levelDrop;
+    const rampRun = levelDrop / grade; // descent length at max grade
+    const dx = c.rampDirX;
+    const dz = c.rampDirZ;
+    const sideX = -dz; // local +x
+    const sideZ = dx; // local +x, z part
+    const W = GARAGE_HALF_WIDTH_METERS;
+    const D = GARAGE_HALF_DEPTH_METERS;
+    // The entrance lands on the first aisle row; the pit centre follows from there.
+    const entryLocalZ = -D + 20;
+    const entryAlong = GARAGE_RAMP_APRON_METERS + rampRun;
+    const entryX = c.nodeX + dx * entryAlong;
+    const entryZ = c.nodeZ + dz * entryAlong;
+    const cx = entryX + dx * -entryLocalZ;
+    const cz = entryZ + dz * -entryLocalZ;
+    const toWorld = (lx: number, lz: number, y: number): { x: number; z: number; y: number } => ({
+      x: cx + sideX * lx + dx * lz,
+      z: cz + sideZ * lx + dz * lz,
+      y,
+    });
+
+    const addNode = (tag: string, lx: number, lz: number, y: number): string => {
+      const p = toWorld(lx, lz, y);
+      const id = `g${g}-${tag}`;
+      addedNodes.push({ id, x: p.x, z: p.z, y });
+      return id;
+    };
+    const straight = (
+      id: string,
+      fromId: string,
+      toId: string,
+      a: { x: number; z: number; y: number },
+      b: { x: number; z: number; y: number },
+    ): void => {
+      const chord = Math.hypot(b.x - a.x, b.z - a.z);
+      const steps = Math.max(2, Math.ceil(chord / 4));
+      const points: MutablePoint[] = [];
+      for (let i = 0; i <= steps; i += 1) {
+        const t = i / steps;
+        points.push({
+          x: a.x + (b.x - a.x) * t,
+          z: a.z + (b.z - a.z) * t,
+          y: a.y + (b.y - a.y) * t,
+        });
+      }
+      addedEdges.push({
+        id,
+        from: fromId,
+        to: toId,
+        roadClass: 'garage',
+        maxGrade: grade,
+        halfWidthMeters: GARAGE_AISLE_HALF_WIDTH_METERS,
+        shoulderMeters: GARAGE_AISLE_SHOULDER_METERS,
+        points,
+      });
+    };
+    const p = (lx: number, lz: number, y: number) => toWorld(lx, lz, y);
+
+    // The entrance ramp: a street-level apron, then the max-grade descent to the floor.
+    const entryNode = addNode('entry', 0, entryLocalZ, floorY);
+    {
+      const steps = Math.max(2, Math.ceil(entryAlong / 4));
+      const points: MutablePoint[] = [];
+      for (let i = 0; i <= steps; i += 1) {
+        const t = i / steps;
+        const dAlong = t * entryAlong;
+        const y =
+          dAlong <= GARAGE_RAMP_APRON_METERS
+            ? c.nodeY
+            : c.nodeY - grade * (dAlong - GARAGE_RAMP_APRON_METERS);
+        points.push({
+          x: c.nodeX + (entryX - c.nodeX) * t,
+          z: c.nodeZ + (entryZ - c.nodeZ) * t,
+          y,
+        });
+      }
+      addedEdges.push({
+        id: `g${g}-ramp`,
+        from: c.nodeId,
+        to: entryNode,
+        roadClass: 'garage',
+        maxGrade: grade,
+        halfWidthMeters: GARAGE_RAMP_HALF_WIDTH_METERS,
+        shoulderMeters: GARAGE_RAMP_SHOULDER_METERS,
+        points,
+      });
+    }
+
+    // The driving serpentine: one-way lanes at floor level, nose-in bays between
+    // the rows. The entrance aisle runs from the ramp landing to the left end; four
+    // passes snake the slab to a dead end at the far corner.
+    const rows = [entryLocalZ, -14, -4, 6, 16];
+    const xExtent = W - GARAGE_MARGIN_METERS;
+
+    const aisle = (
+      tag: string,
+      fromX: number,
+      toX: number,
+      row: number,
+      prevId: string,
+    ): string => {
+      const id = addNode(tag, toX, row, floorY);
+      straight(`g${g}-${tag}`, prevId, id, p(fromX, row, floorY), p(toX, row, floorY));
+      return id;
+    };
+    const conn = (
+      tag: string,
+      lx: number,
+      fromRow: number,
+      toRow: number,
+      prevId: string,
+    ): string => {
+      const id = addNode(tag, lx, toRow, floorY);
+      straight(`g${g}-${tag}`, prevId, id, p(lx, fromRow, floorY), p(lx, toRow, floorY));
+      return id;
+    };
+
+    let prev = aisle('a1', 0, -xExtent, rows[0]!, entryNode);
+    prev = conn('c1', -xExtent, rows[0]!, rows[1]!, prev);
+    prev = aisle('a2', -xExtent, xExtent, rows[1]!, prev);
+    prev = conn('c2', xExtent, rows[1]!, rows[2]!, prev);
+    prev = aisle('a3', xExtent, -xExtent, rows[2]!, prev);
+    prev = conn('c3', -xExtent, rows[2]!, rows[3]!, prev);
+    prev = aisle('a4', -xExtent, xExtent, rows[3]!, prev);
+    prev = conn('c4', xExtent, rows[3]!, rows[4]!, prev);
+    prev = aisle('a5', xExtent, -xExtent, rows[4]!, prev);
+    void prev;
+
+    garages.push({
+      id: `g${g}`,
+      x: cx,
+      z: cz,
+      yaw: Math.atan2(dx, dz),
+      widthMeters: W * 2,
+      depthMeters: D * 2,
+      floorYs: [floorY],
+      entranceY: c.nodeY,
+      entranceNodeId: c.nodeId,
+      rampDirX: dx,
+      rampDirZ: dz,
+      aisleZs: rows,
+      pit: {
+        x: cx,
+        z: cz,
+        yaw: Math.atan2(dx, dz),
+        halfWidth: W,
+        halfDepth: D,
+        rounding: GARAGE_PIT_ROUNDING_METERS,
+        fade: GARAGE_PIT_FADE_METERS,
+        depth: c.nodeY - floorY,
+        floorY,
+      },
+    });
+  }
+
+  return { garages, addedEdges, addedNodes };
+}
+
 export function buildRoadNetwork(
   config: RoadNetworkConfig,
   baseHeightAt: (x: number, z: number) => number,
@@ -787,6 +1275,15 @@ export function buildRoadNetwork(
   // junction elevation and the spans render through the bridge barrier/piers path.
   const liftedEdgeIds = selectAndLiftOverpasses(config, mutableEdges, nodeElevation, baseHeightAt);
 
+  // Phase 10 pass 4: underground parking garages — a single open floor of aisle roads
+  // sunk into a rectangular pit, reached by a max-grade ramp from a flat arterial node.
+  // Their profiles are explicit (level floors and exact-grade ramps), so they join the
+  // solved edges after the pin/clamp pass; the pit is carved in the terrain sampler.
+  const garagePlan = planGarages(config, mutableEdges, nodeElevation, baseHeightAt);
+  for (const edge of garagePlan.addedEdges) {
+    mutableEdges.push(edge);
+  }
+
   const edges: RoadEdge[] = mutableEdges.map((edge) => {
     let length = 0;
     const points: RoadPoint[] = edge.points.map((point, index) => {
@@ -808,12 +1305,17 @@ export function buildRoadNetwork(
       lengthMeters: length,
     };
   });
-  const nodes: RoadNode[] = config.nodes.map((node) => ({
-    id: node.id,
-    x: node.x,
-    z: node.z,
-    y: nodeElevation.get(node.id) ?? baseHeightAt(node.x, node.z),
-  }));
+  const nodes: RoadNode[] = [
+    ...config.nodes.map((node) => ({
+      id: node.id,
+      x: node.x,
+      z: node.z,
+      y: nodeElevation.get(node.id) ?? baseHeightAt(node.x, node.z),
+    })),
+    // Phase 10 pass 4: the garage's own nodes (level floors and ramp ends) carry their
+    // explicit elevations.
+    ...garagePlan.addedNodes,
+  ];
   const nodeLookup = new Map(nodes.map((node) => [node.id, node]));
 
   // Phase 10 pass 2: bridge spans — runs of profile points whose deck holds well above
@@ -1046,6 +1548,7 @@ export function buildRoadNetwork(
     overpassSpans,
     overpassEdgeIds: liftedEdgeIds,
     tunnelSpans,
+    garages: garagePlan.garages,
     sample,
     neighboursOf(nodeId: string): readonly string[] {
       const result: string[] = [];

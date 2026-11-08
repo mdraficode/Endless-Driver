@@ -23,7 +23,9 @@ export type RoadClass =
   | 'urban-arterial'
   | 'urban-alley'
   /** Phase 10 pass 2: the wide, flat, barrier-edged long-distance connector. */
-  | 'highway';
+  | 'highway'
+  /** Phase 10 pass 4: an underground parking-garage aisle (serpentine levels + ramps). */
+  | 'garage';
 
 /** Optional volcano-side switchback start; the default remains Aohara Central Avenue. */
 export const HINODE_TOUGE_START = {
@@ -73,6 +75,12 @@ export interface RoadNetworkConfig {
    * stay exactly as solved (Phase 10 pass 3).
    */
   readonly seed?: number;
+  /**
+   * The home-city anchor (generated worlds only). Phase 10 pass 4: the solver's garage
+   * planner keeps one underground parking garage in the home city and the rest out in
+   * the generated cities, away from the spawn pad.
+   */
+  readonly garageAnchor?: { readonly x: number; readonly z: number };
 }
 
 function aoharaNodeId(rowId: string, columnId: string): string {

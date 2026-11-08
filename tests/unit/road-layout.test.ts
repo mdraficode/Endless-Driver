@@ -99,7 +99,13 @@ describe('road-layout', () => {
     const baseHeight = (x: number, z: number): number =>
       Math.sin(x * 0.0004) * 90 + Math.sin(z * 0.0005) * 70;
     const network = buildRoadNetwork(config, baseHeight);
-    expect(network.edges.length).toBe(config.edges.length);
+    // The solver keeps every configured edge; the garage planner may append its
+    // ramp/aisle edges, so the network has at least the configured count and the only
+    // additions are garage-class.
+    expect(network.edges.length).toBeGreaterThanOrEqual(config.edges.length);
+    const added = network.edges.length - config.edges.length;
+    const garageCount = network.edges.filter((e) => e.roadClass === 'garage').length;
+    expect(garageCount).toBe(added);
     // Every solved edge must stay within its authored grade cap (plus solver tolerance).
     for (const edge of network.edges) {
       const cap = edge.maxGrade + 0.02;

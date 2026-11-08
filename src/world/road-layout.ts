@@ -617,6 +617,8 @@ export function buildRoadLayout(
       edges,
       // Phase 10 pass 3: the solver's seeded overpass picks are per-world (plan §5).
       seed: plan.seed,
+      // Phase 10 pass 4: the garage planner keeps one garage in the home city.
+      garageAnchor: { x: anchor.x, z: anchor.z },
     },
     // The kit's central intersection: every world starts on Central Avenue, which runs
     // straight through the levelled city plateau (see proceduralSpawn in city-content).

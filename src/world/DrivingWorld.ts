@@ -18,6 +18,7 @@ import { nearestSmallTownDistrict, setPlanDistricts } from './plan-districts';
 import { ROAD_WINDOW_CELLS } from './road-layout';
 import { ParkedTrafficWorld } from './parked-traffic';
 import { HideoutWorld } from './hideout-world';
+import { GarageWorld } from './garage-world';
 import { GpuTrafficWorld } from './gpu-traffic';
 import { WorldEventManager } from './world-events';
 import { resolveUrbanNightGain } from '../config/urban-city';
@@ -224,6 +225,15 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
     root.add(hideoutWorld.root);
   }
 
+  // Phase 10 pass 4: the underground parking garages (pits + ramp + aisle decks),
+  // streamed like the hideouts. Generated worlds only.
+  const garages = urbanNetwork?.garages ?? [];
+  const garageWorld =
+    plan === null || garages.length === 0 ? null : new GarageWorld(garages, terrainSampler);
+  if (garageWorld !== null) {
+    root.add(garageWorld.root);
+  }
+
   // Phase 10.5 (C5): the streamed cities' AI traffic — WebGPU compute on every tier with a
   // hidden CPU fallback, plus the player's region's emergent events (speed traps, drift
   // zones, smashable boards and the off-road jump).
@@ -267,6 +277,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       aohara?.setDaylight(state);
       cityStreamer?.setDaylight(state);
       hideoutWorld?.setDaylight(state);
+      garageWorld?.setDaylight(state);
       pedestrianWorld?.setDaylight(state);
       gpuTraffic?.setNightGain(resolveUrbanNightGain(state.sunElevationDegrees));
     },
@@ -282,6 +293,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       aohara?.updateStreaming(focus);
       cityStreamer?.update(focus);
       hideoutWorld?.update(focus);
+      garageWorld?.update(focus);
       pedestrianWorld?.update(deltaSeconds ?? 0);
       gpuTraffic?.update(
         deltaSeconds ?? 0,
@@ -350,6 +362,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       // Phase 10 pass 3: the parked cars are solid too.
       ...(parkedTraffic?.collideTown(car) ?? []),
       ...(hideoutWorld?.collideTown(car) ?? []),
+      ...(garageWorld?.collideTown(car) ?? []),
     ],
     collideFauna: (car, deltaSeconds) => {
       const frame = faunaField.advanceAndCollide(car, deltaSeconds);
@@ -400,6 +413,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       const tougeStats = hinodeTouge?.getContentStats() ?? {};
       const cityStreamerStats = cityStreamer?.getContentStats() ?? {};
       const hideoutStats = hideoutWorld?.getContentStats() ?? {};
+      const garageStats = garageWorld?.getContentStats() ?? {};
       const pedestrianStats = pedestrianWorld?.getContentStats() ?? {};
       const parkedStats = parkedTraffic === null ? {} : { parkedTrafficCars: parkedTraffic.count };
       const trafficStats = gpuTraffic?.getContentStats() ?? {};
@@ -418,6 +432,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
         ...tougeStats,
         ...cityStreamerStats,
         ...hideoutStats,
+        ...garageStats,
         ...pedestrianStats,
         ...parkedStats,
         ...trafficStats,
@@ -443,6 +458,7 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       cityStreamer?.dispose();
       parkedTraffic?.dispose();
       hideoutWorld?.dispose();
+      garageWorld?.dispose();
       pedestrianWorld?.dispose();
       gpuTraffic?.dispose();
       eventManager?.dispose();

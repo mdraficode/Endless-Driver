@@ -193,6 +193,17 @@ export interface MassingCityOptions {
       z: number,
     ): { readonly distance: number; readonly halfWidthMeters: number } | null;
   };
+  /**
+   * Phase 10 pass 4: underground garage pits. Placements are rejected inside the pit
+   * footprints — the ground there is five metres down, a building base would float.
+   */
+  readonly pits?: readonly {
+    readonly x: number;
+    readonly z: number;
+    readonly yaw: number;
+    readonly halfWidth: number;
+    readonly halfDepth: number;
+  }[];
 }
 
 export function massingCityForRegion(
@@ -200,12 +211,35 @@ export function massingCityForRegion(
   options: MassingCityOptions = {},
 ): MassingCitySpec {
   const network = options.network;
+  const pits = options.pits ?? [];
   // A narrow road can run under a building face between any two sparse probes, so the
   // clearance test marches the whole footprint boundary (and the centre) against the
   // solved pavement: a corner may kiss the curb, but no part of the footprint may stand
   // on the asphalt.
   const PROBE_PER_EDGE = 6;
+  // Phase 10 pass 4: the pit is a rotated rectangle; reject any footprint that would
+  // stand over the sunken floor (the ground there is five metres down).
+  const clearOfPits = (x: number, z: number, halfWidth: number, halfDepth: number): boolean => {
+    for (const pit of pits) {
+      const sin = Math.sin(pit.yaw);
+      const cos = Math.cos(pit.yaw);
+      const wx = x - pit.x;
+      const wz = z - pit.z;
+      const lx = wx * -cos + wz * sin;
+      const lz = wx * sin + wz * cos;
+      if (
+        Math.abs(lx) <= pit.halfWidth + halfWidth + 2 &&
+        Math.abs(lz) <= pit.halfDepth + halfDepth + 2
+      ) {
+        return false;
+      }
+    }
+    return true;
+  };
   const clearOfRoads = (x: number, z: number, halfWidth: number, halfDepth: number): boolean => {
+    if (!clearOfPits(x, z, halfWidth, halfDepth)) {
+      return false;
+    }
     if (network === undefined) {
       return true;
     }
