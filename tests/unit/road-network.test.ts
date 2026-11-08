@@ -515,14 +515,24 @@ describe('grade feasibility in the generated world (owner: cliffs out mid-hill)'
         }
       }
       // Junctions stay continuous: every edge end sits exactly on its node's solved
-      // elevation, so no road ends in a step at a crossing.
+      // elevation, so no road ends in a step at a crossing. The one exception is an
+      // overpass: the lifted street crosses its chosen junction on the deck, a few
+      // metres above the street that keeps the junction elevation.
       for (const node of network.nodes.values()) {
         for (const edge of network.edges) {
-          if (edge.from === node.id) {
-            expect(edge.points[0]?.y).toBeCloseTo(node.y, 3);
-          }
-          if (edge.to === node.id) {
-            expect(edge.points[edge.points.length - 1]?.y).toBeCloseTo(node.y, 3);
+          const ends = [
+            edge.from === node.id ? (edge.points[0]?.y ?? NaN) : null,
+            edge.to === node.id ? (edge.points[edge.points.length - 1]?.y ?? NaN) : null,
+          ];
+          for (const endY of ends) {
+            if (endY === null) continue;
+            if (network.overpassEdgeIds.has(edge.id)) {
+              const delta = endY - node.y;
+              // Either the pinned far end (at the junction elevation) or the deck end.
+              expect(Math.abs(delta) < 0.05 || delta >= 4).toBe(true);
+            } else {
+              expect(endY).toBeCloseTo(node.y, 3);
+            }
           }
         }
       }

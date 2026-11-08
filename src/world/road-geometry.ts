@@ -1,6 +1,7 @@
-import { BufferAttribute, BufferGeometry } from 'three';
+import { BufferAttribute, BufferGeometry, BoxGeometry } from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-import type { RoadEdge, RoadNetwork, RoadNode, RoadPoint } from './road-network';
+import type { RoadEdge, RoadNetwork, RoadNode, RoadPoint, TunnelSpan } from './road-network';
 
 /**
  * Road ribbon construction from solved spline profiles.
@@ -531,4 +532,151 @@ export function buildDashGeometry(network: RoadNetwork, yOffset: number): Buffer
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
   return geometry;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 10 pass 3: tunnel visuals — the ground cap over a carved span and the
+// concrete portal frames at the surface crossings.
+// ---------------------------------------------------------------------------
+
+/**
+ * The tunnel cap: a ground sheet that rebuilds the natural surface above a carved
+ * tunnel run. It spans the carve's full influence footprint (pavement + shoulder +
+ * blend) so its edges land exactly where the carved terrain blends back to natural
+ * height, and vertex colours alternate two earth tones per 8 m world cell so the
+ * sheet reads as ground rather than a slab.
+ */
+export function buildTunnelCapGeometry(span: TunnelSpan): BufferGeometry | null {
+  const { points } = span;
+  if (points.length < 2) return null;
+  const cover = span.halfWidthMeters + span.shoulderMeters + span.blendWidthMeters;
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const cellHash = (x: number, z: number): number => {
+    const cx = Math.floor(x / 8);
+    const cz = Math.floor(z / 8);
+    let h = (cx * 374761393 + cz * 668265263) | 0;
+    h = (h ^ (h >>> 13)) | 0;
+    h = Math.imul(h, 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  };
+  for (let index = 0; index < points.length; index += 1) {
+    const point = points[index]!;
+    const tangent = tangentAt(points, index);
+    const side = sideOf(tangent);
+    for (const sideSign of [-1, 1] as const) {
+      const x = point.x + side.x * cover * sideSign;
+      const z = point.z + side.z * cover * sideSign;
+      positions.push(x, point.baseY + TUNNEL_CAP_LIFT, z);
+      const t = cellHash(x, z);
+      // Grass-olive to dry-earth mix: ground, not pavement.
+      colors.push(0.34 + t * 0.1, 0.42 + t * 0.06, 0.24 + t * 0.05);
+    }
+  }
+  const indices: number[] = [];
+  for (let index = 0; index + 1 < points.length; index += 1) {
+    const a = index * 2;
+    const b = a + 2;
+    indices.push(a, b, a + 1, a + 1, b, b + 1);
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
+  geometry.setAttribute('color', new BufferAttribute(new Float32Array(colors), 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  return geometry;
+}
+
+const TUNNEL_CAP_LIFT = 0.12;
+
+export interface TunnelPortalGeometry {
+  /** Piers and lintel — merge into the concrete barrier batch. */
+  readonly concrete: BufferGeometry | null;
+  /** The two lamp heads — render with an emissive material. */
+  readonly lamps: BufferGeometry | null;
+}
+
+/**
+ * Portal structures at both surface crossings of a tunnel run. The cap rebuilds the
+ * natural ground over the carve's full footprint, so the mouth is a full-width hillside
+ * wall with the road opening through the middle: side walls out to the cap edge, piers
+ * framing the road, and — where the ceiling is high enough — a lintel above the opening
+ * with two lamp heads on its face.
+ */
+export function buildTunnelPortalGeometry(span: TunnelSpan): TunnelPortalGeometry {
+  const { points } = span;
+  if (points.length < 2) return { concrete: null, lamps: null };
+  const concreteGeometries: BufferGeometry[] = [];
+  const lampGeometries: BufferGeometry[] = [];
+  const cover = span.halfWidthMeters + span.shoulderMeters + span.blendWidthMeters;
+  const roadHalf = span.halfWidthMeters + span.shoulderMeters;
+  const mouth = (index: number, towardInterior: number): void => {
+    const point = points[index]!;
+    const tangent = tangentAt(points, index);
+    const yaw = Math.atan2(tangent.x, tangent.z);
+    const groundY = point.baseY;
+    const depth = groundY - point.y;
+    if (depth < 2) return; // a shallow dip: the cap edge blends into the slope on its own
+    const mouthX = point.x + tangent.x * towardInterior * 1.1;
+    const mouthZ = point.z + tangent.z * towardInterior * 1.1;
+    const lateral = (offset: number, sideSign: number): { x: number; z: number } => ({
+      x: mouthX - Math.sin(yaw) * offset * sideSign,
+      z: mouthZ + Math.cos(yaw) * offset * sideSign,
+    });
+    // Side walls: from the road edge out to the cap edge, sealing the mouth.
+    const wallWidth = cover - roadHalf - 0.3;
+    if (wallWidth > 0.5) {
+      const wallTop = groundY + TUNNEL_CAP_LIFT + 0.1;
+      const wallBottom = point.y - 0.4;
+      for (const sideSign of [-1, 1] as const) {
+        const wall = new BoxGeometry(wallWidth, wallTop - wallBottom, 2.2);
+        wall.rotateY(yaw);
+        const center = lateral(roadHalf + 0.3 + wallWidth / 2, sideSign);
+        wall.translate(center.x, wallBottom + (wallTop - wallBottom) / 2, center.z);
+        concreteGeometries.push(wall);
+      }
+    }
+    // Piers framing the road opening.
+    const pierOffset = roadHalf + 1.0;
+    const pierTop = groundY + 1.0;
+    const pierBottom = point.y - 0.4;
+    for (const sideSign of [-1, 1] as const) {
+      const pier = new BoxGeometry(2.2, pierTop - pierBottom, 2.2);
+      pier.rotateY(yaw);
+      const center = lateral(pierOffset, sideSign);
+      pier.translate(center.x, pierBottom + (pierTop - pierBottom) / 2, center.z);
+      concreteGeometries.push(pier);
+    }
+    // Lintel above the opening, only when the ceiling leaves room for the clearance.
+    const clearanceTop = point.y + 4.8; // a semi-trailer is 4 m tall
+    const lampY = clearanceTop - 0.5;
+    if (groundY + TUNNEL_CAP_LIFT - clearanceTop >= 0.7) {
+      const lintelHeight = groundY + TUNNEL_CAP_LIFT - clearanceTop;
+      const lintel = new BoxGeometry(2 * (roadHalf + 0.6), lintelHeight, 2.2);
+      lintel.rotateY(yaw);
+      lintel.translate(mouthX, clearanceTop + lintelHeight / 2, mouthZ);
+      concreteGeometries.push(lintel);
+    }
+    for (const sideSign of [-1, 1] as const) {
+      const lamp = new BoxGeometry(0.7, 0.35, 0.45);
+      lamp.rotateY(yaw);
+      const center = lateral(span.halfWidthMeters + 0.9, sideSign);
+      lamp.translate(
+        center.x + tangent.x * towardInterior * 0.2,
+        lampY,
+        center.z + tangent.z * towardInterior * 0.2,
+      );
+      lampGeometries.push(lamp);
+    }
+  };
+  mouth(0, 1);
+  mouth(points.length - 1, -1);
+  const merge = (list: BufferGeometry[]): BufferGeometry | null => {
+    if (list.length === 0) return null;
+    const merged = mergeGeometries(list, false);
+    for (const geometry of list) geometry.dispose();
+    return merged;
+  };
+  return { concrete: merge(concreteGeometries), lamps: merge(lampGeometries) };
 }

@@ -45,6 +45,8 @@ import {
   buildBarrierGeometry,
   buildDashGeometry,
   buildRibbonGeometry,
+  buildTunnelCapGeometry,
+  buildTunnelPortalGeometry,
   markingTrimsForEdge,
   trimRoadEdge,
 } from './road-geometry';
@@ -56,6 +58,10 @@ export interface RoadWorldStats {
   urbanCrosswalkIntersections: number;
   /** Phase 10.4 (C4): the skid-mark streaks instanced on junction approaches. */
   skidMarkStreaks: number;
+  /** Phase 10 pass 2+3: deck spans (bridges and overpass decks) with barriers/piers. */
+  bridgeSpans: number;
+  /** Phase 10 pass 3: tunnel runs capped with a ground sheet and portal frames. */
+  tunnelSpans: number;
   roadSurfacesLoaded: 0 | 1;
   /** Current Aohara-only visual wet-look blend; not a physical surface condition. */
   urbanWetLook: number;
@@ -689,9 +695,11 @@ export class RoadWorld {
       centerlineMaterial,
       'road-urban-centerlines',
     );
-    // Phase 10 pass 2: the bridge spans — barrier walls on both deck edges and concrete
-    // piers from the deck down into the valley. Both merge into the single barrier batch.
-    for (const span of network.bridgeSpans) {
+    // Phase 10 pass 2+3: the deck spans — real ravine bridges plus overpass decks.
+    // Barrier walls on both deck edges and concrete piers from the deck down to the
+    // ground below; both merge into the single barrier batch.
+    const deckSpans = [...network.bridgeSpans, ...network.overpassSpans];
+    for (const span of deckSpans) {
       const subEdge: RoadEdge = {
         id: `${span.edgeId}-span`,
         from: span.edgeId,
@@ -735,6 +743,19 @@ export class RoadWorld {
         barrierGeometries.push(pier);
       }
     }
+    // Phase 10 pass 3: the tunnels — a ground cap rebuilds the surface over each carved
+    // run, and concrete portal frames with lamps mark the surface crossings. The cap
+    // covers the carve's full influence footprint, so its edges land where the terrain
+    // already blends back to natural height.
+    const capGeometries: BufferGeometry[] = [];
+    const lampGeometries: BufferGeometry[] = [];
+    for (const span of network.tunnelSpans) {
+      const cap = buildTunnelCapGeometry(span);
+      if (cap !== null) capGeometries.push(cap);
+      const portal = buildTunnelPortalGeometry(span);
+      if (portal.concrete !== null) barrierGeometries.push(portal.concrete);
+      if (portal.lamps !== null) lampGeometries.push(portal.lamps);
+    }
     if (barrierGeometries.length > 0) {
       const barrierMaterial = new MeshStandardNodeMaterial();
       barrierMaterial.name = 'concrete-barrier';
@@ -745,6 +766,28 @@ export class RoadWorld {
         mergeGeometryBatch(barrierGeometries, 'concrete-barrier-batch'),
         barrierMaterial,
         'concrete-barriers',
+      );
+    }
+    if (capGeometries.length > 0) {
+      const capMaterial = new MeshStandardNodeMaterial();
+      capMaterial.name = 'tunnel-cap-ground';
+      capMaterial.vertexColors = true;
+      capMaterial.roughness = 1;
+      capMaterial.metalness = 0;
+      add(mergeGeometryBatch(capGeometries, 'tunnel-cap-batch'), capMaterial, 'tunnel-caps');
+    }
+    if (lampGeometries.length > 0) {
+      const lampMaterial = new MeshStandardNodeMaterial();
+      lampMaterial.name = 'tunnel-portal-lamps';
+      lampMaterial.color.set(0x2a2118);
+      lampMaterial.roughness = 0.4;
+      lampMaterial.metalness = 0;
+      lampMaterial.emissive.set(0xffa845);
+      lampMaterial.emissiveIntensity = 2.4;
+      add(
+        mergeGeometryBatch(lampGeometries, 'tunnel-portal-lamp-batch'),
+        lampMaterial,
+        'tunnel-portal-lamps',
       );
     }
     add(
@@ -904,6 +947,8 @@ export class RoadWorld {
       urbanSidewalkEdges: this.#urbanSidewalkEdges,
       urbanCrosswalkIntersections: this.#urbanCrosswalkIntersections,
       skidMarkStreaks: this.#skidMarkStreaks,
+      bridgeSpans: this.#network.bridgeSpans.length,
+      tunnelSpans: this.#network.tunnelSpans.length,
       roadSurfacesLoaded: this.#surfacesLoaded,
       urbanWetLook: Number(this.#urbanWetness.value.toFixed(3)),
     };

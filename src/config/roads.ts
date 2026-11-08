@@ -67,6 +67,12 @@ export interface RoadNetworkConfig {
   readonly maxGrade: number;
   readonly nodes: readonly RoadNodeConfig[];
   readonly edges: readonly RoadEdgeConfig[];
+  /**
+   * The world seed. Present only for generated worlds: the solver uses it to pick the
+   * (few) grade-separated crossings as overpasses. Hand-authored networks omit it and
+   * stay exactly as solved (Phase 10 pass 3).
+   */
+  readonly seed?: number;
 }
 
 function aoharaNodeId(rowId: string, columnId: string): string {

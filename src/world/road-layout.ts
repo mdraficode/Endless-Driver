@@ -615,6 +615,8 @@ export function buildRoadLayout(
       maxGrade: 0.09,
       nodes,
       edges,
+      // Phase 10 pass 3: the solver's seeded overpass picks are per-world (plan §5).
+      seed: plan.seed,
     },
     // The kit's central intersection: every world starts on Central Avenue, which runs
     // straight through the levelled city plateau (see proceduralSpawn in city-content).
