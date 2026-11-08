@@ -7,7 +7,12 @@ import { homeCityAnchor } from '../../src/world/city-content';
 import { placeHideouts, hideoutPits } from '../../src/world/hideouts';
 import { terrainConfigForTier } from '../../src/config/terrain';
 import type { RoadNetwork } from '../../src/world/road-network';
-import { buildTunnelCapGeometry, buildTunnelPortalGeometry } from '../../src/world/road-geometry';
+import {
+  buildTunnelCapGeometry,
+  buildTunnelPortalGeometry,
+  buildDeckBellyGeometry,
+} from '../../src/world/road-geometry';
+import { RoadWorld } from '../../src/world/RoadWorld';
 
 /**
  * Phase 10 pass 3 — tunnels and overpasses: the world's biggest ridges carry a mainline
@@ -182,6 +187,8 @@ describe('overpasses in the generated world', () => {
 describe('tunnel cap and portal geometry', () => {
   // A synthetic span: 10 points along +x, floor at y=0, natural ground 8 m above.
   const makeSpan = (overrides?: { baseY?: number; blendWidthMeters?: number }) => {
+    const cover = 2.75 + 2.2 + (overrides?.blendWidthMeters ?? 30);
+    const baseY = overrides?.baseY ?? 8;
     const points = [];
     for (let i = 0; i < 10; i += 1) {
       points.push({
@@ -189,7 +196,13 @@ describe('tunnel cap and portal geometry', () => {
         z: 0,
         y: 0,
         alongMeters: i * 10,
-        baseY: overrides?.baseY ?? 8,
+        baseY,
+        leftX: i * 10,
+        leftZ: -cover,
+        leftY: baseY,
+        rightX: i * 10,
+        rightZ: cover,
+        rightY: baseY,
       });
     }
     return {
@@ -212,10 +225,12 @@ describe('tunnel cap and portal geometry', () => {
     expect(position).not.toBeNull();
     expect(color).not.toBeNull();
     if (position === null || color === null) return;
-    expect(position.count).toBe(span.points.length * 2);
-    expect(color.count).toBe(span.points.length * 2);
+    // Cap rows (one per point, two edge vertices) plus one cut-face bottom row per
+    // mouth (depth 8 m is in the [0.5, 12] m face range, so both mouths get a face).
+    expect(position.count).toBe(span.points.length * 2 + 4);
+    expect(color.count).toBe(span.points.length * 2 + 4);
     // The sheet sits at the natural ground height, laterally out to the blend edge.
-    for (let i = 0; i < position.count; i += 1) {
+    for (let i = 0; i < span.points.length * 2; i += 1) {
       const x = position.getX(i);
       const y = position.getY(i);
       const z = position.getZ(i);
@@ -223,6 +238,26 @@ describe('tunnel cap and portal geometry', () => {
       expect(y).toBeCloseTo(8 + 0.12, 5);
       expect(Math.abs(z)).toBeCloseTo(2.75 + 2.2 + 30, 5);
     }
+    // The cut-face bottom rows land at the road, sealing the mouth down to the floor.
+    for (let i = span.points.length * 2; i < position.count; i += 1) {
+      expect(position.getY(i)).toBeCloseTo(-0.15, 5);
+      expect(Math.abs(position.getZ(i))).toBeCloseTo(2.75 + 2.2 + 30, 5);
+    }
+  });
+
+  it('no cut face or frame where the mouth is a cliff (depth beyond 12 m)', () => {
+    const cliff = makeSpan({ baseY: 50 });
+    const cap = buildTunnelCapGeometry(cliff);
+    expect(cap).not.toBeNull();
+    if (cap !== null) {
+      const position = cap.getAttribute('position');
+      expect(position).not.toBeNull();
+      // Only the cap rows — no bottom rows for the 50 m cliff mouths.
+      expect(position!.count).toBe(cliff.points.length * 2);
+    }
+    const portal = buildTunnelPortalGeometry(cliff);
+    expect(portal.concrete).toBeNull();
+    expect(portal.lamps).toBeNull();
   });
 
   it('frames the mouth with concrete, and only when the dip is deep enough', () => {
@@ -248,4 +283,184 @@ describe('tunnel cap and portal geometry', () => {
     const onePoint = makeSpan();
     expect(buildTunnelCapGeometry({ ...onePoint, points: [onePoint.points[0]!] })).toBeNull();
   });
+});
+
+type BarriersMesh = {
+  geometry: {
+    getAttribute(n: string): {
+      count: number;
+      getX(i: number): number;
+      getY(i: number): number;
+      getZ(i: number): number;
+    } | null;
+  };
+};
+
+describe('tunnel cap and overpass structure (world-level regression)', () => {
+  // Owner device report: tunnel caps floated in the air and ended in a sky gap at the
+  // mouth, cliff mouths grew needle portals, and overpass decks read as floating sheets
+  // (no underside, centreline piers standing in the road below). These pin the fixes.
+
+  it('every cap edge sits on the visible (carved) terrain — no floating seam', () => {
+    for (const seed of SEEDS) {
+      const { network, heightAt } = buildGeneratedWorld(seed);
+      for (const span of network.tunnelSpans) {
+        const cap = buildTunnelCapGeometry(span);
+        expect(cap, `cap for ${span.edgeId}`).not.toBeNull();
+        if (cap === null) continue;
+        const position = cap.getAttribute('position');
+        expect(position).not.toBeNull();
+        if (position === null) continue;
+        // Every cap ROW vertex must sit at or just above the visible ground under it:
+        // the cap rebuilds the surface, it does not hover over it. (The cut-face bottom
+        // vertices sit at the road level, buried in the hillside by design.)
+        for (let i = 0; i < span.points.length * 2; i += 1) {
+          const x = position.getX(i);
+          const y = position.getY(i);
+          const z = position.getZ(i);
+          const ground = heightAt(x, z);
+          expect(
+            y - ground,
+            `vertex ${i} of ${span.edgeId} floats ${y - ground} m`,
+          ).toBeLessThanOrEqual(0.35);
+          expect(
+            y - ground,
+            `vertex ${i} of ${span.edgeId} is sunk below the ground`,
+          ).toBeGreaterThanOrEqual(-0.3);
+        }
+      }
+    }
+  });
+
+  it('cliff mouths get rock, not concrete: no frame or lamps beyond 12 m depth', () => {
+    let cliffsSeen = 0;
+    for (const seed of SEEDS) {
+      const { network } = buildGeneratedWorld(seed);
+      for (const span of network.tunnelSpans) {
+        const depthA = span.points[0]!.baseY - span.points[0]!.y;
+        const depthB =
+          span.points[span.points.length - 1]!.baseY - span.points[span.points.length - 1]!.y;
+        const portal = buildTunnelPortalGeometry(span);
+        if (depthA > 12 && depthB > 12) {
+          cliffsSeen += 1;
+          expect(portal.concrete, `${span.edgeId} cliff frame`).toBeNull();
+          expect(portal.lamps, `${span.edgeId} cliff lamps`).toBeNull();
+        }
+        if (depthA <= 12 && depthA >= 2 && depthB > 12) {
+          // The hill mouth may still carry its frame; the cliff mouth must not.
+          expect(portal.concrete, `${span.edgeId} hill mouth frame`).not.toBeNull();
+        }
+      }
+    }
+    // The audited seeds each carry at least one full-cliff crossing.
+    expect(cliffsSeen).toBeGreaterThanOrEqual(2);
+  });
+
+  it('overpass decks have a concrete underside and edge piers (no centreline piers)', () => {
+    for (const seed of SEEDS) {
+      const { network } = buildGeneratedWorld(seed);
+      expect(network.overpassSpans.length).toBeGreaterThan(0);
+      const world = new RoadWorld(network);
+      let barriers: BarriersMesh | undefined;
+      world.object.traverse((object) => {
+        if (object.name === 'concrete-barriers') {
+          barriers = object as unknown as BarriersMesh;
+        }
+      });
+      expect(barriers).toBeDefined();
+      if (barriers === undefined) return;
+      const position = barriers.geometry.getAttribute('position');
+      expect(position).not.toBeNull();
+      if (position === null) return;
+      // Spatial hash of the concrete batch so the pier lookups stay O(1) per column.
+      const CELL = 4;
+      const buckets = new Map<string, number[]>();
+      for (let i = 0; i < position.count; i += 1) {
+        const key = `${Math.floor(position.getX(i) / CELL)}:${Math.floor(position.getZ(i) / CELL)}`;
+        const list = buckets.get(key);
+        if (list === undefined) buckets.set(key, [i]);
+        else list.push(i);
+      }
+      const nearVertex = (ex: number, ez: number, test: (vy: number) => boolean): boolean => {
+        const cx = Math.floor(ex / CELL);
+        const cz = Math.floor(ez / CELL);
+        for (let ox = -1; ox <= 1; ox += 1) {
+          for (let oz = -1; oz <= 1; oz += 1) {
+            const list = buckets.get(`${cx + ox}:${cz + oz}`);
+            if (list === undefined) continue;
+            for (const i of list) {
+              if (
+                Math.abs(position.getX(i) - ex) < 1.4 &&
+                Math.abs(position.getZ(i) - ez) < 1.4 &&
+                test(position.getY(i))
+              ) {
+                return true;
+              }
+            }
+          }
+        }
+        return false;
+      };
+
+      for (const span of network.overpassSpans) {
+        // The belly: one downward-facing strip under the whole span.
+        const belly = buildDeckBellyGeometry(
+          span.points,
+          span.halfWidthMeters,
+          span.shoulderMeters,
+        );
+        expect(belly, `belly for ${span.edgeId}`).not.toBeNull();
+        if (belly !== null) {
+          const normal = belly.getAttribute('normal');
+          expect(normal).not.toBeNull();
+          if (normal !== null) {
+            for (let i = 0; i < normal.count; i += 1) {
+              expect(normal.getY(i), 'belly normal must face the valley').toBeLessThanOrEqual(0.05);
+            }
+          }
+        }
+        // The piers: expected columns at the deck edges exist in the concrete batch,
+        // and nothing was built on the centreline.
+        const pierOffset = span.halfWidthMeters + span.shoulderMeters - 1.2;
+        const spanLength =
+          span.points[span.points.length - 1]!.alongMeters - span.points[0]!.alongMeters;
+        const pierCount = Math.max(2, Math.ceil(spanLength / 20) + 1);
+        for (let p = 0; p < pierCount; p += 1) {
+          const along = span.points[0]!.alongMeters + (spanLength * (p + 0.5)) / pierCount;
+          let nearest = span.points[0]!;
+          let nearestIndex = 0;
+          span.points.forEach((point, index) => {
+            if (Math.abs(point.alongMeters - along) < Math.abs(nearest.alongMeters - along)) {
+              nearest = point;
+              nearestIndex = index;
+            }
+          });
+          const topY = nearest.y;
+          const bottomY = nearest.baseY - 0.8;
+          if (topY - bottomY < 2 || topY - bottomY > 25) continue;
+          const prev = span.points[Math.max(0, nearestIndex - 1)]!;
+          const next = span.points[Math.min(span.points.length - 1, nearestIndex + 1)]!;
+          const runX = next.x - prev.x;
+          const runZ = next.z - prev.z;
+          const runLength = Math.hypot(runX, runZ) || 1;
+          const nx = -runZ / runLength;
+          const nz = runX / runLength;
+          const inColumn = (vy: number): boolean =>
+            vy > bottomY + (topY - bottomY) * 0.4 && vy < topY + 0.3;
+          for (const sideSign of [-1, 1] as const) {
+            const ex = nearest.x + nx * pierOffset * sideSign;
+            const ez = nearest.z + nz * pierOffset * sideSign;
+            expect(
+              nearVertex(ex, ez, inColumn),
+              `edge pier at (${ex.toFixed(1)}, ${ez.toFixed(1)}) for ${span.edgeId}`,
+            ).toBe(true);
+          }
+          expect(
+            nearVertex(nearest.x, nearest.z, inColumn),
+            `no centreline pier at (${nearest.x.toFixed(1)}, ${nearest.z.toFixed(1)}) for ${span.edgeId}`,
+          ).toBe(false);
+        }
+      }
+    }
+  }, 60000);
 });

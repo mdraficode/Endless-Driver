@@ -2,6 +2,7 @@ import {
   BoxGeometry,
   CircleGeometry,
   DataTexture,
+  DoubleSide,
   Group,
   InstancedMesh,
   Mesh,
@@ -42,6 +43,7 @@ import { clamp } from '../shared/math';
 import type { DaylightState } from '../environment/EnvironmentClock';
 import type { RoadEdge, RoadNetwork } from './road-network';
 import {
+  buildDeckBellyGeometry,
   buildBarrierGeometry,
   buildDashGeometry,
   buildRibbonGeometry,
@@ -721,27 +723,51 @@ export class RoadWorld {
           ),
         );
       }
-      // Piers: one every ~20 m of deck, embedded into the valley floor.
+      // Piers: one pair every ~20 m of deck, at the deck's edges (never the centreline —
+      // over an overpass the centreline is the road below, and over a ramp it is the
+      // ramp's own driving surface). Embedded into the ground below the deck.
       const spanLength =
         span.points[span.points.length - 1]!.alongMeters - span.points[0]!.alongMeters;
       const pierCount = Math.max(2, Math.ceil(spanLength / 20) + 1);
+      const pierOffset = span.halfWidthMeters + span.shoulderMeters - 1.2;
       for (let p = 0; p < pierCount; p += 1) {
         const along = span.points[0]!.alongMeters + (spanLength * (p + 0.5)) / pierCount;
         let nearest = span.points[0]!;
-        for (const point of span.points) {
+        let nearestIndex = 0;
+        span.points.forEach((point, index) => {
           if (Math.abs(point.alongMeters - along) < Math.abs(nearest.alongMeters - along)) {
             nearest = point;
+            nearestIndex = index;
           }
-        }
+        });
         const topY = nearest.y;
         const bottomY = nearest.baseY - 0.8;
         if (topY - bottomY < 2) continue; // a shallow crossing is cut, not bridged
         // A true canyon crossing: the deck spans the gap open — no forest of needle piers.
         if (topY - bottomY > 25) continue;
-        const pier = new BoxGeometry(2.2, topY - bottomY, 2.2);
-        pier.translate(nearest.x, (topY + bottomY) / 2, nearest.z);
-        barrierGeometries.push(pier);
+        const prev = span.points[Math.max(0, nearestIndex - 1)]!;
+        const next = span.points[Math.min(span.points.length - 1, nearestIndex + 1)]!;
+        let tx = next.x - prev.x;
+        let tz = next.z - prev.z;
+        const length = Math.hypot(tx, tz) || 1;
+        tx /= length;
+        tz /= length;
+        const nx = -tz;
+        const nz = tx;
+        for (const sideSign of [-1, 1] as const) {
+          const pier = new BoxGeometry(2.2, topY - bottomY, 2.2);
+          pier.translate(
+            nearest.x + nx * pierOffset * sideSign,
+            (topY + bottomY) / 2,
+            nearest.z + nz * pierOffset * sideSign,
+          );
+          barrierGeometries.push(pier);
+        }
       }
+      // The deck's underside: a concrete belly under the span so the deck has mass
+      // from below (the road ribbon is single-sided and invisible from underneath).
+      const belly = buildDeckBellyGeometry(span.points, span.halfWidthMeters, span.shoulderMeters);
+      if (belly !== null) barrierGeometries.push(belly);
     }
     // Phase 10 pass 3: the tunnels — a ground cap rebuilds the surface over each carved
     // run, and concrete portal frames with lamps mark the surface crossings. The cap
@@ -774,6 +800,9 @@ export class RoadWorld {
       capMaterial.vertexColors = true;
       capMaterial.roughness = 1;
       capMaterial.metalness = 0;
+      // The cap is ground seen from outside the mountain AND the ceiling seen from
+      // inside the tunnel: both faces must render.
+      capMaterial.side = DoubleSide;
       add(mergeGeometryBatch(capGeometries, 'tunnel-cap-batch'), capMaterial, 'tunnel-caps');
     }
     if (lampGeometries.length > 0) {

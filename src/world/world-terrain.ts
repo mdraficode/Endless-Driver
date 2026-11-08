@@ -72,7 +72,7 @@ export function createWorldTerrainSampler(
     const blend = t * t * (3 - 2 * t);
     return cityElevation + (naturalHeight - cityElevation) * blend;
   };
-  const network = buildRoadNetwork(roadConfig, baseHeightAt);
+  let network = buildRoadNetwork(roadConfig, baseHeightAt);
 
   const pitDepthAt = (x: number, z: number): number => {
     let depth = 0;
@@ -252,6 +252,26 @@ export function createWorldTerrainSampler(
     }
     return height;
   };
+
+  // Phase 10 pass 3 fix: the tunnel cap's edges must sit on the VISIBLE (carved)
+  // terrain. The solver sampled the pre-carve natural at each cap edge, but at the
+  // edge the carve's lateral blend is not always fully faded (on a curve the
+  // perpendicular offset lands inside the influence), which left the cap edge
+  // floating metres above the ground on mountainsides. Re-sample the final height
+  // at the stored edge positions so the cap seam closes everywhere.
+  if (network.tunnelSpans.length > 0) {
+    network = {
+      ...network,
+      tunnelSpans: network.tunnelSpans.map((span) => ({
+        ...span,
+        points: span.points.map((p) => ({
+          ...p,
+          leftY: heightAt(p.leftX, p.leftZ),
+          rightY: heightAt(p.rightX, p.rightZ),
+        })),
+      })),
+    };
+  }
 
   return {
     heightAt,

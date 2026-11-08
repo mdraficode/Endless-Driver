@@ -84,8 +84,23 @@ export interface TunnelSpan {
   readonly halfWidthMeters: number;
   readonly shoulderMeters: number;
   readonly blendWidthMeters: number;
-  /** Floor points in travel order, with the natural ground height above each. */
-  readonly points: readonly (RoadPoint & { readonly baseY: number })[];
+  /**
+   * Floor points in travel order, with the natural ground height above each, and the
+   * natural ground resampled at the cap's lateral edges (the cap sheet must follow the
+   * terrain across its width — a mountainside is not flat over 30 m).
+   */
+  readonly points: readonly (RoadPoint & {
+    readonly baseY: number;
+    /** Cap edge positions and the ground height there (re-sampled on the visible
+     * terrain by the world sampler: at the cap edge the carve's blend may not be
+     * fully faded, so the pre-carve natural would float the edge off the ground). */
+    readonly leftX: number;
+    readonly leftZ: number;
+    readonly leftY: number;
+    readonly rightX: number;
+    readonly rightZ: number;
+    readonly rightY: number;
+  })[];
 }
 
 /**
@@ -1400,13 +1415,42 @@ export function buildRoadNetwork(
     ) {
       continue; // the capped part is too short: an open cut
     }
+    // The cap sheet's lateral edges: resample the natural ground at each cap edge so
+    // the sheet follows the terrain across its full width (a mountainside drops metres
+    // over the cap's 30 m offset — using the centreline height floated the edges).
+    const capCover = edge.halfWidthMeters + edge.shoulderMeters + config.blendWidthMeters;
     tunnelSpans.push({
       edgeId: edge.id,
       roadClass: edge.roadClass,
       halfWidthMeters: edge.halfWidthMeters,
       shoulderMeters: edge.shoulderMeters,
       blendWidthMeters: config.blendWidthMeters,
-      points: capped.map((p) => ({ ...p, baseY: baseHeightAt(p.x, p.z) })),
+      points: capped.map((p, index) => {
+        const prev = capped[index - 1] ?? p;
+        const next = capped[index + 1] ?? p;
+        let tx = next.x - prev.x;
+        let tz = next.z - prev.z;
+        const length = Math.hypot(tx, tz) || 1;
+        tx /= length;
+        tz /= length;
+        // Left normal of the travel direction (consistent sign; the cap is symmetric).
+        const nx = -tz;
+        const nz = tx;
+        const leftX = p.x + nx * capCover;
+        const leftZ = p.z + nz * capCover;
+        const rightX = p.x - nx * capCover;
+        const rightZ = p.z - nz * capCover;
+        return {
+          ...p,
+          baseY: baseHeightAt(p.x, p.z),
+          leftX,
+          leftZ,
+          leftY: baseHeightAt(leftX, leftZ),
+          rightX,
+          rightZ,
+          rightY: baseHeightAt(rightX, rightZ),
+        };
+      }),
     });
   }
 

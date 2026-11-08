@@ -457,6 +457,52 @@ export function buildBarrierGeometry(
  * Centreline dashes for the whole network as one geometry: 3 m painted, 6 m gap,
  * sampled at exact profile distances and kept clear of every junction approach.
  */
+/**
+ * The deck's underside slab: a thin concrete strip under a deck span (overpass or
+ * ravine bridge) so the deck reads as a structure from below instead of a floating
+ * painted sheet (the road ribbon is single-sided). Merges into the concrete batch.
+ */
+export function buildDeckBellyGeometry(
+  points: readonly RoadPoint[],
+  halfWidthMeters: number,
+  shoulderMeters: number,
+): BufferGeometry | null {
+  if (points.length < 2) return null;
+  const half = halfWidthMeters + shoulderMeters - 0.3;
+  const DECK_THICKNESS = 0.45;
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  for (let index = 0; index < points.length; index += 1) {
+    const point = points[index]!;
+    const side = sideOf(tangentAt(points, index));
+    const y = point.y - DECK_THICKNESS;
+    positions.push(
+      point.x + side.x * half,
+      y,
+      point.z + side.z * half,
+      point.x - side.x * half,
+      y,
+      point.z - side.z * half,
+    );
+    uvs.push(0, 0, 1, 0);
+  }
+  const indices: number[] = [];
+  for (let index = 0; index + 1 < points.length; index += 1) {
+    const a = index * 2; // left_i
+    const b = a + 1; // right_i
+    const c = a + 2; // left_{i+1}
+    const d = c + 1; // right_{i+1}
+    // Wound for a downward normal (the belly faces the valley).
+    indices.push(a, c, b, c, d, b);
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
+  geometry.setAttribute('uv', new BufferAttribute(new Float32Array(uvs), 2));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
 export function buildDashGeometry(network: RoadNetwork, yOffset: number): BufferGeometry {
   const positions: number[] = [];
   const indices: number[] = [];
@@ -540,6 +586,15 @@ export function buildDashGeometry(network: RoadNetwork, yOffset: number): Buffer
 // concrete portal frames at the surface crossings.
 // ---------------------------------------------------------------------------
 
+/** The cap sheet floats a hair above the ground so it never z-fights the carved surface. */
+const TUNNEL_CAP_LIFT = 0.12;
+/**
+ * Deepest mouth that still gets a built cut face and portal frame. Beyond this the
+ * crossing is a cliff: the natural terrain IS the portal, and a concrete frame would
+ * be a needle hundreds of metres tall.
+ */
+const TUNNEL_PORTAL_MAX_DEPTH = 12;
+
 /**
  * The tunnel cap: a ground sheet that rebuilds the natural surface above a carved
  * tunnel run. It spans the carve's full influence footprint (pavement + shoulder +
@@ -565,10 +620,14 @@ export function buildTunnelCapGeometry(span: TunnelSpan): BufferGeometry | null 
     const point = points[index]!;
     const tangent = tangentAt(points, index);
     const side = sideOf(tangent);
+    // The edges sit on the terrain resampled at their own positions: over a
+    // mountainside the ground changes a lot across the cap's width, and the old
+    // centreline height left the far edge floating (or sunk) metres off the slope.
     for (const sideSign of [-1, 1] as const) {
       const x = point.x + side.x * cover * sideSign;
       const z = point.z + side.z * cover * sideSign;
-      positions.push(x, point.baseY + TUNNEL_CAP_LIFT, z);
+      const edgeY = sideSign < 0 ? (point.leftY ?? point.baseY) : (point.rightY ?? point.baseY);
+      positions.push(x, edgeY + TUNNEL_CAP_LIFT, z);
       const t = cellHash(x, z);
       // Grass-olive to dry-earth mix: ground, not pavement.
       colors.push(0.34 + t * 0.1, 0.42 + t * 0.06, 0.24 + t * 0.05);
@@ -580,6 +639,35 @@ export function buildTunnelCapGeometry(span: TunnelSpan): BufferGeometry | null 
     const b = a + 2;
     indices.push(a, b, a + 1, a + 1, b, b + 1);
   }
+  // Mouth cut faces: the cap used to end in a free edge floating above the open cut's
+  // slope (a several-metre gap of sky at every tunnel mouth). A vertical rock face
+  // seals the end from the cap edge down to the road — the cut through the hillside.
+  // Skipped on cliffs (the terrain frames the mouth) and where there is no depth.
+  for (const endIndex of [0, points.length - 1] as const) {
+    const point = points[endIndex]!;
+    const depth = point.baseY - point.y;
+    if (depth < 0.5 || depth > TUNNEL_PORTAL_MAX_DEPTH) continue;
+    const tangent = tangentAt(points, endIndex);
+    const side = sideOf(tangent);
+    const bottomY = point.y - 0.15;
+    const baseIndex = positions.length / 3;
+    const leftCap = endIndex === 0 ? baseIndex : baseIndex - 2;
+    const rightCap = leftCap + 1;
+    const leftX = point.x + side.x * cover;
+    const leftZ = point.z + side.z * cover;
+    const rightX = point.x - side.x * cover;
+    const rightZ = point.z - side.z * cover;
+    positions.push(leftX, bottomY, leftZ);
+    const tL = cellHash(leftX, leftZ);
+    colors.push(0.3 + tL * 0.08, 0.38 + tL * 0.05, 0.22 + tL * 0.04);
+    positions.push(rightX, bottomY, rightZ);
+    const tR = cellHash(rightX, rightZ);
+    colors.push(0.3 + tR * 0.08, 0.38 + tR * 0.05, 0.22 + tR * 0.04);
+    const lb = baseIndex + 2;
+    const rb = lb + 1;
+    // Winding is irrelevant (the cap material renders double-sided).
+    indices.push(leftCap, lb, rb, leftCap, rb, rightCap);
+  }
   const geometry = new BufferGeometry();
   geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
   geometry.setAttribute('color', new BufferAttribute(new Float32Array(colors), 3));
@@ -588,8 +676,6 @@ export function buildTunnelCapGeometry(span: TunnelSpan): BufferGeometry | null 
   geometry.computeBoundingSphere();
   return geometry;
 }
-
-const TUNNEL_CAP_LIFT = 0.12;
 
 export interface TunnelPortalGeometry {
   /** Piers and lintel — merge into the concrete barrier batch. */
@@ -619,6 +705,9 @@ export function buildTunnelPortalGeometry(span: TunnelSpan): TunnelPortalGeometr
     const groundY = point.baseY;
     const depth = groundY - point.y;
     if (depth < 2) return; // a shallow dip: the cap edge blends into the slope on its own
+    if (depth > TUNNEL_PORTAL_MAX_DEPTH) {
+      return; // a cliff mouth: the rock face IS the portal — no concrete needles
+    }
     const mouthX = point.x + tangent.x * towardInterior * 1.1;
     const mouthZ = point.z + tangent.z * towardInterior * 1.1;
     const lateral = (offset: number, sideSign: number): { x: number; z: number } => ({
@@ -659,16 +748,20 @@ export function buildTunnelPortalGeometry(span: TunnelSpan): TunnelPortalGeometr
       lintel.translate(mouthX, clearanceTop + lintelHeight / 2, mouthZ);
       concreteGeometries.push(lintel);
     }
-    for (const sideSign of [-1, 1] as const) {
-      const lamp = new BoxGeometry(0.7, 0.35, 0.45);
-      lamp.rotateY(yaw);
-      const center = lateral(span.halfWidthMeters + 0.9, sideSign);
-      lamp.translate(
-        center.x + tangent.x * towardInterior * 0.2,
-        lampY,
-        center.z + tangent.z * towardInterior * 0.2,
-      );
-      lampGeometries.push(lamp);
+    // The lamps only where the ground actually clears them (a low hillside mouth would
+    // otherwise float them in the air above the slope).
+    if (groundY - lampY >= 0.5) {
+      for (const sideSign of [-1, 1] as const) {
+        const lamp = new BoxGeometry(0.7, 0.35, 0.45);
+        lamp.rotateY(yaw);
+        const center = lateral(span.halfWidthMeters + 0.9, sideSign);
+        lamp.translate(
+          center.x + tangent.x * towardInterior * 0.2,
+          lampY,
+          center.z + tangent.z * towardInterior * 0.2,
+        );
+        lampGeometries.push(lamp);
+      }
     }
   };
   mouth(0, 1);
