@@ -18,6 +18,7 @@ import {
   setVec3,
   subtractVec3,
   vec3,
+  yawFromQuat,
   type Quat,
   type Vec3,
 } from '../shared/vector';
@@ -241,6 +242,72 @@ export class Car {
       pose.position.x -= dx;
       pose.position.z -= dz;
     }
+  }
+
+  /**
+   * Projects the car back onto the terrain after it has sunk below the surface.
+   *
+   * The terrain collider is a one-way heightfield: the car rides it, but nothing blocks
+   * entry from the side. At a cliff face the wheel raycasts lean the chassis into the
+   * ground and the body can end up partially below the surface — visually a car inside a
+   * mountain, with the camera looking through culled backfaces at the far-side ground.
+   *
+   * Two ground queries (chassis centre and the front overhang, where face clipping
+   * starts) measure the embedding; if positive the body is lifted onto the surface and
+   * the velocity component into the ground is removed, so a car pressed against a wall
+   * slides along it instead of grinding into it. `offset` converts body (physics-space)
+   * coordinates to the terrain's eternal world space.
+   */
+  liftOutOfTerrain(
+    terrain: {
+      heightAt(x: number, z: number): number;
+      normalAt(
+        x: number,
+        z: number,
+      ): { readonly x: number; readonly y: number; readonly z: number };
+    },
+    offset: { readonly x: number; readonly z: number },
+    toleranceMeters = 0.12,
+  ): boolean {
+    const body = this.body;
+    const pose = this.getInterpolatedPose(0);
+    const carYaw = yawFromQuat(pose.rotation);
+    const bodyY = body.translation().y;
+    const checkPoint = (px: number, pz: number): number =>
+      terrain.heightAt(px + offset.x, pz + offset.z) + toleranceMeters - bodyY;
+    let deficit = checkPoint(body.translation().x, body.translation().z);
+    deficit = Math.max(
+      deficit,
+      checkPoint(
+        body.translation().x - Math.sin(carYaw) * 2.05,
+        body.translation().z - Math.cos(carYaw) * 2.05,
+      ),
+    );
+    if (deficit <= 0) {
+      return false;
+    }
+    const translation = body.translation();
+    body.setTranslation({ x: translation.x, y: translation.y + deficit, z: translation.z }, true);
+    for (const storedPose of [this.#previousPose, this.#currentPose]) {
+      storedPose.position.y += deficit;
+    }
+    const normal = terrain.normalAt(
+      body.translation().x + offset.x,
+      body.translation().z + offset.z,
+    );
+    const linvel = body.linvel();
+    const into = linvel.x * normal.x + linvel.y * normal.y + linvel.z * normal.z;
+    if (into < 0) {
+      body.setLinvel(
+        {
+          x: linvel.x - into * normal.x,
+          y: linvel.y - into * normal.y,
+          z: linvel.z - into * normal.z,
+        },
+        true,
+      );
+    }
+    return true;
   }
 
   reset(position?: readonly [number, number, number], yaw?: number): void {

@@ -200,25 +200,28 @@ export function massingCityForRegion(
   options: MassingCityOptions = {},
 ): MassingCitySpec {
   const network = options.network;
+  // A narrow road can run under a building face between any two sparse probes, so the
+  // clearance test marches the whole footprint boundary (and the centre) against the
+  // solved pavement: a corner may kiss the curb, but no part of the footprint may stand
+  // on the asphalt.
+  const PROBE_PER_EDGE = 6;
   const clearOfRoads = (x: number, z: number, halfWidth: number, halfDepth: number): boolean => {
     if (network === undefined) {
       return true;
     }
-    const probes: readonly (readonly [number, number])[] = [
-      [0, 0],
-      [halfWidth, 0],
-      [-halfWidth, 0],
-      [0, halfDepth],
-      [0, -halfDepth],
-      [halfWidth, halfDepth],
-      [-halfWidth, -halfDepth],
-    ];
-    for (const [dx, dz] of probes) {
+    const probe = (dx: number, dz: number): boolean => {
       const sample = network.sample(x + dx, z + dz);
-      // Outside the pavement: a corner may kiss the curb, never stand on the asphalt.
-      if (sample !== null && sample.distance <= sample.halfWidthMeters) {
-        return false;
-      }
+      return sample === null || sample.distance > sample.halfWidthMeters;
+    };
+    if (!probe(0, 0)) {
+      return false;
+    }
+    for (let i = 0; i <= PROBE_PER_EDGE; i += 1) {
+      const t = (i / PROBE_PER_EDGE) * 2 - 1;
+      if (!probe(t * halfWidth, halfDepth)) return false;
+      if (!probe(t * halfWidth, -halfDepth)) return false;
+      if (!probe(halfWidth, t * halfDepth)) return false;
+      if (!probe(-halfWidth, t * halfDepth)) return false;
     }
     return true;
   };

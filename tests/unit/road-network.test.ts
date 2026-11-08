@@ -26,6 +26,10 @@ import {
   trimRoadEdge,
 } from '../../src/world/road-geometry';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
+import { createWorldPlan, terrainSeedFor } from '../../src/world/world-plan';
+import { homeCityAnchor } from '../../src/world/city-content';
+import { buildRoadLayout } from '../../src/world/road-layout';
+import { terrainConfigForTier } from '../../src/config/terrain';
 
 /**
  * Phase 4 Increment 2 — the spline road network pinned against its contract:
@@ -463,4 +467,67 @@ describe('road surfaces', () => {
     expect(surface.id).toBe('grass');
     expect(surface.gripModifier).toBeLessThan(1);
   });
+});
+
+describe('grade feasibility in the generated world (owner: cliffs out mid-hill)', () => {
+  // The reported worlds: fresh seeds where the old average-node pinning left near-vertical
+  // steps (70-80°) in the solved profiles, which the carve then stamped into the terrain as
+  // walls the car could neither climb nor cross.
+  for (const seed of [20261013, 777, 424242]) {
+    it(`seed ${seed}: every solved segment stays inside its grade budget`, () => {
+      const plan = createWorldPlan(seed);
+      const anchor = homeCityAnchor(plan);
+      const { config } = buildRoadLayout(plan);
+      const sampler = createWorldTerrainSampler(
+        {
+          ...terrainConfigForTier('C', terrainSeedFor(seed)),
+          volcano: {
+            position: [plan.volcano.x, plan.volcano.z] as const,
+            heightMeters: plan.volcano.heightMeters,
+            radiusMeters: plan.volcano.radiusMeters,
+          },
+        },
+        config,
+        {
+          x: anchor.x,
+          z: anchor.z,
+          flatRadiusMeters: anchor.flatRadiusMeters,
+          blendRadiusMeters: anchor.blendRadiusMeters,
+        },
+      );
+      const network = sampler.roadNetwork;
+      if (network === undefined) {
+        throw new Error('generated world must expose its road network');
+      }
+      let worst = 0;
+      for (const edge of network.edges) {
+        for (let i = 1; i < edge.points.length; i += 1) {
+          const point = edge.points[i];
+          const previous = edge.points[i - 1];
+          if (point === undefined || previous === undefined) continue;
+          const run = Math.hypot(point.x - previous.x, point.z - previous.z);
+          if (run < 0.01) continue;
+          const grade = Math.abs(point.y - previous.y) / run;
+          if (grade > worst) worst = grade;
+          // The profile may touch its budget but never climb it: a vertical step here is
+          // a wall in the pavement.
+          expect(grade).toBeLessThanOrEqual(edge.maxGrade * 1.05 + 1e-6);
+        }
+      }
+      // Junctions stay continuous: every edge end sits exactly on its node's solved
+      // elevation, so no road ends in a step at a crossing.
+      for (const node of network.nodes.values()) {
+        for (const edge of network.edges) {
+          if (edge.from === node.id) {
+            expect(edge.points[0]?.y).toBeCloseTo(node.y, 3);
+          }
+          if (edge.to === node.id) {
+            expect(edge.points[edge.points.length - 1]?.y).toBeCloseTo(node.y, 3);
+          }
+        }
+      }
+      // The world's worst solved grade stays drivable (a car's limit is far below a wall).
+      expect(worst).toBeLessThan(0.2);
+    }, 30000);
+  }
 });

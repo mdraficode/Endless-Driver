@@ -1596,6 +1596,13 @@ export class Application {
       this.#syncDebugCamera(settled, true);
     }
 
+    // 2a-embed. The terrain heightfield is a one-way surface: the car rides it, but nothing
+    // blocks entry from the side. At a cliff face the wheel raycasts lean the chassis into
+    // the ground and the body can end up partially below the surface — the owner's "hollow
+    // mountain" (the camera sees culled backfaces instead of rock). Project the body back
+    // onto the surface, and only while actually embedded.
+    this.#car.liftOutOfTerrain(this.#terrainSampler, this.#origin.offset);
+
     // 2b. Time advances, and time becomes light for the next frame. The weather
     // transition steps first: wetness (physics), overcast (light) and rain (particles)
     // all ease toward the active preset, and the car is never touched by any of it.

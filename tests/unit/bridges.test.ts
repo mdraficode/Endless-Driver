@@ -134,14 +134,21 @@ describe('bridges in the generated world', () => {
       const mid = span.points[Math.floor(span.points.length / 2)]!;
       // On the pavement the carve keeps full influence — ground is the deck.
       expect(worldSampler.heightAt(mid.x, mid.z)).toBeCloseTo(mid.y, 1);
-      // The flat shelf extends past the shoulder: a few metres out is still the deck.
+      // The shelf extends past the shoulder: a few metres out is still deck. The shelf
+      // follows the local deck plane — for a flat crossing that is the span's height, and
+      // for a long grade-limited ramp over a canyon wall it is the deck elevation of the
+      // nearest centreline point (the carve samples the profile at the pavement edge).
       const dirX = span.points[span.points.length - 1]!.x - span.points[0]!.x;
       const dirZ = span.points[span.points.length - 1]!.z - span.points[0]!.z;
       const len = Math.hypot(dirX, dirZ) || 1;
       const nx = -dirZ / len;
       const nz = dirX / len;
       const d = span.halfWidthMeters + span.shoulderMeters + 2.5;
-      expect(worldSampler.heightAt(mid.x + nx * d, mid.z + nz * d)).toBeCloseTo(mid.y, 1);
+      const shelfX = mid.x + nx * d;
+      const shelfZ = mid.z + nz * d;
+      const shelfSample = network.sample(shelfX, shelfZ);
+      expect(shelfSample).not.toBeNull();
+      expect(worldSampler.heightAt(shelfX, shelfZ)).toBeCloseTo(shelfSample!.elevation, 1);
       // The centreline sample is flagged as deck so the carve applies the shelf.
       const lateral = network.sample(mid.x, mid.z);
       expect(lateral).not.toBeNull();

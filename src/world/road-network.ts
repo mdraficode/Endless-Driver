@@ -253,6 +253,35 @@ export function buildRoadNetwork(
         : baseHeightAt(node.x, node.z),
     );
   }
+  // The pins must be grade-feasible: a junction sits where several roads meet, and each road
+  // can only rise `maxGrade × length` between its ends. On a steep blend the naive average
+  // of the incident edge ends is infeasible for at least one edge, and the clamp below then
+  // leaves a near-vertical step at the edge front — a road that cliffs out mid-hill. Relax
+  // the node elevations until every edge's rise fits its grade budget (always feasible: any
+  // level world satisfies all of them).
+  for (let iteration = 0; iteration < 96; iteration += 1) {
+    let maxExcess = 0;
+    for (const edge of mutableEdges) {
+      const fromElevation = nodeElevation.get(edge.from) ?? 0;
+      const toElevation = nodeElevation.get(edge.to) ?? 0;
+      let length = 0;
+      for (let i = 1; i < edge.points.length; i += 1) {
+        const point = edge.points[i];
+        const previous = edge.points[i - 1];
+        if (point === undefined || previous === undefined) continue;
+        length += Math.hypot(point.x - previous.x, point.z - previous.z);
+      }
+      const excess = Math.abs(toElevation - fromElevation) - length * edge.maxGrade;
+      if (excess > 1e-9) {
+        const half = excess / 2;
+        const direction = Math.sign(toElevation - fromElevation);
+        nodeElevation.set(edge.from, fromElevation + direction * half);
+        nodeElevation.set(edge.to, toElevation - direction * half);
+        maxExcess = Math.max(maxExcess, excess);
+      }
+    }
+    if (maxExcess < 1e-6) break;
+  }
   for (const edge of mutableEdges) {
     const first = edge.points[0];
     const last = edge.points[edge.points.length - 1];

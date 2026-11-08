@@ -6,7 +6,10 @@ import {
   massingCityForRegion,
   proceduralSpawn,
 } from '../../src/world/city-content';
-import { createWorldPlan, REGION_CELL_METERS } from '../../src/world/world-plan';
+import { createWorldPlan, REGION_CELL_METERS, terrainSeedFor } from '../../src/world/world-plan';
+import { buildRoadLayout } from '../../src/world/road-layout';
+import { createWorldTerrainSampler } from '../../src/world/world-terrain';
+import { terrainConfigForTier } from '../../src/config/terrain';
 
 describe('city-content', () => {
   it('anchors the home city at the plan’s home district, on the city plateau radii', () => {
@@ -110,4 +113,81 @@ describe('city-content', () => {
       expect(Math.abs(district.centerZ)).toBeLessThan(REGION_CELL_METERS / 2);
     }
   });
+
+  // Owner report (2026-10-13): buildings standing on the street in fresh generated worlds.
+  // A narrow road can run under a footprint between any two sparse probes, so the clearance
+  // test must march the whole footprint boundary — pinned here against the reported seeds.
+  it('keeps every massing footprint off the solved pavement', () => {
+    for (const seed of [20261013, 777, 424242]) {
+      const plan = createWorldPlan(seed);
+      const anchor = homeCityAnchor(plan);
+      const { config } = buildRoadLayout(plan);
+      const sampler = createWorldTerrainSampler(
+        {
+          ...terrainConfigForTier('C', terrainSeedFor(seed)),
+          volcano: {
+            position: [plan.volcano.x, plan.volcano.z] as const,
+            heightMeters: plan.volcano.heightMeters,
+            radiusMeters: plan.volcano.radiusMeters,
+          },
+        },
+        config,
+        {
+          x: anchor.x,
+          z: anchor.z,
+          flatRadiusMeters: anchor.flatRadiusMeters,
+          blendRadiusMeters: anchor.blendRadiusMeters,
+        },
+      );
+      const network = sampler.roadNetwork;
+      if (network === undefined) {
+        throw new Error('generated world must expose its road network');
+      }
+      let checked = 0;
+      let violation: string | null = null;
+      for (let ix = -3; ix <= 3; ix += 1) {
+        for (let iz = -3; iz <= 3; iz += 1) {
+          const region = plan.regionAtCell(ix, iz);
+          if (region.archetype !== 'megacity' && region.archetype !== 'urban-fringe') continue;
+          const spec = massingCityForRegion(region, { network });
+          for (const box of [
+            ...spec.towers.map((t) => ({ x: t.x, z: t.z, w: t.width, d: t.depth })),
+            ...spec.infill.map((t) => ({ x: t.x, z: t.z, w: t.width, d: t.depth })),
+          ]) {
+            checked += 1;
+            const hw = box.w / 2;
+            const hd = box.d / 2;
+            // The same dense boundary march the placement uses: a corner may kiss the
+            // curb, but no probe may land on the asphalt.
+            const PER = 6;
+            for (let i = 0; i <= PER; i += 1) {
+              const t = (i / PER) * 2 - 1;
+              const probes: readonly (readonly [number, number])[] = [
+                ...(i === 0 ? ([[0, 0]] as const) : []),
+                [t * hw, hd],
+                [t * hw, -hd],
+                [hw, t * hd],
+                [-hw, t * hd],
+              ];
+              for (const [px, pz] of probes) {
+                const sample = network.sample(
+                  region.district.centerX + box.x + px,
+                  region.district.centerZ + box.z + pz,
+                );
+                if (
+                  sample !== null &&
+                  sample.distance <= sample.halfWidthMeters &&
+                  violation === null
+                ) {
+                  violation = `seed ${seed}: footprint at (${box.x}, ${box.z}) stands on the pavement`;
+                }
+              }
+            }
+          }
+        }
+      }
+      expect(checked).toBeGreaterThan(0);
+      expect(violation).toBeNull();
+    }
+  }, 60000);
 });
