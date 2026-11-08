@@ -122,6 +122,8 @@ export class DaylightController {
   #season: SeasonPresentation | null;
   /** The live cloud cover (0 clear .. 1 full storm): dims exposure and flattens the grade. */
   #overcast = 0;
+  /** The live lightning flash level (0..1, storm only): a brief exposure/grade lift. */
+  #lightning = 0;
   #state: DaylightState;
 
   constructor(clock: EnvironmentClock, season?: SeasonPresentation) {
@@ -150,6 +152,11 @@ export class DaylightController {
   /** Sets the live overcast (the weather transition drives it; the car is never touched). */
   setOvercast(overcast: number): void {
     this.#overcast = Math.min(1, Math.max(0, overcast));
+  }
+
+  /** Sets the live lightning flash level (the storm schedule drives it; 0 outside flashes). */
+  setLightning(level: number): void {
+    this.#lightning = Math.min(1, Math.max(0, level));
   }
 
   /** Resolves daylight for the clock's current time and returns it, without applying it. */
@@ -184,11 +191,18 @@ export class DaylightController {
     const overcast = this.#overcast;
     const weatherExposure = 1 - 0.18 * overcast;
     const weatherGrade = 1 - 0.1 * overcast;
-    engine.setExposure(state.exposure * exposureScale * weatherExposure);
+    // A lightning flash lifts the frame for its few frames: a brief exposure spike and a
+    // cool blue-white cast (the flash is cloud light, cooler than the sun). Composed
+    // after the season and overcast scales, so it never fights them.
+    const lightning = this.#lightning;
+    const flashExposure = 1 + 0.4 * lightning;
+    const flashGradeR = 1 - 0.05 * lightning;
+    const flashGradeB = 1 + 0.09 * lightning;
+    engine.setExposure(state.exposure * exposureScale * weatherExposure * flashExposure);
     engine.setGrade({
-      r: grade.r * (seasonGrade?.r ?? 1) * weatherGrade,
+      r: grade.r * (seasonGrade?.r ?? 1) * weatherGrade * flashGradeR,
       g: grade.g * (seasonGrade?.g ?? 1) * weatherGrade,
-      b: grade.b * (seasonGrade?.b ?? 1) * weatherGrade,
+      b: grade.b * (seasonGrade?.b ?? 1) * weatherGrade * flashGradeB,
     });
     // The god-ray tint and the contact-shadow light are driven from the same state, here,
     // because this is the one place daylight becomes engine uniforms. The god-ray call was

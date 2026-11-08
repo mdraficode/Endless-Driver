@@ -35,6 +35,11 @@ import { collideCarWithStaticBoxes, type StaticBuildingBox } from './static-buil
 import type { TierId } from '../config/tiers';
 import type { TownCarProbe, TownHit } from './town';
 import type { MassingCitySpec, MassingPlot } from './city-content';
+import {
+  buildLightPools,
+  resolveLightPoolOpacity,
+  type LightPoolHandle,
+} from '../environment/light-pool';
 
 /** The city's ground lift above the solved road datum (Aohara's WORLD_BASE_Y convention). */
 const WORLD_BASE_Y = -0.55;
@@ -172,6 +177,11 @@ export class MassingCityWorld {
   #disposed = false;
   #clutterCount = 0;
   #neonSignCount = 0;
+  /** Night-rain light pools under the street lamps (Phase 10.5 pass C). */
+  #lightPools: LightPoolHandle | null = null;
+  /** Live weather wetness (the pools fade in as the roads wet up). */
+  #wetness = 0;
+  #nightGain: { readonly value: number } | null = null;
 
   constructor(
     spec: MassingCitySpec,
@@ -194,9 +204,29 @@ export class MassingCityWorld {
     this.#tier = tier;
     this.#baseY = options.baseY;
     this.#heightAt = options.heightAt ?? null;
+    this.#nightGain = options.nightGain;
     this.root.name = `massing-city-${spec.regionId}`;
     this.root.position.set(spec.x, options.baseY + 0.57, spec.z);
     this.#build(options.nightGain, options.clutter);
+  }
+
+  /**
+   * Live weather wetness (Phase 10.5 pass C): the street-lamp pools fade in as the roads
+   * wet up and out again as they dry. Composed with the shared night gain, so the pools
+   * exist only at night.
+   */
+  setSurfaceWetness(wetness: number): void {
+    if (this.#disposed) return;
+    this.#wetness = Number.isFinite(wetness) ? Math.min(1, Math.max(0, wetness)) : 0;
+    this.#updateLightPools();
+  }
+
+  #updateLightPools(): void {
+    if (this.#lightPools === null) return;
+    this.#lightPools.material.opacity = resolveLightPoolOpacity(
+      this.#wetness,
+      this.#nightGain?.value ?? 0,
+    );
   }
 
   /** Static building collision, in world space (same contract as town/Aohara hits). */
@@ -216,6 +246,7 @@ export class MassingCityWorld {
       massingCityFlares: this.#flares.length,
       massingCityClutter: this.#clutterCount,
       massingCityNeonSigns: this.#neonSignCount,
+      massingCityLightPools: this.#lightPools?.mesh.count ?? 0,
     };
   }
 
@@ -667,6 +698,21 @@ export class MassingCityWorld {
       heads.instanceMatrix.needsUpdate = true;
       this.root.add(poles);
       this.root.add(heads);
+
+      // --- Night-rain light pools (Phase 10.5 pass C): one soft additive quad per lamp,
+      // dark until the live wetness says the roads are wet.
+      const poolPositions = lampPositions.map((lamp) => ({
+        x: lamp.x,
+        y: WORLD_BASE_Y + lift(lamp.x, lamp.z) + 0.04,
+        z: lamp.z,
+      }));
+      const pools = buildLightPools(poolPositions);
+      if (pools !== null) {
+        this.#track(pools.geometry, this.#geometries);
+        this.#track(pools.material, this.#materials);
+        this.#lightPools = pools;
+        this.root.add(pools.mesh);
+      }
 
       const lightCount = Math.min(CITY_POINT_LIGHTS[this.#tier] ?? 2, lampPositions.length);
       const ordered = lampPositions

@@ -42,6 +42,12 @@ import {
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import {
+  buildLightPools,
+  resolveLightPoolOpacity,
+  type LightPoolHandle,
+} from '../environment/light-pool';
+
+import {
   resolveTrafficSignalAspect,
   resolveUrbanNightGain,
   resolveUrbanStreetLightCoverage,
@@ -2051,6 +2057,10 @@ export class UrbanNightWorld implements SceneContent {
   readonly wetRoadSurface = true;
   readonly #tier: TierId;
   readonly #nightGain = uniform(0);
+  /** Night-rain light pools under the street lamps (Phase 10.5 pass C). */
+  #lightPools: LightPoolHandle | null = null;
+  /** Live weather wetness (the pools fade in as the roads wet up). */
+  #weatherWetness = 0;
   readonly #wetness = uniform(URBAN_CITY_CONFIG.wetRoad.wetnessDay);
   // Uniform, not inlined literals: the tint values ride in the UBO instead of the shader
   // body, so materials bound with them keep a value-independent program signature
@@ -2440,6 +2450,27 @@ export class UrbanNightWorld implements SceneContent {
     this.#wetness.value = resolveUrbanWetness(state.sunElevationDegrees);
     this.#setStreetLightIntensity();
     this.#setArchitecturalLightIntensity();
+    this.#updateLightPools();
+  }
+
+  /**
+   * Live weather wetness (Phase 10.5 pass C): the street-lamp pools fade in as the roads
+   * wet up and out again as they dry, only at night (the shared night gain). The base
+   * urban wetness (the clear-night sheen on the asphalt) does NOT light the pools — they
+   * are a rain feature, so they read as rain rather than as the baseline night look.
+   */
+  setSurfaceWetness(wetness: number): void {
+    if (this.#disposed) return;
+    this.#weatherWetness = Number.isFinite(wetness) ? Math.min(1, Math.max(0, wetness)) : 0;
+    this.#updateLightPools();
+  }
+
+  #updateLightPools(): void {
+    if (this.#lightPools === null) return;
+    this.#lightPools.material.opacity = resolveLightPoolOpacity(
+      this.#weatherWetness,
+      this.#nightGain.value,
+    );
   }
 
   /** Keep only the nearest tier-budgeted Aohara point lights active around the streamed focus. */
@@ -2546,6 +2577,7 @@ export class UrbanNightWorld implements SceneContent {
       highRiseNightAccentInstances: this.#highRiseNightAccentInstances,
       storefrontNightAccentInstances: this.#storefrontNightAccentInstances,
       storefrontBandInstances: this.#storefrontBandInstances,
+      aoharaLightPools: this.#lightPools?.mesh.count ?? 0,
       streetLightPointLights: this.#streetLights.length,
       architecturalPointLights: this.#architecturalLights.length,
       activePointLights: this.#streetLights.length + this.#architecturalLights.length,
@@ -2859,6 +2891,20 @@ export class UrbanNightWorld implements SceneContent {
         dummy.updateMatrix();
         slot.mesh.setMatrixAt(slot.index, dummy.matrix);
         slot.mesh.instanceMatrix.needsUpdate = true;
+      }
+      // The pool under the lamp: dark with its light once the lamp is broken; while the
+      // flicker window runs it tracks the same flicker the light does.
+      if (this.#lightPools !== null) {
+        if (lamp.flickerSeconds > 0) {
+          const elapsed = URBAN_CITY_CONFIG.streetLamp.flickerSeconds - lamp.flickerSeconds;
+          this.#lightPools.setLamp(
+            placementIndex,
+            (0.55 + 0.06 * Math.sin(elapsed * 14 * Math.PI * 2)) *
+              (1 - elapsed / URBAN_CITY_CONFIG.streetLamp.flickerSeconds),
+          );
+        } else {
+          this.#lightPools.setLamp(placementIndex, 0);
+        }
       }
       // The light: flicker while the window runs, dark once the lamp is fully broken.
       const activeIndex = this.#streetLightActivePlacementIndex.indexOf(placementIndex);
@@ -4263,6 +4309,20 @@ export class UrbanNightWorld implements SceneContent {
       (placement) => emitterSlotByBulb.get(`${placement.bulb[0]}|${placement.bulb[2]}`) ?? null,
     );
     this.#streetLampPlacements = placements;
+    // Night-rain light pools (Phase 10.5 pass C): one soft additive quad per pole. They
+    // stay dark until the live wetness says the roads are wet, and go dark with their
+    // lamp when a pole is broken (per-instance colour, updated in #updateStreetLampPoles).
+    const pools = buildLightPools(
+      placements.map((placement) => ({
+        x: placement.pole.x,
+        y: placement.pole.y + 0.04,
+        z: placement.pole.z,
+      })),
+    );
+    if (pools !== null) {
+      this.#lightPools = pools;
+      this.root.add(pools.mesh);
+    }
     placements.forEach((placement, index) => {
       const cellKey = `${Math.floor(
         placement.pole.x / this.#streetLampSpatialCellSize,

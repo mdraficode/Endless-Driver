@@ -145,6 +145,17 @@ export class CityStreamer {
     this.nightGain.value = resolveUrbanNightGain(state.sunElevationDegrees);
   }
 
+  /**
+   * Live weather wetness (Phase 10.5 pass C): the streamed cities' street-lamp pools
+   * fade in as the roads wet up. The night gain is shared, so the pools read as
+   * night-only; forward it whenever the weather sample changes.
+   */
+  setSurfaceWetness(wetness: number): void {
+    for (const city of this.#live.values()) {
+      city.setSurfaceWetness(wetness);
+    }
+  }
+
   collideTown(car: TownCarProbe): readonly TownHit[] {
     const hits: TownHit[] = [];
     for (const city of this.#live.values()) {

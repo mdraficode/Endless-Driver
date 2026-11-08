@@ -1,4 +1,5 @@
 import {
+  Color,
   DoubleSide,
   DynamicDrawUsage,
   Group,
@@ -52,6 +53,8 @@ export class RainField {
   readonly #position = new Vector3();
   #intensity = 0;
   #initialized = false;
+  /** The streaks light up when a lightning flash crosses the sky (Phase 10.5 pass C). */
+  readonly #baseStreakColor = new Color(0xc3d3e4);
 
   constructor(maxDrops: number) {
     this.root.name = 'rain-field';
@@ -79,6 +82,12 @@ export class RainField {
 
   get activeDropCount(): number {
     return this.#mesh.count;
+  }
+
+  /** A lightning flash lights the streaks (a no-op between flashes at level 0). */
+  setLightning(level: number): void {
+    const clamped = Math.min(1, Math.max(0, level));
+    this.#material.color.copy(this.#baseStreakColor).multiplyScalar(1 + 2.5 * clamped);
   }
 
   /** Sets how much rain is falling (0 = dry, 1 = full). A no-op when unchanged. */

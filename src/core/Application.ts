@@ -384,13 +384,14 @@ export class Application {
     this.#onBoostState = options.onBoostState ?? null;
     this.#buildTag = options.buildTag ?? null;
     this.#surfaceState = resolveSurfaceState(options.weather ?? 'clear');
-    // Phase 7 weather: the preset is the target; the dynamics ramp wetness, rain and
-    // overcast towards it. The world starts in equilibrium for its launch preset.
-    this.#weatherDynamics = new WeatherDynamics(this.#surfaceState.weather);
 
     // Phase 10: the generated world. One seed drives terrain, the road graph, the home
     // city's anchor, the districts and the vast city beyond; every launch is a new prefecture.
     const worldSeed = (options.worldSeed ?? (Math.random() * 0x7fffffff) | 0) | 0;
+    // Phase 7 weather: the preset is the target; the dynamics ramp wetness, rain and
+    // overcast towards it, and the storm's lightning schedule is seeded with the world.
+    // The world starts in equilibrium for its launch preset.
+    this.#weatherDynamics = new WeatherDynamics(this.#surfaceState.weather, worldSeed);
     // Phase 7: one season per world, deterministic in the seed (dev override wins). The
     // seeded season is kept as the world's own identity — a runtime switch is a session
     // preview, and a relaunch returns to it.
@@ -1609,10 +1610,14 @@ export class Application {
     const weather = this.#weatherDynamics.update(delta);
     this.#surfaceState = resolveSurfaceState(this.#weatherDynamics.preset, weather.wetness);
     this.#daylightController.setOvercast(weather.overcast);
+    // The storm's lightning: a brief exposure/sky/rain-streak boost while a flash runs.
+    this.#daylightController.setLightning(weather.lightning);
     this.#daylight = this.#daylightController.update(delta, this.#scene, this.#engine);
     this.#scene.setWeather(weather);
+    this.#scene.setLightning(weather.lightning);
     this.#carEffects.setSurfaceWetness(weather.wetness);
     this.#rainField.setIntensity(weather.rainIntensity);
+    this.#rainField.setLightning(weather.lightning);
     this.#rainField.update(delta, this.#car.position.x, this.#car.position.y, this.#car.position.z);
     this.#carVisual.setHeadlightsEnabled(this.#daylight.isNight);
 
@@ -1721,10 +1726,13 @@ export class Application {
     const settleWeather = this.#weatherDynamics.update(0);
     this.#surfaceState = resolveSurfaceState(this.#weatherDynamics.preset, settleWeather.wetness);
     this.#daylightController.setOvercast(settleWeather.overcast);
+    this.#daylightController.setLightning(settleWeather.lightning);
     this.#daylight = this.#daylightController.update(0, this.#scene, this.#engine);
     this.#scene.setWeather(settleWeather);
+    this.#scene.setLightning(settleWeather.lightning);
     this.#carEffects.setSurfaceWetness(settleWeather.wetness);
     this.#rainField.setIntensity(settleWeather.rainIntensity);
+    this.#rainField.setLightning(settleWeather.lightning);
     this.#carVisual.setHeadlightsEnabled(this.#daylight.isNight);
   }
 

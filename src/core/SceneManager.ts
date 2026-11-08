@@ -150,6 +150,8 @@ export class SceneManager {
   #season: import('../environment/seasons').SeasonPresentation | null = null;
   /** Live overcast from the weather transition (0 clear .. 1 storm). */
   #weatherOvercast = 0;
+  /** Live lightning flash level (0..1, storm only): a brief sky/light boost. */
+  #lightning = 0;
   /** The clock-resolved sky base values, so the overcast modulation composes on top each frame. */
   #skyBaseTurbidity = 0;
   #skyBaseSunDisc = false;
@@ -513,10 +515,16 @@ export class SceneManager {
     this.#sky.rayleigh.value = state.rayleigh;
     this.#applySkyOvercast();
 
-    const environmentIntensity = scaleBaseline(
-      this.#config.environment.intensity,
-      state.environmentIntensity,
-    );
+    // A lightning flash brightens the cloud base and the world it lights: the sky, the
+    // environment light and the directional all take a brief boost, composed after the
+    // resolved daylight so the flash never fights the time-of-day curve.
+    const flash = this.#lightning;
+    const flashBoost = 1 + 0.55 * flash;
+    this.#sun.intensity *= flashBoost;
+    this.#ambient.intensity *= 1 + 0.7 * flash;
+    const environmentIntensity =
+      scaleBaseline(this.#config.environment.intensity, state.environmentIntensity) *
+      (1 + 0.9 * flash);
     this.scene.environmentIntensity = environmentIntensity;
     if (this.scene.background !== null) {
       this.scene.backgroundIntensity = environmentIntensity;
@@ -538,6 +546,14 @@ export class SceneManager {
     this.#weatherOvercast = sample.overcast;
     this.#applySkyOvercast();
     this.#content.setSurfaceWetness?.(sample.wetness);
+  }
+
+  /**
+   * The live lightning level (the storm schedule drives it): the next `applyDaylight`
+   * composes a sky and light boost for the flash's few frames. Zero between flashes.
+   */
+  setLightning(level: number): void {
+    this.#lightning = Math.min(1, Math.max(0, level));
   }
 
   /** Haze the sky and hide the sun disc as the clouds close. */

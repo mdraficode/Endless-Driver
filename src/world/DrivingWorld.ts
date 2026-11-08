@@ -203,6 +203,13 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
           detach: (city) => root.remove(city.root),
           pedestrians: pedestrianWorld,
         });
+  // Phase 10.5 pass C: the night-rain light pools (home city and streamed cities) start
+  // in equilibrium for the launch weather, like the road sheen above.
+  {
+    const launchWetness = context.surfaceState?.wetness ?? 0;
+    aohara?.setSurfaceWetness(launchWetness);
+    cityStreamer?.setSurfaceWetness(launchWetness);
+  }
 
   // Phase 10.1: parked cars lining the residential streets and commercial curbs (static,
   // placed on the solved conforming profiles). Generated worlds only — the retired
@@ -258,8 +265,11 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
     wetRoadSurface: roads !== null,
     setSurfaceWetness: (wetness) => {
       // Aohara's network-integrated streets are RoadWorld ribbons, so the one shared
-      // wetness uniform covers the whole drivable surface.
+      // wetness uniform covers the whole drivable surface. The live wetness also drives
+      // the night-rain light pools under the street lamps (Phase 10.5 pass C).
       roads?.setSurfaceWetness(wetness);
+      aohara?.setSurfaceWetness(wetness);
+      cityStreamer?.setSurfaceWetness(wetness);
     },
     setSeason: (presentation) => {
       // The season is a look parameter on the master vegetation set: restore the base
