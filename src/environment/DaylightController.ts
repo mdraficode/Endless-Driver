@@ -118,8 +118,8 @@ export function resolveGradeTint(
 
 export class DaylightController {
   readonly #clock: EnvironmentClock;
-  /** The world's season: exposure and grade are scaled towards it every frame. */
-  readonly #season: SeasonPresentation | null;
+  /** The active season: exposure and grade are scaled towards it every frame. */
+  #season: SeasonPresentation | null;
   /** The live cloud cover (0 clear .. 1 full storm): dims exposure and flattens the grade. */
   #overcast = 0;
   #state: DaylightState;
@@ -132,6 +132,14 @@ export class DaylightController {
 
   get clock(): EnvironmentClock {
     return this.#clock;
+  }
+
+  /**
+   * Swaps the live season (Phase 8 runtime switch): the next frame's exposure, grade and sun
+   * scale read the new presentation. `null` returns to the season-neutral baseline.
+   */
+  setSeason(season: SeasonPresentation | null): void {
+    this.#season = season;
   }
 
   /** The state applied to the last frame. */

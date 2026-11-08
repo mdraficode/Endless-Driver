@@ -15,6 +15,7 @@ import { TERRAIN_CONFIG } from '../../src/config/terrain';
 import { WORLD_CONFIG } from '../../src/config/world';
 import type { DaylightState } from '../../src/environment/EnvironmentClock';
 import { resolveSurfaceState } from '../../src/environment/SurfaceState';
+import { resolveSeasonPresentation } from '../../src/environment/seasons';
 import { createDrivingWorld } from '../../src/world/DrivingWorld';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
 
@@ -160,5 +161,71 @@ describe('generated driving world (Phase 10 pass 3)', () => {
     // The real generated world still carries its own high ground: the volcano and the
     // sampled terrain, not the shells.
     expect(terrainSampler.config.volcano).toBeDefined();
+  }, 20000);
+
+  // Same full-world build as above: carries its own budget for the same reason.
+  it('exposes the live season switch, which re-tints the streamed vegetation in place', () => {
+    const plan = createWorldPlan(20261102);
+    const anchor = homeCityAnchor(plan);
+    const { config } = buildRoadLayout(plan);
+    const terrainSampler = createWorldTerrainSampler(
+      terrainConfigForTier('C', terrainSeedFor(20261102)),
+      config,
+      {
+        x: anchor.x,
+        z: anchor.z,
+        flatRadiusMeters: anchor.flatRadiusMeters,
+        blendRadiusMeters: anchor.blendRadiusMeters,
+      },
+      [],
+    );
+    const content = createDrivingWorld({
+      config: RENDER_CONFIG,
+      worldConfig: WORLD_CONFIG,
+      terrainSampler,
+      qualityTier: 'C',
+      surfaceState: resolveSurfaceState('clear'),
+      worldPlan: plan,
+      season: resolveSeasonPresentation('summer'),
+    });
+
+    expect(content.setSeason).toBeTypeOf('function');
+    const leafy = content.root.getObjectByName('vegetation-broadleaf-0');
+    expect(leafy).not.toBeNull();
+
+    // Only the foliage-masked vertices are re-tinted (trunks keep their base colour).
+    const readColors = (object: {
+      geometry: {
+        getAttribute(name: string): {
+          count: number;
+          getX(i: number): number;
+          getY(i: number): number;
+          getZ(i: number): number;
+        };
+      };
+    }): number[] => {
+      const attr = object.geometry.getAttribute('color');
+      const mask = object.geometry.getAttribute('foliageMask');
+      const out: number[] = [];
+      for (let i = 0; i < attr.count; i += 1) {
+        if (mask.getX(i) <= 0) continue;
+        out.push(attr.getX(i), attr.getY(i), attr.getZ(i));
+      }
+      return out;
+    };
+    const summer = readColors(leafy as never);
+    const instancesBefore = content.getContentStats?.().vegetationInstances;
+
+    // The content hook forwards to the vegetation world's re-bake: the same shared
+    // geometry rescales by the winter/summer factors (foliage red 0.6/0.8, blue 0.47/0.6).
+    content.setSeason!(resolveSeasonPresentation('winter'));
+    const winter = readColors(leafy as never);
+    expect(winter.length).toBe(summer.length);
+    for (let i = 0; i < winter.length; i += 3) {
+      expect(winter[i]!).toBeCloseTo(summer[i]! * (0.6 / 0.8), 4);
+      expect(winter[i + 2]!).toBeCloseTo(summer[i + 2]! * (0.47 / 0.6), 4);
+    }
+    expect(content.getContentStats?.().vegetationInstances).toBe(instancesBefore);
+    content.dispose();
   }, 20000);
 });

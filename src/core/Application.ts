@@ -370,8 +370,10 @@ export class Application {
   readonly #worldSeed: number;
   /** Phase 10.2: this world's hideouts (garage/warehouse/junkyard placements). */
   readonly #hideouts: readonly HideoutSpec[];
-  /** Phase 7: this world's season (presentation + surface response). */
+  /** Phase 7: the season currently presented (live-switchable, Phase 8). */
   #season: SeasonPresentation;
+  /** Phase 7: the season this world's seed rolled — the "world default" the menu offers. */
+  readonly #worldSeasonId: SeasonId;
 
   constructor(options: ApplicationOptions) {
     this.#tier = options.tier ?? { id: DEFAULT_TIER, reason: 'unresolved' };
@@ -389,8 +391,11 @@ export class Application {
     // Phase 10: the generated world. One seed drives terrain, the road graph, the home
     // city's anchor, the districts and the vast city beyond; every launch is a new prefecture.
     const worldSeed = (options.worldSeed ?? (Math.random() * 0x7fffffff) | 0) | 0;
-    // Phase 7: one season per world, deterministic in the seed (dev override wins).
-    this.#season = resolveSeasonPresentation(options.season ?? seasonForWorld(worldSeed));
+    // Phase 7: one season per world, deterministic in the seed (dev override wins). The
+    // seeded season is kept as the world's own identity — a runtime switch is a session
+    // preview, and a relaunch returns to it.
+    this.#worldSeasonId = seasonForWorld(worldSeed);
+    this.#season = resolveSeasonPresentation(options.season ?? this.#worldSeasonId);
     const plan = createWorldPlan(worldSeed);
     const anchor = homeCityAnchor(plan);
     const roadLayout = buildRoadLayout(plan);
@@ -706,6 +711,32 @@ export class Application {
   /** The preset the weather dynamics are currently easing towards (the menu's named setting). */
   get weatherPreset(): WeatherPreset {
     return this.#weatherDynamics.preset;
+  }
+
+  /** The season this world's seed rolled (the menu's "world default" choice). */
+  get worldSeason(): SeasonId {
+    return this.#worldSeasonId;
+  }
+
+  /** The season currently presented (after any runtime switch). */
+  get season(): SeasonId {
+    return this.#season.id;
+  }
+
+  /**
+   * Switches the presented season at runtime (Phase 8, session-scoped — never persisted, so a
+   * relaunch returns to the world's seeded season). Everything reads the new presentation
+   * live: the car's surface provider re-applies the season's grip/rolling response per physics
+   * query, the daylight controller re-reads its exposure/grade scales each frame, the scene's
+   * sun scale follows, and the content hook re-bakes the streamed vegetation tints. The car
+   * is untouched, and a relaunch restores the world's own season.
+   */
+  setSeason(season: SeasonId): void {
+    if (season === this.#season.id) return;
+    const presentation = resolveSeasonPresentation(season);
+    this.#season = presentation;
+    this.#daylightController.setSeason(presentation);
+    this.#scene.setSeason(presentation);
   }
 
   get car(): Car {

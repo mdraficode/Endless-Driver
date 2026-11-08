@@ -34,6 +34,12 @@ export interface SceneContent {
   setDaylight?(state: DaylightState): void;
   /** Live surface wetness from the weather transition (Phase 7): drives the wet-road sheen. */
   setSurfaceWetness?(wetness: number): void;
+  /**
+   * Live season switch (Phase 8): re-parameterises the content's look (the vegetation tints)
+   * and re-bakes the already-streamed geometry; chunks streamed afterwards pick the new tint
+   * up automatically. Absent for content whose look does not depend on the season.
+   */
+  setSeason?(presentation: import('../environment/seasons').SeasonPresentation | null): void;
   /** Optional content-owned simulation/update hook, driven with the engine's clamped frame delta. */
   update?(deltaSeconds: number): void;
   /**

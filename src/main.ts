@@ -496,7 +496,11 @@ async function startDrivingScene(restarting = false): Promise<void> {
         defaultSpawnId: diagnostics.spawnId === undefined ? DEFAULT_SPAWN_ID : diagnostics.spawnId,
         ...(diagnostics.worldSeed !== undefined ? { worldSeed: diagnostics.worldSeed } : {}),
         weather: activeApplication.weatherPreset,
-        ...(diagnostics.season !== undefined ? { worldSeason: diagnostics.season } : {}),
+        // The world's seeded season is the menu's "world default"; the presented season
+        // (after any runtime switch) sets the current selection.
+        worldSeason: activeApplication.worldSeason,
+        season: diagnostics.season,
+        onSeasonChange: (season) => activeApplication.setSeason(season),
         activeTier: tier.id,
         activeRenderer: diagnostics.rendererBackend,
         activeTrafficVehicleCount: trafficVehicleCountFor(tier.id, preferences.trafficIntensity),

@@ -7,6 +7,7 @@ import { GROUND_COVER_CONFIG, GROUND_COVER_STYLES } from '../../src/config/groun
 import { VEGETATION_CHUNK_GENERATION_BUDGET_PER_FRAME } from '../../src/config/vegetation-streaming';
 import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
 import { TERRAIN_CONFIG } from '../../src/config/terrain';
+import { resolveSeasonPresentation } from '../../src/environment/seasons';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
 import { VegetationWorld } from '../../src/world/vegetation';
 import { generateChunkVegetation } from '../../src/world/vegetation-placement';
@@ -194,6 +195,99 @@ describe('vegetation destruction visuals', () => {
     const afterShatter = world.getContentStats();
     expect(afterShatter.vegetationShattered).toBe(1);
     expect(afterShatter.vegetationDebris).toBeGreaterThan(5); // shards + crown
+    world.dispose();
+  });
+});
+
+/**
+ * Reads the baked vertex colours of a geometry, keeping only the vertices the season tint
+ * actually reaches (foliageMask > 0 — trunks and ground patches stay at their base colour).
+ */
+function readTintedVertexColors(object: unknown): number[] {
+  const mesh = object as {
+    geometry?: {
+      getAttribute(name: string): {
+        count: number;
+        getX(i: number): number;
+        getY(i: number): number;
+        getZ(i: number): number;
+      } | null;
+    };
+  };
+  const attr = mesh.geometry?.getAttribute('color');
+  const mask = mesh.geometry?.getAttribute('foliageMask');
+  if (attr === null || attr === undefined || mask === null || mask === undefined) {
+    throw new Error('expected baked vertex colours with a foliage mask');
+  }
+  const out: number[] = [];
+  for (let i = 0; i < attr.count; i += 1) {
+    if (mask.getX(i) <= 0) continue;
+    out.push(attr.getX(i), attr.getY(i), attr.getZ(i));
+  }
+  return out;
+}
+
+describe('live season re-tint', () => {
+  it('re-bakes the live geometries when the season switches and leaves placement untouched', async () => {
+    const AUTUMN = resolveSeasonPresentation('autumn');
+    const WINTER = resolveSeasonPresentation('winter');
+    const SPRING = resolveSeasonPresentation('spring');
+    const sampler = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
+    const world = new VegetationWorld(
+      sampler,
+      { ...VEGETATION_CONFIG, radiusChunks: 3 },
+      undefined,
+      'A',
+      { foliage: AUTUMN.foliageTint, ground: AUTUMN.groundTint },
+    );
+    await world.prepareInitial({ x: -430, z: -1010 }, { x: 0, z: -50 }, () => {});
+
+    const leafy = world.root.getObjectByName('vegetation-broadleaf-0');
+    const grass = world.root.getObjectByName('ground-cover-grass');
+    expect(leafy).not.toBeNull();
+    expect(grass).not.toBeNull();
+    const leavesBefore = readTintedVertexColors(leafy);
+    const grassBefore = readTintedVertexColors(grass);
+    const instancesBefore = world.getContentStats().vegetationInstances;
+
+    // The tint is a multiplier on the base colours, so the switch rescales every baked
+    // vertex by the winter/autumn factor — on foliage and on the ground cover.
+    world.setSeasonTint({ foliage: WINTER.foliageTint, ground: WINTER.groundTint });
+    const leavesAfter = readTintedVertexColors(leafy);
+    const grassAfter = readTintedVertexColors(grass);
+    expect(leavesAfter.length).toBe(leavesBefore.length);
+    for (let i = 0; i < leavesAfter.length; i += 3) {
+      expect(leavesAfter[i]!).toBeCloseTo(
+        leavesBefore[i]! * (WINTER.foliageTint.r / AUTUMN.foliageTint.r),
+        4,
+      );
+      expect(leavesAfter[i + 1]!).toBeCloseTo(
+        leavesBefore[i + 1]! * (WINTER.foliageTint.g / AUTUMN.foliageTint.g),
+        4,
+      );
+      expect(leavesAfter[i + 2]!).toBeCloseTo(
+        leavesBefore[i + 2]! * (WINTER.foliageTint.b / AUTUMN.foliageTint.b),
+        4,
+      );
+    }
+    for (let i = 0; i < grassAfter.length; i += 3) {
+      expect(grassAfter[i]!).toBeCloseTo(
+        grassBefore[i]! * (WINTER.groundTint.r / AUTUMN.groundTint.r),
+        4,
+      );
+    }
+    // The switch re-tints: it never re-places or drops a single instance.
+    expect(world.getContentStats().vegetationInstances).toBe(instancesBefore);
+
+    // A third switch composes on the stored base colours, not on the last tint.
+    world.setSeasonTint({ foliage: SPRING.foliageTint, ground: SPRING.groundTint });
+    const leavesSpring = readTintedVertexColors(leafy);
+    for (let i = 0; i < leavesSpring.length; i += 3) {
+      expect(leavesSpring[i]!).toBeCloseTo(
+        leavesBefore[i]! * (SPRING.foliageTint.r / AUTUMN.foliageTint.r),
+        4,
+      );
+    }
     world.dispose();
   });
 });

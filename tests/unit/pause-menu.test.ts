@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { SEASONS } from '../../src/environment/seasons';
 import {
   PAUSE_MENU_ITEMS,
   RESTART_REQUIRED_PREFERENCE_KEYS,
+  SEASON_LABELS,
   WEATHER_CHOICES,
+  WORLD_SEASON_CHOICE,
 } from '../../src/ui/PauseMenu';
 
 describe('pause menu navigation model', () => {
@@ -37,5 +40,22 @@ describe('pause menu weather setting', () => {
     }
     // Weather applies live through the dynamics ramp: it must never sit behind a restart.
     expect(RESTART_REQUIRED_PREFERENCE_KEYS).not.toContain('weather');
+  });
+});
+
+describe('pause menu season switch', () => {
+  it('names every season, keeps the world default as its own choice, and persists nothing', () => {
+    // The panel offers the world's seeded season plus each of the four named seasons.
+    expect(Object.keys(SEASON_LABELS).sort()).toEqual([...SEASONS].sort());
+    for (const season of SEASONS) {
+      expect(SEASON_LABELS[season].length).toBeGreaterThan(0);
+    }
+    // "World default" is a menu sentinel, not a season id — resolving it back to a real
+    // season is the model's job (the panel maps it to the world's own season).
+    expect(WORLD_SEASON_CHOICE).not.toBe(SEASONS[0]);
+    expect(SEASONS).not.toContain(WORLD_SEASON_CHOICE as (typeof SEASONS)[number]);
+    // A season preview is session-scoped: it is never a saved preference, so it can never
+    // sit behind a restart or survive a relaunch.
+    expect(RESTART_REQUIRED_PREFERENCE_KEYS).not.toContain('season');
   });
 });

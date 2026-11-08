@@ -13,7 +13,7 @@ import type {
   TrafficIntensity,
   WeatherPreference,
 } from '../config/game-preferences';
-import type { SeasonId } from '../environment/seasons';
+import { SEASONS, type SeasonId } from '../environment/seasons';
 import type { SpawnPoint } from '../config/spawns';
 import type { TierId } from '../config/tiers';
 
@@ -44,8 +44,12 @@ export interface PauseMenuOptions {
   readonly worldSeed?: number;
   /** Phase 8 settings: the weather condition the world is currently easing towards. */
   readonly weather: WeatherPreference;
-  /** Phase 7: the world's seeded season (shown, not switchable — the seed owns it). */
+  /** Phase 7: the season this world's seed rolled — the menu's "world default" choice. */
   readonly worldSeason?: SeasonId;
+  /** The season currently presented (after any runtime switch; session-scoped). */
+  readonly season?: SeasonId;
+  /** Applies a season to this drive only; a relaunch returns to the world's own season. */
+  readonly onSeasonChange: (season: SeasonId) => void;
   readonly activeTier: TierId;
   readonly activeRenderer: string;
   readonly activeTrafficVehicleCount: number;
@@ -104,12 +108,15 @@ export const WEATHER_CHOICES: readonly { value: WeatherPreference; label: string
   { value: 'storm', label: 'Storm — full rain, darker sky' },
 ];
 
-const SEASON_LABELS: Readonly<Record<SeasonId, string>> = {
+export const SEASON_LABELS: Readonly<Record<SeasonId, string>> = {
   spring: 'Spring',
   summer: 'Summer',
   autumn: 'Autumn',
   winter: 'Winter',
 };
+
+/** The "this world's own season" choice in the runtime season switch. */
+export const WORLD_SEASON_CHOICE = 'world';
 
 const TOUCH_STEERING_CHOICES: readonly { value: TouchSteeringMode; label: string }[] = [
   { value: 'wheel', label: 'Virtual steering wheel' },
@@ -424,13 +431,7 @@ export class PauseMenu {
       'CITY TRAFFIC',
       `${this.#options.activeTrafficVehicleCount} vehicles · ${this.#trafficLabel(this.#initialPreferences.trafficIntensity)}`,
     );
-    if (this.#options.worldSeason !== undefined) {
-      this.#appendStat(
-        statusGrid,
-        'WORLD SEASON',
-        `${SEASON_LABELS[this.#options.worldSeason]} — set by this world's seed`,
-      );
-    }
+
     const nightPanel = document.createElement('section');
     nightPanel.className = 'pause-menu-night-panel';
     const nightCopy = document.createElement('div');
@@ -501,15 +502,67 @@ export class PauseMenu {
     weatherField.append(weatherSelect);
     weatherPanel.append(weatherCopy, weatherField);
 
+    let seasonPanel: HTMLElement | null = null;
+    if (this.#options.worldSeason !== undefined) {
+      const worldSeason = this.#options.worldSeason;
+      seasonPanel = document.createElement('section');
+      seasonPanel.className = 'pause-menu-night-panel';
+      const seasonCopy = document.createElement('div');
+      seasonCopy.className = 'pause-menu-night-copy';
+      const seasonTitle = document.createElement('strong');
+      seasonTitle.textContent = 'Season';
+      const seasonDescription = document.createElement('span');
+      seasonDescription.textContent =
+        `This world rolled ${SEASON_LABELS[worldSeason]} from its seed. Preview another season for ` +
+        'this drive — the trees, ground and light re-tint in place, and a relaunch returns to the world’s own season.';
+      seasonCopy.append(seasonTitle, seasonDescription);
+      const seasonField = document.createElement('label');
+      seasonField.className = 'pause-menu-field';
+      const seasonSelect = document.createElement('select');
+      seasonSelect.className = 'pause-menu-select';
+      seasonSelect.setAttribute('aria-label', 'Season preview');
+      const worldChoice = document.createElement('option');
+      worldChoice.value = WORLD_SEASON_CHOICE;
+      worldChoice.textContent = `World default — ${SEASON_LABELS[worldSeason]}`;
+      seasonSelect.append(worldChoice);
+      for (const choice of SEASONS) {
+        const option = document.createElement('option');
+        option.value = choice;
+        option.textContent = SEASON_LABELS[choice];
+        seasonSelect.append(option);
+      }
+      const presented = this.#options.season;
+      seasonSelect.value =
+        presented !== undefined && presented !== worldSeason ? presented : WORLD_SEASON_CHOICE;
+      seasonSelect.addEventListener('change', () => {
+        const selected =
+          seasonSelect.value === WORLD_SEASON_CHOICE ? worldSeason : seasonSelect.value;
+        if (SEASONS.includes(selected as SeasonId)) {
+          this.#options.onSeasonChange(selected as SeasonId);
+          seasonSelect.value = selected !== worldSeason ? selected : WORLD_SEASON_CHOICE;
+        }
+      });
+      seasonField.append(seasonSelect);
+      seasonPanel.append(seasonCopy, seasonField);
+    }
+
     const callout = document.createElement('div');
     callout.className = 'pause-menu-callout';
     const calloutTitle = document.createElement('strong');
     calloutTitle.textContent = 'Your options are remembered';
     const calloutText = document.createElement('span');
     calloutText.textContent =
-      'Changes are saved as you make them. Weather, touch layout, button size, Night Mood and car model apply immediately; restart for steering response, start camera, traffic or graphics changes. The season belongs to this world: each seed has its own.';
+      'Changes are saved as you make them. Weather, touch layout, button size, Night Mood and car model apply immediately; restart for steering response, start camera, traffic or graphics changes. A season preview lasts this drive only — the world’s own season returns on relaunch.';
     callout.append(calloutTitle, calloutText);
-    page.append(heading, intro, statusGrid, nightPanel, weatherPanel, callout);
+    page.append(
+      heading,
+      intro,
+      statusGrid,
+      nightPanel,
+      weatherPanel,
+      ...(seasonPanel === null ? [] : [seasonPanel]),
+      callout,
+    );
   }
 
   #renderSpawn(page: HTMLElement): void {

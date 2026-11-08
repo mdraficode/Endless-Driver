@@ -335,6 +335,17 @@ export class SceneManager {
   }
 
   /**
+   * Live season switch (Phase 8): the sun scale is read from this every frame, and the
+   * content hook re-bakes the streamed vegetation tints. The car's grip response and the
+   * daylight exposure/grade ride on the application's own live reference, so this keeps the
+   * scene and its content in step with it.
+   */
+  setSeason(season: import('../environment/seasons').SeasonPresentation | null): void {
+    this.#season = season;
+    this.#content.setSeason?.(season);
+  }
+
+  /**
    * Advances camera damping. Only the debug camera needs per-frame updates; the chase camera is
    * driven by its own system.
    */

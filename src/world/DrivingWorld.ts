@@ -251,6 +251,16 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
       // wetness uniform covers the whole drivable surface.
       roads?.setSurfaceWetness(wetness);
     },
+    setSeason: (presentation) => {
+      // The season is a look parameter on the master vegetation set: restore the base
+      // colours and re-bake the new tints on every streamed geometry. Fixture scenes
+      // (no plan) keep their authored palette, which this call leaves untouched.
+      if (presentation === null) return;
+      vegetation.setSeasonTint({
+        foliage: presentation.foliageTint,
+        ground: presentation.groundTint,
+      });
+    },
     setDaylight: (state) => {
       vegetation.setDaylight(state);
       roads?.setDaylight(state);
