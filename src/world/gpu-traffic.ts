@@ -67,6 +67,7 @@ import {
   STREAMED_TRAFFIC_BUDGET,
   STREAMED_TRAFFIC_CLASS_BUDGET,
   STREAMED_TRAFFIC_CLASSES,
+  TRAFFIC_BEHAVIOR,
   TRAFFIC_LANE_INSET_METERS,
   TRAFFIC_MAX_ROUTES,
   TRAFFIC_ROUTE_ACTIVATION_METERS,
@@ -103,6 +104,59 @@ export const TRAFFIC_INTEGRATOR = {
   hitHoldSeconds: 4,
 } as const;
 
+/**
+ * Overtake decision (Phase 10.5 pass B). The WGSL kernel mirrors this expression exactly.
+ * Gaps are bumper-to-bumper along the route; `ownLeaderGapMeters` may be negative
+ * (overlap) and `otherLane*GapMeters` is +Infinity when the adjacent lane is empty.
+ */
+export function evaluateOvertake(args: {
+  readonly ownLeaderGapMeters: number;
+  readonly otherLaneLeaderGapMeters: number;
+  readonly otherLaneFollowerGapMeters: number;
+  readonly speedMetersPerSecond: number;
+  readonly laneCooldownSeconds: number;
+}): boolean {
+  // The kernel compares against the same 10 ms threshold: both copies agree the
+  // cooldown is expired on the same frame (float32 drift never crosses 0.01).
+  if (args.laneCooldownSeconds >= 0.01) return false;
+  if (args.speedMetersPerSecond < TRAFFIC_BEHAVIOR.overtakeMinSpeedMetersPerSecond) return false;
+  if (args.ownLeaderGapMeters >= TRAFFIC_BEHAVIOR.overtakeTriggerGapMeters) return false;
+  if (args.otherLaneLeaderGapMeters < TRAFFIC_BEHAVIOR.overtakeLeaderClearMeters) return false;
+  if (args.otherLaneFollowerGapMeters < TRAFFIC_BEHAVIOR.overtakeFollowerClearMeters) return false;
+  return true;
+}
+
+/**
+ * Speed target while the player is a leader on this route (Phase 10.5 pass B): match the
+ * player's along-route speed at the bumper gap, then recover toward cruise across the
+ * car-following gap band. `gapMeters` is bumper-to-bumper (may be ≤ 0 alongside).
+ */
+export function playerLeadTargetMetersPerSecond(
+  gapMeters: number,
+  playerSpeedAlongMetersPerSecond: number,
+  cruiseMetersPerSecond: number,
+): number {
+  const { stopGapMeters, fullSpeedGapMeters } = TRAFFIC_INTEGRATOR;
+  const clearance = Math.max(0, gapMeters - stopGapMeters);
+  const band = Math.max(1e-6, fullSpeedGapMeters - stopGapMeters);
+  const target =
+    playerSpeedAlongMetersPerSecond +
+    (clearance / band) * TRAFFIC_BEHAVIOR.playerRecoveryMetersPerSecond;
+  return Math.min(cruiseMetersPerSecond, Math.max(0, target));
+}
+
+/** One eased step of the lateral lane transition toward `targetLateralMeters`. */
+export function stepLaneLateral(
+  currentLateralMeters: number,
+  targetLateralMeters: number,
+  deltaSeconds: number,
+): number {
+  const step = TRAFFIC_BEHAVIOR.laneChangeRateMetersPerSecond * deltaSeconds;
+  const delta = targetLateralMeters - currentLateralMeters;
+  if (Math.abs(delta) <= step) return targetLateralMeters;
+  return currentLateralMeters + Math.sign(delta) * step;
+}
+
 const REQUEST_RESPAWN = 1;
 const REQUEST_HIT = 2;
 const REQUEST_KILL = 4;
@@ -116,6 +170,10 @@ interface ShadowVehicle {
   hitUntil: number;
   length: number;
   cruise: number;
+  /** Current lateral offset from the centreline (m; + is the +1 lane side). */
+  lateral: number;
+  /** Seconds remaining before another lane change may be attempted. */
+  laneCooldown: number;
 }
 
 export interface StreamedTrafficStats {
@@ -123,6 +181,8 @@ export interface StreamedTrafficStats {
   streamedTrafficRoutes: number;
   /** 1 when the compute path drives the render, 0 on the CPU fallback. */
   streamedTrafficGpu: 0 | 1;
+  /** Cumulative overtakes (lane changes) performed by the AI fleet. */
+  streamedTrafficLaneChanges: number;
 }
 
 export class GpuTrafficWorld {
@@ -136,9 +196,12 @@ export class GpuTrafficWorld {
   readonly #stateA: StorageInstancedBufferAttribute; // route, lane, distance, speed
   readonly #stateB: StorageInstancedBufferAttribute; // yaw, brake, blinkL, blinkR
   readonly #stateC: StorageInstancedBufferAttribute; // x, y, z, alive
+  readonly #stateD: StorageInstancedBufferAttribute; // lateral, laneCooldown, 0, wantChange
   readonly #speedTarget: StorageInstancedBufferAttribute;
   readonly #requests: StorageInstancedBufferAttribute; // route, lane, dist, flags
   readonly #vehicleStatic: StorageInstancedBufferAttribute; // length, cruise, class, phase
+  /** CPU-written each frame: (distance ahead to player, player speed along the route). */
+  readonly #playerLead: StorageInstancedBufferAttribute;
 
   // --- route LUT ---------------------------------------------------------------
   readonly #routeTexture: DataTexture;
@@ -170,6 +233,12 @@ export class GpuTrafficWorld {
   // --- per-frame out ------------------------------------------------------------
   readonly #pendingImpulses: { x: number; y: number; z: number }[] = [];
   #timeAccumulator = 0;
+  #laneChanges = 0;
+  /** Per-route player projection cache (rebuilt as the focus moves, per frame). */
+  readonly #routePlayerCache = new Map<
+    number,
+    { s: number; ok: boolean; dirX: number; dirZ: number }
+  >();
   #disposed = false;
 
   constructor(network: RoadNetwork, plan: WorldPlan, tier: TierId) {
@@ -189,9 +258,11 @@ export class GpuTrafficWorld {
     this.#stateA = createStorage(this.#capacity, 4);
     this.#stateB = createStorage(this.#capacity, 4);
     this.#stateC = createStorage(this.#capacity, 4);
+    this.#stateD = createStorage(this.#capacity, 4);
     this.#speedTarget = createStorage(this.#capacity, 1);
     this.#requests = createStorage(this.#capacity, 4);
     this.#vehicleStatic = createStorage(this.#capacity, 4);
+    this.#playerLead = createStorage(this.#capacity, 2);
 
     this.#routeTable = new Array<TrafficRoute | null>(TRAFFIC_MAX_ROUTES).fill(null);
     this.#routeTexture = new DataTexture(
@@ -218,6 +289,8 @@ export class GpuTrafficWorld {
         hitUntil: 0,
         length: 4.5,
         cruise: 8,
+        lateral: TRAFFIC_LANE_INSET_METERS,
+        laneCooldown: 0,
       });
     }
 
@@ -253,6 +326,7 @@ export class GpuTrafficWorld {
       streamedTrafficVehicles: alive,
       streamedTrafficRoutes: routes,
       streamedTrafficGpu: this.#backend === 'webgpu' ? 1 : 0,
+      streamedTrafficLaneChanges: this.#laneChanges,
     };
   }
 
@@ -273,6 +347,7 @@ export class GpuTrafficWorld {
 
     this.#maintainRoutes(focus);
     this.#stepShadow(delta, focus, playerVelocity);
+    this.#playerLead.needsUpdate = true; // the kernel reads the per-vehicle player lead
     this.#flushRequests();
 
     if (this.#backend === 'webgpu' && this.#renderer !== null && this.#computeNode !== null) {
@@ -412,6 +487,8 @@ export class GpuTrafficWorld {
     shadow.alive = 1;
     shadow.hitUntil = 0;
     shadow.length = spec.lengthMeters;
+    shadow.lateral = shadow.lane * TRAFFIC_LANE_INSET_METERS;
+    shadow.laneCooldown = 0;
     shadow.cruise =
       spec.minimumSpeedMetersPerSecond +
       deterministicUnit(slot * 7919 + 3) *
@@ -436,6 +513,9 @@ export class GpuTrafficWorld {
   ): void {
     if (delta <= 0) return;
     const playerSpeed = Math.hypot(playerVelocity?.x ?? 0, playerVelocity?.z ?? 0);
+    const playerVX = playerVelocity?.x ?? 0;
+    const playerVZ = playerVelocity?.z ?? 0;
+    this.#routePlayerCache.clear(); // the projection is valid for this frame's focus only
     for (let i = 0; i < this.#capacity; i += 1) {
       const v = this.#shadow[i]!;
       if (v.alive <= 0) continue;
@@ -454,28 +534,82 @@ export class GpuTrafficWorld {
           continue; // stopped; the GPU holds the flag
         }
       }
-      // Car following: the nearest live leader on this route+lane.
-      let minGap = Number.POSITIVE_INFINITY;
+      // Car following: nearest leader/follower gaps on this route, per lane
+      // (Phase 10.5 pass B — the adjacent-lane gaps feed the overtake decision).
+      let ownLeaderGap = Number.POSITIVE_INFINITY;
+      let otherLeaderGap = Number.POSITIVE_INFINITY;
+      let otherFollowerGap = Number.POSITIVE_INFINITY;
       for (let j = 0; j < this.#capacity; j += 1) {
         if (j === i) continue;
         const other = this.#shadow[j]!;
-        if (other.alive <= 0.5 || other.routeIdx !== v.routeIdx || other.lane !== v.lane) continue;
-        const gap =
-          wrapDistance(other.distance - v.distance, route.length) -
-          (other.length + v.length) / 2 -
-          TRAFFIC_INTEGRATOR.bumperGapMeters;
-        if (gap < minGap) minGap = gap;
+        if (other.alive <= 0.5 || other.routeIdx !== v.routeIdx) continue;
+        const halfLens = (other.length + v.length) / 2 + TRAFFIC_INTEGRATOR.bumperGapMeters;
+        const dAhead = wrapDistance(other.distance - v.distance, route.length);
+        if (other.lane === v.lane) {
+          const gap = dAhead - halfLens;
+          if (gap < ownLeaderGap) ownLeaderGap = gap;
+        } else if (dAhead < route.length / 2) {
+          const gap = dAhead - halfLens;
+          if (gap < otherLeaderGap) otherLeaderGap = gap;
+        } else {
+          const gap = route.length - dAhead - halfLens;
+          if (gap < otherFollowerGap) otherFollowerGap = gap;
+        }
       }
+      // Overtake decision (mirrors evaluateOvertake and the kernel's phase 1).
+      if (v.laneCooldown > 0) v.laneCooldown = Math.max(0, v.laneCooldown - delta);
+      const wantChange = evaluateOvertake({
+        ownLeaderGapMeters: ownLeaderGap,
+        otherLaneLeaderGapMeters: otherLeaderGap,
+        otherLaneFollowerGapMeters: otherFollowerGap,
+        speedMetersPerSecond: v.speed,
+        laneCooldownSeconds: v.laneCooldown,
+      });
+      if (wantChange) {
+        v.lane = v.lane === 1 ? -1 : 1;
+        v.laneCooldown = TRAFFIC_BEHAVIOR.laneChangeCooldownSeconds;
+        this.#laneChanges += 1;
+      }
+      // The player as a leader (Phase 10.5 pass B): project the focus onto the route.
+      let leadDs = 1e6;
+      let leadSpeed = 0;
+      let info = this.#routePlayerCache.get(v.routeIdx);
+      if (info === undefined) {
+        info = this.#projectPlayerOntoRoute(route, focus.x, focus.z);
+        this.#routePlayerCache.set(v.routeIdx, info);
+      }
+      if (info.ok) {
+        const ds = wrapDistance(info.s - v.distance, route.length);
+        if (
+          ds > TRAFFIC_BEHAVIOR.playerAheadMinMeters &&
+          ds < TRAFFIC_BEHAVIOR.playerAheadMaxMeters
+        ) {
+          leadDs = ds;
+          leadSpeed = playerVX * info.dirX + playerVZ * info.dirZ;
+        }
+      }
+      this.#writePlayerLead(i, leadDs, leadSpeed);
       const { stopGapMeters, fullSpeedGapMeters } = TRAFFIC_INTEGRATOR;
-      const target =
-        minGap <= stopGapMeters
+      let target =
+        ownLeaderGap <= stopGapMeters
           ? 0
-          : Math.min(1, (minGap - stopGapMeters) / (fullSpeedGapMeters - stopGapMeters)) * v.cruise;
+          : Math.min(1, (ownLeaderGap - stopGapMeters) / (fullSpeedGapMeters - stopGapMeters)) *
+            v.cruise;
+      if (leadDs < 1e5) {
+        const gap =
+          leadDs -
+          v.length / 2 -
+          TRAFFIC_BEHAVIOR.playerHalfLengthMeters -
+          TRAFFIC_INTEGRATOR.bumperGapMeters;
+        target = Math.min(target, playerLeadTargetMetersPerSecond(gap, leadSpeed, v.cruise));
+      }
       const clamped = clampSpeedDelta(target - v.speed, delta);
       v.speed = Math.max(0, v.speed + clamped);
       v.distance = wrapDistance(v.distance + v.speed * delta, route.length);
+      // Lateral transition toward the (possibly new) lane.
+      v.lateral = stepLaneLateral(v.lateral, v.lane * TRAFFIC_LANE_INSET_METERS, delta);
       // Player collision (the CPU is the only side that knows both positions).
-      const pos = sampleRoute(route, v.distance, TRAFFIC_LANE_INSET_METERS * v.lane);
+      const pos = sampleRoute(route, v.distance, v.lateral);
       const dx = pos.x - focus.x;
       const dz = pos.z - focus.z;
       const distance = Math.hypot(dx, dz);
@@ -552,7 +686,7 @@ export class GpuTrafficWorld {
         this.#transform.position.set(0, -50, 0);
         this.#transform.scale.set(0.0001, 0.0001, 0.0001);
       } else {
-        const pos = sampleRoute(route!, v.distance, TRAFFIC_LANE_INSET_METERS * v.lane);
+        const pos = sampleRoute(route!, v.distance, v.lateral);
         const yaw = sampleRouteYaw(route!, v.distance);
         this.#transform.position.set(pos.x, pos.y, pos.z);
         this.#transform.rotation.set(0, yaw, 0);
@@ -567,6 +701,55 @@ export class GpuTrafficWorld {
     }
     for (const mesh of this.#meshes) mesh.instanceMatrix.needsUpdate = true;
     for (const light of this.#lightMeshes) light.instanceMatrix.needsUpdate = true;
+  }
+
+  #writePlayerLead(slot: number, dsMeters: number, speedAlongMetersPerSecond: number): void {
+    const arr = this.#playerLead.array as Float32Array;
+    arr[slot * 2] = dsMeters;
+    arr[slot * 2 + 1] = speedAlongMetersPerSecond;
+  }
+
+  /**
+   * Project the focus (the player) onto a route: nearest arc-length position (refined
+   * along the sample segment) plus the route direction there. The lateral test decides
+   * whether the player is actually on this carriageway (Phase 10.5 pass B).
+   */
+  #projectPlayerOntoRoute(
+    route: TrafficRoute,
+    px: number,
+    pz: number,
+  ): { s: number; ok: boolean; dirX: number; dirZ: number } {
+    const points = route.points;
+    const count = points.length;
+    let bestD2 = Number.POSITIVE_INFINITY;
+    let bestI = 0;
+    for (let i = 0; i < count; i += 1) {
+      const p = points[i]!;
+      const dx = px - p.x;
+      const dz = pz - p.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        bestI = i;
+      }
+    }
+    const p = points[bestI]!;
+    const q = points[(bestI + 1) % count]!;
+    const segX = q.x - p.x;
+    const segZ = q.z - p.z;
+    const segLen2 = Math.max(1e-9, segX * segX + segZ * segZ);
+    const t = Math.max(0, Math.min(1, ((px - p.x) * segX + (pz - p.z) * segZ) / segLen2));
+    const s = (bestI + t) * route.spacing;
+    // Right of travel at the sample: (-cos yaw, sin yaw) — the lane-offset convention.
+    const rx = -Math.cos(p.yaw);
+    const rz = Math.sin(p.yaw);
+    const lateral = (px - p.x) * rx + (pz - p.z) * rz;
+    return {
+      s,
+      ok: Math.abs(lateral) <= TRAFFIC_BEHAVIOR.playerRouteLateralToleranceMeters,
+      dirX: -Math.sin(p.yaw),
+      dirZ: -Math.cos(p.yaw),
+    };
   }
 
   #classIndexOfSlot(slot: number): number {
@@ -698,9 +881,11 @@ export class GpuTrafficWorld {
         stateA: this.#stateA,
         stateB: this.#stateB,
         stateC: this.#stateC,
+        stateD: this.#stateD,
         speedTarget: this.#speedTarget,
         requests: this.#requests,
         vehicleStatic: this.#vehicleStatic,
+        playerLead: this.#playerLead,
         routeTexture: this.#routeTexture,
         routeMetaTexture: this.#routeMetaTexture,
         dt: this.#dt,
@@ -951,9 +1136,11 @@ interface TrafficComputeBuffers {
   readonly stateA: StorageInstancedBufferAttribute;
   readonly stateB: StorageInstancedBufferAttribute;
   readonly stateC: StorageInstancedBufferAttribute;
+  readonly stateD: StorageInstancedBufferAttribute;
   readonly speedTarget: StorageInstancedBufferAttribute;
   readonly requests: StorageInstancedBufferAttribute;
   readonly vehicleStatic: StorageInstancedBufferAttribute;
+  readonly playerLead: StorageInstancedBufferAttribute;
   readonly routeTexture: DataTexture;
   readonly routeMetaTexture: DataTexture;
   readonly dt: UniformNode<'float', number>;
@@ -967,9 +1154,11 @@ function createTrafficComputeNode(
   const stateA = storage(buffers.stateA, 'vec4', capacity);
   const stateB = storage(buffers.stateB, 'vec4', capacity);
   const stateC = storage(buffers.stateC, 'vec4', capacity);
+  const stateD = storage(buffers.stateD, 'vec4', capacity);
   const speedTarget = storage(buffers.speedTarget, 'float', capacity);
   const requests = storage(buffers.requests, 'vec4', capacity);
   const vehicleStatic = storage(buffers.vehicleStatic, 'vec4', capacity).toReadOnly();
+  const playerLead = storage(buffers.playerLead, 'vec2', capacity).toReadOnly();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TSL node graph values.
   type TSLAny = any;
@@ -994,6 +1183,19 @@ function createTrafficComputeNode(
     stopGapMeters,
     bumperGapMeters,
   } = TRAFFIC_INTEGRATOR;
+  const {
+    overtakeTriggerGapMeters,
+    overtakeLeaderClearMeters,
+    overtakeFollowerClearMeters,
+    overtakeMinSpeedMetersPerSecond,
+    laneChangeCooldownSeconds,
+    laneChangeRateMetersPerSecond,
+    laneChangeSettleMeters,
+    playerAheadMinMeters,
+    playerAheadMaxMeters,
+    playerHalfLengthMeters,
+    playerRecoveryMetersPerSecond,
+  } = TRAFFIC_BEHAVIOR;
 
   return Fn(() => {
     const i = instanceIndex;
@@ -1001,30 +1203,43 @@ function createTrafficComputeNode(
     const a0 = stateA.element(i).toVar();
     const c0 = stateC.element(i).toVar();
     const staticI = vehicleStatic.element(i).toVar();
+    const d0 = stateD.element(i).toVar();
     const target = float(0).toVar();
+    const wantChange = float(0).toVar();
     If(c0.w.greaterThan(float(0.5)), () => {
       const meta = metaAt(a0.x);
       const routeLen = meta.x;
       const minGap = float(1e6).toVar();
+      const otherLead = float(1e6).toVar();
+      const otherFollow = float(1e6).toVar();
       Loop(capacity, ({ i: j }) => {
         If(j.notEqual(i), () => {
           const aj = stateA.element(j).toVar();
           const cj = stateC.element(j).toVar();
-          If(
-            aj.x
-              .equal(a0.x)
-              .and(aj.y.equal(a0.y))
-              .and(cj.w.greaterThan(float(0.5))),
-            () => {
-              const staticJ = vehicleStatic.element(j).toVar();
-              const gap = mod(aj.z.sub(a0.z).add(routeLen), routeLen)
-                .sub(staticJ.x.add(staticI.x).mul(float(0.5)))
-                .sub(float(bumperGapMeters));
+          If(aj.x.equal(a0.x).and(cj.w.greaterThan(float(0.5))), () => {
+            const staticJ = vehicleStatic.element(j).toVar();
+            const dAhead = mod(aj.z.sub(a0.z).add(routeLen), routeLen);
+            const halfLens = staticJ.x.add(staticI.x).mul(float(0.5)).add(float(bumperGapMeters));
+            If(aj.y.equal(a0.y), () => {
+              const gap = dAhead.sub(halfLens);
               If(gap.lessThan(minGap), () => {
                 minGap.assign(gap);
               });
-            },
-          );
+            });
+            // Phase 10.5 pass B: adjacent-lane clearance for the overtake decision.
+            If(aj.y.notEqual(a0.y).and(dAhead.lessThan(routeLen.mul(float(0.5)))), () => {
+              const gap = dAhead.sub(halfLens);
+              If(gap.lessThan(otherLead), () => {
+                otherLead.assign(gap);
+              });
+            });
+            If(aj.y.notEqual(a0.y).and(dAhead.greaterThanEqual(routeLen.mul(float(0.5)))), () => {
+              const gap = routeLen.sub(dAhead).sub(halfLens);
+              If(gap.lessThan(otherFollow), () => {
+                otherFollow.assign(gap);
+              });
+            });
+          });
         });
       });
       target.assign(
@@ -1038,6 +1253,21 @@ function createTrafficComputeNode(
             .mul(staticI.y),
         ),
       );
+      // The cooldown decays before the decision so the CPU shadow (which decays first)
+      // and this pass attempt the lane change on the same frame.
+      const cooldown = d0.y.sub(buffers.dt).clamp(float(0), float(100));
+      If(
+        cooldown
+          .lessThan(float(0.01))
+          .and(a0.w.greaterThan(float(overtakeMinSpeedMetersPerSecond)))
+          .and(minGap.lessThan(float(overtakeTriggerGapMeters)))
+          .and(otherLead.greaterThan(float(overtakeLeaderClearMeters)))
+          .and(otherFollow.greaterThan(float(overtakeFollowerClearMeters))),
+        () => {
+          wantChange.assign(float(1));
+        },
+      );
+      stateD.element(i).assign(vec4(d0.x, cooldown, float(0), wantChange));
     });
     speedTarget.element(i).assign(target);
     storageBarrier();
@@ -1050,15 +1280,20 @@ function createTrafficComputeNode(
     const lane = a0.y.toVar();
     const distance = a0.z.toVar();
     const speed = a0.w.toVar();
+    const dState = stateD.element(i).toVar();
 
     If(flags.greaterThan(float(0.5)), () => {
       If(flags.lessThan(float(1.5)), () => {
-        // respawn: adopt the requested route/lane/distance.
+        // respawn: adopt the requested route/lane/distance; settle straight into the lane.
         routeIdx.assign(req.x);
         lane.assign(req.y);
         distance.assign(req.z);
         speed.assign(float(0));
         alive.assign(float(1));
+        stateD
+          .element(i)
+          .assign(vec4(req.y.mul(float(TRAFFIC_LANE_INSET_METERS)), float(0), float(0), float(0)));
+        dState.assign(stateD.element(i));
       });
       If(flags.greaterThan(float(1.5)).and(flags.lessThan(float(2.5))), () => {
         alive.assign(float(0.5));
@@ -1073,10 +1308,44 @@ function createTrafficComputeNode(
       requests.element(i).assign(vec4(req.x, req.y, req.z, float(0)));
     });
 
+    // Overtake applied (Phase 10.5 pass B): the flag was set by phase 1 — the CPU
+    // shadow flips the same lane on the same frame from the same decision.
+    If(dState.w.greaterThan(float(0.5)), () => {
+      lane.assign(lane.mul(float(-1)));
+      dState.y.assign(float(laneChangeCooldownSeconds));
+    });
+
     const meta = metaAt(routeIdx);
     const routeLen = meta.x;
     const spacing = meta.y;
-    const goal = speedTarget.element(i);
+    const goal = speedTarget.element(i).toVar();
+    // Player-aware clamp (Phase 10.5 pass B): the CPU projects the player onto each
+    // route; while the player is ahead on this route, cap the target to follow them.
+    const lead = playerLead.element(i);
+    If(
+      alive
+        .greaterThan(float(0.5))
+        .and(lead.x.greaterThan(float(playerAheadMinMeters)))
+        .and(lead.x.lessThan(float(playerAheadMaxMeters))),
+      () => {
+        const gap = lead.x
+          .sub(staticI.x.mul(float(0.5)))
+          .sub(float(playerHalfLengthMeters))
+          .sub(float(bumperGapMeters));
+        const pTarget = lead.y
+          .add(
+            gap
+              .sub(float(stopGapMeters))
+              .clamp(float(0), float(1e6))
+              .div(float(fullSpeedGapMeters - stopGapMeters))
+              .mul(float(playerRecoveryMetersPerSecond)),
+          )
+          .clamp(float(0), staticI.y);
+        If(pTarget.lessThan(goal), () => {
+          goal.assign(pTarget);
+        });
+      },
+    );
     const dSpeed = goal
       .sub(speed)
       .clamp(
@@ -1094,13 +1363,17 @@ function createTrafficComputeNode(
     const p1 = pointAt(routeIdx, u0.add(float(1)));
     const yawDelta0: TSLAny = mx_atan2(sin(p1.w.sub(p0.w)), cos(p1.w.sub(p0.w)));
     const yaw = p0.w.add(yawDelta0.mul(f0));
+    // Lateral lane transition toward the (possibly new) lane (Phase 10.5 pass B).
+    const targetLateral = lane.mul(float(TRAFFIC_LANE_INSET_METERS));
+    const lateralStep = float(laneChangeRateMetersPerSecond).mul(buffers.dt);
+    const eased = dState.x.add(
+      targetLateral.sub(dState.x).clamp(lateralStep.mul(float(-1)), lateralStep),
+    );
     const pos = vec3(
       p0.x.add(p1.x.sub(p0.x).mul(f0)),
       p0.y.add(p1.y.sub(p0.y).mul(f0)),
       p0.z.add(p1.z.sub(p0.z).mul(f0)),
-    ).add(
-      vec3(cos(yaw).negate(), float(0), sin(yaw)).mul(lane.mul(float(TRAFFIC_LANE_INSET_METERS))),
-    );
+    ).add(vec3(cos(yaw).negate(), float(0), sin(yaw)).mul(eased));
     const uAhead = u.add(float(45).div(spacing));
     const u1 = uAhead.floor();
     const f1 = uAhead.fract();
@@ -1111,8 +1384,18 @@ function createTrafficComputeNode(
     const turn: TSLAny = mx_atan2(sin(yawAhead.sub(yaw)), cos(yawAhead.sub(yaw)));
     // In the (forward = -sin yaw, -cos yaw) convention a LEFT turn increases yaw,
     // so a positive lookahead delta is a left turn and a negative one is right.
-    const blinkLeft = select(turn.greaterThan(float(0.3)), float(1), float(0));
-    const blinkRight = select(turn.lessThan(float(-0.3)), float(1), float(0));
+    // The +lane side is the RIGHT of travel, so a transition toward +lateral blinks right.
+    const transitioning = targetLateral.sub(eased).abs().greaterThan(float(laneChangeSettleMeters));
+    const blinkLeft = select(
+      turn.greaterThan(float(0.3)).or(transitioning.and(targetLateral.lessThan(float(-0.5)))),
+      float(1),
+      float(0),
+    );
+    const blinkRight = select(
+      turn.lessThan(float(-0.3)).or(transitioning.and(targetLateral.greaterThan(float(0.5)))),
+      float(1),
+      float(0),
+    );
     const brake = goal.sub(speed).div(float(3)).clamp(0, 1);
 
     stateA.element(i).assign(vec4(routeIdx, lane, distance, speed));
@@ -1120,6 +1403,7 @@ function createTrafficComputeNode(
     stateC
       .element(i)
       .assign(vec4(pos.x, pos.y, pos.z, select(alive.greaterThan(float(0.5)), float(1), alive)));
+    stateD.element(i).assign(vec4(eased, dState.y, float(0), float(0)));
   })()
     .compute(capacity, [64])
     .setName('GpuTraffic.step');

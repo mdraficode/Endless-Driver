@@ -44,6 +44,41 @@ export const TRAFFIC_ROUTE_ACTIVATION_METERS = 2600;
 /** Routes farther than this are fully released (their vehicles are respawned near the player). */
 export const TRAFFIC_ROUTE_RELEASE_METERS = 4200;
 
+/**
+ * Phase 10.5 pass B — AI traffic driving behavior (overtaking + player-aware following).
+ * The WGSL kernel and the CPU shadow must apply these identically; both read from here.
+ */
+export const TRAFFIC_BEHAVIOR = {
+  /** Own-lane leader gap (m) at which a vehicle considers moving out to pass. */
+  overtakeTriggerGapMeters: 20,
+  /** Adjacent-lane leader gap (m) required to consider that lane clear ahead. */
+  overtakeLeaderClearMeters: 38,
+  /** Adjacent-lane follower gap (m) required to consider that lane clear behind. */
+  overtakeFollowerClearMeters: 16,
+  /** Minimum speed (m/s) to attempt a lane change (queues at a standstill hold position). */
+  overtakeMinSpeedMetersPerSecond: 2.5,
+  /** Seconds during which no further lane change is attempted (anti-oscillation). */
+  laneChangeCooldownSeconds: 7,
+  /** Lateral approach rate for the lane transition (m/s; ~2.9 s across two lanes). */
+  laneChangeRateMetersPerSecond: 0.8,
+  /** Lateral distance (m) below which the transition is considered settled. */
+  laneChangeSettleMeters: 0.12,
+  /** Player influence: how far ahead along the route the player matters (m). */
+  playerAheadMaxMeters: 42,
+  /**
+   * Player influence: nearer than this (m) the gap formula already resolves to a clean
+   * stop at the bumper gap, so the window extends to near-zero instead of handing the
+   * car back to full cruise a metre from the player.
+   */
+  playerAheadMinMeters: 0.2,
+  /** Lateral distance (m) from the centreline for the player to count as on the route. */
+  playerRouteLateralToleranceMeters: 3.0,
+  /** Player half-length (m) used in the bumper-gap math. */
+  playerHalfLengthMeters: 1.3,
+  /** Speed recovery (m/s) gained across the full gap band when following the player. */
+  playerRecoveryMetersPerSecond: 6,
+} as const;
+
 export interface SpeedTrapConfig {
   /** Zone length in metres, centred on the chosen edge midpoint. */
   readonly zoneLengthMeters: number;
