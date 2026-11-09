@@ -236,6 +236,16 @@ export function createWorldTerrainSampler(
             ownedDist = r.distance;
           }
         }
+        // Phase 11.0a: a street crossing the ramp's DESCENT must not hold its level
+        // across the ramp corridor. The ramp is a structure — it drops LEVEL_DROP
+        // (5 m) from street level into the pit; a street pavement at street height
+        // over a descending ramp buries the ramp ribbon (a visible step at the
+        // entrance). The co-linear driveway case the street-wins rule was written for
+        // is level: the ramp there sits at street height, so the descent test is
+        // false and the driveway keeps its pavement.
+        if (owned !== null && garage.y < owned - 0.5) {
+          owned = null;
+        }
         if (owned !== null) {
           if (pits.length > 0) {
             return owned - pitDepthAt(x, z);

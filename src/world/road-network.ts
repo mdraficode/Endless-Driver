@@ -1,5 +1,12 @@
-import type { RoadClass, RoadNetworkConfig } from '../config/roads';
+import type { RoadClass, RoadEdgeConfig, RoadNetworkConfig, RoadNodeConfig } from '../config/roads';
 import { AOHARA_JUNCTION_NODE_ID } from '../config/urban-district';
+import {
+  buildRoutingGrid,
+  maxStepGrade,
+  resamplePolyline,
+  routeGradeConstrained,
+  type RoutingGrid,
+} from './road-routing';
 
 /**
  * The road graph: splines over the terrain with smoothed, grade-limited profiles.
@@ -179,6 +186,11 @@ export interface RoadNetwork {
   readonly tunnelSpans: readonly TunnelSpan[];
   /** Phase 10 pass 4: the underground parking garages (pit + aisle roads). */
   readonly garages: readonly GarageSpec[];
+  /**
+   * Phase 11.0a: the edge ids re-routed in the plane by the grade-constrained A*
+   * (generated worlds; empty for hand-authored networks and for full refusal).
+   */
+  readonly routedEdgeIds: readonly string[];
   /** Nearest centreline sample, or `null` when no segment is indexed near (x, z). */
   sample(x: number, z: number): RoadSample | null;
   /**
@@ -1524,6 +1536,102 @@ function planGarages(
       }
     }
 
+    // Phase 11.0a: ramp-corridor severance for the pit-split far parts. A street that
+    // crosses the pit can re-emerge on the far side straight across the ramp's descent
+    // corridor (the crossing line coincides with the ramp's approach line) and then
+    // floats as a street-level ribbon over the ramp. Sever it with the same corridor
+    // rule as the frontage continuation: wholly-in-zone removed, end-touching trimmed
+    // back to the first point outside and re-anchored, dangling rim-side stubs dropped
+    // (their orphan rim nodes removed). Middle crossings are left for 11.1d.
+    {
+      const rampEndAlong = GARAGE_RAMP_APRON_METERS + levelDrop / grade;
+      const inCorridor = (px: number, pz: number): boolean => {
+        const rx = px - c.nodeX;
+        const rz = pz - c.nodeZ;
+        const along = rx * dx + rz * dz;
+        const lat = rx * sideX + rz * sideZ;
+        return along > GARAGE_RAMP_APRON_METERS && along < rampEndAlong + 6 && Math.abs(lat) < 8;
+      };
+      const dropOrphan = (id: string): void => {
+        if (!addedNodes.some((n) => n.id === id)) return;
+        if (edges.some((e) => e.from === id || e.to === id)) return;
+        if (addedEdges.some((e) => e.from === id || e.to === id)) return;
+        const ix = addedNodes.findIndex((n) => n.id === id);
+        if (ix >= 0) addedNodes.splice(ix, 1);
+      };
+      const sever = (list: typeof edges): void => {
+        for (let eIdx = list.length - 1; eIdx >= 0; eIdx -= 1) {
+          const edge = list[eIdx]!;
+          // Every street class that crosses the descent corridor is severed (the pit
+          // retaining wall ends it) — city-access and arterial streets included:
+          // leaving one running at street level over the ramp's drop buries the ramp
+          // ribbon. The garage's own edges (ramp/aisles) never match the corridor.
+          if (edge.roadClass === 'garage') continue;
+          if (edge.points.length < 2) continue;
+          const inZone: number[] = [];
+          for (let i = 0; i < edge.points.length; i += 1) {
+            const pt = edge.points[i]!;
+            if (inCorridor(pt.x, pt.z)) inZone.push(i);
+          }
+          if (inZone.length === 0) continue;
+          const last = edge.points.length - 1;
+          const firstIn = inZone[0]!;
+          const lastIn = inZone[inZone.length - 1]!;
+          if (inZone.length === edge.points.length) {
+            const oldFrom = edge.from;
+            const oldTo = edge.to;
+            list.splice(eIdx, 1);
+            dropOrphan(oldFrom);
+            dropOrphan(oldTo);
+            continue;
+          }
+          if (firstIn === 0 && lastIn < last) {
+            const b = edge.points[lastIn + 1]!;
+            const [tlx, tlz] = toLocal(b.x, b.z);
+            const cutId = addNode('rampcut', tlx, tlz, b.y);
+            edge.points = edge.points.slice(lastIn + 1);
+            const oldFrom = edge.from;
+            edge.from = cutId;
+            dropOrphan(oldFrom);
+          } else if (lastIn === last && firstIn > 0) {
+            const b = edge.points[firstIn - 1]!;
+            const [tlx, tlz] = toLocal(b.x, b.z);
+            const cutId = addNode('rampcut', tlx, tlz, b.y);
+            edge.points = edge.points.slice(0, firstIn);
+            const oldTo = edge.to;
+            edge.to = cutId;
+            dropOrphan(oldTo);
+          } else if (firstIn > 0 && lastIn < last) {
+            // Middle crossing: the street runs on both sides of the corridor — split
+            // it at the zone boundaries, dropping the corridor run (the pit wall).
+            const a = edge.points[firstIn - 1]!;
+            const b = edge.points[lastIn + 1]!;
+            const [alx, alz] = toLocal(a.x, a.z);
+            const [blx, blz] = toLocal(b.x, b.z);
+            const cutA = addNode('rampcut', alx, alz, a.y);
+            const cutB = addNode('rampcut', blx, blz, b.y);
+            const far = {
+              id: `${edge.id}-rampcut`,
+              from: cutB,
+              to: edge.to,
+              roadClass: edge.roadClass,
+              maxGrade: edge.maxGrade,
+              halfWidthMeters: edge.halfWidthMeters,
+              shoulderMeters: edge.shoulderMeters,
+              points: edge.points.slice(lastIn + 1),
+            };
+            edge.points = edge.points.slice(0, firstIn);
+            edge.to = cutA;
+            list.splice(eIdx, 1, edge, far);
+          }
+        }
+      };
+      // Far parts of the pit split live in addedEdges until the final merge — scan
+      // both lists (far parts first: they are the ones that re-emerge across the ramp).
+      sever(addedEdges);
+      sever(edges);
+    }
+
     // The entrance ramp: a street-level apron, then the max-grade descent to the floor.
     const entryNode = addNode('entry', 0, entryLocalZ, floorY);
     {
@@ -1640,7 +1748,137 @@ export function buildRoadNetwork(
     points: MutablePoint[];
   }[] = [];
 
-  for (const edge of config.edges) {
+  // ------------------------------------------------------------------
+  // Phase 11.0a — grade-constrained horizontal routing (generated worlds only).
+  //
+  // The grid-first layout places non-urban roads as straight chords (plus via points);
+  // a chord that crosses steep ground can NEVER meet its grade cap, no matter how the
+  // profile is shaped below. Eligible edges are re-routed in the plane through a terrain
+  // A* with a hard per-step grade cap BEFORE the spline resample: rural roads always
+  // (the modern "meander, don't fight the profile" look), trunk lines only when their
+  // chord is grade-infeasible. Refusal keeps the original chord — connectivity is a hard
+  // constraint and the vertical solver does its best exactly as it does today. Grid
+  // cities, the Aohara kit, touge switchbacks, garages and alleys stay as placed.
+  const routingSeed = config.seed;
+  const routingEligible: boolean[] = config.edges.map(() => false);
+  const routingBbox = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
+  if (routingSeed !== undefined) {
+    for (let index = 0; index < config.edges.length; index += 1) {
+      const edge = config.edges[index]!;
+      if (edge.from.startsWith('aohara-') || edge.to.startsWith('aohara-')) continue;
+      const cls = edge.roadClass ?? 'rural';
+      if (
+        cls !== 'rural' &&
+        cls !== 'highway' &&
+        cls !== 'urban-arterial' &&
+        cls !== 'city-access'
+      ) {
+        continue;
+      }
+      const from = nodeConfig.get(edge.from);
+      const to = nodeConfig.get(edge.to);
+      if (!from || !to) continue;
+      const cap = edge.maxGrade ?? config.maxGrade;
+      // Rural roads are always routed (meander upgrade). Trunks are routed only for
+      // SEVERE crossings (local grade > 3× the cap): the vertical solver's terrain-follow
+      // band already absorbs the 1.5–2× crossings (that is its job, and re-shaping every
+      // such chord would rewrite the whole map), while a >3× wall is what leaves a road
+      // floating above or sunk into the hillside. Measured on a dense resample so a long
+      // chord cannot hide a local ridge behind its average grade.
+      let eligible = cls === 'rural';
+      if (!eligible) {
+        const chord = resamplePolyline(
+          [[from.x, from.z], ...(edge.via ?? []), [to.x, to.z]] as [number, number][],
+          25,
+        );
+        eligible = maxStepGrade(chord, baseHeightAt) > cap * 3;
+      }
+      if (!eligible) continue;
+      routingEligible[index] = true;
+      for (const node of [from, to]) {
+        routingBbox.minX = Math.min(routingBbox.minX, node.x);
+        routingBbox.maxX = Math.max(routingBbox.maxX, node.x);
+        routingBbox.minZ = Math.min(routingBbox.minZ, node.z);
+        routingBbox.maxZ = Math.max(routingBbox.maxZ, node.z);
+      }
+    }
+  }
+  let routingGrid: RoutingGrid | null = null;
+  const routedEdgeIds: string[] = [];
+  // One corridor per UNDIRECTED node pair. The layout can carry the same physical road
+  // as two directed edges (a rural line landing on a skeleton segment); A* is not
+  // direction-symmetric in practice, so two independent searches would diverge by cells
+  // and the diverging ribbons would bury each other (a D3 centre gap at the ribbon
+  // centre). The second directed edge re-runs the first's proven corridor reversed.
+  const routeCache = new Map<string, { origin: string; points: [number, number][] } | null>();
+  const routeEdge = (
+    edge: RoadEdgeConfig,
+    index: number,
+    from: RoadNodeConfig,
+    to: RoadNodeConfig,
+  ): [number, number][] | null => {
+    const pairKey = [edge.from, edge.to].sort().join('|');
+    const cached = routeCache.get(pairKey);
+    if (cached !== undefined) {
+      if (cached === null) return null;
+      routedEdgeIds.push(`${edge.from}->${edge.to}`);
+      if (edge.from === cached.origin) return cached.points;
+      return [...cached.points].reverse().map((p) => [p[0], p[1]] as [number, number]);
+    }
+    if (routingGrid === null) {
+      const margin = 1200;
+      const sizeX = routingBbox.maxX - routingBbox.minX + margin * 2;
+      const sizeZ = routingBbox.maxZ - routingBbox.minZ + margin * 2;
+      if (sizeX < 64 || sizeZ < 64) return null; // degenerate (generated worlds are wider)
+      // 32 m cells: A* cost grows super-linearly with grid size (measured 153 ms/route
+      // at 24 m vs ~14 ms at 32 m on the 12 km window), and the spline resample at 8 m
+      // smooths the corner path anyway. Capped at ~1100 cells/side for huge bboxes.
+      const spacing = Math.max(32, Math.max(sizeX, sizeZ) / 1100);
+      routingGrid = buildRoutingGrid(
+        routingBbox.minX - margin,
+        routingBbox.minZ - margin,
+        sizeX,
+        sizeZ,
+        spacing,
+        baseHeightAt,
+      );
+    }
+    const cap = edge.maxGrade ?? config.maxGrade;
+    const route = routeGradeConstrained(routingGrid, from.x, from.z, to.x, to.z, cap, {
+      // Per-edge stream: the same world routes the same roads, every engine.
+      seed: (routingSeed ?? 0) ^ Math.imul(index + 1, 0x9e3779b9),
+      meanderAmp: (edge.roadClass ?? 'rural') === 'rural' ? 12 : 0,
+      // Corridor bias: nudge the search to hug the original chord axis (the junction
+      // approach stays straight like the baseline chord), detouring only where the
+      // grade forces it. Waypoint-locked ends were tried and rejected — they hairpin
+      // when the feasible corridor sits behind the waypoint (a 135° kink at the
+      // junction instead of a gentle detour).
+      biasToChord: 0.02,
+    });
+    if (route !== null) {
+      const pts = route.points.map((p) => [p[0], p[1]] as [number, number]);
+      routeCache.set(pairKey, { origin: edge.from, points: pts });
+      routedEdgeIds.push(`${edge.from}->${edge.to}`);
+      return pts;
+    }
+    routeCache.set(pairKey, null);
+    return null;
+  };
+
+  // Phase 11.0a: a rural road can land exactly on a skeleton segment (its snapped
+  // endpoints coincide with the trunk's nodes), and the layout then carries the same
+  // physical road twice — once per class. Keep the FIRST edge of the pair (the
+  // skeleton/highway edge; the region content is added after the skeleton): the duplicate
+  // follows the same corridor with a different profile and buries its twin's ribbon
+  // (a D3 centre gap of the profile difference). Generated worlds only — hand-authored
+  // networks are untouched.
+  const seenNodePairs = new Set<string>();
+  for (const [edgeIndex, edge] of config.edges.entries()) {
+    if (config.seed !== undefined) {
+      const pair = [edge.from, edge.to].sort().join('|');
+      if (seenNodePairs.has(pair)) continue;
+      seenNodePairs.add(pair);
+    }
     const roadClass = edge.roadClass ?? 'rural';
     const maxGrade = edge.maxGrade ?? config.maxGrade;
     const halfWidthMeters = edge.halfWidthMeters ?? config.halfWidthMeters;
@@ -1662,31 +1900,57 @@ export function buildRoadNetwork(
     if (!from || !to) {
       throw new Error(`road edge references unknown node: ${edge.from} -> ${edge.to}`);
     }
-    const control: MutablePoint[] = [
-      { x: from.x, z: from.z, y: 0 },
-      ...(edge.via ?? []).map(([x, z]) => ({ x, z, y: 0 })),
-      { x: to.x, z: to.z, y: 0 },
-    ];
-    const padded = [
-      control[0] as MutablePoint,
-      ...control,
-      control[control.length - 1] as MutablePoint,
-    ];
-    const points: MutablePoint[] = [];
-    for (let span = 0; span < control.length - 1; span += 1) {
-      const p0 = padded[span] as MutablePoint;
-      const p1 = padded[span + 1] as MutablePoint;
-      const p2 = padded[span + 2] as MutablePoint;
-      const p3 = padded[span + 3] as MutablePoint;
-      const chord = Math.hypot(p2.x - p1.x, p2.z - p1.z);
-      const subdivisions = Math.max(4, Math.ceil(chord / config.sampleSpacingMeters));
-      for (let step = 0; step < subdivisions; step += 1) {
-        const { x, z } = catmullRom(p0, p1, p2, p3, step / subdivisions);
-        points.push({ x, z, y: baseHeightAt(x, z) });
+    // Phase 11.0a: the routed horizontal path replaces the layout chord — rural roads
+    // always, trunks only when the chord was grade-infeasible. `null` = refusal: the
+    // original chord stands and the vertical solver takes it from there.
+    let via: readonly (readonly [number, number])[] = edge.via ?? [];
+    let routed = false;
+    if (routingEligible[edgeIndex] === true) {
+      const route = routeEdge(edge, edgeIndex, from, to);
+      if (route !== null && route.length > 2) {
+        // The route's endpoints are the exact from/to nodes (pinned); the interior
+        // points become the spline controls.
+        via = route.slice(1, -1);
+        routed = true;
       }
     }
-    const last = control[control.length - 1] as MutablePoint;
-    points.push({ x: last.x, z: last.z, y: baseHeightAt(last.x, last.z) });
+    const control: MutablePoint[] = [
+      { x: from.x, z: from.z, y: 0 },
+      ...via.map(([x, z]) => ({ x, z, y: 0 })),
+      { x: to.x, z: to.z, y: 0 },
+    ];
+    let points: MutablePoint[];
+    if (routed) {
+      // Phase 11.0a: the routed path is already geometry — a corner-cut, grade-proven
+      // corridor. Resample it LINEARLY at the sample spacing: catmull-rom overshoots on
+      // the dense corner sequence, swinging the road off the corridor A* proved
+      // grade-feasible (kinks, floating embankments).
+      points = resamplePolyline(
+        control.map((p) => [p.x, p.z] as [number, number]),
+        config.sampleSpacingMeters,
+      ).map(([x, z]) => ({ x, z, y: baseHeightAt(x, z) }));
+    } else {
+      const padded = [
+        control[0] as MutablePoint,
+        ...control,
+        control[control.length - 1] as MutablePoint,
+      ];
+      points = [];
+      for (let span = 0; span < control.length - 1; span += 1) {
+        const p0 = padded[span] as MutablePoint;
+        const p1 = padded[span + 1] as MutablePoint;
+        const p2 = padded[span + 2] as MutablePoint;
+        const p3 = padded[span + 3] as MutablePoint;
+        const chord = Math.hypot(p2.x - p1.x, p2.z - p1.z);
+        const subdivisions = Math.max(4, Math.ceil(chord / config.sampleSpacingMeters));
+        for (let step = 0; step < subdivisions; step += 1) {
+          const { x, z } = catmullRom(p0, p1, p2, p3, step / subdivisions);
+          points.push({ x, z, y: baseHeightAt(x, z) });
+        }
+      }
+      const last = control[control.length - 1] as MutablePoint;
+      points.push({ x: last.x, z: last.z, y: baseHeightAt(last.x, last.z) });
+    }
     mutableEdges.push({
       id: `${edge.from}->${edge.to}`,
       from: edge.from,
@@ -1827,7 +2091,7 @@ export function buildRoadNetwork(
       lengthMeters: length,
     };
   });
-  const nodes: RoadNode[] = [
+  let nodes: RoadNode[] = [
     ...config.nodes.map((node) => ({
       id: node.id,
       x: node.x,
@@ -1838,6 +2102,18 @@ export function buildRoadNetwork(
     // explicit elevations.
     ...garagePlan.addedNodes,
   ];
+  // Phase 11.0a: a planner pass (the garage ramp-corridor severance) can orphan a node
+  // when its only incident edge is removed and the node belongs to the base layout —
+  // the planner's own orphan sweep only touches nodes it added. A degree-0 node
+  // renders nothing and splits the component count; drop it.
+  {
+    const degree = new Map<string, number>();
+    for (const edge of edges) {
+      degree.set(edge.from, (degree.get(edge.from) ?? 0) + 1);
+      degree.set(edge.to, (degree.get(edge.to) ?? 0) + 1);
+    }
+    nodes = nodes.filter((node) => (degree.get(node.id) ?? 0) > 0);
+  }
   const nodeLookup = new Map(nodes.map((node) => [node.id, node]));
 
   // Phase 10 pass 2: bridge spans — runs of profile points whose deck holds well above
@@ -2140,6 +2416,7 @@ export function buildRoadNetwork(
     overpassEdgeIds: liftedEdgeIds,
     tunnelSpans,
     garages: garagePlan.garages,
+    routedEdgeIds,
     sample,
     sampleAll,
     neighboursOf(nodeId: string): readonly string[] {

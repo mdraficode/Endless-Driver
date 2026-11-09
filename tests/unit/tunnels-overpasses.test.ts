@@ -75,7 +75,9 @@ function overpassClearanceBounds(network: RoadNetwork): void {
   }
 }
 
-describe('tunnels in the generated world', () => {
+// Phase 11.0a: world builds now include the routing grid + A* passes; give the
+// per-seed tests real headroom (each builds one or two full worlds).
+describe('tunnels in the generated world', { timeout: 30_000 }, () => {
   for (const seed of SEEDS) {
     it(`seed ${seed}: capped runs clear a semi-trailer, stay at grade, and fit the budget`, () => {
       const { network, heightAt } = buildGeneratedWorld(seed);
@@ -126,7 +128,7 @@ describe('tunnels in the generated world', () => {
   }
 });
 
-describe('overpasses in the generated world', () => {
+describe('overpasses in the generated world', { timeout: 30_000 }, () => {
   for (const seed of SEEDS) {
     it(`seed ${seed}: the lifted street clears the street below and ramps back at grade`, () => {
       const { network } = buildGeneratedWorld(seed);
@@ -296,7 +298,8 @@ type BarriersMesh = {
   };
 };
 
-describe('tunnel cap and overpass structure (world-level regression)', () => {
+// World-level regression: each test loops the whole SEEDS list building full worlds.
+describe('tunnel cap and overpass structure (world-level regression)', { timeout: 90_000 }, () => {
   // Owner device report: tunnel caps floated in the air and ended in a sky gap at the
   // mouth, cliff mouths grew needle portals, and overpass decks read as floating sheets
   // (no underside, centreline piers standing in the road below). These pin the fixes.

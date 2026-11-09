@@ -74,7 +74,9 @@ function pavementHits(
   return hits;
 }
 
-describe('massing city placement (Phase 10 pass 3)', () => {
+// Phase 11.0a: grade-constrained routing adds a few seconds per build; these
+// multi-seed builds outgrow the 5 s default.
+describe('massing city placement (Phase 10 pass 3)', { timeout: 60_000 }, () => {
   it('no tower or infill stands on the pavement, across seeds', () => {
     for (const seed of [20261102, 4242]) {
       const { network, plan } = worldFor(seed);

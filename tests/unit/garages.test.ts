@@ -70,7 +70,9 @@ function localToWorld(
   return { x: g.x - cos * lx + sin * lz, z: g.z + sin * lx + cos * lz };
 }
 
-describe('garage selection in the generated world', () => {
+// Phase 11.0a: grade-constrained routing adds a few seconds per build; these
+// multi-seed builds outgrow the 5 s default.
+describe('garage selection in the generated world', { timeout: 30_000 }, () => {
   for (const seed of SEEDS) {
     it(`seed ${seed}: a bounded, spaced set — one in the home city, none at the spawn junction`, () => {
       const { network } = buildGeneratedWorld(seed);

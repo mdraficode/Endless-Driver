@@ -47,7 +47,15 @@ for (const seedArg of seeds) {
       radiusMeters: plan.volcano.radiusMeters,
     },
   };
-  const sampler = createWorldTerrainSampler(terrainConfig, layout.config);
+  // Same world the engine builds (Application.ts): the generated home-city anchor,
+  // not the hand-placed default plateau. (Omitting it audits a hybrid the game
+  // never produces — Phase 11.0a: seed 2 split into 2 components there.)
+  const sampler = createWorldTerrainSampler(terrainConfig, layout.config, {
+    x: anchor.x,
+    z: anchor.z,
+    flatRadiusMeters: anchor.flatRadiusMeters,
+    blendRadiusMeters: anchor.blendRadiusMeters,
+  });
   const network: RoadNetwork = sampler.roadNetwork;
   const tBuild = performance.now() - t0;
 
@@ -245,6 +253,31 @@ for (const seedArg of seeds) {
     }
   }
 
+  // Phase 11.0a — grade-constrained routing stats: routed edge count/length, per-class
+  // worst realised grade on the solved profile, and total rural length (meander budget:
+  // +<=30 % vs the pre-routing chord layout).
+  const routedSet = new Set(network.routedEdgeIds ?? []);
+  let routedLen = 0;
+  let ruralLen = 0;
+  const classMaxGrade = new Map<string, { max: number; cap: number; over: number }>();
+  for (const edge of genEdges) {
+    let len = 0;
+    for (let i = 1; i < edge.points.length; i += 1) {
+      const a = edge.points[i - 1]!;
+      const b = edge.points[i]!;
+      const run = Math.hypot(b.x - a.x, b.z - a.z);
+      len += run;
+      if (run < 0.5) continue;
+      const g = Math.abs(b.y - a.y) / run;
+      const cls = classMaxGrade.get(edge.roadClass) ?? { max: 0, cap: edge.maxGrade, over: 0 };
+      if (g > cls.max) cls.max = g;
+      if (g > cls.cap) cls.over += 1;
+      classMaxGrade.set(edge.roadClass, cls);
+    }
+    if (edge.roadClass === 'rural') ruralLen += len;
+    if (routedSet.has(edge.id)) routedLen += len;
+  }
+
   // Components over the generated nodes.
   const parent = new Map<string, string>();
   for (const n of nodes) parent.set(n.id, n.id);
@@ -285,4 +318,19 @@ for (const seedArg of seeds) {
     `  spans:          tunnels ${tunnels} | overpasses ${overpasses} | bridges ${bridges}`,
   );
   console.log(`  edges:          ${edges.length} (generated ${genEdges.length})`);
+  const gradeLine = [...classMaxGrade.entries()]
+    .filter(
+      ([cls]) =>
+        cls === 'rural' || cls === 'highway' || cls === 'urban-arterial' || cls === 'city-access',
+    )
+    .map(
+      ([cls, v]) =>
+        `${cls} ${v.max.toFixed(3)}/${v.cap.toFixed(2)}${v.over > 0 ? ` OVER:${v.over}` : ''}`,
+    )
+    .join('  ');
+  console.log(
+    `  routed:         ${(network.routedEdgeIds ?? []).length} edges, ${(routedLen / 1000).toFixed(2)} km`,
+  );
+  console.log(`  rural length:   ${(ruralLen / 1000).toFixed(2)} km`);
+  console.log(`  max grade:      ${gradeLine || 'n/a'}`);
 }
