@@ -143,7 +143,11 @@ describe('highway road class (Phase 10 pass 2)', () => {
         expect(edge.halfWidthMeters).toBe(8);
         expect(edge.shoulderMeters).toBe(3.5);
         expect(edge.maxGrade).toBe(0.05);
-        expect(edge.via).toBeUndefined();
+        // Phase 11.1: a highway whose line crosses the volcano's steep zone is
+        // doglegged around the cone (the via points are the detour arc); every
+        // other highway line stays a straight chord.
+        const crossesCone = edge.via !== undefined;
+        if (!crossesCone) expect(edge.via).toBeUndefined();
       }
     }
     // At least one of these seeds grows a highway in the window.

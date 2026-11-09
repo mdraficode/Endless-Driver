@@ -155,6 +155,71 @@ export function buildRoadLayout(
   const worldSeed = plan.seed;
   const isHighwayLine = (line: number, vertical: boolean): boolean =>
     pick(line, vertical ? 0x7a11 : 0x7a22, worldSeed) < HIGHWAY_LINE_FRACTION;
+  // Phase 11.1: the mountain is a feature of the world, not something a trunk line
+  // runs through. A chord that crosses the steep cone zone (the radius where the cone
+  // rises ~50 m) is replaced by the same chord with an arc across the crossing: the
+  // road doglegs around (or, for the mountain passes, up and over the contour of) the
+  // cone. Without this, a line solved at foothill grade across the flank leaves the
+  // road 260 m below the surface, its carve a slot cut through the volcano. The arc
+  // points are spline control points — the graph keeps its lattice nodes.
+  const detourChordPoints = (
+    ax: number,
+    az: number,
+    bx: number,
+    bz: number,
+    cx: number,
+    cz: number,
+    excludeR: number,
+    arcR: number,
+  ): [number, number][] => {
+    const abx = bx - ax;
+    const abz = bz - az;
+    const len = Math.hypot(abx, abz);
+    if (len < 1) return [[ax, az], [bx, bz]];
+    const dirx = abx / len;
+    const dirz = abz / len;
+    const tC = (cx - ax) * dirx + (cz - az) * dirz;
+    if (tC < 0 || tC > len) return [[ax, az], [bx, bz]];
+    const px = ax + dirx * tC;
+    const pz = az + dirz * tC;
+    const d = Math.hypot(cx - px, cz - pz);
+    if (d >= excludeR) return [[ax, az], [bx, bz]];
+    const s2 = arcR * arcR - d * d;
+    if (s2 <= 0) return [[ax, az], [bx, bz]];
+    const s = Math.sqrt(s2);
+    const t1 = Math.max(0, tC - s);
+    const t2 = Math.min(len, tC + s);
+    if (t1 >= t2) return [[ax, az], [bx, bz]];
+    const ex = ax + dirx * t1;
+    const ez = az + dirz * t1;
+    const xx = ax + dirx * t2;
+    const xz = az + dirz * t2;
+    const fx = px - cx;
+    const fz = pz - cz;
+    const fLen = Math.hypot(fx, fz) || 1;
+    const ang = (x: number, z: number): number => Math.atan2(z, x);
+    const norm = (a: number): number => {
+      while (a > Math.PI) a -= 2 * Math.PI;
+      while (a < -Math.PI) a += 2 * Math.PI;
+      return a;
+    };
+    const phiE = ang(ex - cx, ez - cz);
+    const phiX = ang(xx - cx, xz - cz);
+    const phiP = ang(fx / fLen, fz / fLen);
+    const d1 = norm(phiP - phiE);
+    const d2 = norm(phiX - phiP);
+    const sign = d1 >= 0 ? 1 : -1;
+    const d2s = d2 !== 0 && Math.sign(d2) !== sign ? d2 + 2 * Math.PI * sign : d2;
+    const total = d1 + d2s;
+    const n = Math.max(2, Math.min(10, Math.round((Math.abs(total) * arcR) / 300)));
+    const pts: [number, number][] = [];
+    for (let i = 1; i < n; i += 1) {
+      const phi = phiE + (i / n) * total;
+      pts.push([cx + Math.cos(phi) * arcR, cz + Math.sin(phi) * arcR]);
+    }
+    return [[ax, az], ...pts, [bx, bz]];
+  };
+
   const addSkeletonEdge = (
     from: RoadNodeConfig,
     to: RoadNodeConfig,
@@ -602,6 +667,55 @@ export function buildRoadLayout(
             [hb, zC],
           ],
         });
+      }
+    }
+  }
+
+  // Phase 11.1: dogleg every road around the cone. Trunk lines (skeleton, rural
+  // cell roads) cross outside the steep zone; the mountain-pass switchbacks climb
+  // the contour of the cone itself (their exclusion radius is smaller, so the arc
+  // rides the flank where the cone is ~90 m high — a pass, not a bypass).
+  {
+    const v = plan.volcano;
+    if (v.radiusMeters > 0) {
+      const nodeById = new Map(nodes.map((n) => [n.id, n]));
+      for (let ei = 0; ei < edges.length; ei += 1) {
+        const edge = edges[ei]!;
+        if (edge.from.startsWith('aohara-') || edge.to.startsWith('aohara-')) continue;
+        const a0 = nodeById.get(edge.from);
+        const b0 = nodeById.get(edge.to);
+        if (!a0 || !b0) continue;
+        const excludeR = v.radiusMeters * (edge.roadClass === 'touge' ? 0.55 : 0.75);
+        const arcR = v.radiusMeters * (edge.roadClass === 'touge' ? 0.65 : 0.885);
+        const path: readonly (readonly [number, number])[] = [
+          [a0.x, a0.z],
+          ...(edge.via ?? []),
+          [b0.x, b0.z],
+        ];
+        const newPath: [number, number][] = [];
+        let changed = false;
+        for (let i = 0; i < path.length - 1; i += 1) {
+          const sub = detourChordPoints(
+            path[i]![0],
+            path[i]![1],
+            path[i + 1]![0],
+            path[i + 1]![1],
+            v.x,
+            v.z,
+            excludeR,
+            arcR,
+          );
+          if (sub.length > 2) changed = true;
+          for (let j = i === 0 ? 0 : 1; j < sub.length; j += 1) {
+            const p = sub[j]!;
+            const last = newPath[newPath.length - 1];
+            if (last && Math.hypot(p[0] - last[0], p[1] - last[1]) < 1) continue;
+            newPath.push(p);
+          }
+        }
+        if (changed) {
+          edges[ei] = { ...edge, via: newPath.slice(1, -1) };
+        }
       }
     }
   }

@@ -181,6 +181,11 @@ export interface RoadNetwork {
   readonly garages: readonly GarageSpec[];
   /** Nearest centreline sample, or `null` when no segment is indexed near (x, z). */
   sample(x: number, z: number): RoadSample | null;
+  /**
+   * Phase 11.1: every candidate within influence range of (x, z) — the union carve needs
+   * all ribbons that reach the point, not just the nearest centreline.
+   */
+  sampleAll(x: number, z: number): readonly RoadSample[];
   /** Node ids reachable in one edge (graph adjacency for connectivity checks). */
   neighboursOf(nodeId: string): readonly string[];
   nodeById(nodeId: string): RoadNode | null;
@@ -231,6 +236,145 @@ function smoothProfile(points: MutablePoint[], radius: number, passes: number): 
 }
 
 /** Clamps longitudinal grade by walking the profile both ways (endpoints untouched). */
+/**
+ * Phase 11.2 — the terrain-following profile pass.
+ *
+ * After the node pins and the grade clamp, the profile between junctions is a
+ * grade-limited straight line: it stops consulting the ground between the pins. Where a
+ * junction sits on a hilltop and the valley runs through the middle of the edge, the line
+ * rides 100 m above the ground — the carve materialises that as a floating embankment (and
+ * the bridge detector sees a "ravine" where there is only sky).
+ *
+ * This pass projects the profile onto the intersection of two convex sets: the fill/cut
+ * band around the natural ground (the road hugs the terrain — real roads are cut into the
+ * hillside with modest fill) and the pairwise grade constraints (the driveable profile).
+ * Point-wise Gauss-Seidel over the two projections converges to the grade-feasible profile
+ * closest to the ground. Where no grade-feasible path to the ground exists (a ridge the
+ * available run cannot climb), the profile keeps the grade-limit line instead — those runs
+ * are the rerouter's and the tunnel's job, not the band's.
+ *
+ * Tunnel floor points are exempt: the dip is a structure (capped, cleared), not a cut.
+ * Endpoints are untouched (they are the junction pins).
+ */
+const TERRAIN_FOLLOW_FILL_METERS = 8;
+const TERRAIN_FOLLOW_CUT_METERS = 12;
+/** Sweeps of the band/grade splitting projection; the band pre-seed leaves only the
+ * junction-adjacent blend to relax, and flat edges break out after a couple of sweeps. */
+const TERRAIN_FOLLOW_SWEEPS = 1500;
+/** A station pre-check farther outside the band than this is already terrain-following. */
+const TERRAIN_FOLLOW_SKIP_TOLERANCE_METERS = 1.5;
+/** Sparse stations for the pre-check (the band only needs metre-scale accuracy). */
+const TERRAIN_FOLLOW_PRECHECK_SPACING_METERS = 25;
+
+function terrainFollow(
+  points: MutablePoint[],
+  baseY: readonly number[],
+  maxGrade: number,
+  exempt: ReadonlyArray<readonly [start: number, end: number]>,
+): void {
+  const exemptAt = new Uint8Array(points.length);
+  for (const range of exempt) {
+    for (let i = range[0]; i <= range[1]; i += 1) {
+      if (i < points.length) exemptAt[i] = 1;
+    }
+  }
+  // Segment runs are fixed for the life of this pass (x/z never move).
+  const run = new Float64Array(points.length);
+  for (let i = 1; i < points.length; i += 1) {
+    const p = points[i]!;
+    const q = points[i - 1]!;
+    run[i] = Math.max(0.001, Math.hypot(p.x - q.x, p.z - q.z));
+  }
+  const projectPoint = (i: number, anchor: number, segmentRun: number): void => {
+    const p = points[i]!;
+    const hi = baseY[i]! + TERRAIN_FOLLOW_FILL_METERS;
+    const lo = baseY[i]! - TERRAIN_FOLLOW_CUT_METERS;
+    let y = p.y;
+    if (y > hi) y = hi;
+    else if (y < lo) y = lo;
+    const allowed = segmentRun * maxGrade;
+    const ay = points[anchor]!.y;
+    y = Math.min(ay + allowed, Math.max(ay - allowed, y));
+    p.y = y;
+  };
+  // Pre-seed: start from the band itself. The pairwise grade step (maxGrade per
+  // sample) propagates like a wave at ~1 m per sample per sweep, so a profile that
+  // begins 150 m off the ground (a trunk crossing a mountainside) would need hundreds
+  // of sweeps to climb. Clamping every station into the band first makes the terrain
+  // the starting point; the sweeps then only relax the small grade residuals where the
+  // band meets the pinned junctions or exceeds the driveable grade.
+  for (let i = 1; i < points.length - 1; i += 1) {
+    if (exemptAt[i] === 1) continue;
+    const p = points[i]!;
+    const hi = baseY[i]! + TERRAIN_FOLLOW_FILL_METERS;
+    const lo = baseY[i]! - TERRAIN_FOLLOW_CUT_METERS;
+    if (p.y > hi) p.y = hi;
+    else if (p.y < lo) p.y = lo;
+  }
+  for (let sweep = 0; sweep < TERRAIN_FOLLOW_SWEEPS; sweep += 1) {
+    let worst = 0;
+    for (let i = 1; i < points.length - 1; i += 1) {
+      if (exemptAt[i] === 1) continue;
+      const before = points[i]!.y;
+      projectPoint(i, i - 1, run[i] ?? 0.001);
+      const change = Math.abs(points[i]!.y - before);
+      if (change > worst) worst = change;
+    }
+    for (let i = points.length - 2; i >= 1; i -= 1) {
+      if (exemptAt[i] === 1) continue;
+      const before = points[i]!.y;
+      projectPoint(i, i + 1, run[i + 1] ?? 0.001);
+      const change = Math.abs(points[i]!.y - before);
+      if (change > worst) worst = change;
+    }
+    if (worst < 1e-3) break;
+  }
+  // Final exact-grade polish: the interleaved band/grade projection settles within a
+  // hair of both constraints; one converged clampGrade pass removes the last residual
+  // (the test contract is grade <= maxGrade*1.05, and we want margin, not luck).
+  clampGrade(points, maxGrade);
+}
+
+/**
+ * Phase 11.2 pre-check: does this edge's profile already sit inside the terrain band?
+ * Samples every ~25 m along the edge — the full follow pass (one `baseHeightAt` per
+ * point) is only paid for edges that actually deviate.
+ */
+function profileDeviatesFromBand(
+  points: MutablePoint[],
+  baseHeightAt: (x: number, z: number) => number,
+  exempt: ReadonlyArray<readonly [start: number, end: number]>,
+): boolean {
+  const n = points.length;
+  if (n < 3) return false;
+  // Fixed 25 m spatial sampling: a station count that scales with edge length would
+  // space 280 m apart on a 4 km trunk and could sail right over a 100 m ridge; a fixed
+  // cadence catches every feature wider than ~25 m at a flat ~1 ms per world.
+  let distance = 0;
+  let nextSample = 0;
+  for (let i = 1; i < n - 1; i += 1) {
+    const p = points[i]!;
+    const q = points[i - 1]!;
+    distance += Math.hypot(p.x - q.x, p.z - q.z);
+    if (distance < nextSample) continue;
+    nextSample += TERRAIN_FOLLOW_PRECHECK_SPACING_METERS;
+    let exempted = false;
+    for (const range of exempt) {
+      if (i >= range[0] && i <= range[1]) {
+        exempted = true;
+        break;
+      }
+    }
+    if (exempted) continue;
+    const base = baseHeightAt(p.x, p.z);
+    if (p.y > base + TERRAIN_FOLLOW_FILL_METERS + TERRAIN_FOLLOW_SKIP_TOLERANCE_METERS) {
+      return true;
+    }
+    if (p.y < base - TERRAIN_FOLLOW_CUT_METERS - TERRAIN_FOLLOW_SKIP_TOLERANCE_METERS) return true;
+  }
+  return false;
+}
+
 function clampGrade(points: MutablePoint[], maxGrade: number): void {
   // Gauss-Seidel projection onto the pairwise grade constraints, using each segment's
   // true run (spline steps are not uniformly spaced, so a fixed per-step delta would
@@ -1285,6 +1429,25 @@ export function buildRoadNetwork(
     clampGrade(edge.points, edge.maxGrade);
   }
 
+  // Phase 11.2 — terrain-following: pull each profile toward the ground inside the fill/cut
+  // band, subject to the grade. This is what stops a hilltop-to-valley junction pair from
+  // producing a straight max-grade line floating 100 m over the valley floor (the carve
+  // would materialise it as a floating embankment). Tunnel floors are exempt — their dip is
+  // a structure, already proved grade-feasible. The sparse pre-check skips the ~95% of edges
+  // (the flat city plateaus) that are already inside the band.
+  for (const edge of mutableEdges) {
+    const exempt = tunnelDips
+      .filter((dip) => dip.edgeId === edge.id)
+      .map((dip) => [dip.startIndex, dip.endIndex] as const);
+    if (
+      !profileDeviatesFromBand(edge.points, baseHeightAt, exempt)
+    ) {
+      continue;
+    }
+    const baseY = edge.points.map((point) => baseHeightAt(point.x, point.z));
+    terrainFollow(edge.points, baseY, edge.maxGrade, exempt);
+  }
+
   // Phase 10 pass 3: overpasses. A seeded few flat arterial crossings lift their
   // through-street onto a deck over the other street; the lower street keeps the
   // junction elevation and the spans render through the bridge barrier/piers path.
@@ -1583,6 +1746,46 @@ export function buildRoadNetwork(
     return best;
   };
 
+  const sampleAll = (x: number, z: number): RoadSample[] => {
+    const bucket = index.get(
+      cellKey(Math.floor(x / INDEX_CELL_METERS), Math.floor(z / INDEX_CELL_METERS)),
+    );
+    if (!bucket) {
+      return [];
+    }
+    const result: RoadSample[] = [];
+    for (const segmentIndex of bucket) {
+      const segment = segments[segmentIndex] as Segment;
+      const dx = segment.bx - segment.ax;
+      const dz = segment.bz - segment.az;
+      const lengthSquared = dx * dx + dz * dz;
+      const t =
+        lengthSquared > 0
+          ? Math.min(
+              1,
+              Math.max(0, ((x - segment.ax) * dx + (z - segment.az) * dz) / lengthSquared),
+            )
+          : 0;
+      const closestX = segment.ax + dx * t;
+      const closestZ = segment.az + dz * t;
+      const distance = Math.hypot(x - closestX, z - closestZ);
+      // The per-candidate influence range (pavement + shoulder + blend).
+      if (distance >= config.blendWidthMeters + segment.halfWidthMeters + segment.shoulderMeters) {
+        continue;
+      }
+      result.push({
+        distance,
+        elevation: segment.ay + (segment.by - segment.ay) * t,
+        edgeId: segment.edgeId,
+        roadClass: segment.roadClass,
+        halfWidthMeters: segment.halfWidthMeters,
+        shoulderMeters: segment.shoulderMeters,
+        onBridge: segment.onBridge,
+      });
+    }
+    return result;
+  };
+
   return {
     config,
     edges,
@@ -1594,6 +1797,7 @@ export function buildRoadNetwork(
     tunnelSpans,
     garages: garagePlan.garages,
     sample,
+    sampleAll,
     neighboursOf(nodeId: string): readonly string[] {
       const result: string[] = [];
       for (const edge of edges) {

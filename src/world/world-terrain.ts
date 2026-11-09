@@ -2,7 +2,7 @@ import type { TerrainConfig } from '../config/terrain';
 import type { RoadNetworkConfig } from '../config/roads';
 import { AOHARA_DISTRICT_CONFIG } from '../config/urban-district';
 import { createTerrainSampler, terrainNormalAt, type TerrainSampler } from './terrain-height';
-import { buildRoadNetwork, roadInfluence } from './road-network';
+import { buildRoadNetwork, roadInfluence, type RoadSample } from './road-network';
 
 /** Phase 10 pass 2: the flat deck shelf extends this many metres past the shoulder. */
 const BRIDGE_DECK_SHOULDER_EXTRA = 5;
@@ -186,8 +186,28 @@ export function createWorldTerrainSampler(
     return 1 - smooth;
   };
 
+  // Phase 11.1: the pit rectangles (SDF-rounded boxes in local coords) — the carve must
+  // not lift the pit floor: inside a pit the ground stays at the base (pit) height, and
+  // street blends from the rim never mound the floor.
+  const insidePitAt = (x: number, z: number): boolean => {
+    for (const pit of garagePits) {
+      const sin = Math.sin(pit.yaw);
+      const cos = Math.cos(pit.yaw);
+      const wx = x - pit.x;
+      const wz = z - pit.z;
+      const lz = wx * sin + wz * cos;
+      const lx = wx * -cos + wz * sin;
+      if (
+        Math.abs(lx) < pit.halfWidth + 4 &&
+        Math.abs(lz) < pit.halfDepth + 4
+      ) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   const heightAt = (x: number, z: number): number => {
-    let road = network.sample(x, z);
     // Phase 10 pass 4: the garage pits are part of the base (the aisle roads run on the
     // pit floor); the hideout bowls are still subtracted after the carve (roads pass
     // over them as causeways).
@@ -196,56 +216,111 @@ export function createWorldTerrainSampler(
     // Phase 10 pass 4: garage surfaces are authoritative. The entrance ramp runs
     // alongside its street in the grid cities, so where a garage edge overlaps a
     // street corridor the garage profile wins instead of the two carves alternating.
+    const road = network.sample(x, z);
     if (road?.roadClass !== 'garage' && nearAnyGarage(x, z)) {
       const garage = garageProfileAt(x, z);
       if (garage !== null) {
-        road = {
-          ...(road ?? {
-            distance: garage.distance,
-            elevation: garage.y,
-            edgeId: 'garage-ramp',
-            halfWidthMeters: GARAGE_RAMP_HALF_WIDTH,
-            shoulderMeters: GARAGE_RAMP_SHOULDER,
-            onBridge: false,
-          }),
-          distance: garage.distance,
-          elevation: garage.y,
-          roadClass: 'garage' as const,
-          halfWidthMeters: GARAGE_RAMP_HALF_WIDTH,
-          shoulderMeters: GARAGE_RAMP_SHOULDER,
-          onBridge: false,
-        };
+        const influence = garageInfluence(
+          garage.distance,
+          GARAGE_RAMP_HALF_WIDTH,
+          GARAGE_RAMP_SHOULDER,
+        );
+        const height =
+          influence <= 0 ? baseHeight : baseHeight + (garage.y - baseHeight) * influence;
+        if (pits.length > 0) {
+          return height - pitDepthAt(x, z);
+        }
+        return height;
       }
     }
-    let height: number;
-    if (road === null) {
-      height = baseHeight;
-    } else {
-      // Phase 10 pass 4: garage edges (the ramp) blend over a short distance so the
-      // slot stays crisp; every other road uses the network's wide blend.
-      const influence =
-        road.roadClass === 'garage'
-          ? garageInfluence(road.distance, road.halfWidthMeters, road.shoulderMeters)
-          : roadInfluence(roadConfig, road.distance, road.halfWidthMeters, road.shoulderMeters);
-      if (influence <= 0) {
-        height = baseHeight;
-      } else {
-        height = baseHeight + (road.elevation - baseHeight) * influence;
-      }
-      // Phase 10 pass 2: a bridge deck reads as a structure — the flat shelf extends a
-      // few metres past the shoulder before blending back to the natural valley, while
-      // the height under the road stays the deck (the physics surface the car rides).
-      if (road.onBridge) {
-        const deckInfluence = roadInfluence(
-          roadConfig,
-          road.distance,
-          road.halfWidthMeters,
-          road.shoulderMeters + BRIDGE_DECK_SHOULDER_EXTRA,
-        );
-        if (deckInfluence > influence) {
-          height = baseHeight + (road.elevation - baseHeight) * deckInfluence;
+    // Phase 11.1 — the union carve. The old single-nearest carve let two ribbons
+    // disagree: at a point inside several influence ranges only the nearest
+    // centreline's profile shaped the ground, so a 30 m-parallel street six metres
+    // lower sank the ground under the higher road (a floating ribbon) and a crossing
+    // street cut a slot through the other's embankment at the ribbon level of the
+    // lower road.
+    //
+    // The carve is now sequential, highest road first: each candidate pulls the
+    // current ground toward its own surface over its influence. The highest ribbon
+    // owns the surface; a lower ribbon crossing it cuts its channel into that
+    // surface (the layout's crossing-junction pass keeps crossing streets at one
+    // elevation, so in practice the pulls agree); a lower ribbon merely parallel to
+    // a higher one keeps its own channel without touching the higher road's ground.
+    // Garage-class ribbons are excluded — the ramp/aisle surfaces are owned by the
+    // authority branch above (their wide blends would mound the pit floor).
+    // The primary ribbon: the closest candidate, full tip semantics — its profile
+    // owns the surface exactly (embankment where it is above the ground, cut channel
+    // where below). sampleAll matters off the pavement: beyond the nearest ribbon's
+    // shoulder a *higher* neighbouring ribbon's embankment can still reach the point,
+    // and the union keeps the upper envelope there (the single-nearest carve let a
+    // 30 m-parallel street sink the ground under the higher road).
+    // One candidate per edge: a winding road's far segments are other places on the
+    // same ribbon — counting them as neighbours would let the road 30 m along its own
+    // length lift (or sink) the ground at a point it actually passes through. The
+    // entrance ramp stays excluded (its wide blend would mound the pit rim); the aisle
+    // roads are kept — they sit at pit-floor level and hold the floor crisp in the rim
+    // blend zone.
+    const byEdge = new Map<string, RoadSample>();
+    for (const r of network.sampleAll(x, z)) {
+      if (r.roadClass === 'garage' && r.edgeId.endsWith('-ramp')) continue;
+      const kept = byEdge.get(r.edgeId);
+      if (kept === undefined || r.distance < kept.distance) byEdge.set(r.edgeId, r);
+    }
+    const candidates = [...byEdge.values()];
+    let primary: RoadSample | null = null;
+    for (const r of candidates) {
+      if (primary === null || r.distance < primary.distance) primary = r;
+    }
+    let height = baseHeight;
+    if (primary !== null) {
+      // A bridge deck's flat shelf reaches a few metres past the shoulder; the deck
+      // owns that shelf exactly like its pavement.
+      const deckExtra = primary.onBridge ? BRIDGE_DECK_SHOULDER_EXTRA : 0;
+      const influence = roadInfluence(
+        roadConfig,
+        primary.distance,
+        primary.halfWidthMeters,
+        primary.shoulderMeters + deckExtra,
+      );
+      const ownsSurface =
+        influence > 0 && primary.distance <= primary.halfWidthMeters + primary.shoulderMeters + deckExtra;
+      if (ownsSurface) {
+        // The road owns its pavement (and the deck shelf) exactly: embankment where it
+        // sits above the ground, cut channel where below. No neighbour may override it —
+        // a cliff or embankment behind the road rises *behind* the ribbon, never over
+        // its pavement, and a parallel ribbon six metres lower must not sink the ground
+        // under a higher road (the single-nearest carve's failure mode in reverse).
+        height = primary.elevation;
+      } else if (influence > 0) {
+        // Off the pavement: the primary's shoulder blend shapes the ground, and higher
+        // ribbons reaching the point from beyond the shoulder lift it (the upper
+        // envelope of embankments between the roads).
+        height = baseHeight + (primary.elevation - baseHeight) * influence;
+        for (const r of candidates) {
+          if (r.edgeId === primary.edgeId) continue;
+          const extra = r.onBridge ? BRIDGE_DECK_SHOULDER_EXTRA : 0;
+          const inf = roadInfluence(
+            roadConfig,
+            r.distance,
+            r.halfWidthMeters,
+            r.shoulderMeters + extra,
+          );
+          if (inf <= 0) continue;
+          const target = baseHeight + (r.elevation - baseHeight) * inf;
+          if (target > height) height = target;
         }
       }
+    }
+    // Phase 11.1 pit mask: the pit floor is authoritative — street blends from the rim
+    // must not mound the floor. Roads on their pavement keep their surface (a frontage
+    // street runs along the pit edge at street level; the aisles are garage-class and
+    // already handled by the authority branch).
+    if (
+      insidePitAt(x, z) &&
+      (primary === null ||
+        primary.distance > primary.halfWidthMeters + primary.shoulderMeters)
+    ) {
+      height = Math.min(height, baseHeight);
     }
     if (pits.length > 0) {
       height -= pitDepthAt(x, z);
