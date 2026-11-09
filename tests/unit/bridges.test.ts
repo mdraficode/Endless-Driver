@@ -94,7 +94,9 @@ describe('bridge span detection (synthetic ravine)', () => {
   });
 });
 
-describe('bridges in the generated world', () => {
+// Phase 11.0a: grade-constrained routing adds a second or two per build; CI is
+// slower than a dev machine, so the multi-build tests get a real budget.
+describe('bridges in the generated world', { timeout: 30_000 }, () => {
   const seed = 20261102;
   const plan = createWorldPlan(seed);
   const anchor = homeCityAnchor(plan);

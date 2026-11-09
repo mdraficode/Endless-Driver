@@ -57,7 +57,9 @@ describe('hideout placement', () => {
   });
 });
 
-describe('garage pit carve', () => {
+// Phase 11.0a: grade-constrained routing adds a second or two per build; CI is
+// slower than a dev machine, so the multi-build tests get a real budget.
+describe('garage pit carve', { timeout: 30_000 }, () => {
   const { layout, anchor, hideouts } = makeWorld(SEED);
   const pits = hideoutPits(hideouts);
   const garage = hideouts.find((h) => h.kind === 'garage');
