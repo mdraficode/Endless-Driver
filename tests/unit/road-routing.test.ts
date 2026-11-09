@@ -129,7 +129,7 @@ describe('routeGradeConstrained', () => {
 describe('chord feasibility helpers', () => {
   it('maxStepGrade on a dense resample sees the local ridge a 2-point chord hides', () => {
     // A 40 m bump at the chord midpoint: endpoints at grade 0, midpoint at +40.
-    const bump = (x: number, _z: number): number =>
+    const bump = (x: number): number =>
       40 * Math.exp(-((x - 500) ** 2) / (2 * 60 ** 2));
     const chord: [number, number][] = [
       [0, 0],
