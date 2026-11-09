@@ -100,12 +100,18 @@ describe('road-layout', () => {
       Math.sin(x * 0.0004) * 90 + Math.sin(z * 0.0005) * 70;
     const network = buildRoadNetwork(config, baseHeight);
     // The solver keeps every configured edge; the garage planner may append its
-    // ramp/aisle edges, so the network has at least the configured count and the only
-    // additions are garage-class.
-    expect(network.edges.length).toBeGreaterThanOrEqual(config.edges.length);
+    // ramp/aisle edges. Phase 11.1b adds one more kind of addition: the pit split
+    // re-emits a street's far part past the pit as "<id>-far" (non-garage), and the
+    // frontage severance may remove a continuation segment, so additions minus
+    // removals must balance exactly garage-class edges plus far parts.
+    const netIds = new Set(network.edges.map((e) => e.id));
     const added = network.edges.length - config.edges.length;
     const garageCount = network.edges.filter((e) => e.roadClass === 'garage').length;
-    expect(garageCount).toBe(added);
+    const farParts = network.edges.filter(
+      (e) => e.roadClass !== 'garage' && e.id.endsWith('-far'),
+    ).length;
+    const removed = config.edges.filter((e) => !netIds.has(`${e.from}->${e.to}`)).length;
+    expect(garageCount + farParts - removed).toBe(added);
     // Every solved edge must stay within its authored grade cap (plus solver tolerance).
     for (const edge of network.edges) {
       const cap = edge.maxGrade + 0.02;

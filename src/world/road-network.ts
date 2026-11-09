@@ -646,6 +646,8 @@ function selectAndLiftOverpasses(
     to: string;
     roadClass: RoadClass;
     maxGrade: number;
+    halfWidthMeters: number;
+    shoulderMeters: number;
     points: MutablePoint[];
   }[],
   nodeElevation: Map<string, number>,
@@ -913,6 +915,11 @@ interface GaragePlacement {
   readonly maxGrade: number;
   readonly isHome: boolean;
   readonly score: number;
+  /** Phase 11.1b: the driveway frontage (first ramp-side street), severed at the
+   *  flat apron so it is not sunken by the ramp's authority zone. */
+  readonly frontageEdgeId: string | null;
+  /** Which flatness pass admitted the candidate (0 = strict). Strict ranks first. */
+  readonly flatPass: number;
 }
 
 /**
@@ -928,6 +935,8 @@ function planGarages(
     to: string;
     roadClass: RoadClass;
     maxGrade: number;
+    halfWidthMeters: number;
+    shoulderMeters: number;
     points: MutablePoint[];
   }[],
   nodeElevation: Map<string, number>,
@@ -943,140 +952,233 @@ function planGarages(
   const nodeConfig = new Map(config.nodes.map((node) => [node.id, node]));
   const anchor = config.garageAnchor;
   const candidates: GaragePlacement[] = [];
-
-  for (const node of config.nodes) {
-    if (node.id === AOHARA_JUNCTION_NODE_ID) continue; // the spawn junction stays clean
-    // The longest arterial edge at the node is the street the ramp leaves from.
-    let bestLength = 0;
-    let bestOther: { x: number; z: number; id: string } | null = null;
-    let bestGrade = config.maxGrade;
-    for (const edge of edges) {
-      const atFrom = edge.from === node.id;
-      const atTo = edge.to === node.id;
-      if (!atFrom && !atTo) continue;
-      if (edge.roadClass !== 'urban-arterial') continue;
-      let length = 0;
-      for (let i = 1; i < edge.points.length; i += 1) {
-        const p = edge.points[i];
-        const q = edge.points[i - 1];
-        if (!p || !q) continue;
-        length += Math.hypot(p.x - q.x, p.z - q.z);
+  const seen = new Set<string>();
+  const scanOnce = (threshold: number, pass: number): GaragePlacement[] => {
+    const found: GaragePlacement[] = [];
+    for (const node of config.nodes) {
+      if (seen.has(node.id)) continue; // relaxed passes only add new candidates
+      if (node.id === AOHARA_JUNCTION_NODE_ID) continue; // the spawn junction stays clean
+      // The longest arterial edge at the node is the street the ramp leaves from.
+      let bestLength = 0;
+      let bestOther: { x: number; z: number; id: string } | null = null;
+      let bestGrade = config.maxGrade;
+      for (const edge of edges) {
+        const atFrom = edge.from === node.id;
+        const atTo = edge.to === node.id;
+        if (!atFrom && !atTo) continue;
+        if (edge.roadClass !== 'urban-arterial') continue;
+        let length = 0;
+        for (let i = 1; i < edge.points.length; i += 1) {
+          const p = edge.points[i];
+          const q = edge.points[i - 1];
+          if (!p || !q) continue;
+          length += Math.hypot(p.x - q.x, p.z - q.z);
+        }
+        if (length < GARAGE_MIN_STREET_EDGE_METERS || length <= bestLength) continue;
+        const otherNode = nodeConfig.get(atFrom ? edge.to : edge.from);
+        if (!otherNode) continue;
+        bestLength = length;
+        bestOther = { x: otherNode.x, z: otherNode.z, id: otherNode.id };
+        bestGrade = edge.maxGrade;
       }
-      if (length < GARAGE_MIN_STREET_EDGE_METERS || length <= bestLength) continue;
-      const otherNode = nodeConfig.get(atFrom ? edge.to : edge.from);
-      if (!otherNode) continue;
-      bestLength = length;
-      bestOther = { x: otherNode.x, z: otherNode.z, id: otherNode.id };
-      bestGrade = edge.maxGrade;
-    }
-    if (bestOther === null) continue;
+      if (bestOther === null) continue;
 
-    const nodeY = nodeElevation.get(node.id) ?? baseHeightAt(node.x, node.z);
-    // The ramp leaves the node at right angles to the street; the descending side wins.
-    const axisX = bestOther.x - node.x;
-    const axisZ = bestOther.z - node.z;
-    const axis = Math.hypot(axisX, axisZ);
-    if (axis < 1) continue;
-    const perpX = -axisZ / axis;
-    const perpZ = axisX / axis;
-    const probe = [
-      baseHeightAt(node.x, node.z),
-      baseHeightAt(node.x + perpX * 60, node.z + perpZ * 60),
-      baseHeightAt(node.x - perpX * 60, node.z - perpZ * 60),
-    ];
-    const spread = Math.max(...probe) - Math.min(...probe);
-    if (spread > GARAGE_MAX_FLAT_SPREAD_METERS) continue;
-    const downSign =
-      baseHeightAt(node.x + perpX * 60, node.z + perpZ * 60) <=
-      baseHeightAt(node.x - perpX * 60, node.z - perpZ * 60)
-        ? 1
-        : -1;
+      const nodeY = nodeElevation.get(node.id) ?? baseHeightAt(node.x, node.z);
+      // The ramp leaves the node at right angles to the street; the descending side wins.
+      const axisX = bestOther.x - node.x;
+      const axisZ = bestOther.z - node.z;
+      const axis = Math.hypot(axisX, axisZ);
+      if (axis < 1) continue;
+      const perpX = -axisZ / axis;
+      const perpZ = axisX / axis;
+      const probe = [
+        baseHeightAt(node.x, node.z),
+        baseHeightAt(node.x + perpX * 60, node.z + perpZ * 60),
+        baseHeightAt(node.x - perpX * 60, node.z - perpZ * 60),
+      ];
+      const spread = Math.max(...probe) - Math.min(...probe);
+      if (spread > threshold) continue;
+      const downSign =
+        baseHeightAt(node.x + perpX * 60, node.z + perpZ * 60) <=
+        baseHeightAt(node.x - perpX * 60, node.z - perpZ * 60)
+          ? 1
+          : -1;
 
-    // Pit-area flatness: the pit extends ~48–136 m from the node, beyond the probes
-    // above — the floors are derived from the node elevation, so the whole pit
-    // rectangle must be level too.
-    const rampRun = GARAGE_LEVEL_DROP_METERS / bestGrade;
-    const entryAlong = GARAGE_RAMP_APRON_METERS + rampRun;
-    const dirX = perpX * downSign;
-    const dirZ = perpZ * downSign;
-    const sideX = -dirZ;
-    const sideZ = dirX;
-    const entryPX = node.x + dirX * entryAlong;
-    const entryPZ = node.z + dirZ * entryAlong;
-    const pitEntryLocalZ = -GARAGE_HALF_DEPTH_METERS + 20;
-    const pitCX = entryPX + dirX * -pitEntryLocalZ;
-    const pitCZ = entryPZ + dirZ * -pitEntryLocalZ;
-    const pitProbe = [
-      [0, 0],
-      [GARAGE_HALF_WIDTH_METERS, GARAGE_HALF_DEPTH_METERS],
-      [-GARAGE_HALF_WIDTH_METERS, GARAGE_HALF_DEPTH_METERS],
-      [GARAGE_HALF_WIDTH_METERS, -GARAGE_HALF_DEPTH_METERS],
-      [-GARAGE_HALF_WIDTH_METERS, -GARAGE_HALF_DEPTH_METERS],
-    ]
-      .map(([lx, lz]) =>
-        baseHeightAt(
-          pitCX + sideX * (lx ?? 0) + dirX * (lz ?? 0),
-          pitCZ + sideZ * (lx ?? 0) + dirZ * (lz ?? 0),
-        ),
-      )
-      .concat([baseHeightAt(node.x + perpX * 82, node.z + perpZ * 82)]);
-    const pitSpread = Math.max(...pitProbe) - Math.min(...pitProbe);
-    if (pitSpread > GARAGE_MAX_FLAT_SPREAD_METERS) continue;
+      // Pit-area flatness: the pit extends ~48–136 m from the node, beyond the probes
+      // above — the floors are derived from the node elevation, so the whole pit
+      // rectangle must be level too.
+      const rampRun = GARAGE_LEVEL_DROP_METERS / bestGrade;
+      const entryAlong = GARAGE_RAMP_APRON_METERS + rampRun;
+      const dirX = perpX * downSign;
+      const dirZ = perpZ * downSign;
+      const sideX = -dirZ;
+      const sideZ = dirX;
+      const entryPX = node.x + dirX * entryAlong;
+      const entryPZ = node.z + dirZ * entryAlong;
+      const pitEntryLocalZ = -GARAGE_HALF_DEPTH_METERS + 20;
+      const pitCX = entryPX + dirX * -pitEntryLocalZ;
+      const pitCZ = entryPZ + dirZ * -pitEntryLocalZ;
+      const pitProbe = [
+        [0, 0],
+        [GARAGE_HALF_WIDTH_METERS, GARAGE_HALF_DEPTH_METERS],
+        [-GARAGE_HALF_WIDTH_METERS, GARAGE_HALF_DEPTH_METERS],
+        [GARAGE_HALF_WIDTH_METERS, -GARAGE_HALF_DEPTH_METERS],
+        [-GARAGE_HALF_WIDTH_METERS, -GARAGE_HALF_DEPTH_METERS],
+      ]
+        .map(([lx, lz]) =>
+          baseHeightAt(
+            pitCX + sideX * (lx ?? 0) + dirX * (lz ?? 0),
+            pitCZ + sideZ * (lx ?? 0) + dirZ * (lz ?? 0),
+          ),
+        )
+        .concat([baseHeightAt(node.x + perpX * 82, node.z + perpZ * 82)]);
+      const pitSpread = Math.max(...pitProbe) - Math.min(...pitProbe);
+      if (pitSpread > threshold) continue;
 
-    // A street that crosses the descending ramp at an angle would fight it for the
-    // corridor; a street running alongside is fine (the garage surface is
-    // authoritative in the sampler and the ramp reads as its driveway entrance).
-    {
-      let crossed = false;
-      outer: for (const edge of edges) {
-        if (edge.from === node.id && edge.to === bestOther.id) continue;
-        if (edge.to === node.id && edge.from === bestOther.id) continue;
-        const pts = edge.points;
-        if (pts.length < 2) continue;
-        const a = pts[0]!;
-        const b = pts[pts.length - 1]!;
-        const ex = b.x - a.x;
-        const ez = b.z - a.z;
-        const elen = Math.hypot(ex, ez);
-        if (elen < 1) continue;
-        const eDirX = ex / elen;
-        const eDirZ = ez / elen;
-        if (Math.abs(eDirX * dirX + eDirZ * dirZ) > 0.5) continue; // runs along the ramp
-        const segLen = entryAlong;
-        for (let i = 0; i < pts.length; i += 1) {
-          const q = pts[i]!;
-          const t = Math.max(
-            0,
-            Math.min(1, ((q.x - node.x) * dirX + (q.z - node.z) * dirZ) / segLen),
-          );
-          const along = t * segLen;
-          if (along <= 18) continue; // the flat apron may merge with streets
-          const px = node.x + dirX * along;
-          const pz = node.z + dirZ * along;
-          if (Math.hypot(q.x - px, q.z - pz) < 6) {
-            crossed = true;
-            break outer;
+      // Phase 11.1b: the ramp-corridor audit.
+      //  - a street crossing the ramp at an angle > 18 m ahead fights it for the
+      //    corridor -> the candidate is rejected;
+      //  - the first ramp-side street is the driveway frontage (it reads as the garage
+      //    entrance and is exempt);
+      //  - a second ramp-side street running alongside past the flat apron (18 m ahead,
+      //    6 m corridor): local/alley streets are allowed — the pit split below severs
+      //    those that cross the pit box, and the remaining apron-approach span reads as
+      //    the driveway. A busier street (arterial, city access, highway) alongside the
+      //    descending ramp would have its surface sunken by the ramp's authority zone
+      //    (a floating ribbon) with no valid trim -> the candidate is rejected. The
+      //    original code exempted every ramp-side street behind the frontage branch
+      //    (isHome allowed any class), so such streets were never tested.
+      let frontageEdge: { id: string } | null = null;
+      {
+        let reject = false;
+        for (const edge of edges) {
+          const atFrom = edge.from === node.id;
+          const atTo = edge.to === node.id;
+          if (!atFrom && !atTo) continue;
+          if (edge.from === node.id && edge.to === bestOther.id) continue;
+          if (edge.to === node.id && edge.from === bestOther.id) continue;
+          const pts = edge.points;
+          if (pts.length < 2) continue;
+          const nearP = atFrom ? pts[0]! : pts[pts.length - 1]!;
+          const farP = atFrom ? pts[pts.length - 1]! : pts[0]!;
+          const elen = Math.hypot(farP.x - nearP.x, farP.z - nearP.z);
+          if (elen < 1) continue;
+          const eDirX = (farP.x - nearP.x) / elen;
+          const eDirZ = (farP.z - nearP.z) / elen;
+          const localStreet = edge.roadClass === 'urban-local' || edge.roadClass === 'urban-alley';
+          // eDir runs from the node toward the street's far end (farP - nearP for
+          // both atFrom and atTo edges) - i.e. the direction the street body
+          // extends FROM the node. Only streets whose body heads away from the
+          // node along the ramp are ramp-side: a street arriving from behind
+          // (dot < -0.5) has all of its length behind the node, where the node
+          // elevation stays the authority, so it can never sink ahead of the
+          // ramp and must not be mistaken for the driveway frontage.
+          const alongRamp = eDirX * dirX + eDirZ * dirZ > 0.5;
+          const segLen = entryAlong;
+          let inCorridor = false;
+          for (let i = 0; i < pts.length; i += 1) {
+            const q = pts[i]!;
+            const t = Math.max(
+              0,
+              Math.min(1, ((q.x - node.x) * dirX + (q.z - node.z) * dirZ) / segLen),
+            );
+            const along = t * segLen;
+            if (along <= 18) continue; // the flat apron may merge with streets
+            const px = node.x + dirX * along;
+            const pz = node.z + dirZ * along;
+            if (Math.hypot(q.x - px, q.z - pz) < 6) {
+              inCorridor = true;
+              break;
+            }
+          }
+          if (!alongRamp) {
+            if (inCorridor) {
+              reject = true;
+              break;
+            }
+            continue;
+          }
+          // A ramp-side street.
+          if (frontageEdge === null) {
+            // The actual driveway: the frontage branch is taken only here.
+            frontageEdge = { id: edge.id };
+          } else if (!localStreet) {
+            reject = true;
+            break;
           }
         }
+        if (reject) continue;
       }
-      if (crossed) continue;
+
+      // Phase 11.1b: the pit box (pit rectangle plus a 10 m rim margin) must be
+      // clear. A junction node inside it would need a road into the slab, and a
+      // busy street (anything but local/alley) through it would be severed into a
+      // dangling stub the trim rules cannot place.
+      {
+        let nodeInBox = false;
+        for (const other of config.nodes) {
+          if (other.id === node.id) continue;
+          const lx = (other.x - pitCX) * sideX + (other.z - pitCZ) * sideZ;
+          const lz = (other.x - pitCX) * dirX + (other.z - pitCZ) * dirZ;
+          if (
+            Math.abs(lx) < GARAGE_HALF_WIDTH_METERS + 16 &&
+            Math.abs(lz) < GARAGE_HALF_DEPTH_METERS + 16
+          ) {
+            nodeInBox = true;
+            break;
+          }
+        }
+        if (nodeInBox) continue;
+        let busyCrosses = false;
+        outer2: for (const edge of edges) {
+          if (edge.roadClass === 'urban-local' || edge.roadClass === 'urban-alley') continue;
+          for (const q of edge.points) {
+            const lx = (q.x - pitCX) * sideX + (q.z - pitCZ) * sideZ;
+            const lz = (q.x - pitCX) * dirX + (q.z - pitCZ) * dirZ;
+            if (
+              Math.abs(lx) < GARAGE_HALF_WIDTH_METERS + 10 &&
+              Math.abs(lz) < GARAGE_HALF_DEPTH_METERS + 10
+            ) {
+              busyCrosses = true;
+              break outer2;
+            }
+          }
+        }
+        if (busyCrosses) continue;
+      }
+
+      const distHome = Math.hypot(node.x - anchor.x, node.z - anchor.z);
+      const isHome = distHome < GARAGE_HOME_RADIUS_METERS;
+      if (isHome && distHome < GARAGE_MIN_HOME_DIST_METERS) continue;
+
+      seen.add(node.id);
+      found.push({
+        nodeId: node.id,
+        nodeX: node.x,
+        nodeZ: node.z,
+        nodeY,
+        rampDirX: perpX * downSign,
+        rampDirZ: perpZ * downSign,
+        maxGrade: bestGrade,
+        isHome,
+        score: bestLength,
+        frontageEdgeId: frontageEdge === null ? null : frontageEdge.id,
+        flatPass: pass,
+      });
     }
+    return found;
+  };
 
-    const distHome = Math.hypot(node.x - anchor.x, node.z - anchor.z);
-    const isHome = distHome < GARAGE_HOME_RADIUS_METERS;
-    if (isHome && distHome < GARAGE_MIN_HOME_DIST_METERS) continue;
-
-    candidates.push({
-      nodeId: node.id,
-      nodeX: node.x,
-      nodeZ: node.z,
-      nodeY,
-      rampDirX: perpX * downSign,
-      rampDirZ: perpZ * downSign,
-      maxGrade: bestGrade,
-      isHome,
-      score: bestLength,
-    });
+  // Steep worlds: the strict flatness pass can leave a world with no garage at
+  // all. Relaxed passes widen the allowed pit-zone spread (the floor stays level;
+  // the rim blend absorbs the difference), but only while fewer than two
+  // candidates exist. Strict-pass candidates rank first, so a world with a good
+  // site is never degraded by a relaxed one.
+  const flatThresholds = [GARAGE_MAX_FLAT_SPREAD_METERS, 8, 10];
+  for (let pass = 0; pass < flatThresholds.length; pass += 1) {
+    const thr = flatThresholds[pass]!;
+    for (const cand of scanOnce(thr, pass)) candidates.push(cand);
+    if (candidates.length >= 2) break;
   }
 
   if (candidates.length === 0) return empty;
@@ -1094,7 +1196,7 @@ function planGarages(
       shuffled[j] = a;
     }
   }
-  shuffled.sort((a, b) => b.score - a.score);
+  shuffled.sort((a, b) => a.flatPass - b.flatPass || b.score - a.score);
   const chosen: GaragePlacement[] = [];
   const home = shuffled.find((candidate) => candidate.isHome);
   if (home) chosen.push(home);
@@ -1177,6 +1279,250 @@ function planGarages(
       });
     };
     const p = (lx: number, lz: number, y: number) => toWorld(lx, lz, y);
+    const toLocal = (x: number, z: number): [number, number] => {
+      const wx = x - cx;
+      const wz = z - cz;
+      return [wx * sideX + wz * sideZ, wx * dx + wz * dz];
+    };
+
+    // Phase 11.1b pit split: the slab swallows the streets that cross it. A
+    // local/alley street entering the pit box (the pit rectangle plus a 10 m rim
+    // margin) is cut at the rim: the near part keeps its id and ends at the rim
+    // node g{g}-pit{k}a, the far part re-emerges past the pit as "<id>-far" from
+    // the rim node g{g}-pit{k}b. Both rim nodes ride the street, so the severance
+    // is invisible on the profile. A street that starts inside the box becomes
+    // its own far part; one that sits wholly inside is dropped.
+    {
+      const BOX_W = GARAGE_HALF_WIDTH_METERS + 10;
+      const BOX_D = GARAGE_HALF_DEPTH_METERS + 10;
+      const inBoxLocal = (lx: number, lz: number): boolean =>
+        Math.abs(lx) < BOX_W && Math.abs(lz) < BOX_D;
+      let pitPart = 0;
+      for (const edge of edges) {
+        if (edge.roadClass !== 'urban-local' && edge.roadClass !== 'urban-alley') continue;
+        if (edge.points.length < 2) continue;
+        const local = edge.points.map((pt) => toLocal(pt.x, pt.z));
+        const inside = local.map(([lx, lz]) => inBoxLocal(lx ?? 0, lz ?? 0));
+        if (!inside.some(Boolean)) continue;
+        // Find the crossings by sampled flips, refined by bisection.
+        const flips: Array<{ i: number; t: number }> = [];
+        for (let i = 1; i < edge.points.length; i += 1) {
+          const ia = inside[i - 1]!;
+          const ib = inside[i]!;
+          if (ia === ib) continue;
+          const pa = edge.points[i - 1]!;
+          const pb = edge.points[i]!;
+          let ta = 0;
+          let tb = 1;
+          // b: inside end, a: outside end
+          if (ia) {
+            ta = 1;
+            tb = 0;
+          }
+          for (let b = 0; b < 12; b += 1) {
+            const tm = (ta + tb) / 2;
+            const mx = pa.x + (pb.x - pa.x) * tm;
+            const mz = pa.z + (pb.z - pa.z) * tm;
+            const [mlx, mlz] = toLocal(mx, mz);
+            const insideM = inBoxLocal(mlx, mlz);
+            if (ia ? !insideM : insideM) {
+              tb = tm;
+            } else {
+              ta = tm;
+            }
+          }
+          flips.push({ i, t: (ta + tb) / 2 });
+        }
+        const startIn = inside[0]!;
+        const endIn = inside[inside.length - 1]!;
+        const entry = flips.find((f) => !inside[f.i - 1] && inside[f.i]);
+        const exit = flips.find((f) => inside[f.i - 1] && !inside[f.i]);
+        const crossPoint = (f: { i: number; t: number }): { x: number; z: number; y: number } => {
+          const pa = edge.points[f.i - 1]!;
+          const pb = edge.points[f.i]!;
+          return {
+            x: pa.x + (pb.x - pa.x) * f.t,
+            z: pa.z + (pb.z - pa.z) * f.t,
+            y: pa.y + (pb.y - pa.y) * f.t,
+          };
+        };
+        if (startIn && endIn) {
+          // The whole street sits in the slab: drop it.
+          edge.points = [];
+          continue;
+        }
+        if (entry !== undefined && exit !== undefined) {
+          const a = crossPoint(entry);
+          const b = crossPoint(exit);
+          // Capture the far end BEFORE the near part is re-pointed.
+          const originalTo = edge.to;
+          const farPts: MutablePoint[] = [b];
+          for (let i = exit.i; i < edge.points.length; i += 1) {
+            farPts.push(edge.points[i]!);
+          }
+          const nearPts: MutablePoint[] = [];
+          for (let i = 0; i < entry.i; i += 1) {
+            nearPts.push(edge.points[i]!);
+          }
+          nearPts.push(a);
+          const rimA = addNode(`pit${pitPart}a`, ...toLocal(a.x, a.z), a.y);
+          const rimB = addNode(`pit${pitPart}b`, ...toLocal(b.x, b.z), b.y);
+          pitPart += 1;
+          if (startIn) {
+            // The street starts in the slab: it becomes its own far part.
+            edge.points = farPts;
+            edge.from = rimB;
+          } else {
+            edge.points = nearPts;
+            edge.to = rimA;
+            addedEdges.push({
+              id: `${edge.id}-far`,
+              from: rimB,
+              to: originalTo,
+              roadClass: edge.roadClass,
+              maxGrade: edge.maxGrade,
+              halfWidthMeters: edge.halfWidthMeters,
+              shoulderMeters: edge.shoulderMeters,
+              points: farPts,
+            });
+          }
+        } else if (startIn) {
+          // Starts in the slab, leaves it: becomes its own far part.
+          const f = flips.find((x) => inside[x.i - 1] && !inside[x.i])!;
+          const b = crossPoint(f);
+          const rimB = addNode(`pit${pitPart}b`, ...toLocal(b.x, b.z), b.y);
+          pitPart += 1;
+          const pts: MutablePoint[] = [b];
+          for (let i = f.i; i < edge.points.length; i += 1) {
+            pts.push(edge.points[i]!);
+          }
+          edge.points = pts;
+          edge.from = rimB;
+        }
+      }
+    }
+
+    // Phase 11.1b frontage apron: the driveway frontage - the local street the ramp
+    // runs alongside - would be sunken by the ramp's authority zone over the whole
+    // descent if left in place. Sever it at the 18 m apron: the street ends where the
+    // flat apron does (it reads as the street ending at the garage driveway), and the
+    // pit split above already re-emerges its far part past the pit as "-far".
+    if (c.frontageEdgeId !== null) {
+      const frontage = edges.find((e) => e.id === c.frontageEdgeId);
+      if (frontage !== undefined && frontage.points.length >= 2) {
+        const atFrom = frontage.from === c.nodeId;
+        if (atFrom) {
+          // Sever at exactly the apron boundary, interpolating inside the segment
+          // that crosses it (driveways are often single 40-60 m segments, so a
+          // snap-to-point cut would land at the far end and shorten nothing).
+          let acc = 0;
+          let splitAt = -1;
+          let boundaryX = 0;
+          let boundaryZ = 0;
+          let boundaryY = 0;
+          for (let i = 1; i < frontage.points.length; i += 1) {
+            const q = frontage.points[i]!;
+            const q0 = frontage.points[i - 1]!;
+            const segLen = Math.hypot(q.x - q0.x, q.z - q0.z);
+            if (segLen < 0.5) continue;
+            const next = acc + segLen;
+            if (next >= GARAGE_RAMP_APRON_METERS + 6) {
+              const frac = (GARAGE_RAMP_APRON_METERS + 6 - acc) / segLen;
+              boundaryX = q0.x + (q.x - q0.x) * frac;
+              boundaryZ = q0.z + (q.z - q0.z) * frac;
+              boundaryY = q0.y + (q.y - q0.y) * frac;
+              splitAt = i;
+              break;
+            }
+            acc = next;
+          }
+          if (splitAt > 0) {
+            const [tlx, tlz] = toLocal(boundaryX, boundaryZ);
+            const frontageId = addNode('frontage', tlx, tlz, boundaryY);
+            const kept = frontage.points.slice(0, splitAt);
+            kept.push({ x: boundaryX, z: boundaryZ, y: boundaryY });
+            const oldTo = frontage.to;
+            frontage.points = kept;
+            frontage.to = frontageId;
+            // If the near part ended at this garage's own pit-edge node (the
+            // pit split above re-pointed it), the cut orphans that node - it
+            // was only ever the severed segment's far end. Drop it so the
+            // network stays one component.
+            if (
+              oldTo !== undefined &&
+              oldTo !== frontageId &&
+              !edges.some((e) => e.id !== frontage.id && (e.from === oldTo || e.to === oldTo))
+            ) {
+              const ix = addedNodes.findIndex((n) => n.id === oldTo);
+              if (ix >= 0) addedNodes.splice(ix, 1);
+            }
+            // The street may continue past the cut: a grid node can sit between
+            // the 18 m boundary and the pit. Walk the frontage street downstream
+            // (ramp direction): every continuation segment that stays inside the
+            // ramp's descent corridor (lateral < 8 m from the ramp line, 18 m ..
+            // ramp end + 6 m ahead) is removed - left in place it floats as a
+            // street-level ribbon over the ramp's authority. A segment that
+            // leaves the corridor is trimmed back to its first point outside,
+            // re-anchored at a new node, and the walk stops there.
+            const rampEndAlong = GARAGE_RAMP_APRON_METERS + levelDrop / grade;
+            const inRampZone = (px: number, pz: number): boolean => {
+              const rx = px - c.nodeX;
+              const rz = pz - c.nodeZ;
+              const along = rx * dx + rz * dz;
+              const lat = rx * sideX + rz * sideZ;
+              return (
+                along > GARAGE_RAMP_APRON_METERS + 6 &&
+                along < rampEndAlong + 6 &&
+                Math.abs(lat) < 8
+              );
+            };
+            let walkNode: string | undefined = oldTo;
+            for (let hop = 0; hop < 4 && walkNode !== undefined; hop += 1) {
+              const conts = edges.filter(
+                (e) =>
+                  e.from === walkNode &&
+                  (e.roadClass === 'urban-local' || e.roadClass === 'urban-alley') &&
+                  e.points.length >= 2,
+              );
+              const cont = conts.find((e) => {
+                const p0 = e.points[0]!;
+                const p1 = e.points[1]!;
+                const elen = Math.hypot(p1.x - p0.x, p1.z - p0.z);
+                if (elen < 0.5) return false;
+                return (p1.x - p0.x) * dx + (p1.z - p0.z) * dz > 0.7 * elen;
+              });
+              if (cont === undefined) break;
+              let lastIn = -1;
+              for (let i = 0; i < cont.points.length; i += 1) {
+                const pt = cont.points[i]!;
+                if (inRampZone(pt.x, pt.z)) lastIn = i;
+              }
+              if (lastIn < 0) break; // the segment stays outside the corridor
+              const contTo = cont.to;
+              if (lastIn === cont.points.length - 1) {
+                const ix = edges.indexOf(cont);
+                if (ix >= 0) edges.splice(ix, 1);
+                if (
+                  contTo !== walkNode &&
+                  !edges.some((e) => e.from === contTo || e.to === contTo)
+                ) {
+                  const ni = addedNodes.findIndex((n) => n.id === contTo);
+                  if (ni >= 0) addedNodes.splice(ni, 1);
+                }
+                walkNode = contTo;
+              } else {
+                const b = cont.points[lastIn + 1]!;
+                const [tlx2, tlz2] = toLocal(b.x, b.z);
+                const trimId = addNode('frontage', tlx2, tlz2, b.y);
+                cont.points = cont.points.slice(lastIn + 1);
+                cont.from = trimId;
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
 
     // The entrance ramp: a street-level apron, then the max-grade descent to the floor.
     const entryNode = addNode('entry', 0, entryLocalZ, floorY);
@@ -1439,9 +1785,7 @@ export function buildRoadNetwork(
     const exempt = tunnelDips
       .filter((dip) => dip.edgeId === edge.id)
       .map((dip) => [dip.startIndex, dip.endIndex] as const);
-    if (
-      !profileDeviatesFromBand(edge.points, baseHeightAt, exempt)
-    ) {
+    if (!profileDeviatesFromBand(edge.points, baseHeightAt, exempt)) {
       continue;
     }
     const baseY = edge.points.map((point) => baseHeightAt(point.x, point.z));

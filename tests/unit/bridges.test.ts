@@ -38,12 +38,14 @@ const syntheticConfig: RoadNetworkConfig = {
 };
 
 /**
- * A 40 m-deep V-ravine along x at z = 0, 80 m wide — 100 % walls the 15 % grade cap cannot
- * follow, so the solver must hold a deck across it.
+ * A 100 m-deep V-ravine along x at z = 0, 80 m wide. The Phase 11 solver dips a
+ * grade-limited crossing through shallower notches (a real cut); at 100 m the 15 %
+ * cap cannot get down and back up inside the 600 m run, so the solver must hold a
+ * deck across it.
  */
 const ravineHeightAt = (x: number, z: number): number => {
   const bump = 2 * Math.sin(x * 0.002) * Math.sin(z * 0.0015);
-  const notch = 40 * Math.max(0, 1 - Math.abs(z) / 40);
+  const notch = 100 * Math.max(0, 1 - Math.abs(z) / 40);
   return 10 + bump - notch;
 };
 

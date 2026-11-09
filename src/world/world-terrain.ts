@@ -197,10 +197,7 @@ export function createWorldTerrainSampler(
       const wz = z - pit.z;
       const lz = wx * sin + wz * cos;
       const lx = wx * -cos + wz * sin;
-      if (
-        Math.abs(lx) < pit.halfWidth + 4 &&
-        Math.abs(lz) < pit.halfDepth + 4
-      ) {
+      if (Math.abs(lx) < pit.halfWidth + 4 && Math.abs(lz) < pit.halfDepth + 4) {
         return true;
       }
     }
@@ -217,14 +214,39 @@ export function createWorldTerrainSampler(
     // alongside its street in the grid cities, so where a garage edge overlaps a
     // street corridor the garage profile wins instead of the two carves alternating.
     const road = network.sample(x, z);
-    if (road?.roadClass !== 'garage' && nearAnyGarage(x, z)) {
+    if (nearAnyGarage(x, z)) {
       const garage = garageProfileAt(x, z);
       if (garage !== null) {
-        const influence = garageInfluence(
-          garage.distance,
-          GARAGE_RAMP_HALF_WIDTH,
-          GARAGE_RAMP_SHOULDER,
-        );
+        // A street whose own pavement contains this point stays authoritative
+        // over the garage blend. On the co-linear driveway the street's
+        // centreline ties the ramp's in distance; letting the ramp win would
+        // sink the ground under the street it runs alongside (a floating
+        // ribbon at the severance). The frontage cut ends the street at the
+        // 18 m apron; past that the ramp owns the surface again.
+        let owned: number | null = null;
+        let ownedDist = Infinity;
+        for (const r of network.sampleAll(x, z)) {
+          if (r.roadClass === 'garage') continue;
+          if (
+            r.distance <= r.halfWidthMeters + r.shoulderMeters &&
+            r.distance <= garage.distance &&
+            r.distance < ownedDist
+          ) {
+            owned = r.elevation;
+            ownedDist = r.distance;
+          }
+        }
+        if (owned !== null) {
+          if (pits.length > 0) {
+            return owned - pitDepthAt(x, z);
+          }
+          return owned;
+        }
+        const onRampPavement =
+          road !== null && road.roadClass === 'garage' && road.edgeId.endsWith('-ramp');
+        const influence = onRampPavement
+          ? 1
+          : garageInfluence(garage.distance, GARAGE_RAMP_HALF_WIDTH, GARAGE_RAMP_SHOULDER);
         const height =
           influence <= 0 ? baseHeight : baseHeight + (garage.y - baseHeight) * influence;
         if (pits.length > 0) {
@@ -283,7 +305,8 @@ export function createWorldTerrainSampler(
         primary.shoulderMeters + deckExtra,
       );
       const ownsSurface =
-        influence > 0 && primary.distance <= primary.halfWidthMeters + primary.shoulderMeters + deckExtra;
+        influence > 0 &&
+        primary.distance <= primary.halfWidthMeters + primary.shoulderMeters + deckExtra;
       if (ownsSurface) {
         // The road owns its pavement (and the deck shelf) exactly: embankment where it
         // sits above the ground, cut channel where below. No neighbour may override it —
@@ -317,8 +340,7 @@ export function createWorldTerrainSampler(
     // already handled by the authority branch).
     if (
       insidePitAt(x, z) &&
-      (primary === null ||
-        primary.distance > primary.halfWidthMeters + primary.shoulderMeters)
+      (primary === null || primary.distance > primary.halfWidthMeters + primary.shoulderMeters)
     ) {
       height = Math.min(height, baseHeight);
     }

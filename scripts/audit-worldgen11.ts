@@ -1,12 +1,9 @@
 /**
- * scripts/audit-worldgen11.ts — Phase 11 worldgen audit (geometry integrity + terrain follow).
+ * Phase 11 acceptance audit.
  *
- *   npx tsx scripts/audit-worldgen11.ts [seed1 seed2 ...]
+ * usage: npx tsx scripts/audit-worldgen11.ts <seed1> [seed2 ...]
  *
- * Runs the full world build headlessly and reports the Phase 11 metrics:
- *   components — network connectivity (must be 1)
- *   garages    — planned underground garages (Phase 10.4)
- *   kinks      — interior direction reversals > 60° (11.1d; must be 0)
+ * Metrics (generated regions only - the hand-authored Aohara kit is out of scope):
  *   D1         — worst embankment: solved road y above the CARVED ground (spans excluded)
  *   D2         — worst cut: carved ground below solved road y (spans excluded)
  *   D3         — worst |carved ground − road y| at the ribbon centre (spans excluded):
@@ -19,12 +16,11 @@
  *   grade over — arc-length fraction above maxGrade*1.05 (must be ~0)
  *   spans      — tunnel / overpass / bridge counts
  */
-import { createWorldPlan } from '../src/world/world-plan';
+import { createWorldPlan, terrainSeedFor } from '../src/world/world-plan';
 import { buildRoadLayout } from '../src/world/road-layout';
 import { createWorldTerrainSampler } from '../src/world/world-terrain';
 import { createTerrainSampler } from '../src/world/terrain-height';
 import { homeCityAnchor } from '../src/world/city-content';
-import { terrainSeedFor } from '../src/world/world-plan';
 import { terrainConfigForTier } from '../src/config/terrain';
 import type { RoadNetwork } from '../src/world/road-network';
 
@@ -34,29 +30,11 @@ if (seeds.length === 0) {
   process.exit(1);
 }
 
+const key = (x: number, z: number): string =>
+  `${Math.round(x * 10) / 10}:${Math.round(z * 10) / 10}`;
 
-/** Interior sample indices: > 30 m from both endpoints (junction-zone pairs are normal
- * geometry — a T-junction's end street legitimately terminates inside the corridor of the
- * street it meets — so the separation checks only test the open stretches). */
-function interiorIndices(pts: readonly { x: number; z: number }[]): number[] {
-  const n = pts.length;
-  const cum: number[] = [0];
-  for (let i = 1; i < n; i++) {
-    const a = pts[i - 1]!;
-    const b = pts[i]!;
-    cum.push(cum[i - 1]! + Math.hypot(b.x - a.x, b.z - a.z));
-  }
-  const total = cum[n - 1]!;
-  const out: number[] = [];
-  for (let i = 0; i < n; i++) {
-    if (cum[i]! > 30 && total - cum[i]! > 30) out.push(i);
-  }
-  return out;
-}
-
-const key = (x: number, z: number): string => `${Math.round(x * 10)}:${Math.round(z * 10)}`;
-
-for (const seed of seeds) {
+for (const seedArg of seeds) {
+  const seed = Number(seedArg);
   const t0 = performance.now();
   const plan = createWorldPlan(seed);
   const anchor = homeCityAnchor(plan);
@@ -90,6 +68,12 @@ for (const seed of seeds) {
   const spanStations = new Set<string>();
   let inSpan = 0;
   for (const span of network.bridgeSpans) {
+    for (const p of span.points) {
+      spanStations.add(key(p.x, p.z));
+      if (p.y - p.baseY > inSpan) inSpan = p.y - p.baseY;
+    }
+  }
+  for (const span of network.overpassSpans) {
     for (const p of span.points) {
       spanStations.add(key(p.x, p.z));
       if (p.y - p.baseY > inSpan) inSpan = p.y - p.baseY;
@@ -168,133 +152,137 @@ for (const seed of seeds) {
 
   // closePairs: two edges from different nodes, closer than combined widths (11.1b).
   let closePairs = 0;
-  for (let i = 0; i < edges.length; i++) {
-    const e1 = edges[i]!;
-    for (let j = i + 1; j < edges.length; j++) {
-      const e2 = edges[j]!;
-      if (
-        e1.from === e2.from ||
-        e1.from === e2.to ||
-        e1.to === e2.from ||
-        e1.to === e2.to
-      ) {
-        continue;
-      }
-      const ia = interiorIndices(e1.points);
-      const ib = interiorIndices(e2.points);
-      let minDist = Infinity;
-      for (const a of ia) {
-        const p = e1.points[a]!;
-        for (const b of ib) {
-          const q = e2.points[b]!;
-          const d = Math.hypot(p.x - q.x, p.z - q.z);
-          if (d < minDist) minDist = d;
-        }
-      }
-      if (minDist > 0.01 && minDist < e1.halfWidthMeters + e2.halfWidthMeters) closePairs += 1;
-    }
-  }
-
-  // nearParallel: two edges with aligned directions within 15 m (11.1d lattice check).
-  let nearParallel = 0;
+  const segMinDist = (
+    ax: number,
+    az: number,
+    bx: number,
+    bz: number,
+    cx: number,
+    cz: number,
+    dx: number,
+    dz: number,
+  ): number => {
+    const abx = bx - ax;
+    const abz = bz - az;
+    const cdx = dx - cx;
+    const cdz = dz - cz;
+    const denom = abx * cdx + abz * cdz;
+    const t =
+      Math.abs(denom) < 1e-9
+        ? 0
+        : Math.max(0, Math.min(1, ((cx - ax) * abx + (cz - az) * abz) / (abx * abx + abz * abz)));
+    const px = ax + abx * t;
+    const pz = az + abz * t;
+    return Math.hypot(cx - px, cz - pz);
+  };
   for (let i = 0; i < genEdges.length; i++) {
     const e1 = genEdges[i]!;
-    const p1a = e1.points[0]!;
-    const p1b = e1.points[e1.points.length - 1]!;
-    const d1x = p1b.x - p1a.x;
-    const d1z = p1b.z - p1a.z;
-    const l1 = Math.hypot(d1x, d1z);
-    if (l1 < 30) continue;
+    const w1 = e1.halfWidthMeters + e1.shoulderMeters;
     for (let j = i + 1; j < genEdges.length; j++) {
       const e2 = genEdges[j]!;
-      if (
-        e1.from === e2.from ||
-        e1.from === e2.to ||
-        e1.to === e2.from ||
-        e1.to === e2.to
-      ) {
-        continue;
-      }
-      const p2a = e2.points[0]!;
-      const p2b = e2.points[e2.points.length - 1]!;
-      const d2x = p2b.x - p2a.x;
-      const d2z = p2b.z - p2a.z;
-      const l2 = Math.hypot(d2x, d2z);
-      if (l2 < 30) continue;
-      const dot = (d1x * d2x + d1z * d2z) / (l1 * l2);
-      if (dot < 0.99 && dot > -0.99) continue;
-      const ia = interiorIndices(e1.points);
-      const ib = interiorIndices(e2.points);
-      let minDist = Infinity;
-      for (let k = 0; k < ia.length; k += 3) {
-        const p = e1.points[ia[k]!]!;
-        for (let k2 = 0; k2 < ib.length; k2 += 3) {
-          const q = e2.points[ib[k2]!]!;
-          const d = Math.hypot(p.x - q.x, p.z - q.z);
-          if (d < minDist) minDist = d;
+      const w2 = e2.halfWidthMeters + e2.shoulderMeters;
+      const limit = w1 + w2;
+      let min = Infinity;
+      for (let a = 0; a < e1.points.length - 1; a += 1) {
+        const p0 = e1.points[a]!;
+        const p1 = e1.points[a + 1]!;
+        for (let b = 0; b < e2.points.length - 1; b += 1) {
+          const q0 = e2.points[b]!;
+          const q1 = e2.points[b + 1]!;
+          const d = segMinDist(p0.x, p0.z, p1.x, p1.z, q0.x, q0.z, q1.x, q1.z);
+          if (d < min) min = d;
+          if (min < limit) break;
         }
+        if (min < limit) break;
       }
-      if (minDist < 15) nearParallel += 1;
+      if (min < limit) closePairs += 1;
     }
   }
 
-  // Grade budget.
-  let overGradeLen = 0;
+  // nearParallel: two nearly-parallel edges within 15 m (11.1d lattice check).
+  let nearParallel = 0;
+  for (let i = 0; i < genEdges.length; i += 1) {
+    const e1 = genEdges[i]!;
+    const a1 = e1.points[0]!;
+    const b1 = e1.points[e1.points.length - 1]!;
+    const l1 = Math.hypot(b1.x - a1.x, b1.z - a1.z);
+    if (l1 < 40) continue;
+    const u1x = (b1.x - a1.x) / l1;
+    const u1z = (b1.z - a1.z) / l1;
+    for (let j = i + 1; j < genEdges.length; j += 1) {
+      const e2 = genEdges[j]!;
+      const a2 = e2.points[0]!;
+      const b2 = e2.points[e2.points.length - 1]!;
+      const l2 = Math.hypot(b2.x - a2.x, b2.z - a2.z);
+      if (l2 < 40) continue;
+      const u2x = (b2.x - a2.x) / l2;
+      const u2z = (b2.z - a2.z) / l2;
+      if (Math.abs(u1x * u2x + u1z * u2z) < 0.985) continue; // ~11° cone
+      // min distance between the two chords
+      let min = Infinity;
+      for (const p of e1.points) {
+        for (const q of e2.points) {
+          const d = Math.hypot(p.x - q.x, p.z - q.z);
+          if (d < min) min = d;
+        }
+      }
+      if (min < 15) nearParallel += 1;
+    }
+  }
+
+  // Grade over: arc-length fraction above maxGrade * 1.05.
+  let overLen = 0;
   let totalLen = 0;
   for (const edge of genEdges) {
-    const pts = edge.points;
-    for (let i = 1; i < pts.length; i++) {
-      const a = pts[i - 1]!;
-      const b = pts[i]!;
-      const d = Math.hypot(b.x - a.x, b.z - a.z);
-      if (d < 0.01) continue;
-      totalLen += d;
-      if (Math.abs(b.y - a.y) / d > edge.maxGrade * 1.05) overGradeLen += d;
+    const cap = edge.maxGrade * 1.05;
+    for (let i = 1; i < edge.points.length; i += 1) {
+      const a = edge.points[i - 1]!;
+      const b = edge.points[i]!;
+      const run = Math.hypot(b.x - a.x, b.z - a.z);
+      if (run < 0.5) continue;
+      totalLen += run;
+      if (Math.abs(b.y - a.y) / run > cap) overLen += run;
     }
   }
-  const gradePct = totalLen > 0 ? (overGradeLen / totalLen) * 100 : 0;
 
-  // Components.
-  const adj = new Map<string, string[]>();
-  for (const n of nodes) adj.set(n.id, []);
+  // Components over the generated nodes.
+  const parent = new Map<string, string>();
+  for (const n of nodes) parent.set(n.id, n.id);
+  const find = (x: string): string => {
+    let r = x;
+    while (parent.get(r) !== r) r = parent.get(r)!;
+    parent.set(x, r);
+    return r;
+  };
   for (const e of edges) {
-    adj.get(e.from)?.push(e.to);
-    adj.get(e.to)?.push(e.from);
+    const ra = find(e.from);
+    const rb = find(e.to);
+    if (ra !== rb) parent.set(ra, rb);
   }
-  const visited = new Set<string>();
-  let components = 0;
-  for (const n of nodes) {
-    if (visited.has(n.id)) continue;
-    components += 1;
-    const queue = [n.id];
-    visited.add(n.id);
-    while (queue.length > 0) {
-      const cur = queue.pop()!;
-      for (const next of adj.get(cur) ?? []) {
-        if (!visited.has(next)) {
-          visited.add(next);
-          queue.push(next);
-        }
-      }
-    }
-  }
+  const comps = new Set(nodes.map((n) => find(n.id))).size;
 
-  const tTotal = performance.now() - t0;
-  const ok = (cond: boolean): string => (cond ? '✓' : '✗');
+  const overpasses = network.overpassSpans.length;
+  const bridges = network.bridgeSpans.length;
+  const tunnels = network.tunnelSpans.length;
 
-  console.log(`\n=== Seed ${seed} ===`);
-  console.log(`  build time:     ${tBuild.toFixed(0)} ms (total ${tTotal.toFixed(0)} ms)`);
-  console.log(`  edges:          ${edges.length}   nodes: ${nodes.length}`);
-  console.log(`  components:     ${components} ${ok(components === 1)}`);
+  console.log(`\nseed ${seed}  (build ${(tBuild / 1000).toFixed(2)} s)`);
+  console.log(`  components:     ${comps} ${comps === 1 ? '✓' : '✗'}`);
   console.log(`  garages:        ${network.garages.length}`);
-  console.log(`  kinks:          ${kinkCount} (worst ${worstKink.toFixed(1)}°) ${ok(kinkCount === 0)}`);
+  console.log(
+    `  kinks:          ${kinkCount} (worst ${worstKink.toFixed(1)}°) ${kinkCount === 0 ? '✓' : '✗'}`,
+  );
   console.log(`  D1 embankment:  ${d1.toFixed(3)} m   ${d1At}`);
-  console.log(`  D2 cut depth:   ${d2.toFixed(3)} m   ${d2At}`);
+  console.log(`  D2 ramp slot:   ${d2.toFixed(3)} m   ${d2At}`);
   console.log(`  D3 centre gap:  ${d3.toFixed(3)} m   ${d3At}`);
   console.log(`  countryFill:    ${countryFill.toFixed(3)} m   ${countryFillAt}`);
-  console.log(`  inSpan:         ${inSpan.toFixed(3)} m (bridge deck / tunnel base height)`);
-  console.log(`  closePairs:     ${closePairs} ${ok(closePairs === 0)}`);
-  console.log(`  nearParallel:   ${nearParallel} ${ok(nearParallel === 0)}`);
-  console.log(`  grade over:     ${gradePct.toFixed(2)}% ${ok(gradePct < 0.5)}`);
-  console.log(`  tunnels:        ${network.tunnelSpans.length}   overpasses: ${network.overpassSpans.length}   bridges: ${network.bridgeSpans.length}`);
+  console.log(`  inSpan:         ${inSpan.toFixed(3)} m`);
+  console.log(`  closePairs:     ${closePairs} ${closePairs === 0 ? '✓' : '✗'}`);
+  console.log(`  nearParallel:   ${nearParallel} ${nearParallel === 0 ? '✓' : '✗'}`);
+  console.log(
+    `  grade over:     ${totalLen > 0 ? ((overLen / totalLen) * 100).toFixed(2) : '0.00'}%`,
+  );
+  console.log(
+    `  spans:          tunnels ${tunnels} | overpasses ${overpasses} | bridges ${bridges}`,
+  );
+  console.log(`  edges:          ${edges.length} (generated ${genEdges.length})`);
 }

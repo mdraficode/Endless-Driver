@@ -185,64 +185,92 @@ describe('AI traffic behavior in the world (CPU shadow of the compute pass)', ()
       for (let f = 0; f < Math.round(seconds / dt); f += 1)
         traffic.update(dt, focus, { x: 0, z: 0 });
       const b = readPos();
-      return Math.hypot(b.x - a.x, b.z - a.z) / seconds;
+      return {
+        speed: Math.hypot(b.x - a.x, b.z - a.z) / seconds,
+        dir: { x: b.x - a.x, z: b.z - a.z },
+      };
     };
     // Pick one that is actually cruising (not in a queue).
     let cruising = false;
+    let lastDir = { x: 1, z: 0 };
     for (let attempt = 0; attempt < 3 && !cruising; attempt += 1) {
       focus.x = centre.x;
       focus.z = centre.z;
-      const speed = measureSpeed(0.5);
-      if (speed > 7) cruising = true;
+      const m = measureSpeed(0.5);
+      if (m.speed > 7) {
+        cruising = true;
+        lastDir = m.dir;
+      }
     }
     expect(cruising).toBe(true);
 
-    // Locate the car on the derived routes (nearest sample).
-    const locateCar = () => {
+    // Locate the car on the derived routes. Bidirectional streets derive one
+    // route PER DIRECTION along the same centerline, so plain nearest-sample can
+    // land on the opposing lane (the sample phase differs between directions).
+    // Disambiguate with the car's travel direction: prefer samples whose route
+    // heading agrees with it, falling back to plain-nearest when the car is
+    // (nearly) stopped.
+    const locateCar = (dir: { x: number; z: number }) => {
       const here = readPos();
-      let bestD2 = Number.POSITIVE_INFINITY;
-      let bestRoute = -1;
-      let bestSample = 0;
+      const len = Math.hypot(dir.x, dir.z);
+      const moving = len > 1e-3;
+      const ux = moving ? dir.x / len : 0;
+      const uz = moving ? dir.z / len : 0;
+      type Cand = { d2: number; route: number; sample: number; dot: number };
+      const cands: Cand[] = [];
       for (let r = 0; r < routes.length; r += 1) {
         const rt = routes[r]!;
+        let routeD2 = Number.POSITIVE_INFINITY;
+        let routeS = 0;
         for (let s = 0; s < rt.points.length; s += 1) {
           const p = rt.points[s]!;
           const d2 = (p.x - here.x) ** 2 + (p.z - here.z) ** 2;
-          if (d2 < bestD2) {
-            bestD2 = d2;
-            bestRoute = r;
-            bestSample = s;
+          if (d2 < routeD2) {
+            routeD2 = d2;
+            routeS = s;
           }
         }
+        const n = rt.points.length;
+        const a = rt.points[(routeS + n - 1) % n]!;
+        const b = rt.points[(routeS + 1) % n]!;
+        const dl = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+        const dot = ((b.x - a.x) / dl) * ux + ((b.z - a.z) / dl) * uz;
+        cands.push({ d2: routeD2, route: r, sample: routeS, dot });
       }
-      return { bestD2, route: routes[bestRoute]!, sample: bestSample };
+      const aligned = moving ? cands.filter((c) => c.dot >= 0.5) : cands;
+      const pool = aligned.length > 0 ? aligned : cands;
+      pool.sort((x, y) => x.d2 - y.d2);
+      const best = pool[0]!;
+      return { bestD2: best.d2, route: routes[best.route]!, sample: best.sample };
     };
     const placePlayerAhead = (aheadMeters: number) => {
-      const { route, sample } = locateCar();
+      const { route, sample } = locateCar(lastDir);
       const i = (sample + Math.round(aheadMeters / route.spacing)) % route.points.length;
       const p = route.points[i]!;
       focus.x = p.x;
       focus.z = p.z;
     };
-    expect(locateCar().bestD2).toBeLessThan(4 ** 2);
+    expect(locateCar(lastDir).bestD2).toBeLessThan(4 ** 2);
     // The player sits (static) on the route ahead of the car; measureSpeed advances
     // the sim with the focus held at the player position and zero player velocity.
     placePlayerAhead(16);
     // Phase 1: a stopped player 16 m ahead — the car must brake to a clean stop
     // behind it (no collision, no oscillation).
-    const slowSpeed = measureSpeed(6);
-    expect(slowSpeed).toBeLessThan(4);
+    const slow = measureSpeed(6);
+    if (slow.speed > 0.5) lastDir = slow.dir;
+    expect(slow.speed).toBeLessThan(4);
     // Phase 2: the player clears (far ahead, beyond the influence window) — the car
     // recovers toward cruise.
     placePlayerAhead(200);
-    const fastSpeed = measureSpeed(6);
-    expect(fastSpeed).toBeGreaterThan(7);
-    expect(fastSpeed).toBeGreaterThan(slowSpeed * 2);
+    const fast = measureSpeed(6);
+    if (fast.speed > 0.5) lastDir = fast.dir;
+    expect(fast.speed).toBeGreaterThan(7);
+    expect(fast.speed).toBeGreaterThan(slow.speed * 2);
     // Phase 3: the player stops the car again, closer in (re-located: the car has
     // moved since the first placement).
     placePlayerAhead(12);
-    const holdSpeed = measureSpeed(6);
-    expect(holdSpeed).toBeLessThan(5);
+    const hold = measureSpeed(6);
+    expect(hold.speed).toBeLessThan(5);
     traffic.dispose();
   });
 });

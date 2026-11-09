@@ -342,7 +342,8 @@ describe('tunnel cap and overpass structure (world-level regression)', () => {
           span.points[span.points.length - 1]!.baseY - span.points[span.points.length - 1]!.y;
         const portal = buildTunnelPortalGeometry(span);
         const bothCliff = depthA > 12 && depthB > 12;
-        const mixed = (depthA > 12 && depthB >= 2 && depthB <= 12) ||
+        const mixed =
+          (depthA > 12 && depthB >= 2 && depthB <= 12) ||
           (depthB > 12 && depthA >= 2 && depthA <= 12);
         if (depthA > 12 || depthB > 12) deepMouthsSeen += 1;
         if (bothCliff) {

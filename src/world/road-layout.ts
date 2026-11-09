@@ -175,21 +175,41 @@ export function buildRoadLayout(
     const abx = bx - ax;
     const abz = bz - az;
     const len = Math.hypot(abx, abz);
-    if (len < 1) return [[ax, az], [bx, bz]];
+    if (len < 1)
+      return [
+        [ax, az],
+        [bx, bz],
+      ];
     const dirx = abx / len;
     const dirz = abz / len;
     const tC = (cx - ax) * dirx + (cz - az) * dirz;
-    if (tC < 0 || tC > len) return [[ax, az], [bx, bz]];
+    if (tC < 0 || tC > len)
+      return [
+        [ax, az],
+        [bx, bz],
+      ];
     const px = ax + dirx * tC;
     const pz = az + dirz * tC;
     const d = Math.hypot(cx - px, cz - pz);
-    if (d >= excludeR) return [[ax, az], [bx, bz]];
+    if (d >= excludeR)
+      return [
+        [ax, az],
+        [bx, bz],
+      ];
     const s2 = arcR * arcR - d * d;
-    if (s2 <= 0) return [[ax, az], [bx, bz]];
+    if (s2 <= 0)
+      return [
+        [ax, az],
+        [bx, bz],
+      ];
     const s = Math.sqrt(s2);
     const t1 = Math.max(0, tC - s);
     const t2 = Math.min(len, tC + s);
-    if (t1 >= t2) return [[ax, az], [bx, bz]];
+    if (t1 >= t2)
+      return [
+        [ax, az],
+        [bx, bz],
+      ];
     const ex = ax + dirx * t1;
     const ez = az + dirz * t1;
     const xx = ax + dirx * t2;
