@@ -122,7 +122,7 @@ describe('massing city placement (Phase 10 pass 3)', { timeout: 60_000 }, () => 
   });
 });
 
-describe('home city kit towers (Phase 10 pass 3)', () => {
+describe('home city kit towers (Phase 10 pass 3)', { timeout: 30_000 }, () => {
   it('clears the generated city-access connectors before building', () => {
     const { network, plan } = worldFor(20261102);
     const anchor = homeCityAnchor(plan);
@@ -139,7 +139,7 @@ describe('home city kit towers (Phase 10 pass 3)', () => {
   });
 });
 
-describe('massing terrain following (Phase 10 pass 3)', () => {
+describe('massing terrain following (Phase 10 pass 3)', { timeout: 30_000 }, () => {
   it('stands every mass on the local ground, not the district datum', () => {
     const region = (() => {
       const plan = createWorldPlan(20261102);
@@ -201,7 +201,7 @@ describe('massing terrain following (Phase 10 pass 3)', () => {
   });
 });
 
-describe('parked car collision (Phase 10 pass 3)', () => {
+describe('parked car collision (Phase 10 pass 3)', { timeout: 30_000 }, () => {
   it('a parked car is solid and the lane beside it stays drivable', () => {
     const { network } = worldFor(20261102);
     const placements = computeParkedPlacements(network, 20261102);

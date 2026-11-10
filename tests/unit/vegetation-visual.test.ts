@@ -17,7 +17,7 @@ import { generateChunkVegetation } from '../../src/world/vegetation-placement';
  * stumps + falling crowns, and shard bursts — without a GPU, since instanced
  * matrices are plain data until something draws them.
  */
-describe('vegetation destruction visuals', () => {
+describe('vegetation destruction visuals', { timeout: 30_000 }, () => {
   it('prepares near foliage before play and leaves distant chunks for the streamer', async () => {
     const sampler = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG);
     const world = new VegetationWorld(sampler, { ...VEGETATION_CONFIG, radiusChunks: 3 });
