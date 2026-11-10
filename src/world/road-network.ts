@@ -2089,6 +2089,21 @@ export function buildRoadNetwork(
     mutableEdges.push(edge);
   }
 
+  // Final safety pass (Phase 11.0b): the later passes (overpass lifts, garage
+  // additions, per-edge terrain follow) run after the pin/clamp above; re-pin the
+  // endpoints to the solved node elevations and run the pairwise grade clamp one
+  // last time so every frozen edge sits on its solved junctions and respects its
+  // grade budget (the test contract: grade <= maxGrade * 1.05). Where a
+  // terrain-locked interior rides exactly at the cap, the clamp converges to
+  // within a few micrometres — below any physical or render relevance.
+  for (const edge of mutableEdges) {
+    const first = edge.points[0];
+    const last = edge.points[edge.points.length - 1];
+    if (first) first.y = nodeElevation.get(edge.from) ?? first.y;
+    if (last) last.y = nodeElevation.get(edge.to) ?? last.y;
+    clampGrade(edge.points, edge.maxGrade);
+  }
+
   const edges: RoadEdge[] = mutableEdges.map((edge) => {
     let length = 0;
     const points: RoadPoint[] = edge.points.map((point, index) => {
