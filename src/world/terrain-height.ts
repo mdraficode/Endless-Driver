@@ -1,6 +1,7 @@
 import type { TerrainConfig } from '../config/terrain';
 import type { RoadNetwork, RoadSample } from './road-network';
 import type { CityPlateau, TerrainPit } from './world-terrain';
+import { terrainOctave, terrainOctaveGrad } from './noise';
 
 /**
  * The one height function of the world.
@@ -57,55 +58,60 @@ export function terrainNormalAt(
   return { x: nx / length, y: ny / length, z: nz / length };
 }
 
-/** 32-bit integer hash of a lattice point and the world seed → [0, 1). Deterministic. */
-function hash2(ix: number, iz: number, seed: number): number {
-  let h = seed | 0;
-  h = Math.imul(h ^ Math.imul(ix | 0, 0x27d4eb2d), 0x165667b1);
-  h = Math.imul(h ^ Math.imul(iz | 0, 0x9e3779b1), 0x85ebca6b);
-  h ^= h >>> 13;
-  h = Math.imul(h, 0xc2b2ae35);
-  h ^= h >>> 16;
-  return (h >>> 0) / 4294967296;
-}
-
-/** Smootherstep interpolation weight. */
-function fade(t: number): number {
-  return t * t * t * (t * (t * 6 - 15) + 10);
-}
-
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
-
-/** Value noise at (x, z) with lattice spacing `cell` metres → roughly [-1, 1]. */
-function valueNoise(x: number, z: number, cell: number, seed: number): number {
-  const fx = x / cell;
-  const fz = z / cell;
-  const ix = Math.floor(fx);
-  const iz = Math.floor(fz);
-  const tx = fade(fx - ix);
-  const tz = fade(fz - iz);
-  const top = lerp(hash2(ix, iz, seed), hash2(ix + 1, iz, seed), tx);
-  const bottom = lerp(hash2(ix, iz + 1, seed), hash2(ix + 1, iz + 1, seed), tx);
-  return lerp(top, bottom, tz) * 2 - 1;
-}
-
-/** Fractal sum: broad hills down to metre-scale roughness. Amplitudes sum to ~1. */
+/**
+ * Fractal sum: broad hills down to metre-scale roughness. Amplitudes sum to ~1.
+ * Phase 11.0b: the per-octave noise is OpenSimplex2S (`terrainOctave`, pre-scaled
+ * to the old value noise's band) instead of bilerp value noise — same octave
+ * structure, same seeds, smoother C³ relief.
+ */
 function fbm(x: number, z: number, baseCell: number, seed: number): number {
   let sum = 0;
   let amplitude = 0.55;
   let cell = baseCell;
   for (let octave = 0; octave < 5; octave += 1) {
-    sum += amplitude * valueNoise(x, z, cell, seed + octave * 101);
+    sum += amplitude * terrainOctave(x, z, cell, seed + octave * 101);
     cell *= 0.5;
     amplitude *= 0.55;
   }
   return sum;
 }
 
+/** `fbm` with its analytic gradient (chain rule over the octaves). */
+function fbmGrad(
+  x: number,
+  z: number,
+  baseCell: number,
+  seed: number,
+): { value: number; gradX: number; gradZ: number } {
+  let sum = 0;
+  let gradX = 0;
+  let gradZ = 0;
+  let amplitude = 0.55;
+  let cell = baseCell;
+  for (let octave = 0; octave < 5; octave += 1) {
+    const s = terrainOctaveGrad(x, z, cell, seed + octave * 101);
+    sum += amplitude * s.value;
+    gradX += amplitude * s.gradX;
+    gradZ += amplitude * s.gradZ;
+    cell *= 0.5;
+    amplitude *= 0.55;
+  }
+  return { value: sum, gradX, gradZ };
+}
+
 function smoothstep(edge0: number, edge1: number, value: number): number {
   const t = Math.min(1, Math.max(0, (value - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
+}
+
+/**
+ * Derivative of `smoothstep` with respect to its value: 6t(1−t)/(edge1−edge0)
+ * inside the window, 0 outside (the clamped region is constant). Works for
+ * inverted windows (edge1 < edge0) — the edges are only an interval.
+ */
+function smoothstepGrad(edge0: number, edge1: number, value: number): number {
+  const t = Math.min(1, Math.max(0, (value - edge0) / (edge1 - edge0)));
+  return (6 * t * (1 - t)) / (edge1 - edge0);
 }
 
 /**
@@ -146,7 +152,7 @@ function countryElevationAt(x: number, z: number, config: TerrainConfig, seed: n
   const shaped = warped * warped * (3 - 2 * warped);
   // Steep-cut valleys: a separate mask carves the high ground down along meandering lines,
   // leaving walls instead of a gradual slope.
-  const gorge = valueNoise(
+  const gorge = terrainOctave(
     x - 913.4,
     z + 1757.1,
     config.elevationWavelengthMeters * 0.42,
@@ -157,6 +163,90 @@ function countryElevationAt(x: number, z: number, config: TerrainConfig, seed: n
   // Offset 0.42 below the field mean so most of the country stays a lowland; the peaks of
   // the shaped field reach roughly +0.9 * amplitude.
   return (relief - 0.42) * strength * 1.8;
+}
+
+/**
+ * `countryElevationAt` with its analytic gradient. Same pipeline, differentiated:
+ * the domain warp goes through the full Jacobian (the warped sample coordinate
+ * depends on x and z), the city fade through the radial distance, and every
+ * smoothstep through 6t(1−t)/(edge1−edge0) (zero outside its window).
+ */
+function countryElevationGrad(
+  x: number,
+  z: number,
+  config: TerrainConfig,
+  seed: number,
+): { value: number; gradX: number; gradZ: number } {
+  if (config.elevationAmplitudeMeters <= 0) {
+    return { value: 0, gradX: 0, gradZ: 0 };
+  }
+  const fadeCenterX = config.elevationFadeCenter[0];
+  const fadeCenterZ = config.elevationFadeCenter[1];
+  const distanceToCity = Math.hypot(x - fadeCenterX, z - fadeCenterZ);
+  // strength = smoothstep(inner, outer, d) * amplitude (the value path's early-out
+  // returns 0 below 0.01 m of strength, so the gradient is 0 there too).
+  const strength =
+    smoothstep(config.elevationFadeInnerMeters, config.elevationFadeOuterMeters, distanceToCity) *
+    config.elevationAmplitudeMeters;
+  if (strength <= 0.01) {
+    return { value: 0, gradX: 0, gradZ: 0 };
+  }
+  const citySmooth =
+    distanceToCity > 1e-9
+      ? smoothstepGrad(
+          config.elevationFadeInnerMeters,
+          config.elevationFadeOuterMeters,
+          distanceToCity,
+        )
+      : 0;
+  const dStrengthDX = config.elevationAmplitudeMeters * citySmooth * ((x - fadeCenterX) / distanceToCity);
+  const dStrengthDZ = config.elevationAmplitudeMeters * citySmooth * ((z - fadeCenterZ) / distanceToCity);
+
+  const wavelength = config.elevationWavelengthMeters;
+  const warpMeters = config.elevationWarpMeters;
+  const warpXField = fbmGrad(x, z, wavelength * 0.8, seed + 505);
+  const warpZField = fbmGrad(x + 4471.2, z - 2903.7, wavelength * 0.8, seed + 606);
+  const warpX = warpXField.value * warpMeters;
+  const warpZ = warpZField.value * warpMeters;
+  // warped = 0.5 * fbm(X, Z) + 0.5 with X = x + warpX, Z = z + warpZ (full Jacobian).
+  const field = fbmGrad(x + warpX, z + warpZ, wavelength, seed + 707);
+  const warped = field.value * 0.5 + 0.5;
+  const dWarpXDX = warpXField.gradX * warpMeters;
+  const dWarpXDZ = warpXField.gradZ * warpMeters;
+  const dWarpZDX = warpZField.gradX * warpMeters;
+  const dWarpZDZ = warpZField.gradZ * warpMeters;
+  const dWarpedDX = 0.5 * (field.gradX * (1 + dWarpXDX) + field.gradZ * dWarpZDX);
+  const dWarpedDZ = 0.5 * (field.gradX * dWarpXDZ + field.gradZ * (1 + dWarpZDZ));
+
+  // shaped = smootherstep(warped): derivative 6w(1-w).
+  const shaped = warped * warped * (3 - 2 * warped);
+  const dShapedDX = 6 * warped * (1 - warped) * dWarpedDX;
+  const dShapedDZ = 6 * warped * (1 - warped) * dWarpedDZ;
+
+  const gorge = terrainOctaveGrad(
+    x - 913.4,
+    z + 1757.1,
+    wavelength * 0.42,
+    seed + 808,
+  );
+  const cut1 = smoothstep(0.42, 0.18, gorge.value);
+  const cut1Grad = smoothstepGrad(0.42, 0.18, gorge.value);
+  const cut2 = smoothstep(0.02, 0.3, warped);
+  const cut2Grad = smoothstepGrad(0.02, 0.3, warped);
+  const gorgeCut = cut1 * cut2;
+  const dCutDX = cut1Grad * gorge.gradX * cut2 + cut1 * cut2Grad * dWarpedDX;
+  const dCutDZ = cut1Grad * gorge.gradZ * cut2 + cut1 * cut2Grad * dWarpedDZ;
+
+  const relief = shaped * (1 - 0.62 * gorgeCut);
+  const dReliefDX = dShapedDX * (1 - 0.62 * gorgeCut) - 0.62 * shaped * dCutDX;
+  const dReliefDZ = dShapedDZ * (1 - 0.62 * gorgeCut) - 0.62 * shaped * dCutDZ;
+
+  // value = (relief - 0.42) * strength * 1.8
+  return {
+    value: (relief - 0.42) * strength * 1.8,
+    gradX: 1.8 * (dReliefDX * strength + (relief - 0.42) * dStrengthDX),
+    gradZ: 1.8 * (dReliefDZ * strength + (relief - 0.42) * dStrengthDZ),
+  };
 }
 
 export function createTerrainSampler(config: TerrainConfig): TerrainSampler {
@@ -172,8 +262,8 @@ export function createTerrainSampler(config: TerrainConfig): TerrainSampler {
     height += countryElevationAt(x, z, config, seed);
     // Ridged detail: fBm alone reads as dunes. One-minus-absolute noise makes crests and
     // broken skylines; squared, it stays quiet in the valleys and speaks on the ridges.
-    const ridgeBroad = 1 - Math.abs(valueNoise(x, z, 210, seed + 303));
-    const ridgeFine = 1 - Math.abs(valueNoise(x - 1173.9, z + 941.2, 96, seed + 404));
+    const ridgeBroad = 1 - Math.abs(terrainOctave(x, z, 210, seed + 303));
+    const ridgeFine = 1 - Math.abs(terrainOctave(x - 1173.9, z + 941.2, 96, seed + 404));
     height += ridgeBroad * ridgeBroad * 6.5 + ridgeFine * ridgeFine * 2.1;
     // Hinode-dake: a broad cone with a softened rim, broken up by the same hills and an
     // extra share of ridge noise so its silhouette is a mountain and not a party hat.
@@ -184,6 +274,62 @@ export function createTerrainSampler(config: TerrainConfig): TerrainSampler {
     const cone = (1 - t) * (1 - t) * (1 + 2 * t);
     height += cone * (config.volcano.heightMeters + ridgeBroad * 26);
     return height;
+  };
+
+  /**
+   * `rawHeight` with its analytic gradient (Phase 11.0b). Every layer is
+   * differentiated: hills pass straight through; the country layer carries its
+   * domain-warp Jacobian (see `countryElevationGrad`); the ridged terms use
+   * d(1−|n|)/dx = −sign(n)·n′ with sign(0) = 0 — a documented kink exactly where
+   * the old finite differences were undefined too; the volcano cone
+   * d/dt[(1−t)²(1+2t)] = −6t(1−t) along the radial direction, zero past the rim;
+   * the floor clamp and the spawn pad are applied by the caller (see
+   * `normalAt`).
+   */
+  const rawHeightGrad = (x: number, z: number): { value: number; gradX: number; gradZ: number } => {
+    const hillsA = fbmGrad(x, z, config.hillWavelengthMeters, seed);
+    const hillsB = fbmGrad(x + 3917.3, z - 2718.1, config.hillWavelengthMeters * 2.7, seed + 77);
+    const hillScaleA = config.hillAmplitudeMeters;
+    const hillScaleB = config.hillAmplitudeMeters * 1.6;
+    let height = hillsA.value * hillScaleA + hillsB.value * hillScaleB;
+    let gradX = hillsA.gradX * hillScaleA + hillsB.gradX * hillScaleB;
+    let gradZ = hillsA.gradZ * hillScaleA + hillsB.gradZ * hillScaleB;
+
+    const country = countryElevationGrad(x, z, config, seed);
+    height += country.value;
+    gradX += country.gradX;
+    gradZ += country.gradZ;
+
+    const nBroad = terrainOctaveGrad(x, z, 210, seed + 303);
+    const nFine = terrainOctaveGrad(x - 1173.9, z + 941.2, 96, seed + 404);
+    const sBroad = nBroad.value > 0 ? 1 : nBroad.value < 0 ? -1 : 0;
+    const sFine = nFine.value > 0 ? 1 : nFine.value < 0 ? -1 : 0;
+    const ridgeBroad = 1 - Math.abs(nBroad.value);
+    const ridgeFine = 1 - Math.abs(nFine.value);
+    const dRidgeBroadX = -sBroad * nBroad.gradX;
+    const dRidgeBroadZ = -sBroad * nBroad.gradZ;
+    const dRidgeFineX = -sFine * nFine.gradX;
+    const dRidgeFineZ = -sFine * nFine.gradZ;
+    height += ridgeBroad * ridgeBroad * 6.5 + ridgeFine * ridgeFine * 2.1;
+    gradX += 2 * ridgeBroad * dRidgeBroadX * 6.5 + 2 * ridgeFine * dRidgeFineX * 2.1;
+    gradZ += 2 * ridgeBroad * dRidgeBroadZ * 6.5 + 2 * ridgeFine * dRidgeFineZ * 2.1;
+
+    const dx = x - vx;
+    const dz = z - vz;
+    const distance = Math.sqrt(dx * dx + dz * dz);
+    const t = Math.min(1, distance / config.volcano.radiusMeters);
+    const cone = (1 - t) * (1 - t) * (1 + 2 * t);
+    const dConeDt = -6 * t * (1 - t);
+    const radialScale =
+      t < 1 && distance > 1e-9 ? dConeDt / (config.volcano.radiusMeters * distance) : 0;
+    const dConeX = radialScale * dx;
+    const dConeZ = radialScale * dz;
+    const volcanoScale = config.volcano.heightMeters + ridgeBroad * 26;
+    height += cone * volcanoScale;
+    gradX += dConeX * volcanoScale + cone * 26 * dRidgeBroadX;
+    gradZ += dConeZ * volcanoScale + cone * 26 * dRidgeBroadZ;
+
+    return { value: height, gradX, gradZ };
   };
 
   const heightAt = (x: number, z: number): number => {
@@ -205,8 +351,41 @@ export function createTerrainSampler(config: TerrainConfig): TerrainSampler {
     return height === 0 ? 0 : height;
   };
 
-  const normalAt = (x: number, z: number): { x: number; y: number; z: number } =>
-    terrainNormalAt(heightAt, x, z);
+  /**
+   * Analytic surface normal (Phase 11.0b): the old central-difference normal
+   * cost five full `heightAt` evaluations (≈ 125 noise samples) per call — this
+   * is one `rawHeightGrad` plus the same clamp/pad rules `heightAt` applies:
+   * below the floor the surface is flat except for the spawn-pad blend (the
+   * clamped value is constant, so only the pad factor differentiates), and the
+   * pad multiplies the height radially.
+   */
+  const normalAt = (x: number, z: number): { x: number; y: number; z: number } => {
+    const field = rawHeightGrad(x, z);
+    let raw = field.value;
+    let dRawX = field.gradX;
+    let dRawZ = field.gradZ;
+    if (raw < config.floorMeters) {
+      raw = config.floorMeters;
+      dRawX = 0;
+      dRawZ = 0;
+    }
+    const distance = Math.sqrt(x * x + z * z);
+    const pad = smoothstep(
+      config.spawnPad.flatRadiusMeters,
+      config.spawnPad.blendRadiusMeters,
+      distance,
+    );
+    const dPadDd = smoothstepGrad(
+      config.spawnPad.flatRadiusMeters,
+      config.spawnPad.blendRadiusMeters,
+      distance,
+    );
+    const radial = distance > 1e-9 ? dPadDd / distance : 0;
+    const heightX = dRawX * pad + raw * radial * x;
+    const heightZ = dRawZ * pad + raw * radial * z;
+    const length = Math.sqrt(heightX * heightX + 1 + heightZ * heightZ);
+    return { x: -heightX / length, y: 1 / length, z: -heightZ / length };
+  };
 
   return { heightAt, normalAt, config };
 }

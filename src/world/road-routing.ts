@@ -150,10 +150,14 @@ export function maxStepGrade(
  *
  * Cost model: travel distance × (1 + 3·grade²) (steep but legal steps are allowed, steep
  * runs are avoided when a legal alternative exists) plus the standard √2 diagonal
- * preference, which is what keeps the path smooth instead of stair-stepped. The
- * heuristic is straight-line distance — admissible, so the first pop of the goal is
- * optimal for this cost. Deterministic: the open set is an indexed binary heap with a
- * stable (f, h, insertion) tie-break.
+ * preference, which is what keeps the path smooth instead of stair-stepped, plus a
+ * quadratic smoothness penalty on turns sharper than 30° (Phase 11.0b — prevents
+ * pocket backtracks on steep relief: a U-turn into a notch costs ~450 m of path,
+ * always more than the contour detour). The heuristic is straight-line distance —
+ * admissible for the distance/grade terms, so the search is a proper A*; the
+ * smoothness term makes the goal pop best-under-heuristic rather than strictly
+ * optimal, which a routed road does not need. Deterministic: the open set is an
+ * indexed binary heap with a stable (f, h, insertion) tie-break.
  *
  * Returns null when no grade-feasible path exists within the expansion budget — the
  * caller keeps its original geometry (refusal, never a worse road).
@@ -296,6 +300,28 @@ export function routeGradeConstrained(
       const grade = rise / stepDist;
       const stepCost = stepDist * (1 + 3 * grade * grade);
       let tentative = g[current]! + stepCost;
+      // Smoothness cost (Phase 11.0b): a sharp change of direction costs extra, so the
+      // search prefers one smooth bend over a pocket entry-and-backtrack. Calibrated so
+      // a 90° turn costs ~110 m of path and a 150° turn ~440 m — a pocket U-turn (two
+      // sharp turns) is always beaten by the smooth contour detour around the wall,
+      // which on steep relief is only tens of metres longer. The penalty is
+      // path-dependent (it needs the incoming direction), so the goal pop is no longer
+      // strictly cost-optimal — it is still the best path under the same heuristic,
+      // which is all a routed road needs. Turns ≤ 30° are free (the normal staircase
+      // around a block); beyond that the cost grows quadratically.
+      const cf = cameFrom[current] ?? -1;
+      if (cf !== -1) {
+        const pdx = cx - (cf % cols);
+        const pdz = cz - ((cf / cols) | 0);
+        const cos =
+          (pdx * DX[d]! + pdz * DZ[d]!) /
+          Math.sqrt((pdx * pdx + pdz * pdz) * (DX[d]! * DX[d]! + DZ[d]! * DZ[d]!));
+        if (cos < 0.8660254) {
+          const theta = Math.acos(cos < -1 ? -1 : cos > 1 ? 1 : cos);
+          const excess = theta - 0.5235988;
+          tentative += 100 * excess * excess;
+        }
+      }
       if (bias > 0) {
         tentative += bias * chordDev(minWorldX + nx * spacing, minWorldZ + nz * spacing);
       }
@@ -433,13 +459,16 @@ export function routeGradeConstrained(
  * spline overshoots on the staircase corners, swinging the road off the proven corridor
  * (kinks + floating embankments); corner-cutting keeps the 8 m resample on the corridor.
  */
-function chaikinSmooth(
+export function chaikinSmooth(
   points: readonly (readonly [number, number])[],
   passes: number,
 ): [number, number][] {
   let current = points.map((p) => [p[0], p[1]] as [number, number]);
   for (let pass = 0; pass < passes; pass += 1) {
-    if (current.length < 4) break;
+    // Three points (a single corner) still smooth: one pass splits each leg,
+    // which is what turns a grid arrowhead into a drivable arc. (Two points
+    // have no corner; nothing to do.)
+    if (current.length < 3) break;
     const first = current[0]!;
     const last = current[current.length - 1]!;
     const next: [number, number][] = [first];

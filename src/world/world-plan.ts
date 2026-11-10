@@ -17,7 +17,7 @@ import { createTerrainSampler } from './terrain-height';
 import { TERRAIN_CONFIG, type TerrainConfig } from '../config/terrain';
 
 /** Bump whenever plan semantics change; the world key is seed + version (plan §5). */
-export const WORLD_PLAN_VERSION = 3;
+export const WORLD_PLAN_VERSION = 4;
 
 /** Macro-cell edge, metres. Regions tile the plane on this lattice. */
 export const REGION_CELL_METERS = 4000;

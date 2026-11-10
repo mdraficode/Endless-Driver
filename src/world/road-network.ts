@@ -2,6 +2,7 @@ import type { RoadClass, RoadEdgeConfig, RoadNetworkConfig, RoadNodeConfig } fro
 import { AOHARA_JUNCTION_NODE_ID } from '../config/urban-district';
 import {
   buildRoutingGrid,
+  chaikinSmooth,
   maxStepGrade,
   resamplePolyline,
   routeGradeConstrained,
@@ -1929,7 +1930,9 @@ export function buildRoadNetwork(
         control.map((p) => [p.x, p.z] as [number, number]),
         config.sampleSpacingMeters,
       ).map(([x, z]) => ({ x, z, y: baseHeightAt(x, z) }));
-    } else {
+    } else if (config.seed === undefined) {
+      // Hand-authored networks (the Aohara kit): the catmull-rom spline over the
+      // designer's control points is the established look — untouched.
       const padded = [
         control[0] as MutablePoint,
         ...control,
@@ -1950,6 +1953,22 @@ export function buildRoadNetwork(
       }
       const last = control[control.length - 1] as MutablePoint;
       points.push({ x: last.x, z: last.z, y: baseHeightAt(last.x, last.z) });
+    } else {
+      // Generated-world chords that A* refused (or never needed): the SAME treatment
+      // as routed paths — Chaikin corner-cut + LINEAR resample. Phase 11.0b: the old
+      // catmull-rom pass here overshoots on the layout's tight via corners (a touge
+      // hairpin swings the road ~140 m off the designed line — a kink plus a road
+      // buried 80 m under its own ridge). Corner-cutting keeps the road inside the
+      // designer's via polyline, where the grade was already considered.
+      const smoothed = chaikinSmooth(
+        control.map((p) => [p.x, p.z] as [number, number]),
+        3,
+      );
+      points = resamplePolyline(smoothed, config.sampleSpacingMeters).map(([x, z]) => ({
+        x,
+        z,
+        y: baseHeightAt(x, z),
+      }));
     }
     mutableEdges.push({
       id: `${edge.from}->${edge.to}`,
