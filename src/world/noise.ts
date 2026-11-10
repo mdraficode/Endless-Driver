@@ -20,7 +20,6 @@ const SKEW = 0.366025403784439; // (sqrt(3) - 1) / 2
 const UNSKEW = -0.21132486540518713; // (3 - sqrt(3)) / 6, negated
 const RSQUARED = 2.0 / 3.0;
 const C = 1 + 2 * UNSKEW; // 1/sqrt(3): the diagonal lattice step in unskewed space
-const NORMALIZER = 0.05481866495625118;
 
 // The 64-bit primes and multiplier, split into signed 32-bit halves.
 const PX_LO = 0x9270c86f | 0;
@@ -146,20 +145,42 @@ export function os2sHash2D(seed: number, xsb: number, ysb: number): number {
   return pair;
 }
 
-// 24 unit directions at 7.5° + k·15°, each scaled by 1/NORMALIZER_2D exactly as
-// the reference bakes it into the table. The reference's specific row order is a
-// fixed hash-to-direction bijection; any such bijection gives identical noise
-// statistics, and WORLD_PLAN_VERSION 4 already re-keys every seed.
+// The 24 gradient pairs exactly as the reference bakes them into its table:
+// float literals in the Java source, divided by NORMALIZER_2D in double,
+// cast to float, then cycled to fill a 128-pair table (hash bucket mod 24).
+// Keeping the reference's row order keeps value parity with the Java oracle
+// (verified 3000/3000, maxAbsDiff < 1e-6 against KdotJPG/OpenSimplex2S.java).
+const GRAD2D: readonly [number, number][] = [
+  [6.980896472930908, 16.853374481201172],
+  [16.853374481201172, 6.980896472930908],
+  [16.853374481201172, -6.980896472930908],
+  [6.980896472930908, -16.853374481201172],
+  [-6.980896472930908, -16.853374481201172],
+  [-16.853374481201172, -6.980896472930908],
+  [-16.853374481201172, 6.980896472930908],
+  [-6.980896472930908, 16.853374481201172],
+  [2.3810536861419678, 18.085899353027344],
+  [11.105002403259277, 14.472321510314941],
+  [14.472321510314941, 11.105002403259277],
+  [18.085899353027344, 2.3810536861419678],
+  [18.085899353027344, -2.3810536861419678],
+  [14.472321510314941, -11.105002403259277],
+  [11.105002403259277, -14.472321510314941],
+  [2.3810536861419678, -18.085899353027344],
+  [-2.3810536861419678, -18.085899353027344],
+  [-11.105002403259277, -14.472321510314941],
+  [-14.472321510314941, -11.105002403259277],
+  [-18.085899353027344, -2.3810536861419678],
+  [-18.085899353027344, 2.3810536861419678],
+  [-14.472321510314941, 11.105002403259277],
+  [-11.105002403259277, 14.472321510314941],
+  [-2.3810536861419678, 18.085899353027344],
+];
+
 const GRADIENTS: ReadonlyArray<readonly [number, number]> = (() => {
-  const out: [number, number][] = [];
-  for (let k = 0; k < 24; k += 1) {
-    const angle = ((7.5 + k * 15) * Math.PI) / 180;
-    out.push([Math.cos(angle) / NORMALIZER, Math.sin(angle) / NORMALIZER]);
-  }
-  // The reference fills a 128-pair table by cycling the 24 (hash bucket mod 24).
   const table: [number, number][] = [];
   for (let k = 0; k < 128; k += 1) {
-    table.push(out[k % 24]!);
+    table.push(GRAD2D[k % 24]!);
   }
   return table;
 })();

@@ -217,9 +217,9 @@ describe('surface splat and driving response', () => {
     const summit = sampleTerrainSurface(sampler, vx, vz);
     expect(summit.weights[2]).toBeGreaterThan(0.25);
     expect(summit.weights[3]).toBe(0);
-    // Plan v4 (OpenSimplex2S): re-anchored flank point — solid rock outcrop ~550 m up the
-    // mountain, far from the grass grip of the spawn plateau.
-    const flank = sampleTerrainSurface(sampler, vx, vz + 550);
+    // Plan v4 (OpenSimplex2S): re-anchored flank point — the exposed-rock band
+    // climbs the cone at ~100–300 m from the summit, well off the grass plateau.
+    const flank = sampleTerrainSurface(sampler, vx, vz + 150);
     expect(flank.gripModifier).not.toBeCloseTo(plateau.gripModifier, 2);
     expect(flank.weights[2]).toBeGreaterThan(0.25);
   });
