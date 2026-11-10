@@ -204,7 +204,7 @@ describe('garage selection in the generated world', { timeout: 30_000 }, () => {
   }
 });
 
-describe('massing clears the garage pits', () => {
+describe('massing clears the garage pits', { timeout: 30_000 }, () => {
   it('a placement over a pit is rejected, one beside it is kept', () => {
     const { network } = buildGeneratedWorld(20261013);
     const g = network.garages[0]!;

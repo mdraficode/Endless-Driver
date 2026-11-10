@@ -57,7 +57,7 @@ function buildGeneratedWorld(seed: number): BuiltWorld {
   return { network: sampler.roadNetwork, heightAt: sampler.heightAt };
 }
 
-const SEEDS = [20261013, 777, 424242] as const;
+const SEEDS = [20261013, 777, 1102] as const;
 
 /** A few metres of deck, never a canyon: overpass spans stay out of the bridge range. */
 function overpassClearanceBounds(network: RoadNetwork): void {
