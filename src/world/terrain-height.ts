@@ -199,8 +199,10 @@ function countryElevationGrad(
           distanceToCity,
         )
       : 0;
-  const dStrengthDX = config.elevationAmplitudeMeters * citySmooth * ((x - fadeCenterX) / distanceToCity);
-  const dStrengthDZ = config.elevationAmplitudeMeters * citySmooth * ((z - fadeCenterZ) / distanceToCity);
+  const dStrengthDX =
+    config.elevationAmplitudeMeters * citySmooth * ((x - fadeCenterX) / distanceToCity);
+  const dStrengthDZ =
+    config.elevationAmplitudeMeters * citySmooth * ((z - fadeCenterZ) / distanceToCity);
 
   const wavelength = config.elevationWavelengthMeters;
   const warpMeters = config.elevationWarpMeters;
@@ -223,12 +225,7 @@ function countryElevationGrad(
   const dShapedDX = 6 * warped * (1 - warped) * dWarpedDX;
   const dShapedDZ = 6 * warped * (1 - warped) * dWarpedDZ;
 
-  const gorge = terrainOctaveGrad(
-    x - 913.4,
-    z + 1757.1,
-    wavelength * 0.42,
-    seed + 808,
-  );
+  const gorge = terrainOctaveGrad(x - 913.4, z + 1757.1, wavelength * 0.42, seed + 808);
   const cut1 = smoothstep(0.42, 0.18, gorge.value);
   const cut1Grad = smoothstepGrad(0.42, 0.18, gorge.value);
   const cut2 = smoothstep(0.02, 0.3, warped);

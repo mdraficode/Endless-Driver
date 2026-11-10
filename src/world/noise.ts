@@ -107,8 +107,10 @@ function hashCacheSlot(seed: number, xsb: number, ysb: number): number {
     idx = (idx + 1) & HASH_CACHE_MASK;
   }
   // No match in the probe window: reuse the primary slot (overwrite).
-  return (Math.imul(xsb, 0x27d4eb2d) ^ Math.imul(ysb, 0x9e3779b1) ^ Math.imul(seed, 0x85ebca6b)) &
-    HASH_CACHE_MASK;
+  return (
+    (Math.imul(xsb, 0x27d4eb2d) ^ Math.imul(ysb, 0x9e3779b1) ^ Math.imul(seed, 0x85ebca6b)) &
+    HASH_CACHE_MASK
+  );
 }
 
 export function os2sHash2D(seed: number, xsb: number, ysb: number): number {
@@ -274,14 +276,26 @@ export function openSimplex2S2D(seed: number, x: number, y: number): OpenSimplex
   if (t < UNSKEW) {
     if (xi + xmyi > 1) {
       vertexContribution(
-        seed, xsb + 2, ysb + 1, dx0 - (3 * UNSKEW + 2), dy0 - (3 * UNSKEW + 1), acc, true,
+        seed,
+        xsb + 2,
+        ysb + 1,
+        dx0 - (3 * UNSKEW + 2),
+        dy0 - (3 * UNSKEW + 1),
+        acc,
+        true,
       );
     } else {
       vertexContribution(seed, xsb, ysb + 1, dx0 - UNSKEW, dy0 - (UNSKEW + 1), acc, true);
     }
     if (yi - xmyi > 1) {
       vertexContribution(
-        seed, xsb + 1, ysb + 2, dx0 - (3 * UNSKEW + 1), dy0 - (3 * UNSKEW + 2), acc, true,
+        seed,
+        xsb + 1,
+        ysb + 2,
+        dx0 - (3 * UNSKEW + 1),
+        dy0 - (3 * UNSKEW + 2),
+        acc,
+        true,
       );
     } else {
       vertexContribution(seed, xsb + 1, ysb, dx0 - (UNSKEW + 1), dy0 - UNSKEW, acc, true);
@@ -334,12 +348,24 @@ export function openSimplex2S2DValue(seed: number, x: number, y: number): number
   const xmyi = xi - yi;
   if (t < UNSKEW) {
     if (xi + xmyi > 1) {
-      value += vertexContributionValue(seed, xsb + 2, ysb + 1, dx0 - (3 * UNSKEW + 2), dy0 - (3 * UNSKEW + 1));
+      value += vertexContributionValue(
+        seed,
+        xsb + 2,
+        ysb + 1,
+        dx0 - (3 * UNSKEW + 2),
+        dy0 - (3 * UNSKEW + 1),
+      );
     } else {
       value += vertexContributionValue(seed, xsb, ysb + 1, dx0 - UNSKEW, dy0 - (UNSKEW + 1));
     }
     if (yi - xmyi > 1) {
-      value += vertexContributionValue(seed, xsb + 1, ysb + 2, dx0 - (3 * UNSKEW + 1), dy0 - (3 * UNSKEW + 2));
+      value += vertexContributionValue(
+        seed,
+        xsb + 1,
+        ysb + 2,
+        dx0 - (3 * UNSKEW + 1),
+        dy0 - (3 * UNSKEW + 2),
+      );
     } else {
       value += vertexContributionValue(seed, xsb + 1, ysb, dx0 - (UNSKEW + 1), dy0 - UNSKEW);
     }

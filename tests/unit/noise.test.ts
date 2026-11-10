@@ -17,10 +17,7 @@ const F64 = 0xffffffffffffffffn;
 
 function hashRef(seed: number, xsb: number, ysb: number): number {
   let h =
-    ((BigInt(seed) & 0xffffffffn) ^
-      ((BigInt(xsb) * PX) & F64) ^
-      ((BigInt(ysb) * PY) & F64)) &
-    F64;
+    ((BigInt(seed) & 0xffffffffn) ^ ((BigInt(xsb) * PX) & F64) ^ ((BigInt(ysb) * PY) & F64)) & F64;
   h = (h * M) & F64;
   if (h > 2n ** 63n - 1n) {
     h -= 0x10000000000000000n; // sign-extend: `>>` on a negative BigInt is arithmetic
@@ -107,8 +104,10 @@ describe('openSimplex2S2D', () => {
       const y = ((i * 251) % 600) - 300 + 0.31;
       const s = openSimplex2S2D(seed, x, y);
       const e = 1e-4;
-      const fdx = (openSimplex2S2DValue(seed, x + e, y) - openSimplex2S2DValue(seed, x - e, y)) / (2 * e);
-      const fdy = (openSimplex2S2DValue(seed, x, y + e) - openSimplex2S2DValue(seed, x, y - e)) / (2 * e);
+      const fdx =
+        (openSimplex2S2DValue(seed, x + e, y) - openSimplex2S2DValue(seed, x - e, y)) / (2 * e);
+      const fdy =
+        (openSimplex2S2DValue(seed, x, y + e) - openSimplex2S2DValue(seed, x, y - e)) / (2 * e);
       const relX = Math.abs(s.gradX - fdx) / Math.max(1e-6, Math.abs(fdx));
       const relY = Math.abs(s.gradY - fdy) / Math.max(1e-6, Math.abs(fdy));
       worst = Math.max(worst, relX, relY);
@@ -127,9 +126,11 @@ describe('terrain octave (calibrated drop-in for valueNoise)', () => {
     expect(g.value).toBeCloseTo(a, 12);
     const e = 1e-3;
     const fdx =
-      (terrainOctave(123.4 + e, -567.8, 10, 4242) - terrainOctave(123.4 - e, -567.8, 10, 4242)) / (2 * e);
+      (terrainOctave(123.4 + e, -567.8, 10, 4242) - terrainOctave(123.4 - e, -567.8, 10, 4242)) /
+      (2 * e);
     const fdz =
-      (terrainOctave(123.4, -567.8 + e, 10, 4242) - terrainOctave(123.4, -567.8 - e, 10, 4242)) / (2 * e);
+      (terrainOctave(123.4, -567.8 + e, 10, 4242) - terrainOctave(123.4, -567.8 - e, 10, 4242)) /
+      (2 * e);
     expect(Math.abs(g.gradX - fdx)).toBeLessThan(2e-4);
     expect(Math.abs(g.gradZ - fdz)).toBeLessThan(2e-4);
     expect(OS2S_TERRAIN_SCALE).toBeGreaterThan(0);
