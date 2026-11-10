@@ -23,8 +23,10 @@ export interface CarCircleContact {
   readonly penetration: number;
   /** `-(velocity · normal)`; positive when the car is still closing on the element. */
   readonly closing: number;
-  /** Signed distance of the contacting circle from the car centre (forward positive). */
+  /** Signed lateral position of the contacting circle (m; positive = car's left). */
   readonly lateralOffset: number;
+  /** Phase 12.3: signed longitudinal position (m, forward positive) for damage. */
+  readonly forwardOffset: number;
 }
 
 /** The car's two contact circles (front/rear axle), in world metres. */
@@ -87,6 +89,7 @@ export function testCarCirclesVsCircle(
       penetration,
       closing,
       lateralOffset: (circle.x - car.x) * cos - (circle.z - car.z) * sin,
+      forwardOffset: -((circle.x - car.x) * sin + (circle.z - car.z) * cos),
     };
     if (best === null || contact.penetration > best.penetration) {
       best = contact;
@@ -171,6 +174,7 @@ export function collideCarWithStaticBoxes(
         impact: false,
         impactSpeed: Math.max(0, -vn),
         lateralOffset: (circle.x - car.x) * cos - (circle.z - car.z) * sin,
+        forwardOffset: -((circle.x - car.x) * sin + (circle.z - car.z) * cos),
       });
       break;
     }

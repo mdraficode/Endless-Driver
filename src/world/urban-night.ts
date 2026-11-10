@@ -2749,6 +2749,7 @@ export class UrbanNightWorld implements SceneContent {
             impact,
             impactSpeed: contact.closing,
             lateralOffset: contact.lateralOffset,
+            forwardOffset: contact.forwardOffset,
             element: 'street-lamp',
           });
         }

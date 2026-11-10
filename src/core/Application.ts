@@ -623,7 +623,13 @@ export class Application {
         const lateralOffset =
           (otherPosition.x - carPosition.x) * Math.cos(yaw) -
           (otherPosition.z - carPosition.z) * Math.sin(yaw);
-        this.#carVisual.triggerImpact(relativeSpeed, lateralOffset);
+        // Phase 12.3: longitudinal contact position (forward positive) for damage
+        // classification — the same world→car plan rotation the tree contacts use.
+        const forwardOffset = -(
+          (otherPosition.x - carPosition.x) * Math.sin(yaw) +
+          (otherPosition.z - carPosition.z) * Math.cos(yaw)
+        );
+        this.#carVisual.triggerImpact(relativeSpeed, lateralOffset, forwardOffset);
       }),
       this.#engine.onResize((viewport) => {
         this.#scene.resize(viewport);
@@ -1554,7 +1560,11 @@ export class Application {
           const strongest = impacts.reduce((best, hit) =>
             hit.impactSpeed > best.impactSpeed ? hit : best,
           );
-          this.#carVisual.triggerImpact(strongest.impactSpeed, strongest.lateralOffset);
+          this.#carVisual.triggerImpact(
+            strongest.impactSpeed,
+            strongest.lateralOffset,
+            strongest.forwardOffset,
+          );
         }
       }
       // Buildings stop the car; poles fold. Same response contract as trees.
@@ -1578,7 +1588,11 @@ export class Application {
           null,
         );
       if (strongestTownHit !== null) {
-        this.#carVisual.triggerImpact(strongestTownHit.impactSpeed, strongestTownHit.lateralOffset);
+        this.#carVisual.triggerImpact(
+          strongestTownHit.impactSpeed,
+          strongestTownHit.lateralOffset,
+          strongestTownHit.forwardOffset,
+        );
       }
       // 1c. Fauna charges (Phase 7.3): a telegraphed side sprint across the path. The
       // response is the animal's own momentum — a light nudge and the chassis shudder,
@@ -1604,6 +1618,7 @@ export class Application {
         this.#carVisual.triggerImpact(
           Math.min(strongestFauna.impactSpeed, 14),
           strongestFauna.lateralOffset,
+          strongestFauna.forwardOffset,
         );
       }
     }

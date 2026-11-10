@@ -366,4 +366,103 @@ describe('PlayerCarVisual', () => {
     ).toBe(true);
     visual.dispose();
   });
+  describe('Phase 12.3: persistent damage presentation', () => {
+    it('accumulates damage on impacts and shows decals only for damaged parts (fallback)', () => {
+      const visual = new PlayerCarVisual('kaminari-gt-roadster');
+      visual.sync(POSE);
+
+      const overlay = visual.root.getObjectByName('car-damage-layer');
+      expect(overlay).not.toBeUndefined();
+      const frontBumper = visual.root.getObjectByName('car-damage-frontBumper');
+      const doorLeft = visual.root.getObjectByName('car-damage-doorLeft');
+      expect(frontBumper).not.toBeUndefined();
+      expect(doorLeft).not.toBeUndefined();
+      // Intact: nothing visible, no scene-graph churn.
+      expect((frontBumper as { visible: boolean }).visible).toBe(false);
+      expect((doorLeft as { visible: boolean }).visible).toBe(false);
+
+      // Two hard centred frontal strikes: the bumper escalates cracked → destroyed.
+      visual.triggerImpact(14, 0, 1.5);
+      expect((frontBumper as { visible: boolean }).visible).toBe(true);
+      visual.triggerImpact(14, 0, 1.5);
+      expect((frontBumper as { visible: boolean }).visible).toBe(true);
+      // Undamaged parts stay hidden.
+      expect((doorLeft as { visible: boolean }).visible).toBe(false);
+      const rearBumper = visual.root.getObjectByName('car-damage-rearBumper');
+      expect((rearBumper as { visible: boolean }).visible).toBe(false);
+
+      // A left-side strike dents only the near-side door.
+      visual.triggerImpact(12, 0.9, 0.2);
+      expect((doorLeft as { visible: boolean }).visible).toBe(true);
+
+      // A graze below the speed floor changes nothing.
+      visual.triggerImpact(1.5, 0, 1.5);
+
+      // Reset (respawn/restart) clears the presentation.
+      visual.resetImpact();
+      expect((frontBumper as { visible: boolean }).visible).toBe(false);
+      expect((doorLeft as { visible: boolean }).visible).toBe(false);
+      visual.dispose();
+    });
+
+    it('blackouts a destroyed lamp pair on the hero model (and restores it on reset)', async () => {
+      const model = createLoadedHero();
+      loadModelAssetMock.mockResolvedValue(model);
+      const visual = new PlayerCarVisual();
+      visual.sync(POSE);
+      await expect(visual.load({})).resolves.toBe(true);
+
+      const brakeLamps = getHeroBrakeLampMaterials(model);
+      expect(brakeLamps.length).toBeGreaterThan(0);
+      const brake = () => visual.sync({ ...POSE, brake: 0.5 });
+
+      brake();
+      expect(brakeLamps.every((m) => m.emissiveIntensity === BRAKE_LAMP_ACTIVE_INTENSITY)).toBe(
+        true,
+      );
+
+      // Three hard rear strikes destroy the rear bumper and BOTH rear lamps.
+      for (let i = 0; i < 3; i += 1) visual.triggerImpact(16, 0, -1.5);
+      brake();
+      // The pair is gone: no emission even while braking.
+      expect(brakeLamps.every((m) => m.emissiveIntensity === 0)).toBe(true);
+      const rearOverlay = visual.root.getObjectByName('car-damage-lampRearLeft');
+      expect((rearOverlay as { visible: boolean }).visible).toBe(true);
+
+      visual.resetImpact();
+      brake();
+      expect(brakeLamps.every((m) => m.emissiveIntensity === BRAKE_LAMP_ACTIVE_INTENSITY)).toBe(
+        true,
+      );
+      expect((rearOverlay as { visible: boolean }).visible).toBe(false);
+      visual.dispose();
+    });
+
+    it('a one-sided strike does not blackout the shared lamp materials', async () => {
+      const model = createLoadedHero();
+      loadModelAssetMock.mockResolvedValue(model);
+      const visual = new PlayerCarVisual();
+      visual.sync(POSE);
+      await expect(visual.load({})).resolves.toBe(true);
+
+      visual.setHeadlightsEnabled(true);
+      const headlamps = getHeroHeadlampMaterials(model);
+      expect(headlamps.length).toBeGreaterThan(0);
+      expect(
+        headlamps.every((m) => m.emissiveIntensity === HEADLAMP_ACTIVE_EMISSIVE_INTENSITY),
+      ).toBe(true);
+
+      // Three hard left-side strikes: the left lamps die, the right side is intact.
+      for (let i = 0; i < 3; i += 1) visual.triggerImpact(16, 0.9, 0.2);
+      const leftLamp = visual.root.getObjectByName('car-damage-lampFrontLeft');
+      const rightLamp = visual.root.getObjectByName('car-damage-lampFrontRight');
+      expect((leftLamp as { visible: boolean }).visible).toBe(true);
+      // The right lens overlay stays hidden; the shared front pair is NOT blacked out.
+      expect((rightLamp as { visible: boolean }).visible).toBe(false);
+      expect(
+        headlamps.every((m) => m.emissiveIntensity === HEADLAMP_ACTIVE_EMISSIVE_INTENSITY),
+      ).toBe(true);
+      visual.dispose();
+    });
+  });
 });

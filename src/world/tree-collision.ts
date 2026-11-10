@@ -90,6 +90,8 @@ export interface TreeHit extends TreeHitEvent {
   readonly impact: boolean;
   /** Lateral offset of the contact from the car's centre (for yaw kick). */
   readonly lateralOffset: number;
+  /** Phase 12.3: longitudinal contact position (m, forward positive) for damage. */
+  readonly forwardOffset: number;
   /** Signed lever arm (m) of the contact about the car's yaw axis. */
   readonly yawLeverArmMeters: number;
   /** Share of that lever arm converted into angular impulse. */
@@ -330,6 +332,7 @@ export class TreeCollisionField {
               rooted: !solid,
               impact: false,
               lateralOffset: lx,
+              forwardOffset: -closestZ,
               yawLeverArmMeters,
               yawImpulseFraction: TREE_COLLISION.yawImpulseFraction,
             });
@@ -398,6 +401,7 @@ export class TreeCollisionField {
           rooted: outcome === 'bend',
           impact: true,
           lateralOffset: lx,
+          forwardOffset: -closestZ,
           yawLeverArmMeters,
           yawImpulseFraction: TREE_COLLISION.yawImpulseFraction,
         });

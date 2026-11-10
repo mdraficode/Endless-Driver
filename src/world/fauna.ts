@@ -113,6 +113,8 @@ export interface FaunaHit {
   readonly impactSpeed: number;
   /** Lateral offset of the contact from the car's centre (car frame, +right). */
   readonly lateralOffset: number;
+  /** Phase 12.3: longitudinal contact position (m, forward positive) for damage. */
+  readonly forwardOffset: number;
   /** The animal's unit run direction at contact. */
   readonly animalDirX: number;
   readonly animalDirZ: number;
@@ -418,6 +420,7 @@ export class FaunaField {
             z,
             impactSpeed: Math.hypot(relX, relZ),
             lateralOffset: lateral,
+            forwardOffset: -(dx * sin + dz * cos),
             animalDirX: dirX,
             animalDirZ: dirZ,
             impulseNs: def.massKg * chargeSpeedMetersPerSecond,

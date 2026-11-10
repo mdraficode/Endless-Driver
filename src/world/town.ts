@@ -567,6 +567,8 @@ export interface TownHit {
   readonly impact: boolean;
   readonly impactSpeed: number;
   readonly lateralOffset: number;
+  /** Phase 12.3: longitudinal contact position (m, forward positive) for damage. */
+  readonly forwardOffset: number;
   /**
    * Optional tag for hits on dynamic street elements. Untagged hits are buildings and
    * frontages (solid, immovable); `'street-lamp'` marks the destroyable lamp poles and
@@ -849,6 +851,7 @@ export class TownWorld {
           impact: false,
           impactSpeed: Math.max(0, -vn),
           lateralOffset: (circle.x - car.x) * cos - (circle.z - car.z) * sin,
+          forwardOffset: -((circle.x - car.x) * sin + (circle.z - car.z) * cos),
         });
         break;
       }
@@ -909,6 +912,7 @@ export class TownWorld {
           impact,
           impactSpeed: closing,
           lateralOffset: (circle.x - car.x) * cos - (circle.z - car.z) * sin,
+          forwardOffset: -((circle.x - car.x) * sin + (circle.z - car.z) * cos),
         });
         break;
       }

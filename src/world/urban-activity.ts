@@ -1489,6 +1489,7 @@ export class UrbanStreetActivity {
         impact: strong,
         impactSpeed: contact.closing,
         lateralOffset: contact.lateralOffset,
+        forwardOffset: contact.forwardOffset,
         element: 'street-actor',
       });
     };

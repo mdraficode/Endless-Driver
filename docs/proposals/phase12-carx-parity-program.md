@@ -110,6 +110,33 @@ if the budget allows):
   cost negligible (damage presentation only updates on state change); no regressions in the
   stability suite; full check green.
 
+**Shipped (2026-11-10):**
+
+- **Damage model** (`CarDamage.ts`, pure): ten parts (windshield, hood, front/rear bumper,
+  doors L/R, four lamps) with severity 0–1 accumulated from impacts. Classification from
+  the contact position — every impact source (Rapier bodies, trees, buildings/frontages,
+  poles, street lamps/actors, fauna) now carries a `forwardOffset` (m, forward positive)
+  alongside the existing lateral offset, computed in the same world→car plan frame.
+  Graze floor 2 m/s; full gain at 16 m/s (0.45 primary); destroyed at severity 0.5.
+  Same impulse sequence ⇒ identical states (tested).
+- **Impact data:** `triggerImpact(speed, side, forwardMeters = 0)` — back-compatible
+  (unknown contacts default to a frontal classification).
+- **Presentation** (`CarDamageLayer.ts`): the hero model is a merged mesh with no
+  per-part nodes, so damage renders as car-local overlay decals (crack/dent/shatter
+  quads + destroyed-lens blackouts) that ride whichever chassis carries the physics
+  pose (authored fallback or hero GLB — same reparenting contract as the headlight
+  rig). Textures are procedural (seeded canvas, in-repo). Updates only on discrete
+  state change (zero per-frame cost otherwise); a destroyed lamp pair blackouts the
+  shared model material (one-sided damage does not).
+- **Session scope:** resets with the car (respawn/restart call `resetImpact`); no
+  save-file persistence in v1, per spec.
+- **Deferred to 12.3 follow-up:** glass-shard/smoke FX (needs a dedicated
+  GpuParticlePool emitter on the player car — the existing pool is scene-owned),
+  the popped-open hood rig (the hero's merged geometry has no hood node; needs model
+  surgery or an authored hood overlay), and the headless per-band screenshot review.
+
+### 12.4 — Graphics pass (modern-look polish)
+
 ### 12.4 — Graphics pass (modern-look polish)
 
 - **Materials:** PBR quality pass over roads (wet/dry roughness response already exists via

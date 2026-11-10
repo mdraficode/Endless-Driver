@@ -4,6 +4,8 @@ import { COCKPIT_CAMERA_CONFIG, FALLBACK_COCKPIT_EYE_ANCHOR } from '../config/ca
 import type { PlayerCarModel } from '../config/game-preferences';
 import { VEHICLE_CONFIG } from '../config/vehicle';
 import { CarVisual } from './CarVisual';
+import { applyCarDamage, createCarDamage, resetCarDamage, type CarDamageMap } from './CarDamage';
+import { CarDamageLayer } from './CarDamageLayer';
 import {
   advanceVehicleImpact,
   createVehicleImpactState,
@@ -56,6 +58,11 @@ export class PlayerCarVisual {
   readonly #fallback = new CarVisual();
   readonly #headlightRig = createPlayerHeadlightRig();
   readonly #impact = createVehicleImpactState();
+  /** Phase 12.3 — persistent per-part damage (session-scoped; resets with the car). */
+  readonly #damage: CarDamageMap = createCarDamage();
+  readonly #damageLayer = new CarDamageLayer();
+  /** Emissive blackout for a lamp pair destroyed together (shared model materials). */
+  #lampBlackout = { front: false, rear: false };
   #loaded: LoadedModel | null = null;
   #lodNodes: readonly ModelLodNodes[] = [];
   #brakeLampMaterials: readonly MeshStandardMaterial[] = [];
@@ -82,6 +89,9 @@ export class PlayerCarVisual {
     this.root.name = 'player-car-visual';
     this.root.add(this.#fallback.root);
     this.#fallback.root.add(this.#headlightRig.root);
+    // The damage overlay rides the chassis that carries the physics pose (same
+    // reparenting contract as the headlight rig when the hero model loads).
+    this.#fallback.root.add(this.#damageLayer.root);
     if (selectedModel === 'generic-sport-coupe' && options?.revealFallback !== true) {
       this.#fallback.root.visible = false;
     }
@@ -112,7 +122,8 @@ export class PlayerCarVisual {
     if (!this.#fallbackDisposed) {
       this.#fallback.setHeadlightsEnabled(enabled);
     }
-    const lensIntensity = enabled ? HEADLAMP_ACTIVE_EMISSIVE_INTENSITY : 0;
+    const lensIntensity =
+      this.#lampBlackout.front || !enabled ? 0 : HEADLAMP_ACTIVE_EMISSIVE_INTENSITY;
     for (const material of this.#headlampMaterials) {
       material.emissiveIntensity = lensIntensity;
     }
@@ -151,8 +162,10 @@ export class PlayerCarVisual {
       const brakeLampMaterials = resolveBrakeLampMaterials(model);
       const headlampMaterials = resolveHeadlampMaterials(model, this.#headlightsEnabled);
       this.root.add(model.object);
-      // The lamp rig moves from the fallback chassis to the loaded car's physics-pose root.
+      // The lamp rig and damage overlay move from the fallback chassis to the
+      // loaded car's physics-pose root.
       this.root.add(this.#headlightRig.root);
+      this.root.add(this.#damageLayer.root);
       this.#loaded = model;
       this.#lodNodes = lodNodes;
       this.#brakeLampMaterials = brakeLampMaterials;
@@ -170,6 +183,9 @@ export class PlayerCarVisual {
         this.root.remove(model.object);
         if (this.#headlightRig.root.parent === this.root) {
           this.#fallback.root.add(this.#headlightRig.root);
+        }
+        if (this.#damageLayer.root.parent === this.root) {
+          this.#fallback.root.add(this.#damageLayer.root);
         }
         if (this.#loaded === model) {
           this.#loaded = null;
@@ -208,8 +224,11 @@ export class PlayerCarVisual {
     this.root.position.set(pose.position.x, pose.position.y, pose.position.z);
     this.root.quaternion.set(pose.rotation.x, pose.rotation.y, pose.rotation.z, pose.rotation.w);
 
-    const brakeLampIntensity =
-      pose.brake > 0.03 ? BRAKE_LAMP_ACTIVE_INTENSITY : BRAKE_LAMP_IDLE_INTENSITY;
+    const brakeLampIntensity = this.#lampBlackout.rear
+      ? 0
+      : pose.brake > 0.03
+        ? BRAKE_LAMP_ACTIVE_INTENSITY
+        : BRAKE_LAMP_IDLE_INTENSITY;
     for (const material of this.#brakeLampMaterials) {
       if (material.emissiveIntensity !== brakeLampIntensity) {
         material.emissiveIntensity = brakeLampIntensity;
@@ -239,9 +258,48 @@ export class PlayerCarVisual {
     }
   }
 
-  /** Adds a brief physical-impact shudder to the chassis presentation; the mesh is never deformed. */
-  triggerImpact(relativeSpeedMetersPerSecond: number, side = 0): void {
+  /**
+   * Adds a brief physical-impact shudder and accumulates persistent damage.
+   * `forwardMeters` (positive = ahead) classifies front/rear/side contacts; pass 0
+   * when the contact position is unknown.
+   */
+  triggerImpact(relativeSpeedMetersPerSecond: number, side = 0, forwardMeters = 0): void {
     triggerVehicleImpact(this.#impact, relativeSpeedMetersPerSecond, side);
+    const changed = applyCarDamage(this.#damage, {
+      relativeSpeedMetersPerSecond,
+      sideMeters: side,
+      forwardMeters,
+    });
+    if (changed.length > 0) {
+      this.#applyDamagePresentation();
+    }
+  }
+
+  /**
+   * Pushes the damage map into the overlay layer and the lamp emissives. Called
+   * only when a part's discrete state changed, so steady driving costs nothing.
+   */
+  #applyDamagePresentation(): void {
+    this.#damageLayer.applyAll(this.#damage);
+    this.#lampBlackout.front =
+      this.#damage.lampFrontLeft.state === 'destroyed' &&
+      this.#damage.lampFrontRight.state === 'destroyed';
+    this.#lampBlackout.rear =
+      this.#damage.lampRearLeft.state === 'destroyed' &&
+      this.#damage.lampRearRight.state === 'destroyed';
+    // Shared per-end materials: blackout applies when the pair is destroyed.
+    for (const material of this.#headlampMaterials) {
+      material.emissiveIntensity = this.#lampBlackout.front
+        ? 0
+        : this.#headlightsEnabled
+          ? HEADLAMP_ACTIVE_EMISSIVE_INTENSITY
+          : 0;
+    }
+    for (const material of this.#brakeLampMaterials) {
+      if (this.#lampBlackout.rear) {
+        material.emissiveIntensity = 0;
+      }
+    }
   }
 
   /** Applies the transient impact pose after the authoritative physics pose is synchronized. */
@@ -257,6 +315,9 @@ export class PlayerCarVisual {
     this.#impact.intensity = 0;
     this.#impact.ageSeconds = 1;
     this.#impact.side = 0;
+    // Damage resets with the car (respawn/restart), per the Phase 12.3 spec.
+    resetCarDamage(this.#damage);
+    this.#applyDamagePresentation();
   }
 
   /** Selects the model LOD from its distance to the currently active camera. */
@@ -270,6 +331,7 @@ export class PlayerCarVisual {
 
   dispose(): void {
     this.#disposed = true;
+    this.#damageLayer.dispose();
     if (this.#loaded !== null) {
       this.#loaded.dispose();
       this.#loaded = null;
