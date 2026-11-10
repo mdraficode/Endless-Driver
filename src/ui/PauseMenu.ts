@@ -16,6 +16,13 @@ import type {
 import { SEASONS, type SeasonId } from '../environment/seasons';
 import type { SpawnPoint } from '../config/spawns';
 import type { TierId } from '../config/tiers';
+import {
+  CAR_TUNING_LIMITS,
+  DEFAULT_CAR_TUNING,
+  HANDLING_MODE_LABELS,
+  type CarTuning,
+  type HandlingMode,
+} from '../config/vehicle';
 
 export type PauseMenuPage = 'overview' | 'spawn' | 'gameplay' | 'graphics' | 'vehicle' | 'controls';
 export type PauseMenuItemId = 'resume' | 'restart' | PauseMenuPage | 'credits';
@@ -722,6 +729,176 @@ export class PauseMenu {
     );
     note.classList.add('pause-menu-subtle-copy');
     page.append(cards, note);
+
+    // Phase 12.1 — handling mode + tuning, all live (no restart, no renderer rebuild).
+    page.append(
+      this.#sectionHeading('SET IT UP', 'Handling & Tuning'),
+      this.#paragraph(
+        'Choose how much the electronics help, then tune the car. Changes apply to the running car immediately.',
+      ),
+      this.#handlingModeField(),
+    );
+    const tuningGrid = document.createElement('div');
+    tuningGrid.className = 'pause-menu-tuning-grid';
+    const limits = CAR_TUNING_LIMITS;
+    const tuning = this.#preferences.carTuning;
+    const percent = (value: number): string => `${Math.round(value * 100)}%`;
+    tuningGrid.append(
+      this.#tuningSliderField(
+        'Power',
+        'Engine torque for the whole range.',
+        limits.powerScale.min,
+        limits.powerScale.max,
+        limits.powerScale.step,
+        tuning.powerScale,
+        percent,
+        (powerScale) => this.#patchTuning({ powerScale }),
+      ),
+      this.#tuningSliderField(
+        'Tire grip',
+        'Friction of all four tires; the whole car changes with it.',
+        limits.gripScale.min,
+        limits.gripScale.max,
+        limits.gripScale.step,
+        tuning.gripScale,
+        percent,
+        (gripScale) => this.#patchTuning({ gripScale }),
+      ),
+      this.#tuningSliderField(
+        'Ride height',
+        'Lower is faster through corners, closer to the ground.',
+        limits.rideHeightOffsetMeters.min * 1000,
+        limits.rideHeightOffsetMeters.max * 1000,
+        limits.rideHeightOffsetMeters.step * 1000,
+        tuning.rideHeightOffsetMeters * 1000,
+        (millimetres) => `${millimetres > 0 ? '+' : ''}${millimetres} mm`,
+        (millimetres) => this.#patchTuning({ rideHeightOffsetMeters: millimetres / 1000 }),
+      ),
+      this.#tuningSliderField(
+        'Spring stiffness',
+        'How firm the suspension resists compression.',
+        limits.stiffnessScale.min,
+        limits.stiffnessScale.max,
+        limits.stiffnessScale.step,
+        tuning.stiffnessScale,
+        percent,
+        (stiffnessScale) => this.#patchTuning({ stiffnessScale }),
+      ),
+      this.#tuningSliderField(
+        'Compression dampers',
+        'How hard the suspension resists being pushed down.',
+        limits.compressionDampingScale.min,
+        limits.compressionDampingScale.max,
+        limits.compressionDampingScale.step,
+        tuning.compressionDampingScale,
+        percent,
+        (compressionDampingScale) => this.#patchTuning({ compressionDampingScale }),
+      ),
+      this.#tuningSliderField(
+        'Rebound dampers',
+        'How hard the suspension resists extending back up.',
+        limits.reboundDampingScale.min,
+        limits.reboundDampingScale.max,
+        limits.reboundDampingScale.step,
+        tuning.reboundDampingScale,
+        percent,
+        (reboundDampingScale) => this.#patchTuning({ reboundDampingScale }),
+      ),
+      this.#tuningSliderField(
+        'Brake bias',
+        'Share of the braking force on the front axle; the total is unchanged.',
+        limits.frontBrakeBias.min,
+        limits.frontBrakeBias.max,
+        limits.frontBrakeBias.step,
+        tuning.frontBrakeBias,
+        percent,
+        (frontBrakeBias) => this.#patchTuning({ frontBrakeBias }),
+      ),
+    );
+    page.append(tuningGrid);
+    const restoreRow = document.createElement('div');
+    restoreRow.className = 'pause-menu-tuning-restore';
+    const restoreButton = document.createElement('button');
+    restoreButton.className = 'pause-menu-secondary-button';
+    restoreButton.type = 'button';
+    restoreButton.textContent = 'Restore default tuning';
+    restoreButton.addEventListener('click', () => {
+      this.#setTuning({ ...DEFAULT_CAR_TUNING });
+    });
+    restoreRow.append(restoreButton);
+    page.append(restoreRow);
+  }
+
+  /** Phase 12.1 — persists + applies a complete tuning object, then re-renders the page. */
+  #setTuning(next: CarTuning): void {
+    this.#setPreference('carTuning', next);
+    this.#renderPage();
+  }
+
+  /** Patches the current tuning with one or more fields (the menu's sliders call this). */
+  #patchTuning(patch: Partial<CarTuning>): void {
+    this.#setTuning({ ...this.#preferences.carTuning, ...patch });
+  }
+
+  #handlingModeField(): HTMLElement {
+    const field = this.#field(
+      'Handling mode',
+      'How much the stability electronics help you catch a slide.',
+    );
+    const select = document.createElement('select');
+    select.className = 'pause-menu-select';
+    select.setAttribute('aria-label', 'Handling mode');
+    const modes: readonly HandlingMode[] = ['arcade', 'balanced', 'sport'];
+    for (const mode of modes) {
+      const option = document.createElement('option');
+      option.value = mode;
+      option.textContent = HANDLING_MODE_LABELS[mode];
+      select.append(option);
+    }
+    select.value = this.#preferences.carTuning.handlingMode;
+    select.addEventListener('change', () => {
+      const mode = modes.find((candidate) => candidate === select.value);
+      if (mode !== undefined) this.#patchTuning({ handlingMode: mode });
+    });
+    field.append(select);
+    return field;
+  }
+
+  #tuningSliderField(
+    labelText: string,
+    hintText: string,
+    min: number,
+    max: number,
+    step: number,
+    value: number,
+    format: (value: number) => string,
+    onInput: (value: number) => void,
+  ): HTMLElement {
+    const field = this.#field(labelText, hintText);
+    const controlRow = document.createElement('div');
+    controlRow.className = 'pause-menu-range-control';
+    const input = document.createElement('input');
+    input.className = 'pause-menu-range';
+    input.type = 'range';
+    input.min = String(min);
+    input.max = String(max);
+    input.step = String(step);
+    input.value = String(value);
+    input.setAttribute('aria-label', labelText);
+    const output = document.createElement('output');
+    output.className = 'pause-menu-range-value';
+    output.value = format(value);
+    output.textContent = output.value;
+    output.setAttribute('aria-live', 'polite');
+    input.addEventListener('input', () => {
+      const parsed = Number(input.value);
+      output.value = format(parsed);
+      output.textContent = output.value;
+      onInput(parsed);
+    });
+    controlRow.append(input, output);
+    field.append(controlRow);
+    return field;
   }
 
   #renderControls(page: HTMLElement): void {

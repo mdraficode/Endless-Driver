@@ -212,6 +212,164 @@ export interface VehicleConfig {
   readonly spawn: SpawnConfig;
 }
 
+/**
+ * Phase 12.1 — player-facing handling.
+ *
+ * Three named handling modes set the character of the car (how much the
+ * electronics help, how the tires respond); the tuning sliders fine-tune the
+ * powerplant, suspension, tires and brakes around the mode. `VEHICLE_CONFIG`
+ * is the arcade baseline — the arcade mode overrides nothing, so the shipped
+ * feel is exactly the tuned arcade defaults.
+ *
+ * Tuning NEVER touches mass, center of mass, inertia or the collision shape
+ * (those are baked into the Rapier body at spawn); everything else is live.
+ */
+export type HandlingMode = 'arcade' | 'balanced' | 'sport';
+
+export interface CarTuning {
+  readonly handlingMode: HandlingMode;
+  /** Engine torque scale (0.90–1.25). */
+  readonly powerScale: number;
+  /** Ride height offset in metres (−0.02 … +0.02). */
+  readonly rideHeightOffsetMeters: number;
+  /** Suspension spring stiffness scale (0.75–1.25). */
+  readonly stiffnessScale: number;
+  /** Compression damper scale (0.75–1.25). */
+  readonly compressionDampingScale: number;
+  /** Rebound damper scale (0.75–1.25). */
+  readonly reboundDampingScale: number;
+  /** Tire grip (friction coefficient) scale (0.85–1.15). */
+  readonly gripScale: number;
+  /** Front share of total brake force (0.40–0.60); the total stays constant. */
+  readonly frontBrakeBias: number;
+}
+
+/** Bounds are mirrored by the pause-menu sliders and the preference validator. */
+export const CAR_TUNING_LIMITS = {
+  powerScale: { min: 0.9, max: 1.25, step: 0.05 },
+  rideHeightOffsetMeters: { min: -0.02, max: 0.02, step: 0.005 },
+  stiffnessScale: { min: 0.75, max: 1.25, step: 0.05 },
+  compressionDampingScale: { min: 0.75, max: 1.25, step: 0.05 },
+  reboundDampingScale: { min: 0.75, max: 1.25, step: 0.05 },
+  gripScale: { min: 0.85, max: 1.15, step: 0.05 },
+  frontBrakeBias: { min: 0.4, max: 0.6, step: 0.05 },
+} as const;
+
+export const DEFAULT_CAR_TUNING: Readonly<CarTuning> = {
+  handlingMode: 'arcade',
+  powerScale: 1,
+  rideHeightOffsetMeters: 0,
+  stiffnessScale: 1,
+  compressionDampingScale: 1,
+  reboundDampingScale: 1,
+  gripScale: 1,
+  frontBrakeBias: 0.6, // matches the shipped 3400/2200 split (≈60.7 % front, rounded to a step)
+};
+
+/**
+ * Per-mode overrides on top of the arcade baseline. Absolute values, not scales:
+ * the tuning sliders multiply the mode's numbers, so a sport setup with +25 %
+ * stiffness is the sport chassis, not 125 % of arcade.
+ *
+ * Character targets (measured by the handling-mode telemetry suite):
+ * - arcade: most electronic help (fastest spin recovery), roundest tire response.
+ * - balanced: the middle — less yaw damping, a bit more peak grip.
+ * - sport: least help (the driver catches slides), sharpest tire response,
+ *   most downforce and the stiffest chassis — highest skidpad, slowest recovery.
+ */
+const HANDLING_MODE_PROFILES: Readonly<
+  Record<
+    HandlingMode,
+    {
+      readonly steering: Readonly<Partial<SteeringConfig>>;
+      readonly stability: Readonly<Partial<StabilityConfig>>;
+      readonly tires: Readonly<Partial<TireConfig>>;
+      readonly wheels: Readonly<Partial<WheelConfig>>;
+      readonly aero: Readonly<Partial<AeroConfig>>;
+    }
+  >
+> = {
+  arcade: { steering: {}, stability: {}, tires: {}, wheels: {}, aero: {} },
+  balanced: {
+    steering: { gripBudgetFactor: 1.18, slipReliefFactor: 0.55 },
+    stability: { yawResponsePerSecond: 3.4 },
+    tires: { lateralStiffness: 10.2, relaxationLengthMeters: 0.38 },
+    wheels: {
+      stiffness: 36000,
+      compressionDamping: 3300,
+      reboundDamping: 3900,
+      antiRollStiffness: 15500,
+    },
+    aero: { downforceCoefficient: 2.8 },
+  },
+  sport: {
+    steering: { gripBudgetFactor: 1.12, slipReliefFactor: 0.38 },
+    stability: { yawResponsePerSecond: 2.4 },
+    tires: { lateralStiffness: 11, lateralShape: 1.7, relaxationLengthMeters: 0.3 },
+    wheels: {
+      stiffness: 39000,
+      compressionDamping: 3600,
+      reboundDamping: 4300,
+      antiRollStiffness: 17000,
+    },
+    aero: { downforceCoefficient: 3.3, dragCoefficient: 1.05 },
+  },
+};
+
+export const HANDLING_MODE_LABELS: Readonly<Record<HandlingMode, string>> = {
+  arcade: 'Arcade — the electronics catch you; the easiest setup',
+  balanced: 'Balanced — less help, more grip; a fairer fight',
+  sport: 'Sport — minimal help, sharpest response; you catch the slides',
+};
+
+/**
+ * Builds the fully resolved vehicle config for a handling mode + tuning. Pure:
+ * the same inputs always produce the same config (determinism contract), and
+ * the base config is never mutated.
+ */
+export function applyCarTuning(
+  base: Readonly<VehicleConfig>,
+  tuning: Readonly<CarTuning>,
+): VehicleConfig {
+  const profile = HANDLING_MODE_PROFILES[tuning.handlingMode];
+  const wheels = profile?.wheels ?? {};
+  const tires = profile?.tires ?? {};
+  const totalBrake = base.brakes.frontForce + base.brakes.rearForce;
+  return {
+    ...base,
+    wheels: {
+      ...base.wheels,
+      ...wheels,
+      restLength: base.wheels.restLength + tuning.rideHeightOffsetMeters,
+      stiffness: (wheels.stiffness ?? base.wheels.stiffness) * tuning.stiffnessScale,
+      compressionDamping:
+        (wheels.compressionDamping ?? base.wheels.compressionDamping) *
+        tuning.compressionDampingScale,
+      reboundDamping:
+        (wheels.reboundDamping ?? base.wheels.reboundDamping) * tuning.reboundDampingScale,
+    },
+    tires: {
+      ...base.tires,
+      ...tires,
+      frictionCoefficient: base.tires.frictionCoefficient * tuning.gripScale,
+    },
+    drivetrain: {
+      ...base.drivetrain,
+      torqueCurve: base.drivetrain.torqueCurve.map(
+        ([rpm, torque]) => [rpm, torque * tuning.powerScale] as const,
+      ),
+    },
+    brakes: {
+      ...base.brakes,
+      frontForce: totalBrake * tuning.frontBrakeBias,
+      rearForce: totalBrake * (1 - tuning.frontBrakeBias),
+    },
+    steering: { ...base.steering, ...(profile?.steering ?? {}) },
+    stability: { ...base.stability, ...(profile?.stability ?? {}) },
+    aero: { ...base.aero, ...(profile?.aero ?? {}) },
+  };
+}
+
 export const VEHICLE_CONFIG: VehicleConfig = {
   chassis: {
     halfExtents: [0.9, 0.35, 2.05],

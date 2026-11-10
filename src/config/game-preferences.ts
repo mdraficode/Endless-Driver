@@ -1,5 +1,11 @@
 import type { CameraMode } from './camera';
 import { isTierId, type TierId } from './tiers';
+import {
+  CAR_TUNING_LIMITS,
+  DEFAULT_CAR_TUNING,
+  type CarTuning,
+  type HandlingMode,
+} from './vehicle';
 
 export type GraphicsTierPreference = 'auto' | TierId;
 export type TrafficIntensity = 'off' | 'light' | 'standard' | 'busy';
@@ -27,6 +33,11 @@ export interface GamePreferences {
   readonly nightMood: boolean;
   /** Named weather condition for the next launch; applies live in the menu, no restart. */
   readonly weather: WeatherPreference;
+  /**
+   * Phase 12.1 — handling mode + tuning sliders. Applies live to the running car;
+   * older saved objects have no field and fall back to the arcade defaults.
+   */
+  readonly carTuning: CarTuning;
 }
 
 export interface PreferenceStorage {
@@ -52,6 +63,7 @@ export const DEFAULT_GAME_PREFERENCES: Readonly<GamePreferences> = {
   touchControlScalePercent: 120,
   nightMood: true,
   weather: 'clear',
+  carTuning: { ...DEFAULT_CAR_TUNING },
 };
 
 const TRAFFIC_INTENSITIES: readonly TrafficIntensity[] = ['off', 'light', 'standard', 'busy'];
@@ -64,6 +76,66 @@ const STEERING_SENSITIVITIES: readonly SteeringSensitivity[] = [
 ];
 const TOUCH_STEERING_MODES: readonly TouchSteeringMode[] = ['wheel', 'arrows'];
 const WEATHER_CONDITIONS: readonly WeatherPreference[] = ['clear', 'rain', 'storm'];
+const HANDLING_MODES: readonly HandlingMode[] = ['arcade', 'balanced', 'sport'];
+
+function clampToStep(
+  value: unknown,
+  limits: { min: number; max: number; step: number },
+  fallback: number,
+): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  const snapped = Math.round((value - limits.min) / limits.step) * limits.step + limits.min;
+  return Math.min(limits.max, Math.max(limits.min, snapped));
+}
+
+/** Phase 12.1 — parses a persisted tuning object; every field falls back independently. */
+export function parseCarTuning(value: unknown): CarTuning {
+  if (!isRecord(value)) return { ...DEFAULT_CAR_TUNING };
+  return {
+    handlingMode: isHandlingMode(value['handlingMode'])
+      ? value['handlingMode']
+      : DEFAULT_CAR_TUNING.handlingMode,
+    powerScale: clampToStep(
+      value['powerScale'],
+      CAR_TUNING_LIMITS.powerScale,
+      DEFAULT_CAR_TUNING.powerScale,
+    ),
+    rideHeightOffsetMeters: clampToStep(
+      value['rideHeightOffsetMeters'],
+      CAR_TUNING_LIMITS.rideHeightOffsetMeters,
+      DEFAULT_CAR_TUNING.rideHeightOffsetMeters,
+    ),
+    stiffnessScale: clampToStep(
+      value['stiffnessScale'],
+      CAR_TUNING_LIMITS.stiffnessScale,
+      DEFAULT_CAR_TUNING.stiffnessScale,
+    ),
+    compressionDampingScale: clampToStep(
+      value['compressionDampingScale'],
+      CAR_TUNING_LIMITS.compressionDampingScale,
+      DEFAULT_CAR_TUNING.compressionDampingScale,
+    ),
+    reboundDampingScale: clampToStep(
+      value['reboundDampingScale'],
+      CAR_TUNING_LIMITS.reboundDampingScale,
+      DEFAULT_CAR_TUNING.reboundDampingScale,
+    ),
+    gripScale: clampToStep(
+      value['gripScale'],
+      CAR_TUNING_LIMITS.gripScale,
+      DEFAULT_CAR_TUNING.gripScale,
+    ),
+    frontBrakeBias: clampToStep(
+      value['frontBrakeBias'],
+      CAR_TUNING_LIMITS.frontBrakeBias,
+      DEFAULT_CAR_TUNING.frontBrakeBias,
+    ),
+  };
+}
+
+export function isHandlingMode(value: unknown): value is HandlingMode {
+  return HANDLING_MODES.includes(value as HandlingMode);
+}
 
 /** User-facing steering scales applied after the input manager's smoothing. */
 export const STEERING_SENSITIVITY_SCALE: Readonly<Record<SteeringSensitivity, number>> = {
@@ -141,6 +213,7 @@ export function readGamePreferences(storage?: PreferenceStorage): GamePreference
       weather: isWeatherPreference(parsed['weather'])
         ? parsed['weather']
         : DEFAULT_GAME_PREFERENCES.weather,
+      carTuning: parseCarTuning(parsed['carTuning']),
     };
   } catch {
     return { ...DEFAULT_GAME_PREFERENCES };

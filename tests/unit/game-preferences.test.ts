@@ -52,6 +52,7 @@ describe('persistent game preferences', () => {
       touchControlScalePercent: 130,
       nightMood: true,
       weather: DEFAULT_GAME_PREFERENCES.weather,
+      carTuning: DEFAULT_GAME_PREFERENCES.carTuning,
     });
   });
 
@@ -112,6 +113,16 @@ describe('persistent game preferences', () => {
       touchControlScalePercent: 135,
       nightMood: true,
       weather: 'storm',
+      carTuning: {
+        handlingMode: 'sport',
+        powerScale: 1.1,
+        rideHeightOffsetMeters: -0.01,
+        stiffnessScale: 1.1,
+        compressionDampingScale: 0.9,
+        reboundDampingScale: 1,
+        gripScale: 1.05,
+        frontBrakeBias: 0.5,
+      },
     } as const;
 
     expect(saveGamePreferences(preferences, storage)).toBe(true);

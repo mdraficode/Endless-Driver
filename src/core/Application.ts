@@ -16,6 +16,12 @@ import { ORIGIN_CONFIG } from '../config/origin';
 import { terrainConfigForTier } from '../config/terrain';
 import { DEFAULT_TIER } from '../config/tiers';
 import { WORLD_CONFIG, type WorldConfig } from '../config/world';
+import {
+  applyCarTuning,
+  DEFAULT_CAR_TUNING,
+  VEHICLE_CONFIG,
+  type CarTuning,
+} from '../config/vehicle';
 import { proceduralSpawn, homeCityAnchor } from '../world/city-content';
 import { buildRoadLayout } from '../world/road-layout';
 import { createWorldPlan, terrainSeedFor } from '../world/world-plan';
@@ -171,6 +177,11 @@ export interface ApplicationOptions {
   readonly cameraMode?: CameraMode;
   /** Applied to normalized steering input after smoothing. */
   readonly steeringSensitivity?: SteeringSensitivity;
+  /**
+   * Phase 12.1 — the player's saved handling mode + tuning; resolves against the
+   * stock vehicle config at startup and applies live via `setCarTuning`.
+   */
+  readonly vehicleTuning?: CarTuning;
   /** Receives the live N₂O tank level for the on-screen boost gauge. */
   readonly onBoostState?: (state: NitroBoostState) => void;
 }
@@ -322,6 +333,8 @@ export class Application {
   readonly #onFirstFrame: (() => void) | null;
   readonly #tier: TierResolution;
   readonly #steeringSensitivity: SteeringSensitivity;
+  /** Phase 12.1 — the live handling mode + tuning currently applied to the car. */
+  #vehicleTuning: CarTuning = { ...DEFAULT_CAR_TUNING };
   /** The live surface condition: the weather transition moves it each frame toward its preset. */
   #surfaceState: SurfaceState;
   readonly #weatherDynamics: WeatherDynamics;
@@ -381,6 +394,7 @@ export class Application {
     this.#worldConfig = options.worldConfig ?? WORLD_CONFIG;
     this.#cameraMode = options.cameraMode ?? 'chase';
     this.#steeringSensitivity = options.steeringSensitivity ?? 'standard';
+    this.#vehicleTuning = options.vehicleTuning ?? { ...DEFAULT_CAR_TUNING };
     this.#onBoostState = options.onBoostState ?? null;
     this.#buildTag = options.buildTag ?? null;
     this.#surfaceState = resolveSurfaceState(options.weather ?? 'clear');
@@ -479,6 +493,9 @@ export class Application {
     this.#car = new Car({
       rapier: options.rapier,
       physics: this.#physics,
+      // Phase 12.1: the saved handling mode + tuning resolve against the stock config;
+      // `setCarTuning` live-swaps the same pure resolution mid-drive.
+      config: applyCarTuning(VEHICLE_CONFIG, this.#vehicleTuning),
       spawnPosition: this.#spawn.position,
       spawnYaw: this.#spawn.yaw,
       // The generator supplies the surface identity; Phase 7 conditions modify its physical
@@ -761,6 +778,18 @@ export class Application {
   setNightMood(enabled: boolean): void {
     applyNightMoodToClock(this.#clock, enabled);
     this.#applyDaylight();
+  }
+
+  /**
+   * Phase 12.1 — live re-tuning from the pause menu. Resolves the mode + sliders
+   * against the stock vehicle config (the same pure resolution used at startup)
+   * and hands the result to the car, which applies it from the next physics tick.
+   * Mass, inertia and the collision box are untouched by design.
+   */
+  setCarTuning(tuning: CarTuning): void {
+    if (this.#disposed) return;
+    this.#vehicleTuning = { ...tuning };
+    this.#car.applyTuning(applyCarTuning(VEHICLE_CONFIG, this.#vehicleTuning));
   }
 
   /** Swaps only the player presentation; car selection must not rebuild physics or the renderer. */

@@ -93,7 +93,7 @@ const GRAVITY = 9.81;
 export class Car {
   readonly body: RapierRigidBody;
   readonly wheels: readonly WheelState[];
-  readonly #config: VehicleConfig;
+  #config: VehicleConfig;
   readonly #rapier: RapierModule;
   readonly #physics: PhysicsWorld;
   readonly #drivetrain: Drivetrain;
@@ -308,6 +308,27 @@ export class Car {
       );
     }
     return true;
+  }
+
+  /**
+   * Phase 12.1 — live re-tuning from the pause menu. Swaps the resolved vehicle
+   * config (mode + sliders) and re-points the drivetrain; the force pass reads
+   * `#config` every step, so suspension/tire/steering/brake changes apply from
+   * the very next tick without a rebuild. Mass, center of mass, inertia and the
+   * collision box are exempt — tuning never touches the Rapier body.
+   */
+  applyTuning(config: VehicleConfig): void {
+    if (this.#disposed) return;
+    this.#config = config;
+    this.#drivetrain.reconfigure(config.drivetrain);
+    for (const wheel of this.wheels) {
+      // Keep the visual/suspension state consistent with the new ride height.
+      wheel.suspensionLength = clamp(
+        wheel.suspensionLength,
+        config.wheels.minLength,
+        config.wheels.maxLength,
+      );
+    }
   }
 
   reset(position?: readonly [number, number, number], yaw?: number): void {

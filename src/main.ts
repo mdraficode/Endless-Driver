@@ -424,6 +424,7 @@ async function startDrivingScene(restarting = false): Promise<void> {
       ...(seasonRequest === null ? {} : { season: seasonRequest }),
       cameraMode: preferences.cameraMode,
       steeringSensitivity: preferences.steeringSensitivity,
+      vehicleTuning: preferences.carTuning,
       onBoostState: (state) => drivingBoostGauge?.update(state),
     };
 
@@ -529,6 +530,9 @@ async function startDrivingScene(restarting = false): Promise<void> {
                   error,
                 );
               });
+          } else if (key === 'carTuning') {
+            // Phase 12.1: live from the next physics tick; no renderer or world rebuild.
+            activeApplication.setCarTuning(value as GamePreferences['carTuning']);
           }
           if (key === 'touchSteeringMode' || key === 'touchControlScalePercent') {
             activeApplication.setTouchControlPreferences(

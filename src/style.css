@@ -1293,6 +1293,19 @@ body {
   background: rgb(12 25 35 / 76%);
 }
 
+/* Phase 12.1 — handling & tuning sliders (pause menu, vehicle page). */
+.pause-menu-tuning-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.2rem 0.9rem;
+}
+
+.pause-menu-tuning-restore {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.3rem;
+}
+
 .pause-menu-help-card h3 {
   margin: 0 0 0.45rem;
   color: #99f6e4;
@@ -1581,7 +1594,8 @@ body {
   }
 
   .pause-menu-car-cards,
-  .pause-menu-help-grid {
+  .pause-menu-help-grid,
+  .pause-menu-tuning-grid {
     grid-template-columns: 1fr;
   }
 

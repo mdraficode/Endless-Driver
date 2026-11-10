@@ -33,7 +33,7 @@ export interface DrivetrainState {
  * coupled clutch at 60 Hz.
  */
 export class Drivetrain {
-  readonly #config: DrivetrainConfig;
+  #config: DrivetrainConfig;
   readonly #wheelRadius: number;
   #gear = 1;
   #rpm: number;
@@ -46,6 +46,16 @@ export class Drivetrain {
     this.#config = config;
     this.#wheelRadius = wheelRadius;
     this.#rpm = config.idleRpm;
+  }
+
+  /**
+   * Phase 12.1 — live re-tuning: swap the config (power scale, response) without
+   * rebuilding the drivetrain, preserving the current gear and rpm so a menu
+   * change never resets the transmission mid-drive.
+   */
+  reconfigure(config: DrivetrainConfig): void {
+    this.#config = config;
+    this.#rpm = clamp(this.#rpm, config.idleRpm, config.maxRpm);
   }
 
   get state(): DrivetrainState {
