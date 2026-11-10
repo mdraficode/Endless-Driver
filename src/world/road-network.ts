@@ -1256,9 +1256,16 @@ function planGarages(
       y,
     });
 
+    const tagCount = new Map<string, number>();
     const addNode = (tag: string, lx: number, lz: number, y: number): string => {
+      // Unique per call: the same tag fires more than once per garage (the
+      // pit-corridor severance makes two 'rampcut' nodes, the frontage split
+      // can make two 'frontage' nodes) — colliding ids would merge the nodes
+      // and leave a severed edge end floating off its junction.
+      const n = tagCount.get(tag) ?? 0;
+      tagCount.set(tag, n + 1);
       const p = toWorld(lx, lz, y);
-      const id = `g${g}-${tag}`;
+      const id = `g${g}-${tag}${n > 0 ? `-${n}` : ''}`;
       addedNodes.push({ id, x: p.x, z: p.z, y });
       return id;
     };
@@ -2096,7 +2103,15 @@ export function buildRoadNetwork(
   // grade budget (the test contract: grade <= maxGrade * 1.05). Where a
   // terrain-locked interior rides exactly at the cap, the clamp converges to
   // within a few micrometres — below any physical or render relevance.
+  //
+  // Lifted overpass edges are EXEMPT: their junction-side end sits at the deck
+  // level (node + clearance) by design, and the lift itself proved the deck-to-far
+  // end profile fits the grade. Re-pinning that end to the node elevation
+  // collapses the 5 m clearance, and clamping across the deck can grind the ramp
+  // down with the steeper Phase 11.0b relief — the deck is a structure, not a
+  // terrain-following profile.
   for (const edge of mutableEdges) {
+    if (liftedEdgeIds.has(edge.id)) continue;
     const first = edge.points[0];
     const last = edge.points[edge.points.length - 1];
     if (first) first.y = nodeElevation.get(edge.from) ?? first.y;
