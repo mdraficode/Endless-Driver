@@ -238,20 +238,33 @@ describe('switchback pass roads (Phase 10 pass 2)', () => {
     for (const seed of [20261102, 4242, 777]) {
       const { config } = layoutFor(seed);
       const touges = config.edges.filter((edge) => edge.roadClass === 'touge');
+      expect(touges.length).toBeGreaterThan(0);
+      let openCount = 0;
       for (const edge of touges) {
-        const via = edge.via ?? [];
+        const via = edge.via ?? ([] as [number, number][]);
         expect(via.length).toBeGreaterThanOrEqual(4);
-        const [a, b, c, d] = via as [number, number][];
-        expect(a).toBeDefined();
+        const a = via[0]!;
+        const d = via[via.length - 1]!;
+        // Every pass climbs: the road spans well over 600 m of contour offset.
+        expect(d[1] - a[1]).toBeGreaterThan(600);
+        // Phase 11.1: a pass that crosses the volcano's exclusion zone is
+        // doglegged onto the cone's flank (a pass, not a bypass) — its geometry
+        // is a detour arc, not the raw switchback pattern, so the pattern
+        // checks below apply to the open-country passes only.
+        if (edge.doglegged) continue;
+        openCount += 1;
+        const b = via[1]!;
+        const c = via[2]!;
         // Hairpin 1: a vertical climb at constant x, then the upper contour leg
         // doubling back west at constant z, then the second climb.
-        expect(Math.abs(a![0] - b![0])).toBeLessThan(1e-6);
-        expect(Math.abs(b![1] - c![1])).toBeLessThan(1e-6);
-        expect(Math.abs(c![0] - d![0])).toBeLessThan(1e-6);
-        expect(c![0]).toBeLessThan(b![0]); // the contour leg runs back west
-        // Two climbs: the road spans well over 800 m of contour offset.
-        expect(d![1] - a![1]).toBeGreaterThan(600);
+        expect(Math.abs(a[0] - b[0])).toBeLessThan(1e-6);
+        expect(Math.abs(b[1] - c[1])).toBeLessThan(1e-6);
+        expect(Math.abs(c[0] - d[0])).toBeLessThan(1e-6);
+        expect(c[0]).toBeLessThan(b[0]); // the contour leg runs back west
       }
+      // The identity guard stays live: every world keeps at least one
+      // open-country two-hairpin pass.
+      expect(openCount).toBeGreaterThan(0);
     }
   });
 

@@ -734,7 +734,7 @@ export function buildRoadLayout(
           }
         }
         if (changed) {
-          edges[ei] = { ...edge, via: newPath.slice(1, -1) };
+          edges[ei] = { ...edge, via: newPath.slice(1, -1), doglegged: true };
         }
       }
     }

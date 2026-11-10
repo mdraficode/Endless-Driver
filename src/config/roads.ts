@@ -54,6 +54,12 @@ export interface RoadEdgeConfig {
   readonly shoulderMeters?: number;
   /** Optional per-edge grade cap; omit to inherit the network-wide maximum. */
   readonly maxGrade?: number;
+  /**
+   * The layout's volcano dogleg bent this edge's `via` around the cone (Phase
+   * 11.1). Set on pass edges that ride the cone's flank — their geometry is a
+   * detour arc, not the raw switchback pattern the layout authored.
+   */
+  readonly doglegged?: boolean;
 }
 
 export interface RoadNetworkConfig {
