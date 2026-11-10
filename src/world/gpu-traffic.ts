@@ -115,12 +115,15 @@ export function evaluateOvertake(args: {
   readonly otherLaneFollowerGapMeters: number;
   readonly speedMetersPerSecond: number;
   readonly laneCooldownSeconds: number;
+  /** Phase 12.2 — personality: multiplies the trigger gap (aggressive passes sooner). */
+  readonly aggression: number;
 }): boolean {
   // The kernel compares against the same 10 ms threshold: both copies agree the
   // cooldown is expired on the same frame (float32 drift never crosses 0.01).
   if (args.laneCooldownSeconds >= 0.01) return false;
   if (args.speedMetersPerSecond < TRAFFIC_BEHAVIOR.overtakeMinSpeedMetersPerSecond) return false;
-  if (args.ownLeaderGapMeters >= TRAFFIC_BEHAVIOR.overtakeTriggerGapMeters) return false;
+  if (args.ownLeaderGapMeters >= TRAFFIC_BEHAVIOR.overtakeTriggerGapMeters * args.aggression)
+    return false;
   if (args.otherLaneLeaderGapMeters < TRAFFIC_BEHAVIOR.overtakeLeaderClearMeters) return false;
   if (args.otherLaneFollowerGapMeters < TRAFFIC_BEHAVIOR.overtakeFollowerClearMeters) return false;
   return true;
@@ -143,6 +146,50 @@ export function playerLeadTargetMetersPerSecond(
     playerSpeedAlongMetersPerSecond +
     (clearance / band) * TRAFFIC_BEHAVIOR.playerRecoveryMetersPerSecond;
   return Math.min(cruiseMetersPerSecond, Math.max(0, target));
+}
+
+/**
+ * Phase 12.2 — player-obstacle braking target. The GPU kernel mirrors this expression
+ * exactly (forward-cone math on the previous-frame pose, same constants). Returns the
+ * maximum speed the vehicle should hold while the player is inside its forward cone,
+ * or `null` when the player is outside the cone (no influence).
+ *
+ * `forwardMeters` is the player's distance ahead along the vehicle's heading and
+ * `lateralMeters` the signed side offset (right positive); both are world-space.
+ */
+export function playerObstacleTargetMetersPerSecond(args: {
+  readonly forwardMeters: number;
+  readonly lateralMeters: number;
+  readonly vehicleLengthMeters: number;
+  readonly playerForwardSpeedMetersPerSecond: number;
+  readonly cruiseMetersPerSecond: number;
+}): number | null {
+  const { playerObstacleMaxMeters, playerObstacleLateralMeters } = TRAFFIC_BEHAVIOR;
+  // The WGSL mirror uses comparisons (NaN fails them); the JS gate needs explicit
+  // finiteness because NaN slips through `<=`/`>=`.
+  if (
+    !Number.isFinite(args.forwardMeters) ||
+    args.forwardMeters <= 0 ||
+    args.forwardMeters >= playerObstacleMaxMeters
+  ) {
+    return null;
+  }
+  if (
+    !Number.isFinite(args.lateralMeters) ||
+    Math.abs(args.lateralMeters) >= playerObstacleLateralMeters
+  ) {
+    return null;
+  }
+  const bumperGap =
+    args.forwardMeters -
+    args.vehicleLengthMeters / 2 -
+    TRAFFIC_BEHAVIOR.playerHalfLengthMeters -
+    TRAFFIC_INTEGRATOR.bumperGapMeters;
+  return playerLeadTargetMetersPerSecond(
+    bumperGap,
+    args.playerForwardSpeedMetersPerSecond,
+    args.cruiseMetersPerSecond,
+  );
 }
 
 /** One eased step of the lateral lane transition toward `targetLateralMeters`. */
@@ -174,6 +221,10 @@ interface ShadowVehicle {
   lateral: number;
   /** Seconds remaining before another lane change may be attempted. */
   laneCooldown: number;
+  /** Phase 12.2 — personality: multiplies the car-following gaps (scales the band). */
+  patience: number;
+  /** Phase 12.2 — personality: multiplies the overtake trigger gap. */
+  aggression: number;
 }
 
 export interface StreamedTrafficStats {
@@ -200,6 +251,8 @@ export class GpuTrafficWorld {
   readonly #speedTarget: StorageInstancedBufferAttribute;
   readonly #requests: StorageInstancedBufferAttribute; // route, lane, dist, flags
   readonly #vehicleStatic: StorageInstancedBufferAttribute; // length, cruise, class, phase
+  /** Phase 12.2 — per-slot personality (patience, aggression, 0, 0). */
+  readonly #personality: StorageInstancedBufferAttribute;
   /** CPU-written each frame: (distance ahead to player, player speed along the route). */
   readonly #playerLead: StorageInstancedBufferAttribute;
 
@@ -214,6 +267,8 @@ export class GpuTrafficWorld {
   readonly #dt = uniform(0);
   readonly #time = uniform(0);
   readonly #playerXZ = uniform(new Vector2());
+  /** Phase 12.2 — player world velocity (m/s) for the obstacle-braking cone. */
+  readonly #playerVelocityXZ = uniform(new Vector2());
   readonly #useStorage = uniform(0);
   readonly nightGain: UniformNode<'float', number> = uniform(1);
   #computeNode: ComputeNodeLike | null = null;
@@ -262,6 +317,7 @@ export class GpuTrafficWorld {
     this.#speedTarget = createStorage(this.#capacity, 1);
     this.#requests = createStorage(this.#capacity, 4);
     this.#vehicleStatic = createStorage(this.#capacity, 4);
+    this.#personality = createStorage(this.#capacity, 4);
     this.#playerLead = createStorage(this.#capacity, 2);
 
     this.#routeTable = new Array<TrafficRoute | null>(TRAFFIC_MAX_ROUTES).fill(null);
@@ -291,6 +347,8 @@ export class GpuTrafficWorld {
         cruise: 8,
         lateral: TRAFFIC_LANE_INSET_METERS,
         laneCooldown: 0,
+        patience: 1,
+        aggression: 1,
       });
     }
 
@@ -315,6 +373,66 @@ export class GpuTrafficWorld {
     const out = this.#pendingImpulses.slice();
     this.#pendingImpulses.length = 0;
     return out;
+  }
+
+  /**
+   * Read-only CPU shadow snapshot (Phase 12.2 behavior tests). The GPU path runs
+   * the same model; the shadow is the side testable without a WebGPU device.
+   */
+  getShadowSnapshot(): readonly {
+    readonly routeIdx: number;
+    readonly lane: 1 | -1;
+    readonly distance: number;
+    readonly speed: number;
+    readonly alive: number;
+    readonly cruise: number;
+    readonly patience: number;
+    readonly aggression: number;
+  }[] {
+    return this.#shadow.map((v) => ({
+      routeIdx: v.routeIdx,
+      lane: v.lane,
+      distance: v.distance,
+      speed: v.speed,
+      alive: v.alive,
+      cruise: v.cruise,
+      patience: v.patience,
+      aggression: v.aggression,
+    }));
+  }
+
+  /** World pose on the vehicle's route `metersAhead` in front of it (tests). */
+  getPoseAhead(index: number, metersAhead: number): { x: number; z: number; yaw: number } | null {
+    const v = this.#shadow[index];
+    if (v === undefined || v.alive <= 0) return null;
+    const route = this.#routeTable[v.routeIdx];
+    if (route === null || route === undefined) return null;
+    const pos = sampleRoute(route, wrapDistance(v.distance + metersAhead, route.length), 0);
+    return { x: pos.x, z: pos.z, yaw: sampleRouteYaw(route, v.distance + metersAhead) };
+  }
+
+  /** Read-only world pose of one shadow slot (Phase 12.2 behavior tests). */
+  getVehicleWorldPose(index: number): {
+    x: number;
+    z: number;
+    yaw: number;
+    speed: number;
+    lane: 1 | -1;
+    alive: number;
+  } | null {
+    const v = this.#shadow[index];
+    if (v === undefined || v.alive <= 0) return null;
+    const route = this.#routeTable[v.routeIdx];
+    if (route === null || route === undefined) return null;
+    const pos = sampleRoute(route, v.distance, v.lateral);
+    return {
+      x: pos.x,
+      z: pos.z,
+      yaw: sampleRouteYaw(route, v.distance),
+      speed: v.speed,
+      lane: v.lane,
+      alive: v.alive,
+    };
   }
 
   getContentStats(): StreamedTrafficStats {
@@ -344,6 +462,7 @@ export class GpuTrafficWorld {
     this.#timeAccumulator += delta;
     this.#time.value = this.#timeAccumulator;
     this.#playerXZ.value.set(focus.x, focus.z);
+    this.#playerVelocityXZ.value.set(playerVelocity?.x ?? 0, playerVelocity?.z ?? 0);
 
     this.#maintainRoutes(focus);
     this.#stepShadow(delta, focus, playerVelocity);
@@ -493,6 +612,21 @@ export class GpuTrafficWorld {
       spec.minimumSpeedMetersPerSecond +
       deterministicUnit(slot * 7919 + 3) *
         (spec.maximumSpeedMetersPerSecond - spec.minimumSpeedMetersPerSecond);
+    // Phase 12.2 — per-slot driver personality (deterministic; the CPU shadow and
+    // the GPU kernel read the same values, so the fleet behaves identically on both).
+    const {
+      personalityPatienceMin,
+      personalityPatienceMax,
+      personalityAggressionMin,
+      personalityAggressionMax,
+    } = TRAFFIC_BEHAVIOR;
+    shadow.patience =
+      personalityPatienceMin +
+      deterministicUnit(slot * 104729 + 11) * (personalityPatienceMax - personalityPatienceMin);
+    shadow.aggression =
+      personalityAggressionMin +
+      deterministicUnit(slot * 15485863 + 23) *
+        (personalityAggressionMax - personalityAggressionMin);
     // The GPU static table mirrors the shadow's per-vehicle constants.
     const o = slot * 4;
     const staticArray = this.#vehicleStatic.array as Float32Array;
@@ -501,6 +635,12 @@ export class GpuTrafficWorld {
     staticArray[o + 2] = classIdx;
     staticArray[o + 3] = deterministicUnit(slot * 31 + 7);
     this.#vehicleStatic.needsUpdate = true;
+    const personalityArray = this.#personality.array as Float32Array;
+    personalityArray[o] = shadow.patience;
+    personalityArray[o + 1] = shadow.aggression;
+    personalityArray[o + 2] = 0;
+    personalityArray[o + 3] = 0;
+    this.#personality.needsUpdate = true;
     this.#setRequest(slot, REQUEST_RESPAWN, routeIdx, shadow.lane, shadow.distance);
   }
 
@@ -564,6 +704,7 @@ export class GpuTrafficWorld {
         otherLaneFollowerGapMeters: otherFollowerGap,
         speedMetersPerSecond: v.speed,
         laneCooldownSeconds: v.laneCooldown,
+        aggression: v.aggression,
       });
       if (wantChange) {
         v.lane = v.lane === 1 ? -1 : 1;
@@ -590,10 +731,14 @@ export class GpuTrafficWorld {
       }
       this.#writePlayerLead(i, leadDs, leadSpeed);
       const { stopGapMeters, fullSpeedGapMeters } = TRAFFIC_INTEGRATOR;
+      // Phase 12.2 — patience scales the follower band (the kernel reads the same
+      // per-slot value from the personality buffer).
+      const stopGap = stopGapMeters * v.patience;
+      const fullSpeedGap = fullSpeedGapMeters * v.patience;
       let target =
-        ownLeaderGap <= stopGapMeters
+        ownLeaderGap <= stopGap
           ? 0
-          : Math.min(1, (ownLeaderGap - stopGapMeters) / (fullSpeedGapMeters - stopGapMeters)) *
+          : Math.min(1, (ownLeaderGap - stopGap) / Math.max(1e-6, fullSpeedGap - stopGap)) *
             v.cruise;
       if (leadDs < 1e5) {
         const gap =
@@ -602,6 +747,29 @@ export class GpuTrafficWorld {
           TRAFFIC_BEHAVIOR.playerHalfLengthMeters -
           TRAFFIC_INTEGRATOR.bumperGapMeters;
         target = Math.min(target, playerLeadTargetMetersPerSecond(gap, leadSpeed, v.cruise));
+      }
+      // Phase 12.2 — brake for the player in this vehicle's forward cone. The
+      // on-route leader pass only sees the player when the projection falls on the
+      // route line; this world-space cone catches the player alongside or across
+      // the lanes. The kernel mirrors the same cone on the previous-frame pose
+      // (stateC/stateB), so the shadow uses this step's pre-integration pose.
+      {
+        const yaw = sampleRouteYaw(route, v.distance);
+        const tx = -Math.sin(yaw);
+        const tz = -Math.cos(yaw);
+        const pose = sampleRoute(route, v.distance, v.lateral);
+        const rx = focus.x - pose.x;
+        const rz = focus.z - pose.z;
+        const forward = rx * tx + rz * tz;
+        // Right of travel = (tz, -tx): lateral = rel · right = rx*tz - rz*tx.
+        const obstacle = playerObstacleTargetMetersPerSecond({
+          forwardMeters: forward,
+          lateralMeters: rx * tz - rz * tx,
+          vehicleLengthMeters: v.length,
+          playerForwardSpeedMetersPerSecond: playerVX * tx + playerVZ * tz,
+          cruiseMetersPerSecond: v.cruise,
+        });
+        if (obstacle !== null) target = Math.min(target, obstacle);
       }
       const clamped = clampSpeedDelta(target - v.speed, delta);
       v.speed = Math.max(0, v.speed + clamped);
@@ -885,11 +1053,13 @@ export class GpuTrafficWorld {
         speedTarget: this.#speedTarget,
         requests: this.#requests,
         vehicleStatic: this.#vehicleStatic,
+        personality: this.#personality,
         playerLead: this.#playerLead,
         routeTexture: this.#routeTexture,
         routeMetaTexture: this.#routeMetaTexture,
         dt: this.#dt,
         playerXZ: this.#playerXZ,
+        playerVelocityXZ: this.#playerVelocityXZ,
       },
       this.#capacity,
     );
@@ -1140,11 +1310,15 @@ interface TrafficComputeBuffers {
   readonly speedTarget: StorageInstancedBufferAttribute;
   readonly requests: StorageInstancedBufferAttribute;
   readonly vehicleStatic: StorageInstancedBufferAttribute;
+  /** Phase 12.2 — per-slot personality (patience, aggression, 0, 0). */
+  readonly personality: StorageInstancedBufferAttribute;
   readonly playerLead: StorageInstancedBufferAttribute;
   readonly routeTexture: DataTexture;
   readonly routeMetaTexture: DataTexture;
   readonly dt: UniformNode<'float', number>;
   readonly playerXZ: UniformNode<'vec2', Vector2>;
+  /** Phase 12.2 — player world velocity for the obstacle cone. */
+  readonly playerVelocityXZ: UniformNode<'vec2', Vector2>;
 }
 
 function createTrafficComputeNode(
@@ -1158,6 +1332,7 @@ function createTrafficComputeNode(
   const speedTarget = storage(buffers.speedTarget, 'float', capacity);
   const requests = storage(buffers.requests, 'vec4', capacity);
   const vehicleStatic = storage(buffers.vehicleStatic, 'vec4', capacity).toReadOnly();
+  const personality = storage(buffers.personality, 'vec4', capacity).toReadOnly();
   const playerLead = storage(buffers.playerLead, 'vec2', capacity).toReadOnly();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TSL node graph values.
@@ -1195,15 +1370,19 @@ function createTrafficComputeNode(
     playerAheadMaxMeters,
     playerHalfLengthMeters,
     playerRecoveryMetersPerSecond,
+    playerObstacleMaxMeters,
+    playerObstacleLateralMeters,
   } = TRAFFIC_BEHAVIOR;
 
   return Fn(() => {
     const i = instanceIndex;
     // ----- Phase 1: car-following target speed (reads the previous frame) -----
     const a0 = stateA.element(i).toVar();
+    const b0 = stateB.element(i).toVar();
     const c0 = stateC.element(i).toVar();
     const staticI = vehicleStatic.element(i).toVar();
     const d0 = stateD.element(i).toVar();
+    const personalityI = personality.element(i).toVar();
     const target = float(0).toVar();
     const wantChange = float(0).toVar();
     If(c0.w.greaterThan(float(0.5)), () => {
@@ -1242,13 +1421,17 @@ function createTrafficComputeNode(
           });
         });
       });
+      // Phase 12.2 — patience (personality.x) scales the follower band; the CPU
+      // shadow applies the same per-slot value.
+      const stopGap = float(stopGapMeters).mul(personalityI.x);
+      const fullGap = float(fullSpeedGapMeters).mul(personalityI.x);
       target.assign(
         select(
-          minGap.lessThanEqual(float(stopGapMeters)),
+          minGap.lessThanEqual(stopGap),
           float(0),
           minGap
-            .sub(float(stopGapMeters))
-            .div(float(fullSpeedGapMeters - stopGapMeters))
+            .sub(stopGap)
+            .div(fullGap.sub(stopGap).max(float(1e-6)))
             .clamp(0, 1)
             .mul(staticI.y),
         ),
@@ -1260,13 +1443,52 @@ function createTrafficComputeNode(
         cooldown
           .lessThan(float(0.01))
           .and(a0.w.greaterThan(float(overtakeMinSpeedMetersPerSecond)))
-          .and(minGap.lessThan(float(overtakeTriggerGapMeters)))
+          // Phase 12.2 — aggressiveness (personality.y) scales the trigger gap.
+          .and(minGap.lessThan(float(overtakeTriggerGapMeters).mul(personalityI.y)))
           .and(otherLead.greaterThan(float(overtakeLeaderClearMeters)))
           .and(otherFollow.greaterThan(float(overtakeFollowerClearMeters))),
         () => {
           wantChange.assign(float(1));
         },
       );
+      // Phase 12.2 — brake for the player inside the forward cone (world space).
+      // Mirrors playerObstacleTargetMetersPerSecond; the CPU shadow runs the same
+      // cone on this step's pre-integration pose, the previous frame's stateC/B.
+      {
+        const tx = sin(b0.x).negate();
+        const tz = cos(b0.x).negate();
+        const rx = buffers.playerXZ.x.sub(c0.x);
+        const rz = buffers.playerXZ.y.sub(c0.z);
+        const forward = rx.mul(tx).add(rz.mul(tz));
+        // Right of travel = (tz, -tx): lateral = rel · right = rx*tz - rz*tx.
+        const lateral = rx.mul(tz).sub(rz.mul(tx));
+        If(
+          forward
+            .greaterThan(float(0))
+            .and(forward.lessThan(float(playerObstacleMaxMeters)))
+            .and(lateral.abs().lessThan(float(playerObstacleLateralMeters))),
+          () => {
+            const gap = forward
+              .sub(staticI.x.mul(float(0.5)))
+              .sub(float(playerHalfLengthMeters))
+              .sub(float(bumperGapMeters));
+            const playerFwd = buffers.playerVelocityXZ.x
+              .mul(tx)
+              .add(buffers.playerVelocityXZ.y.mul(tz));
+            const clearance = gap.sub(float(stopGapMeters)).clamp(float(0), float(1e6));
+            const obstacleTarget = playerFwd
+              .add(
+                clearance
+                  .div(float(fullSpeedGapMeters - stopGapMeters))
+                  .mul(float(playerRecoveryMetersPerSecond)),
+              )
+              .clamp(float(0), staticI.y);
+            If(obstacleTarget.lessThan(target), () => {
+              target.assign(obstacleTarget);
+            });
+          },
+        );
+      }
       stateD.element(i).assign(vec4(d0.x, cooldown, float(0), wantChange));
     });
     speedTarget.element(i).assign(target);

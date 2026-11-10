@@ -77,6 +77,25 @@ export const TRAFFIC_BEHAVIOR = {
   playerHalfLengthMeters: 1.3,
   /** Speed recovery (m/s) gained across the full gap band when following the player. */
   playerRecoveryMetersPerSecond: 6,
+  /**
+   * Phase 12.2 — driver personality: patience multiplies the car-following gaps
+   * (impatient cars crowd, patient cars leave air). Deterministic per vehicle slot.
+   */
+  personalityPatienceMin: 0.75,
+  personalityPatienceMax: 1.35,
+  /**
+   * Phase 12.2 — driver personality: aggressiveness multiplies the overtake trigger
+   * gap (aggressive drivers pass sooner, cautious ones wait). Deterministic per slot.
+   */
+  personalityAggressionMin: 0.7,
+  personalityAggressionMax: 1.4,
+  /**
+   * Phase 12.2 — player-obstacle braking: a world-space forward cone. Traffic brakes
+   * for the player here even when the player is off the route line (the on-route
+   * leader pass projects onto the centreline and misses them there).
+   */
+  playerObstacleMaxMeters: 30,
+  playerObstacleLateralMeters: 3.5,
 } as const;
 
 export interface SpeedTrapConfig {

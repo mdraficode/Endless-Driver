@@ -1,7 +1,9 @@
 # Phase 12 — CarX-class parity (original implementations)
 
 **Owner instruction (2026-11-10):** bring in the graphics and gameplay mechanics the project is missing versus CarX Street, "all of the above in a logical sequence."
-**Status:** proposed 2026-11-10, execution starts with pass 12.1.
+**Status:** 12.1 (driving feel + in-game tuning) shipped `46e8a07`; 12.2 (living traffic: driver
+personality + player-obstacle braking) shipped 2026-11-10; next: 12.3 visible damage, then 12.4
+graphics pass. Evasive lateral avoidance (12.2 follow-up) is the one deferred 12.2 sub-item.
 
 ## Boundary (recorded decision)
 
@@ -62,6 +64,29 @@ Extend the existing two-kernel compute + CPU shadow (same determinism contract, 
   stationary-player, no-collision invariants across N simulated minutes, personality spread
   measurable (speed std > 0), evasive offset bounded; traffic performance budget (compute
   pass + shadow ≤ current + 15 % frame time on tier C); full check green.
+
+**Shipped (2026-11-10):**
+
+- **Player-obstacle braking:** a world-space forward cone (30 m forward, ±3.5 m lateral,
+  per `TRAFFIC_BEHAVIOR.playerObstacle*`) caps a car's target speed when the player is in its
+  cone — including when the player is OFF the route line (3.0 m leader-projection tolerance),
+  which the on-route player-as-leader pass misses. One shared expression
+  (`playerObstacleTargetMetersPerSecond`) drives the CPU shadow and is mirrored exactly in the
+  WGSL kernel (previous-frame pose, same constants). Measured (headless, tier-C fleet, fixed
+  seed): a stationary player 18 m ahead + 2.05 m off the car's line → the car stops
+  (speed < 0.5 m/s) at 4.5–9 m bumper-safe distance with zero collision impulses; a player
+  walking 1.4 m/s through the district for 25 s → 0 hits.
+- **Driver personality:** per-slot deterministic (slot-seeded, world-identical across runs)
+  `patience` (0.75–1.35, scales the car-following stop/full-speed gap band) and `aggression`
+  (0.7–1.4, scales the overtake trigger gap), carried in a `personality` storage buffer that
+  both the kernel and the CPU shadow read — the fleet keeps its two-path determinism contract.
+  Measured: patience spread > 1 distinct value per fleet, identical assignments on a second
+  identical run.
+- **Deferred to 12.2 follow-up:** evasive lateral offset (bounded steering around a crossing
+  player). The lane-change machinery exists (0.8 m/s, 7 s cooldown); free lateral avoidance
+  would need a third shared kernel phase and is the one sub-item not in this drop.
+- **Debug accessors added for the behavior suite:** `getShadowSnapshot()`,
+  `getVehicleWorldPose(i)`, `getPoseAhead(i, meters)` — read-only, CPU-side.
 
 ### 12.3 — Visible damage
 

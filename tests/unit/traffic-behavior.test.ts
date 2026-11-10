@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { TRAFFIC_LANE_INSET_METERS } from '../../src/config/world-events';
+import { TRAFFIC_BEHAVIOR, TRAFFIC_LANE_INSET_METERS } from '../../src/config/world-events';
 import { buildRoadLayout } from '../../src/world/road-layout';
 import { buildRoadNetwork } from '../../src/world/road-network';
 import { createWorldPlan } from '../../src/world/world-plan';
@@ -9,6 +9,7 @@ import {
   GpuTrafficWorld,
   evaluateOvertake,
   playerLeadTargetMetersPerSecond,
+  playerObstacleTargetMetersPerSecond,
   stepLaneLateral,
 } from '../../src/world/gpu-traffic';
 
@@ -46,6 +47,7 @@ describe('overtake decision (shared with the kernel)', () => {
     otherLaneFollowerGapMeters: 100,
     speedMetersPerSecond: 9,
     laneCooldownSeconds: 0,
+    aggression: 1,
   };
   it('moves out only when the own lane is blocked and the other is clear', () => {
     expect(evaluateOvertake({ ...clear, ownLeaderGapMeters: 10 })).toBe(true);
@@ -71,6 +73,64 @@ describe('overtake decision (shared with the kernel)', () => {
     );
     // An overlap (negative gap) counts as blocked.
     expect(evaluateOvertake({ ...clear, ownLeaderGapMeters: -1 })).toBe(true);
+  });
+
+  it('Phase 12.2: aggressive drivers pass at larger gaps, cautious ones wait', () => {
+    // 20 m trigger × 1.4 aggression = 28 m: a 25 m gap is enough for them.
+    expect(evaluateOvertake({ ...clear, ownLeaderGapMeters: 25, aggression: 1.4 })).toBe(true);
+    // 20 m × 0.7 = 14 m: the same 25 m gap is not.
+    expect(evaluateOvertake({ ...clear, ownLeaderGapMeters: 25, aggression: 0.7 })).toBe(false);
+  });
+});
+
+describe('player-obstacle target (shared with the kernel)', () => {
+  const base = {
+    vehicleLengthMeters: 4.5,
+    playerForwardSpeedMetersPerSecond: 0,
+    cruiseMetersPerSecond: 10,
+  };
+  it('is inactive outside the cone (behind, beyond range, too far aside, NaN)', () => {
+    expect(
+      playerObstacleTargetMetersPerSecond({ ...base, forwardMeters: 0, lateralMeters: 0 }),
+    ).toBeNull();
+    expect(
+      playerObstacleTargetMetersPerSecond({ ...base, forwardMeters: -3, lateralMeters: 0 }),
+    ).toBeNull();
+    expect(
+      playerObstacleTargetMetersPerSecond({ ...base, forwardMeters: 30, lateralMeters: 0 }),
+    ).toBeNull();
+    expect(
+      playerObstacleTargetMetersPerSecond({ ...base, forwardMeters: 10, lateralMeters: 3.5 }),
+    ).toBeNull();
+    expect(
+      playerObstacleTargetMetersPerSecond({ ...base, forwardMeters: 10, lateralMeters: -3.5 }),
+    ).toBeNull();
+    // The JS gate must reject NaN where the WGSL comparison gate fails closed.
+    expect(
+      playerObstacleTargetMetersPerSecond({ ...base, forwardMeters: NaN, lateralMeters: 0 }),
+    ).toBeNull();
+    expect(
+      playerObstacleTargetMetersPerSecond({ ...base, forwardMeters: 10, lateralMeters: NaN }),
+    ).toBeNull();
+  });
+
+  it('caps the speed at the bumper gap and recovers across the band', () => {
+    // A stationary player exactly at the bumper gap (2.5 + half length + player
+    // half + clearance): the target is ~0.
+    const atBumper = playerObstacleTargetMetersPerSecond({
+      ...base,
+      forwardMeters: 2.5 + 4.5 / 2 + TRAFFIC_BEHAVIOR.playerHalfLengthMeters + 1.5,
+      lateralMeters: 0,
+    })!;
+    expect(atBumper).toBeLessThan(0.2);
+    // A moving player 28 m ahead: player speed + recovery, capped at cruise.
+    const far = playerObstacleTargetMetersPerSecond({
+      ...base,
+      forwardMeters: 28,
+      lateralMeters: 0,
+      playerForwardSpeedMetersPerSecond: 8,
+    })!;
+    expect(far).toBeCloseTo(10, 1);
   });
 });
 
@@ -271,6 +331,137 @@ describe('AI traffic behavior in the world (CPU shadow of the compute pass)', ()
     placePlayerAhead(12);
     const hold = measureSpeed(6);
     expect(hold.speed).toBeLessThan(5);
+    traffic.dispose();
+  });
+
+  it('Phase 12.2: the fleet carries per-driver personality (deterministic per slot)', () => {
+    const { plan, network, region } = buildWorld();
+    const traffic = new GpuTrafficWorld(network, plan, 'C');
+    traffic.configureBackend('webgl2', null as never);
+    const dt = 1 / 60;
+    const centre = { x: region.district.centerX, z: region.district.centerZ };
+    for (let f = 0; f < 60 * 30; f += 1) traffic.update(dt, centre, { x: 0, z: 0 });
+    const snap = traffic.getShadowSnapshot();
+    const alive = snap.filter((v) => v.alive > 0.5);
+    expect(alive.length).toBeGreaterThan(0);
+    const {
+      personalityPatienceMin,
+      personalityPatienceMax,
+      personalityAggressionMin,
+      personalityAggressionMax,
+    } = TRAFFIC_BEHAVIOR;
+    for (const v of alive) {
+      expect(v.patience).toBeGreaterThanOrEqual(personalityPatienceMin - 1e-6);
+      expect(v.patience).toBeLessThanOrEqual(personalityPatienceMax + 1e-6);
+      expect(v.aggression).toBeGreaterThanOrEqual(personalityAggressionMin - 1e-6);
+      expect(v.aggression).toBeLessThanOrEqual(personalityAggressionMax + 1e-6);
+    }
+    // Individuality: the fleet is not one cloned driver.
+    expect(new Set(alive.map((v) => v.patience)).size).toBeGreaterThan(1);
+    expect(new Set(alive.map((v) => v.aggression)).size).toBeGreaterThan(1);
+    // Determinism: a second fleet makes the same personality assignments.
+    const again = new GpuTrafficWorld(network, plan, 'C');
+    again.configureBackend('webgl2', null as never);
+    for (let f = 0; f < 60 * 30; f += 1) again.update(dt, centre, { x: 0, z: 0 });
+    const alive2 = again.getShadowSnapshot().filter((v) => v.alive > 0.5);
+    expect(alive2.length).toBe(alive.length);
+    for (let i = 0; i < alive.length; i += 1) {
+      expect(alive2[i]!.patience).toBe(alive[i]!.patience);
+      expect(alive2[i]!.aggression).toBe(alive[i]!.aggression);
+    }
+    traffic.dispose();
+    again.dispose();
+  });
+
+  it('Phase 12.2: traffic brakes for the player alongside its lane without hitting', () => {
+    const { plan, network, region } = buildWorld();
+    const traffic = new GpuTrafficWorld(network, plan, 'C');
+    traffic.configureBackend('webgl2', null as never);
+    const dt = 1 / 60;
+    const centre = { x: region.district.centerX, z: region.district.centerZ };
+    for (let f = 0; f < 60 * 20; f += 1) traffic.update(dt, centre, { x: 0, z: 0 });
+    // Find a cruising car on the +1 (right) lane with a straight stretch ahead.
+    // The player will sit 3.2 m right of the centreline there: OUTSIDE the on-route
+    // leader projection tolerance (3.0 m) so only the world-space cone can see
+    // them, yet INSIDE the cone's 3.5 m lateral limit (the car drives at 1.15 m,
+    // 2.05 m from the player's line).
+    const snap = traffic.getShadowSnapshot();
+    const angleDiff = (a: number, b: number): number => {
+      const d = a - b;
+      return Math.atan2(Math.sin(d), Math.cos(d));
+    };
+    let idx = -1;
+    for (let i = 0; i < snap.length; i += 1) {
+      const v = snap[i]!;
+      if (v.alive <= 0.5 || v.lane !== 1 || v.speed <= 6) continue;
+      const pose = traffic.getVehicleWorldPose(i)!;
+      const ahead = traffic.getPoseAhead(i, 14)!;
+      if (Math.abs(angleDiff(ahead.yaw, pose.yaw)) < 0.1) {
+        idx = i;
+        break;
+      }
+    }
+    expect(idx).toBeGreaterThanOrEqual(0);
+    const ahead = traffic.getPoseAhead(idx, 14)!;
+    const rightX = -Math.cos(ahead.yaw);
+    const rightZ = Math.sin(ahead.yaw);
+    const player = { x: ahead.x + rightX * 2.05, z: ahead.z + rightZ * 2.05 };
+    for (let f = 0; f < 60 * 10; f += 1) traffic.update(dt, player, { x: 0, z: 0 });
+    const after = traffic.getVehicleWorldPose(idx)!;
+    const dist = Math.hypot(after.x - player.x, after.z - player.z);
+    // A clean stop in the cone, bumper-safe, with no collision impulse.
+    expect(after.speed).toBeLessThan(0.5);
+    expect(dist).toBeGreaterThan(4.5);
+    expect(dist).toBeLessThan(9);
+    expect(traffic.consumeImpulses().length).toBe(0);
+    traffic.dispose();
+  });
+
+  it('Phase 12.2: a walking player threads the fleet without triggering hits', () => {
+    const { plan, network, region } = buildWorld();
+    const traffic = new GpuTrafficWorld(network, plan, 'C');
+    traffic.configureBackend('webgl2', null as never);
+    const dt = 1 / 60;
+    const routes = deriveRegionRoutes(network, region).routes;
+    const centre = { x: region.district.centerX, z: region.district.centerZ };
+    for (let f = 0; f < 60 * 20; f += 1) traffic.update(dt, centre, { x: 0, z: 0 });
+    // Walk along the route closest to the district centre, offset into the right
+    // lane like a real driver.
+    let best = routes[0]!;
+    let bestD2 = Number.POSITIVE_INFINITY;
+    for (const r of routes) {
+      for (const p of r.points) {
+        const d2 = (p.x - centre.x) ** 2 + (p.z - centre.z) ** 2;
+        if (d2 < bestD2) {
+          bestD2 = d2;
+          best = r;
+        }
+      }
+    }
+    const n = best.points.length;
+    let si = 0;
+    for (let s = 1; s < best.points.length; s += 1) {
+      if ((best.points[s]!.x - centre.x) ** 2 + (best.points[s]!.z - centre.z) ** 2 < bestD2)
+        si = s;
+    }
+    const a = best.points[(si + n - 1) % n]!;
+    const b = best.points[(si + 1) % n]!;
+    let dx = b.x - a.x;
+    let dz = b.z - a.z;
+    const dl = Math.hypot(dx, dz) || 1;
+    dx /= dl;
+    dz /= dl;
+    const start = { x: b.x + dz * 1.15, z: b.z - dx * 1.15 };
+    let x = start.x;
+    let z = start.z;
+    let hits = 0;
+    for (let f = 0; f < 60 * 25; f += 1) {
+      x += dx * 1.4 * dt;
+      z += dz * 1.4 * dt;
+      traffic.update(dt, { x, z }, { x: dx * 1.4, z: dz * 1.4 });
+      hits += traffic.consumeImpulses().length;
+    }
+    expect(hits).toBe(0);
     traffic.dispose();
   });
 });
