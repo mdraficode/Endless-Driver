@@ -2,8 +2,10 @@
 
 **Owner instruction (2026-11-10):** bring in the graphics and gameplay mechanics the project is missing versus CarX Street, "all of the above in a logical sequence."
 **Status:** 12.1 (driving feel + in-game tuning) shipped `46e8a07`; 12.2 (living traffic: driver
-personality + player-obstacle braking) shipped 2026-11-10; next: 12.3 visible damage, then 12.4
-graphics pass. Evasive lateral avoidance (12.2 follow-up) is the one deferred 12.2 sub-item.
+personality + player-obstacle braking) shipped 2026-11-10; 12.3 (visible damage) shipped
+`a573512`; the 12.2 WebGL2 shader-gate follow-up shipped `722a2a3` (Playwright user-level gate
+under `e2e/`); next: 12.4 graphics pass. Evasive lateral avoidance (12.2 follow-up) is the one
+deferred 12.2 sub-item.
 
 ## Boundary (recorded decision)
 
@@ -87,6 +89,17 @@ Extend the existing two-kernel compute + CPU shadow (same determinism contract, 
   would need a third shared kernel phase and is the one sub-item not in this drop.
 - **Debug accessors added for the behavior suite:** `getShadowSnapshot()`,
   `getVehicleWorldPose(i)`, `getPoseAhead(i, meters)` — read-only, CPU-side.
+- **Follow-up shipped (2026-11-10, `722a2a3`):** the owner's Playwright
+  user-level gate (`e2e/` harness, fresh seed, `?backend=webgl2`) caught that
+  the entire fleet silently never rendered on WebGL2 devices — the vertex TSL
+  node names (`GpuTraffic.<rig>-vertex`) are emitted verbatim as GLSL
+  identifiers by the WebGL2 backend, so every traffic shader failed to
+  compile. `toGlslIdentifier()` sanitizes the names (regression test pins the
+  contract for all five rigs). The same gate found five pedestrian/massing
+  `vec4(vertexColor(), 1)` 5-component joins (console error on every program
+  compile) — the redundant wrap is dropped, output unchanged. Differential
+  verification: pre-fix live build emits both error classes; fixed build runs
+  240 s headless with zero shader/TSL errors (local + deployed).
 
 ### 12.3 — Visible damage
 
@@ -134,8 +147,6 @@ if the budget allows):
   GpuParticlePool emitter on the player car — the existing pool is scene-owned),
   the popped-open hood rig (the hero's merged geometry has no hood node; needs model
   surgery or an authored hood overlay), and the headless per-band screenshot review.
-
-### 12.4 — Graphics pass (modern-look polish)
 
 ### 12.4 — Graphics pass (modern-look polish)
 

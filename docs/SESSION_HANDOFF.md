@@ -3967,3 +3967,73 @@ upper bound or the extremes of the generated world will grow it into a needle.
 The headless audit pattern that found this: build the world + `RoadWorld` in
 tsx, walk the built geometries, and compare vertex heights against the final
 `heightAt` — no renderer needed to see a 247 m floating slab.
+
+## WebGL2 traffic-shader fix + Playwright user-level gate (2026-11-10)
+
+**Shipped at `722a2a3`** (full gate: 124 files / 1004 tests, asset
+verification, production build; CI Validate + Pages Deploy succeeded on the
+tip; live bundle verified to contain the fix).
+
+**Context.** Owner gate before Phase 12.4: "use Playwright to produce the
+exact user-level testing by generating a fully fresh seed and verify if the
+game is bug free or if anything else is wrong or misbehaving, then you can
+proceed." The harness (now committed under `e2e/` — self-contained, its own
+`package.json`, screenshots to `/tmp`) drives the production build headlessly
+(SwiftShader, `?tier=C&backend=webgl2`, no `?seed=`): ready → throttle →
+corner → pause menu → resume → brake, failing on any page/console error,
+no motion, no pause menu, or a dead canvas.
+
+**Two shipped bugs found — both invisible to the unit-test-only CI.**
+
+1. _The entire streamed-traffic fleet silently never rendered on WebGL2
+   devices._ The traffic vertex TSL nodes were named
+   `GpuTraffic.<rig>-vertex` (dot + dash). The WebGL2 backend emits TSL node
+   names **verbatim** as GLSL identifiers (`NodeBuilder.registerDeclaration`
+   does no identifier validation), so every traffic vertex shader failed to
+   compile — `ERROR: '.' : syntax error` on
+   `layout(location=2) in vec4 GpuTraffic.streamed-traffic-…-vertex;` — for
+   all five rigs. WGSL never hit this, which is why 12.2 shipped green. Fix:
+   `toGlslIdentifier()` sanitizes the name to a legal identifier
+   (camel + strip + digit guard), called at the one leaker
+   (`createTrafficVertexNode`; the compute nodes `GpuTraffic.step` /
+   `GpuParticles.*` are WebGPU-only and don't compile to GLSL). Regression
+   test `tests/unit/gpu-traffic-glsl-names.test.ts` pins the contract for all
+   traffic classes (valid identifier, unique per class).
+2. _Pedestrian/massing console errors on every program compile._ Five
+   `colorNode` assignments wrapped the already-vec4 `vertexColor()` node in
+   `vec4(…, 1)` — a 5-component join that fails TSL's param-count validation
+   (`JoinNode.generate` logs and breaks; rendered output was unchanged
+   because the join emitted only the first vec4 input). Sites:
+   `pedestrians.ts` figure/structure/sign, `urban-massing.ts` clutter/neon.
+   Fix: drop the redundant wrap.
+
+**Verification (differential, fresh seeds, WebGL2).** Pre-fix live build:
+both error classes, full GLSL captured. Fixed build (local `vite preview` and
+the deployed Pages build): 240 s with **zero** shader/TSL errors, every run
+reaches ready. Full local gate 124 files / 1004 tests.
+
+**Known environment caveat (sandbox, not game).** SwiftShader in this sandbox
+loses the WebGL context ~30–90 s after ready under load — the pre-fix live
+build fails identically, so full throttle→brake drive-throughs cannot finish
+here. "Reached ready + zero shader/TSL errors" is the achievable
+shader-level verdict; `e2e/full-error-probe.cjs` is the fast regression check
+for future phases.
+
+**Noted, not fixed (pre-existing, harmless).** Console _warning_
+`AttributeNode: Vertex attribute "uv" not found on geometry` — the scanned
+`fir_tree_01` trunk material samples `uv` on a geometry that carries only
+position+normal (TSL falls back to a constant). Present before this fix;
+follow-up candidate if trunk texture coverage ever matters.
+
+**Workspace hygiene (owner reminder 2026-11-10).** The 106 MB checkout +
+~123 MB shallow `.git` exceed the ~128 MB snapshot cap, which is what makes
+restore cycles drop `.git` repeatedly. Routine cleanup run: the e2e harness is
+committed to the repo (`e2e/`), so the local checkout is deleted after push
+and re-cloned at session start (WORKFLOW.md rule 3). Only the small
+irreplaceable session files remain in `/home/user` (`.github-auth/`,
+`WORKFLOW.md`, `.gitconfig`, small helper scripts).
+
+**Next.** Phase 12.4 (graphics pass) is authorized and unblocked — owner's
+own visual check remains after the next phase lands. After Phase 12:
+11.0c Bridson (k=30, ±20 % density) → 11.0d WebGPU compute (≤ 1 cm) →
+11.2 terrain roads → 11.3 composition → 11.4 urban → 11.5 efficiency.

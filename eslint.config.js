@@ -7,7 +7,14 @@ export default tseslint.config(
     // `public/` holds assets and generated files, not source: the vendored Basis transcoder is
     // copied there at build time by `scripts/copy-decoders.mjs`, and linting a minified WebAssembly
     // loader is noise rather than a check.
-    ignores: ['node_modules/**', 'dist/**', 'coverage/**', 'test-results/**', 'public/**'],
+    ignores: [
+      'node_modules/**',
+      'dist/**',
+      'coverage/**',
+      'test-results/**',
+      'public/**',
+      'e2e/**', // self-contained Playwright harness; own toolchain, not part of the app gate
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
