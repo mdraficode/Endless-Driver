@@ -4025,21 +4025,23 @@ for future phases.
 position+normal (TSL falls back to a constant). Present before this fix;
 follow-up candidate if trunk texture coverage ever matters.
 
-**Workspace hygiene (owner reminders 2026-11-10/11).** The workspace kept
-hitting the ~128 MB snapshot cap because the worktree carried
-`source-archives/hero-car-candidate-neutral-screen.zip` (76 MB) — the
-owner-supplied hero-car build input that lives in git by the owner's
-direction (ADR-0008, `scripts/build-hero-car.mjs` depends on it). It must
-stay in the repo but never in the local worktree: the e2e harness is
-committed (`e2e/`), the zip is worktree-deleted (recover via
-`git checkout -- source-archives/` when a hero-car rebuild is needed),
-`node_modules`/`dist` are snapshot-excluded scratch, and the user-level
-`/home/user/e2e` scratch folder is gone. Steady state: worktree ≈ 58 MB
-(`public/assets` is 51 MB of it — the verified 29-asset set), `/home/user`
-total ≈ 58 MB of the ~128 MB cap (~45 %). The 123 MB shallow `.git` still
-cannot fit alongside it, so restore cycles may drop it — expected; the
-WORKFLOW.md rule-3 re-attach (plus the new routine-cleanup bullet) is the
-recovery, and it now removes the zip again immediately after re-attaching.
+**Workspace hygiene (owner reminders 2026-11-10/11, resolved 2026-11-11).**
+The workspace kept hitting the ~128 MB snapshot cap; three fixes, in order:
+(1) the 76 MB `source-archives/hero-car-candidate-neutral-screen.zip`
+(owner-supplied hero-car build input — stays in the repo per ADR-0008,
+NEVER delete from git; `git checkout -- source-archives/` restores it only
+when a hero-car rebuild is needed) was sitting in the local worktree — it
+is now worktree-deleted after every clone/re-attach (routine cleanup);
+(2) the user-level `/home/user/e2e` scratch folder is gone — the harness is
+committed under `e2e/` in the repo; (3) the owner confirmed the checkout
+itself is not durable either — per WORKFLOW.md rule 2 the workspace stays
+near-empty (~33 KB), so the checkout is strictly a per-session cache:
+shallow-clone at session start, and at session end (push verified, CI
+green) `rm -rf /home/user/endless-driver`. A working session temporarily
+holds the worktree (≈ 58 MB, of which `public/assets` is 51 MB — the
+verified 29-asset set) plus the shallow `.git` (≈ 123 MB, which routinely
+does not fit the snapshot and is re-attached per rule 3 when dropped
+mid-session). Steady state: `/home/user` ≈ 33 KB.
 
 **Next.** Phase 12.4 (graphics pass) is authorized and unblocked — owner's
 own visual check remains after the next phase lands. After Phase 12:
