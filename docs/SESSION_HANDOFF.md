@@ -4025,13 +4025,20 @@ for future phases.
 position+normal (TSL falls back to a constant). Present before this fix;
 follow-up candidate if trunk texture coverage ever matters.
 
-**Workspace hygiene (owner reminder 2026-11-10).** The 106 MB checkout +
-~123 MB shallow `.git` exceed the ~128 MB snapshot cap, which is what makes
-restore cycles drop `.git` repeatedly. Routine cleanup run: the e2e harness is
-committed to the repo (`e2e/`), so the local checkout is deleted after push
-and re-cloned at session start (WORKFLOW.md rule 3). Only the small
-irreplaceable session files remain in `/home/user` (`.github-auth/`,
-`WORKFLOW.md`, `.gitconfig`, small helper scripts).
+**Workspace hygiene (owner reminders 2026-11-10/11).** The workspace kept
+hitting the ~128 MB snapshot cap because the worktree carried
+`source-archives/hero-car-candidate-neutral-screen.zip` (76 MB) — the
+owner-supplied hero-car build input that lives in git by the owner's
+direction (ADR-0008, `scripts/build-hero-car.mjs` depends on it). It must
+stay in the repo but never in the local worktree: the e2e harness is
+committed (`e2e/`), the zip is worktree-deleted (recover via
+`git checkout -- source-archives/` when a hero-car rebuild is needed),
+`node_modules`/`dist` are snapshot-excluded scratch, and the user-level
+`/home/user/e2e` scratch folder is gone. Steady state: worktree ≈ 30 MB,
+`/home/user` total ≈ 31 MB of the cap. The 123 MB shallow `.git` still
+cannot fit the snapshot, so restore cycles may drop it — expected; the
+WORKFLOW.md rule-3 re-attach (plus the new routine-cleanup bullet) is the
+recovery, and it now removes the zip again immediately after re-attaching.
 
 **Next.** Phase 12.4 (graphics pass) is authorized and unblocked — owner's
 own visual check remains after the next phase lands. After Phase 12:
