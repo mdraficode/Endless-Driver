@@ -4034,9 +4034,10 @@ stay in the repo but never in the local worktree: the e2e harness is
 committed (`e2e/`), the zip is worktree-deleted (recover via
 `git checkout -- source-archives/` when a hero-car rebuild is needed),
 `node_modules`/`dist` are snapshot-excluded scratch, and the user-level
-`/home/user/e2e` scratch folder is gone. Steady state: worktree ≈ 30 MB,
-`/home/user` total ≈ 31 MB of the cap. The 123 MB shallow `.git` still
-cannot fit the snapshot, so restore cycles may drop it — expected; the
+`/home/user/e2e` scratch folder is gone. Steady state: worktree ≈ 58 MB
+(`public/assets` is 51 MB of it — the verified 29-asset set), `/home/user`
+total ≈ 58 MB of the ~128 MB cap (~45 %). The 123 MB shallow `.git` still
+cannot fit alongside it, so restore cycles may drop it — expected; the
 WORKFLOW.md rule-3 re-attach (plus the new routine-cleanup bullet) is the
 recovery, and it now removes the zip again immediately after re-attaching.
 
