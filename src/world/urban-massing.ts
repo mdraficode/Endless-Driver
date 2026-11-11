@@ -886,7 +886,8 @@ export class MassingCityWorld {
               clearcoat: 0.05,
               clearcoatRoughness: 0.5,
             });
-            m.colorNode = vec4(vertexColor(), 1);
+            // vertexColor() is already vec4 in TSL — wrapping it in vec4(…, 1) makes a 5-component join.
+            m.colorNode = vertexColor();
             return m;
           })(),
           this.#materials,
@@ -906,7 +907,8 @@ export class MassingCityWorld {
             const m = new MeshBasicNodeMaterial();
             m.name = `massing-neon-signs-${spec.regionId}`;
             m.toneMapped = false;
-            m.colorNode = vec4(vertexColor().mul(nightGain).mul(1.8), 1);
+            // vertexColor() is already vec4 in TSL — wrapping it in vec4(…, 1) makes a 5-component join.
+            m.colorNode = vertexColor().mul(nightGain).mul(1.8);
             return m;
           })(),
           this.#materials,

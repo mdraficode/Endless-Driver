@@ -42,7 +42,6 @@ import {
   sin,
   uniform,
   vec3,
-  vec4,
   vertexColor,
 } from 'three/tsl';
 import {
@@ -573,10 +572,9 @@ export class PedestrianWorld {
     this.#figureMaterial.name = 'pedestrian-figure-shared';
     this.#figureMaterial.roughness = 0.85;
     this.#figureMaterial.metalness = 0.02;
-    this.#figureMaterial.colorNode = vec4(
-      vertexColor().mul(instancedBufferAttribute(colorAttr, 'vec3')),
-      1,
-    );
+    // vertexColor() is already vec4 in TSL — wrapping it in vec4(x, 1) makes a 5-component join,
+    // which fails TSL's param-count validation on every program compile.
+    this.#figureMaterial.colorNode = vertexColor().mul(instancedBufferAttribute(colorAttr, 'vec3'));
     this.#figureMaterial.positionNode = buildWalkPositionNode(
       instancedDynamicBufferAttribute(phaseAttr, 'float'),
     );
@@ -585,12 +583,14 @@ export class PedestrianWorld {
     this.#structureMaterial.name = 'pedestrian-structure-shared';
     this.#structureMaterial.roughness = 0.8;
     this.#structureMaterial.metalness = 0.15;
-    this.#structureMaterial.colorNode = vec4(vertexColor(), 1);
+    // vertexColor() is already vec4 in TSL — do not wrap it in another vec4(…, 1) (5-component join).
+    this.#structureMaterial.colorNode = vertexColor();
 
     this.#signMaterial = new MeshBasicNodeMaterial();
     this.#signMaterial.name = 'pedestrian-sign-shared';
     this.#signMaterial.toneMapped = false;
-    this.#signMaterial.colorNode = vec4(vertexColor().mul(this.#nightGain).mul(1.5), 1);
+    // vertexColor() is already vec4 in TSL — do not wrap it in another vec4(…, 1) (5-component join).
+    this.#signMaterial.colorNode = vertexColor().mul(this.#nightGain).mul(1.5);
 
     this.#figureMesh = new InstancedMesh(
       this.#figureGeometry,

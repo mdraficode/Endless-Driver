@@ -1263,6 +1263,18 @@ function createLightMaterial(
 // vertex node: the storage-driven instance transform (with the matrix fallback)
 // ---------------------------------------------------------------------------
 
+/**
+ * TSL node names become GLSL identifiers on the WebGL2 backend: dashes and dots
+ * are illegal there (they compile fine in WGSL), so the name must be a plain
+ * `[a-zA-Z][a-zA-Z0-9_]*` identifier or every traffic vehicle's vertex shader
+ * fails to compile and the fleet never renders on WebGL2 devices.
+ */
+export function toGlslIdentifier(name: string): string {
+  const camel = name.replace(/[-.\s]+([a-zA-Z0-9])/g, (_, c: string) => c.toUpperCase());
+  const cleaned = camel.replace(/[^a-zA-Z0-9_]/g, '');
+  return /^[0-9]/.test(cleaned) ? `_${cleaned}` : cleaned || 'node';
+}
+
 function createTrafficVertexNode(
   stateB: StorageInstancedBufferAttribute,
   stateC: StorageInstancedBufferAttribute,
@@ -1295,7 +1307,7 @@ function createTrafficVertexNode(
       cameraViewMatrix.mul(vec4(positionWorld, float(1))),
     );
     return select(useStorage.greaterThan(float(0.5)), storagePosition, matrixPosition);
-  })().setName(`GpuTraffic.${name}`);
+  })().setName(toGlslIdentifier(`GpuTraffic.${name}`));
 }
 
 // ---------------------------------------------------------------------------
