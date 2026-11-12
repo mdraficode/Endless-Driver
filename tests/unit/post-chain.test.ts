@@ -33,6 +33,7 @@ const BARE: RenderConfig = {
     // be applied — otherwise `resolvePostEffects(BARE)` would silently depend on the tier table.
     depthOfField: { ...RENDER_CONFIG.postProcessing.depthOfField, enabled: false },
     lut: { ...RENDER_CONFIG.postProcessing.lut, enabled: false },
+    contrast: { ...RENDER_CONFIG.postProcessing.contrast, enabled: false },
     // The two effects that need motion vectors. `BARE` is a configuration with nothing in the HUD's effect
     // row, so it has to switch off the temporal resolve as well — and with it the velocity attachment, which
     // is why the bare case still asks for no extra render targets at all.
@@ -69,17 +70,21 @@ describe('post-effect selection and order', () => {
       grade: { ...BARE.postProcessing.grade, enabled: true },
       bloom: { ...BARE.postProcessing.bloom, enabled: true },
       ambientOcclusion: { ...BARE.postProcessing.ambientOcclusion, enabled: true },
+      contrast: { ...BARE.postProcessing.contrast, enabled: true },
       chromaticAberration: { ...BARE.postProcessing.chromaticAberration, enabled: true },
       sharpen: { ...BARE.postProcessing.sharpen, enabled: true },
       filmGrain: { ...BARE.postProcessing.filmGrain, enabled: true },
       vignette: { ...BARE.postProcessing.vignette, enabled: true },
     });
 
+    // The LUT is off in BARE, so the trim sits where the LUT would have been: after the spatial
+    // resolve, before the lens effects.
     expect(resolvePostEffects(all)).toEqual([
       'ao',
       'grade',
       'bloom',
       'smaa',
+      'contrast',
       'chromaticAberration',
       'sharpen',
       'filmGrain',

@@ -4047,3 +4047,83 @@ mid-session). Steady state: `/home/user` ≈ 33 KB.
 own visual check remains after the next phase lands. After Phase 12:
 11.0c Bridson (k=30, ±20 % density) → 11.0d WebGPU compute (≤ 1 cm) →
 11.2 terrain roads → 11.3 composition → 11.4 urban → 11.5 efficiency.
+
+## Phase 12.4 — graphics pass (in progress)
+
+**Status (2026-11-11):** 12.4 is authorized and unblocked. Two increments
+landed: **12.4a** (the deterministic baseline + guards) and **12.4b** (the
+tonemap/exposure + AO polish). Both are pushable-green; the pass is NOT
+visually accepted — the contrast values are a taste move that needs the
+owner's device A/B (the established acceptance gate), and the remaining
+12.4 items (facade/road/terrain material PBR, urban-night emissive
+variety + light-pool hygiene, headlight/taillight quality) are not started.
+
+**12.4a — deterministic baseline + guards (no visual change).**
+
+- New `tests/unit/phase12-4-baseline.test.ts` pins a flat, serialisable
+  table of every look parameter _as resolved_ for each tier
+  (`applyTier(RENDER_CONFIG, tier)`) to
+  `tests/unit/fixtures/phase12-4-look.json`. Every later 12.4 change lands
+  as a reviewed diff against that fixture, so the pass's "measured
+  before/after" report is the fixture history, not memory. Regenerate with
+  `GENERATE_PHASE12_4_FIXTURE=1 npx vitest run tests/unit/phase12-4-baseline.test.ts`.
+- The no-fog and no-global-bloom guards are asserted at the _resolved_
+  configuration for every tier (fog nowhere in the serialised config; bloom
+  disabled in gameplay at C/B/A with `?bloom=1` the only path back on), and
+  SSR + occlusion stay ON where the tier contract pays for them (SSR on all
+  three but runs only where a wet surface advertises; SSAO on B; SSGI
+  replaces — not stacks — SSAO on A). The engine never creates fog either
+  (`SceneManager.fogMode` is `'off'` by construction).
+
+**12.4b — tonemap/exposure + AO polish.**
+
+- **New display-referred contrast trim** (`ContrastConfig`, the `contrast`
+  post effect). The problem it targets: AgX (default) is deliberately soft
+  and the archived look LUT was authored against ACES, so together they
+  lift the mid-tones and distant road paint / facade detail can read as
+  hazy. The fix is the 12.4 "distance visibility via exposure/contrast, NOT
+  fog" item — a display-space gain around a _dark_ midpoint
+  (`out = (in - m) * gain + m`, alpha preserved by construction: the
+  midpoint uniform carries 0 in its alpha slot and the gain 1, so
+  `out.a = (a - 0) * 1 + 0 = a`). The midpoint stays at 0.18 (sRGB) so the
+  shadow band where the road/car/guardrail live moves least.
+  - Shipped values (softest tier gets the most, sharpest the least, because
+    FXAA takes the most off): **C 1.06, B 1.04, A 1.02**, midpoint 0.18.
+  - Runs display-referred, _after_ tone mapping and the LUT and _before_
+    chromatic aberration/sharpen, so the lens effects read the trimmed
+    frame. One vec4 sub/mul/add; no new render target.
+  - **`?contrast=<n>`** is the device A/B: `?contrast=1` is the identity
+    ("is this too much?"), `?contrast=0` switches it off, out-of-range
+    clamps to [0.5, 1.5].
+  - The pure math is `contrastAroundMidpoint()` and is unit-tested (fixed
+    midpoint, identity at gain 1, monotone, alpha exact).
+- **AO parameter polish** (the "SSR/AO parameter polish on all tiers" item,
+  the SSAO half): baseline radius 0.42 → **0.5**, bias 0.025 → **0.02**,
+  intensity 0.85 → **0.9**. Rationale: window-panel recesses and sill gaps
+  are 0.3–1 m, so the old 0.42 m radius only occluded sub-0.5 m crevices and
+  under-grounded the facade panel grid. Bias dropped to compensate the old
+  small radius's self-occlusion; intensity up 0.05 for the same reason.
+  Affects B (SSAO) and the baseline; A is dormant here because SSGI
+  replaces SSAO on that tier. The SSR half of the item is untouched (it is
+  already tier-staggered and wet-mask-gated).
+- **Not changed, on purpose:** exposure baseline (0.72 day / 1.45× night)
+  and the LUT intensity — those are the two numbers the owner's device
+  should judge first, and I will not move a taste value blind.
+
+**What the sandbox can and cannot say (per AGENTS.md).** Everything above is
+deterministic-config + unit evidence: the gate is green and the resolved
+tables are pinned. The _look_ of the contrast trim and the AO change is a
+visual claim the sandbox cannot make. **Owner device pass needed** before
+12.4b is called done: load the build, and A/B with `?contrast=1` (off) vs
+default on a straight stretch into the distance — the question to answer is
+whether the lane paint and facade detail read sharper at range without the
+frame reading crunchy or veiled. Report the verdict with the build tag
+visible. If "too much," `?contrast=` is the dial, or I retune the per-tier
+gains.
+
+**Next (still 12.4, in scope, not started):** facade/road/terrain material
+PBR quality (the rural `aohara-asphalt` is a flat albedo/roughness with no
+surface-detail node, unlike the urban asphalt and facades); urban-night
+emissive variety + light-pool hygiene; headlight/taillight quality. Each
+lands as implement → deterministic test → full check → push → report, and
+re-extends the 12.4a fixture.

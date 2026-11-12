@@ -4,8 +4,10 @@
 **Status:** 12.1 (driving feel + in-game tuning) shipped `46e8a07`; 12.2 (living traffic: driver
 personality + player-obstacle braking) shipped 2026-11-10; 12.3 (visible damage) shipped
 `a573512`; the 12.2 WebGL2 shader-gate follow-up shipped `722a2a3` (Playwright user-level gate
-under `e2e/`); next: 12.4 graphics pass. Evasive lateral avoidance (12.2 follow-up) is the one
-deferred 12.2 sub-item.
+under `e2e/`); 12.4 (graphics pass) in progress — 12.4a baseline snapshot + guards and 12.4b
+contrast trim + AO polish landed (pending owner device A/B for the taste values), materials /
+night-lighting / lamp-quality items remain. Evasive lateral avoidance (12.2 follow-up) is the
+one deferred 12.2 sub-item.
 
 ## Boundary (recorded decision)
 

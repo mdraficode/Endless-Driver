@@ -1,0 +1,240 @@
+{
+  "phase": "12.4",
+  "note": "Resolved look per tier (applyTier over RENDER_CONFIG). Regenerate with GENERATE_PHASE12_4_FIXTURE=1.",
+  "baseline": {
+    "daylight": {
+      "exposureNight": 1.45,
+      "exposureDay": 1
+    }
+  },
+  "tiers": {
+    "C": {
+      "maxPixelRatio": 1,
+      "toneMapping": "agx",
+      "toneMappingExposure": 0.72,
+      "antialias": false,
+      "msaaSamples": 0,
+      "sunIntensity": 3.4,
+      "sunColor": 16773853,
+      "ambientIntensity": 0.25,
+      "ambientColor": 11059934,
+      "environmentIntensity": 0.5,
+      "environmentAsset": "hdri-ninomaru-teien-1k",
+      "environmentAsBackground": false,
+      "turbidity": 2.6,
+      "rayleigh": 1.6,
+      "clouds": false,
+      "shadowMapSize": 1024,
+      "shadowCascades": 1,
+      "shadowMaxFar": 140,
+      "antiAliasingMode": "fxaa",
+      "taa": {
+        "enabled": false,
+        "renderScale": 0.9,
+        "minScale": 0.6,
+        "maxScale": 1
+      },
+      "ambientOcclusion": {
+        "enabled": false,
+        "resolutionScale": 0.5,
+        "radius": 0.5,
+        "bias": 0.02,
+        "intensity": 0.9,
+        "samples": 16,
+        "blurEnabled": true
+      },
+      "ssgi": {
+        "enabled": false
+      },
+      "ssr": {
+        "enabled": true,
+        "resolutionScale": 0.35,
+        "quality": 0.16,
+        "maxDistanceMeters": 24,
+        "thicknessMeters": 0.17,
+        "intensity": 0.6
+      },
+      "bloomEnabled": false,
+      "godraysEnabled": false,
+      "contactShadowsEnabled": false,
+      "motionBlur": {
+        "enabled": false,
+        "intensity": 0.32
+      },
+      "lut": {
+        "enabled": true,
+        "intensity": 1,
+        "size": 17
+      },
+      "contrast": {
+        "enabled": true,
+        "contrast": 1.06,
+        "midpoint": 0.18
+      },
+      "gradeEnabled": true,
+      "depthOfFieldEnabled": false,
+      "sharpen": {
+        "sharpness": 1,
+        "denoise": true
+      },
+      "chromaticAberration": {
+        "enabled": false,
+        "strength": 0.12
+      },
+      "vignetteIntensity": 0.45,
+      "filmGrainEnabled": false
+    },
+    "B": {
+      "maxPixelRatio": 1.25,
+      "toneMapping": "agx",
+      "toneMappingExposure": 0.72,
+      "antialias": false,
+      "msaaSamples": 0,
+      "sunIntensity": 3.4,
+      "sunColor": 16773853,
+      "ambientIntensity": 0.25,
+      "ambientColor": 11059934,
+      "environmentIntensity": 0.5,
+      "environmentAsset": "hdri-ninomaru-teien-1k",
+      "environmentAsBackground": false,
+      "turbidity": 2.6,
+      "rayleigh": 1.6,
+      "clouds": false,
+      "shadowMapSize": 1024,
+      "shadowCascades": 2,
+      "shadowMaxFar": 220,
+      "antiAliasingMode": "smaa",
+      "taa": {
+        "enabled": false,
+        "renderScale": 1,
+        "minScale": 0.8,
+        "maxScale": 1
+      },
+      "ambientOcclusion": {
+        "enabled": true,
+        "resolutionScale": 0.5,
+        "radius": 0.5,
+        "bias": 0.02,
+        "intensity": 0.9,
+        "samples": 16,
+        "blurEnabled": true
+      },
+      "ssgi": {
+        "enabled": false
+      },
+      "ssr": {
+        "enabled": true,
+        "resolutionScale": 0.5,
+        "quality": 0.22,
+        "maxDistanceMeters": 36,
+        "thicknessMeters": 0.14,
+        "intensity": 0.68
+      },
+      "bloomEnabled": false,
+      "godraysEnabled": false,
+      "contactShadowsEnabled": false,
+      "motionBlur": {
+        "enabled": false,
+        "intensity": 0.32
+      },
+      "lut": {
+        "enabled": true,
+        "intensity": 1,
+        "size": 17
+      },
+      "contrast": {
+        "enabled": true,
+        "contrast": 1.04,
+        "midpoint": 0.18
+      },
+      "gradeEnabled": true,
+      "depthOfFieldEnabled": false,
+      "sharpen": {
+        "sharpness": 0.6,
+        "denoise": true
+      },
+      "chromaticAberration": {
+        "enabled": true,
+        "strength": 0.12
+      },
+      "vignetteIntensity": 0.3,
+      "filmGrainEnabled": false
+    },
+    "A": {
+      "maxPixelRatio": 2,
+      "toneMapping": "agx",
+      "toneMappingExposure": 0.72,
+      "antialias": false,
+      "msaaSamples": 0,
+      "sunIntensity": 3.4,
+      "sunColor": 16773853,
+      "ambientIntensity": 0.25,
+      "ambientColor": 11059934,
+      "environmentIntensity": 0.5,
+      "environmentAsset": "hdri-ninomaru-teien-1k",
+      "environmentAsBackground": false,
+      "turbidity": 2.6,
+      "rayleigh": 1.6,
+      "clouds": true,
+      "shadowMapSize": 4096,
+      "shadowCascades": 4,
+      "shadowMaxFar": 400,
+      "antiAliasingMode": "taa",
+      "taa": {
+        "enabled": true,
+        "renderScale": 1,
+        "minScale": 0.75,
+        "maxScale": 1
+      },
+      "ambientOcclusion": {
+        "enabled": true,
+        "resolutionScale": 1,
+        "radius": 0.5,
+        "bias": 0.02,
+        "intensity": 0.9,
+        "samples": 24,
+        "blurEnabled": true
+      },
+      "ssgi": {
+        "enabled": true
+      },
+      "ssr": {
+        "enabled": true,
+        "resolutionScale": 0.7,
+        "quality": 0.34,
+        "maxDistanceMeters": 54,
+        "thicknessMeters": 0.1,
+        "intensity": 0.74
+      },
+      "bloomEnabled": false,
+      "godraysEnabled": true,
+      "contactShadowsEnabled": true,
+      "motionBlur": {
+        "enabled": true,
+        "intensity": 0.36
+      },
+      "lut": {
+        "enabled": true,
+        "intensity": 1,
+        "size": 17
+      },
+      "contrast": {
+        "enabled": true,
+        "contrast": 1.02,
+        "midpoint": 0.18
+      },
+      "gradeEnabled": true,
+      "depthOfFieldEnabled": false,
+      "sharpen": {
+        "sharpness": 0.6,
+        "denoise": true
+      },
+      "chromaticAberration": {
+        "enabled": true,
+        "strength": 0.12
+      },
+      "vignetteIntensity": 0.3,
+      "filmGrainEnabled": true
+    }
+  }
+}

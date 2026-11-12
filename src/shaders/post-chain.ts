@@ -20,6 +20,7 @@ import {
 import { RenderPipeline } from 'three/webgpu';
 import {
   Vector3,
+  Vector4,
   type Camera,
   type DirectionalLight,
   type PerspectiveCamera,
@@ -84,6 +85,7 @@ export type PostEffectName =
   | 'dof'
   | 'smaa'
   | 'lut'
+  | 'contrast'
   | 'chromaticAberration'
   | 'sharpen'
   | 'filmGrain'
@@ -138,6 +140,7 @@ const EFFECT_ORDER: readonly PostEffectName[] = [
   'dof',
   'smaa',
   'lut',
+  'contrast',
   'chromaticAberration',
   'sharpen',
   'filmGrain',
@@ -171,6 +174,9 @@ export function resolvePostEffects(
   if (postProcessing.motionBlur.enabled) enabled.add('motionBlur');
   if (postProcessing.godrays.enabled) enabled.add('godrays');
   if (postProcessing.lut.enabled) enabled.add('lut');
+  // The 12.4 trim rides on the look: it runs where the pixel is already 0-1, after the LUT, so it
+  // grades the graded frame rather than fighting it.
+  if (postProcessing.contrast.enabled) enabled.add('contrast');
 
   /**
    * The temporal resolve and the spatial ones are mutually exclusive, and the resolution of that conflict
@@ -344,6 +350,18 @@ export interface PostChainOptions {
    * the configuration asks for the effect.
    */
   readonly godraysLight?: DirectionalLight | null;
+}
+
+/**
+ * Per-channel contrast around a fixed midpoint — the 12.4 display-space trim.
+ *
+ * Exported and pure so the trim is tested in Node without a GPU: `buildPostChain` binds these
+ * same numbers as a vec4 (midpoint with a 0 alpha slot, gain with a 1 alpha), which is what makes
+ * the alpha channel pass through exactly — `out.a = (a - 0) * 1 + 0 = a` — by construction rather
+ * than by luck.
+ */
+export function contrastAroundMidpoint(value: number, contrast: number, midpoint: number): number {
+  return (value - midpoint) * contrast + midpoint;
 }
 
 /**
@@ -677,6 +695,22 @@ export function buildPostChain(options: PostChainOptions): PostChain {
     // is what makes it worth naming: there is no diagnostic between the wrong accessor and a black
     // screen. Verified in a browser: the same chain with `texture()` renders a black frame.
     color = asColor(lut3D(color, texture3D(lutTexture), lutSize, lutIntensity));
+  }
+  if (effects.includes('contrast')) {
+    const contrastConfig = config.postProcessing.contrast;
+    // A display-referred gain around a dark midpoint: `out = (in - m) * gain + m`, per channel.
+    // The midpoint uniform carries 0 in its alpha slot and the gain 1, so alpha survives the
+    // sub/mul/add exactly (see `contrastAroundMidpoint`), which the vec4 form makes structural.
+    const midpoint = uniform(
+      new Vector4(contrastConfig.midpoint, contrastConfig.midpoint, contrastConfig.midpoint, 0),
+    );
+    const gain = uniform(contrastConfig.contrast);
+    color = asColor(
+      color
+        .sub(midpoint)
+        .mul(vec4(gain, gain, gain, 1))
+        .add(midpoint),
+    );
   }
   if (effects.includes('chromaticAberration')) {
     const ca = config.postProcessing.chromaticAberration;

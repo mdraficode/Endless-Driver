@@ -136,6 +136,9 @@ export function applyTier(base: RenderConfig, tier: TierId): RenderConfig {
       ...base.postProcessing.chromaticAberration,
       ...postOverride?.chromaticAberration,
     },
+    // Nested like sharpen: a tier that only wants a different gain must not restate the midpoint,
+    // and a field it forgets must not silently become `undefined`.
+    contrast: { ...base.postProcessing.contrast, ...postOverride?.contrast },
     sharpen: { ...base.postProcessing.sharpen, ...postOverride?.sharpen },
     filmGrain: { ...base.postProcessing.filmGrain, ...postOverride?.filmGrain },
     vignette: { ...base.postProcessing.vignette, ...postOverride?.vignette },

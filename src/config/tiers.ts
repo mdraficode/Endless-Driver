@@ -16,6 +16,7 @@
 import type {
   AmbientOcclusionConfig,
   ContactShadowsConfig,
+  ContrastConfig,
   SsgiConfig,
   ScreenSpaceReflectionsConfig,
   MotionBlurConfig,
@@ -62,6 +63,7 @@ export interface TierRenderOverrides {
     Omit<
       PostProcessingConfig,
       | 'bloom'
+      | 'contrast'
       | 'ambientOcclusion'
       | 'chromaticAberration'
       | 'sharpen'
@@ -77,6 +79,7 @@ export interface TierRenderOverrides {
     >
   > & {
     readonly bloom?: Partial<BloomConfig>;
+    readonly contrast?: Partial<ContrastConfig>;
     readonly godrays?: Partial<GodraysConfig>;
     readonly contactShadows?: Partial<ContactShadowsConfig>;
     readonly ssgi?: Partial<SsgiConfig>;
@@ -168,6 +171,9 @@ const TIER_C: TierDefinition = {
         smoothing: 0.1,
       },
       bloom: { strength: 0.18, radius: 0.4 },
+      // FXAA is the tier's AA and it softens edges; a touch more of the 12.4 contrast trim than the
+      // baseline recovers the lane paint and facade detail the filter takes off. One scalar, free.
+      contrast: { contrast: 1.06 },
       // No depth of field. It costs four passes and five half-resolution targets — on the constrained
       // tier that budget buys resolution, and there is no version of this effect worth a softer image
       // on the devices the tier exists for. The look LUT stays: it is one texture fetch.
@@ -302,6 +308,10 @@ const TIER_A: TierDefinition = {
         thicknessMeters: 0.1,
         intensity: 0.74,
       },
+      // TAA plus the sharpen pass already deliver the crispest frame in the family, so the trim
+      // stays closest to identity here: the softest tier (C, FXAA) gets the most, the sharpest
+      // (A) the least.
+      contrast: { contrast: 1.02 },
       // Stronger high-speed shutter than B, still zero below the same gameplay speed threshold.
       motionBlur: { enabled: true, intensity: 0.36 },
       // A higher floor than the performance-first profiles. This remains an explicit, unmeasured opt-in;

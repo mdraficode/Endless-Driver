@@ -512,11 +512,35 @@ export interface ScreenSpaceReflectionsConfig {
   readonly intensity: number;
 }
 
+/**
+ * Display-referred contrast trim (Phase 12.4).
+ *
+ * A gentle gain around a dark midpoint, applied after the tone curve and the look LUT:
+ * `out = (in - midpoint) * contrast + midpoint`, per channel, alpha untouched by construction.
+ * It exists because AgX (the default curve) is deliberately soft and the archived look LUT was
+ * authored against ACES; together they lift the mid-tones enough that distant road paint and
+ * facade detail can read as hazy. This is the "distance visibility via exposure/contrast, NOT
+ * fog" half of the 12.4 daylight-atmosphere item: a contrast trim is a display-space trim, so it
+ * sharpens perceived depth without adding a single attenuation term the owner rejected.
+ *
+ * `contrast` 1 is the identity; >1 raises contrast. The midpoint stays dark (0.18 in sRGB) so
+ * the shadow band — where the road, the car and the guardrail live — moves least and the gain
+ * opens up the mids and highlights instead.
+ */
+export interface ContrastConfig {
+  readonly enabled: boolean;
+  /** Gain around the midpoint; 1 is the identity transform. */
+  readonly contrast: number;
+  /** Display-referred level (0-1, sRGB) that stays put while the gain is applied. */
+  readonly midpoint: number;
+}
+
 export interface PostProcessingConfig {
   readonly enabled: boolean;
   readonly antiAliasing: AntiAliasingMode;
   readonly grade: GradeConfig;
   readonly lut: LutConfig;
+  readonly contrast: ContrastConfig;
   readonly depthOfField: DepthOfFieldConfig;
   readonly motionBlur: MotionBlurConfig;
   readonly temporalAntiAliasing: TemporalAntiAliasingConfig;
@@ -651,6 +675,14 @@ export const RENDER_CONFIG: RenderConfig = {
       // Must match the shipped table. Chosen by measurement in `scripts/build-lut.mjs --analyse`.
       size: 17,
     },
+    // Phase 12.4: the trim that keeps distant detail readable under the soft AgX + ACES-authored
+    // LUT combination. 1.04 is a taste move, not a measurement: it must be A/B'd on the owner's
+    // device with `?contrast=1` (off-for-comparison) before the pass is called done.
+    contrast: {
+      enabled: true,
+      contrast: 1.04,
+      midpoint: 0.18,
+    },
     depthOfField: {
       // OFF for gameplay (owner report, 2026-10-16): a 12 m focus with full blur
       // beyond ~26 m made every distant road unreadable on the desktop tiers —
@@ -757,9 +789,14 @@ export const RENDER_CONFIG: RenderConfig = {
     ambientOcclusion: {
       enabled: true,
       resolutionScale: 0.5,
-      radius: 0.42,
-      bias: 0.025,
-      intensity: 0.85,
+      // Phase 12.4: 0.42 undersampled the facade scale — window-panel recesses and sill shadow
+      // gaps are 0.3-1 m, so half a metre radius is the first value that grounds the panel
+      // grid instead of only the sub-0.5 m crevices. Bias dropped accordingly (it compensated
+      // the small radius's self-occlusion) and intensity up 0.05 for the same reason: the
+      // occlusion term was being asked to do facade work at furniture scale.
+      radius: 0.5,
+      bias: 0.02,
+      intensity: 0.9,
       samples: 16,
       blurEnabled: true,
       blurSharpness: 2,
@@ -848,6 +885,26 @@ export function applyRenderSwitches(config: RenderConfig, search: string): Rende
     ...(dof === null || dof === '' ? {} : { enabled: dof !== '0' && dof !== 'false' }),
     ...(Number.isFinite(bokeh) ? { bokehScale: Math.max(0, bokeh) } : {}),
   };
+
+  /**
+   * `?contrast=<n>` trims the 12.4 display-space contrast for a device A/B without a rebuild:
+   * `?contrast=1` is the un-trimmed frame (the "is this too much?" comparison), `?contrast=0`
+   * switches the effect off outright. Out-of-range values are clamped to a taste band rather
+   * than passed through, so a typo cannot produce an unreadable frame.
+   */
+  const contrastParam = params.get('contrast');
+  const contrastValue = Number.parseFloat(contrastParam ?? '');
+  const contrast =
+    contrastParam === null || contrastParam === '' || !Number.isFinite(contrastValue)
+      ? config.postProcessing.contrast
+      : {
+          enabled: contrastValue > 0,
+          contrast:
+            contrastValue > 0
+              ? Math.min(1.5, Math.max(0.5, contrastValue))
+              : config.postProcessing.contrast.contrast,
+          midpoint: config.postProcessing.contrast.midpoint,
+        };
 
   const lutEnabled =
     lut === 'none' || lut === '0' || lut === 'false' ? false : config.postProcessing.lut.enabled;
@@ -1001,6 +1058,7 @@ export function applyRenderSwitches(config: RenderConfig, search: string): Rende
         ...(grain === null || grain === '' ? {} : { enabled: grain !== '0' && grain !== 'false' }),
       },
       lut: lutConfig,
+      contrast,
     },
   };
 }
