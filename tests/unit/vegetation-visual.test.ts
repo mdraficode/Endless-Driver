@@ -1,6 +1,8 @@
-import { DoubleSide, InstancedMesh } from 'three';
+import { BufferGeometry, DoubleSide, InstancedMesh } from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+
+import { buildShardGeometry, buildSpeciesGeometry } from '../../src/world/vegetation';
 
 import { VEGETATION_CONFIG } from '../../src/config/districts';
 import { GROUND_COVER_CONFIG, GROUND_COVER_STYLES } from '../../src/config/ground-cover';
@@ -196,6 +198,49 @@ describe('vegetation destruction visuals', { timeout: 30_000 }, () => {
     expect(afterShatter.vegetationShattered).toBe(1);
     expect(afterShatter.vegetationDebris).toBeGreaterThan(5); // shards + crown
     world.dispose();
+  });
+});
+
+/**
+ * The `toNonIndexed` warning spam caught by the human-perspective bug hunt (2026-10-25):
+ * vegetation builders de-indexed Icosahedron parts, but PolyhedronGeometry (and thus
+ * IcosahedronGeometry) is already un-indexed, so every broadleaf/sakura canopy, rock,
+ * and shatter shard logged a console warning — hundreds per world, visible to any player
+ * who opens devtools. The guard must stay: geometry output is identical (un-indexed,
+ * with baked colour + foliage mask), but no redundant de-index call may remain.
+ */
+describe('vegetation geometry de-index hygiene', () => {
+  let spuriousCalls = 0;
+  const originalToNonIndexed = BufferGeometry.prototype.toNonIndexed;
+
+  afterEach(() => {
+    BufferGeometry.prototype.toNonIndexed = originalToNonIndexed;
+    spuriousCalls = 0;
+  });
+
+  it('never calls toNonIndexed on an already-un-indexed geometry, and output stays un-indexed', () => {
+    BufferGeometry.prototype.toNonIndexed = function (this: BufferGeometry) {
+      if (this.index === null) spuriousCalls += 1;
+      return originalToNonIndexed.call(this);
+    };
+
+    for (const species of ['conifer', 'broadleaf', 'sakura', 'bamboo', 'rock'] as const) {
+      for (let variant = 0; variant < 3; variant += 1) {
+        const geometry = buildSpeciesGeometry(species, variant);
+        expect(geometry.index).toBeNull();
+        expect(geometry.getAttribute('color')).toBeDefined();
+        expect(geometry.getAttribute('foliageMask')).toBeDefined();
+        geometry.dispose();
+      }
+    }
+    for (const kind of ['wood', 'leaf', 'blossom'] as const) {
+      const geometry = buildShardGeometry(kind);
+      expect(geometry.index).toBeNull();
+      expect(geometry.getAttribute('color')).toBeDefined();
+      geometry.dispose();
+    }
+
+    expect(spuriousCalls).toBe(0);
   });
 });
 

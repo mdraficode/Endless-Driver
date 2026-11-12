@@ -122,7 +122,13 @@ function part(
   z: number,
   foliage = false,
 ): BufferGeometry {
-  const painted = paint(geometry.toNonIndexed(), hex, foliage);
+  // `paint` needs an un-indexed geometry (per-vertex colour + foliage mask), and
+  // `mergeGeometries` below requires every part to match. Cylinder/Cone arrive indexed,
+  // but Icosahedron (PolyhedronGeometry) is already un-indexed — calling `toNonIndexed`
+  // on it is a no-op that logs a warning per vertex cloud, and vegetation is built for
+  // every tree/rock in the world. So only de-index when there is actually an index.
+  const nonIndexed = geometry.index === null ? geometry : geometry.toNonIndexed();
+  const painted = paint(nonIndexed, hex, foliage);
   painted.translate(x, y, z);
   return painted;
 }
@@ -194,7 +200,8 @@ export function buildSpeciesGeometry(species: VegetationSpecies, variant: number
       return mergeGeometries(parts)!;
     }
     case 'rock': {
-      const geometry = new IcosahedronGeometry(1.15, 0).toNonIndexed();
+      // Icosahedron (PolyhedronGeometry) is already un-indexed — no toNonIndexed needed.
+      const geometry = new IcosahedronGeometry(1.15, 0);
       const positions = geometry.getAttribute('position');
       for (let index = 0; index < positions.count; index += 1) {
         const jitter = 0.78 + 0.45 * hash01(index, variant, 97);
@@ -275,11 +282,8 @@ export function buildShardGeometry(kind: ShardKind): BufferGeometry {
   if (kind === 'wood') {
     return paint(new CylinderGeometry(0.05, 0.09, 0.85, 4).toNonIndexed(), 0x77543a);
   }
-  return paint(
-    new IcosahedronGeometry(0.42, 0).toNonIndexed(),
-    kind === 'leaf' ? 0x3a6b35 : 0xe8a7bf,
-    true,
-  );
+  // Icosahedron (PolyhedronGeometry) is already un-indexed.
+  return paint(new IcosahedronGeometry(0.42, 0), kind === 'leaf' ? 0x3a6b35 : 0xe8a7bf, true);
 }
 
 const UP = new Vector3(0, 1, 0);

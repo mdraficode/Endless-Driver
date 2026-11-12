@@ -4146,3 +4146,84 @@ gains.
   only surface still on two-octave procedural detail is the facade kit.
   Each remaining item lands as implement → deterministic test → full check
   → push → report.
+
+## Human-perspective bug-hunting player (2026-11-12)
+
+The owner asked for a player that drives the game exactly like a human and
+does the visual checks a human does by looking, then to fix what it reports.
+
+**The tool: `e2e/human-player.mjs`.** Plays with the keyboard/mouse the way
+a person does (throttle, corner, camera toggle `C`, handbrake `Space`,
+reset `R`, pause `Esc`, car-model swap), and pairs every action with the
+checks a person actually performs:
+
+- _Is it black / a flat colour?_ — per-screenshot mean luminance + variance
+  (pngjs pixel analysis of real screenshots).
+- _Is it frozen?_ — the diagnostics `totalFrames` counter advancing, plus a
+  perceptual frame-diff while moving.
+- _Any missing textures?_ — magenta-pixel fraction.
+- _Does the speedometer read a number?_ — HUD text scan for `NaN`/
+  `undefined`/`Infinity`.
+- _Did the throttle / brake / steer work?_ — live speed + distance from the
+  `window.__ENDLESS_DRIVER__` diagnostics (via `?debug=1`).
+- _Is it night when I asked for night?_ — `isNight` / `weather` / `fogMode`
+  (the no-fog invariant).
+- _Any code erroring while I play?_ — console, page, and shader errors.
+- _Did the car swap freeze the view?_ — the owner's reported regression path.
+
+Ground truth comes from the `?debug=1` handle; every finding is backed by a
+number **and** a picture. Scenarios (one fresh page each, to stay inside the
+software renderer's window): `core`, `day` (`time=12`), `night` (`time=22`),
+`rain`, `carswap`, `tierB`, `spawn`. Outcomes are classified `PASS` / `FAIL`
+(real finding) / `ENV-FAIL` (sandbox). A run that booted but produced zero
+observable evidence is `ENV-FAIL`, never a blind `PASS`. Exit 0/1/2.
+
+**Environment reality (recorded, per the standing sandbox caveat):** this
+sandbox is 1.9 GiB RAM / 2 CPU / no GPU, so the game renders with
+SwiftShader. Boot takes ~4 min (shader pre-compile), the page can lose its
+device under memory pressure, and the main thread is pinned long enough that
+in-page `evaluate` reads time out — the player then reads telemetry from the
+`?debug=1` overlay in the screenshots. A full drive on the owner's device /
+a GPU is the authoritative visual acceptance; the sandbox asserts
+correctness, never frame rate (AGENTS.md).
+
+**What the first run found and fixed:**
+
+- **Real code bug — `toNonIndexed` warning spam (fixed).** Every broadleaf /
+  sakura canopy, rock, and shatter shard de-indexed an `IcosahedronGeometry`,
+  but PolyhedronGeometry (and thus Icosahedron) is _already_ un-indexed, so
+  each part logged `THREE.BufferGeometry.toNonIndexed(): BufferGeometry is
+already non-indexed.` — the first sandbox boot dumped 40+ of them to the
+  console, and vegetation is built for every tree/rock in the world. Fixed in
+  `src/world/vegetation.ts`: the `part()` helper now de-indexes only when an
+  index exists, and the two direct Icosahedron calls (rock, shard) drop the
+  redundant call. Output geometry is byte-identical (un-indexed, with baked
+  colour + foliage mask). Verified three ways: (1) a new unit test
+  (`tests/unit/vegetation-visual.test.ts`) patches `toNonIndexed` to count
+  spurious calls and asserts zero across every species/variant/shard, with
+  the geometry still un-indexed; (2) the pre-fix sandbox boot logged 40+ of
+  the warnings, the post-fix boot logged **zero console warnings at all**;
+  (3) full `npm run check` green (125 files / 1017 tests).
+- **Environmental findings (reported, not game defects):** device loss under
+  memory pressure + a 3-program shader-link cascade of that loss (the
+  mid-compile programs fail to link; the engine's designed recovery keeps the
+  frame running), a physics-stall counter climbing under 100 ms+ frames, and
+  the ~4 min boot with the loading bar parked at "99%" during the final
+  streaming/compile. The player tags these `environmental`, and a shader
+  error with _no_ preceding device loss is what it flags as a genuine defect.
+
+**Confirmed correct by the run:** the game boots and is genuinely drivable —
+the captured telemetry shows 111.3 km/h in 3rd gear, 4/4 wheels on ground,
+the scene fully built (6,648,358 triangles, 121/121 terrain chunks, 701
+scene objects, 313 programs), camera toggle, handbrake, reset, and the pause
+menu all working, with no black / flat / magenta frames and zero console
+warnings on the fixed build. The default start time is night (23:30 at Home
+City), which is why `day`/`night` pin `?time=` explicitly.
+
+**Still open:** the remaining Phase 12.4 taste items (light-pool hygiene,
+headlight/taillight quality, facade micro-detail octave) and the 12.4b
+owner-device A/B — unchanged by this work. Re-run the player on a real
+device/GPU for authoritative visual acceptance:
+`cd e2e && npm install && npx playwright install chromium && node
+human-player.mjs --scenarios core,day,night,rain,carswap --base-url
+<device or local preview>`.
