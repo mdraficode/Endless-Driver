@@ -1361,11 +1361,65 @@ function createWindowMaterial(
   return material;
 }
 
+/**
+ * Phase 12.4: the city's window-light temperatures. The two Phase 8.3d tones survive as the
+ * anchors — `amber` is the old 'warm', `cool` the old 'cool' — and `warmWhite`/`neutral` fill
+ * in the middle of a real night city, where 2200 K sodium, 2700–3000 K LEDs, 4000 K office
+ * panels and 5000 K+ cool work all share the same blocks. Two tones read as a colour split;
+ * four read as occupancy.
+ */
+export type WindowLightTone = 'amber' | 'warmWhite' | 'neutral' | 'cool';
+
+/** Emissive colours per tone, in the display range the `toneMapped: false` materials use. */
+export const WINDOW_TONE_COLORS: Record<WindowLightTone, readonly [number, number, number]> = {
+  // The 8.3d warm, unchanged: a building that was amber stays amber.
+  amber: [1.0, 0.56, 0.25],
+  warmWhite: [1.0, 0.8, 0.55],
+  neutral: [0.93, 0.92, 0.88],
+  // The 8.3d cool, unchanged.
+  cool: [0.43, 0.66, 1.0],
+};
+
+/** Mesh names per tone; the 8.3d names survive on their anchors so old references keep working. */
+const WINDOW_TONE_MESH_NAMES: Record<WindowLightTone, string> = {
+  amber: 'aohara-warm-windows',
+  warmWhite: 'aohara-warmwhite-windows',
+  neutral: 'aohara-neutral-windows',
+  cool: 'aohara-cool-windows',
+};
+
+const WINDOW_TONE_MATERIAL_NAMES: Record<WindowLightTone, string> = {
+  amber: 'aohara-warm-window-light',
+  warmWhite: 'aohara-warmwhite-window-light',
+  neutral: 'aohara-neutral-window-light',
+  cool: 'aohara-cool-window-light',
+};
+
+/**
+ * Share of windows that re-roll away from their building's base tone onto the full city
+ * palette. Kept below the base-tone share so a block still reads with one dominant character
+ * ("this one glows warm, that one glows cool" — the 8.3d look) while individual floors mix.
+ */
+const WINDOW_TONE_REROLL_CHANCE = 0.3;
+
+/**
+ * Weighted city-wide tone pick: amber is the most common night light (sodium + warm LED),
+ * warm white and neutral are the office/LED majority, cool the minority. Deterministic in the
+ * hash, so a given window has the same tone on every build of the same world.
+ */
+export function pickCityWindowTone(hash: number): WindowLightTone {
+  if (hash < 0.45) return 'amber';
+  if (hash < 0.7) return 'warmWhite';
+  if (hash < 0.85) return 'neutral';
+  return 'cool';
+}
+
 interface WindowCandidate extends TransformSpec {
   readonly rank: number;
   /** Phase 8.3d: per-building occupancy score; lit windows are the highest-scored within budget. */
   readonly score: number;
-  readonly tone: 'warm' | 'cool';
+  /** Phase 12.4: the resolved light temperature (building base tone or a city-palette re-roll). */
+  readonly tone: WindowLightTone;
   /** Street-facing windows; selected first when the tier facade budget is tighter than the pool. */
   readonly priority?: boolean;
 }
@@ -1381,9 +1435,23 @@ function buildWindowCandidates(
     yaw: number,
     rank: number,
     score: number,
-    tone: 'warm' | 'cool',
+    baseTone: 'warm' | 'cool',
     priority: boolean,
   ): void => {
+    // Phase 12.4: resolve this window's light temperature. The building's base tone stays the
+    // dominant character (70%); a minority of windows re-roll onto the weighted city palette so
+    // floors mix like a lived-in block. The seed is the window's own build position (10 cm
+    // cells), computed before any floating-origin rebase, so the assignment is identical on
+    // every build of the same world.
+    const px = Math.round(position[0] * 10);
+    const py = Math.round(position[1] * 10);
+    const pz = Math.round(position[2] * 10);
+    const tone: WindowLightTone =
+      stableUnit(px, pz, py + 1013) < WINDOW_TONE_REROLL_CHANCE
+        ? pickCityWindowTone(stableUnit(px, py, pz + 2027))
+        : baseTone === 'warm'
+          ? 'amber'
+          : 'cool';
     candidates.push({
       x: position[0],
       y: position[1],
@@ -1769,24 +1837,29 @@ function createWindowInstances(
       x: window.x + Math.cos(window.yaw ?? 0) * 0.075,
       z: window.z - Math.sin(window.yaw ?? 0) * 0.075,
     }));
-  const warm = litWindows.filter((window) => window.tone === 'warm');
-  const cool = litWindows.filter((window) => window.tone === 'cool');
-  if (warm.length > 0) {
-    addInstancedBoxes(
-      root,
-      lightGeometry,
-      createWindowMaterial([1.0, 0.56, 0.25], nightGain, 'aohara-warm-window-light'),
-      litTransforms(warm),
-      'aohara-warm-windows',
-    );
+  // Phase 12.4: batch the lit panes by tone. At most one instanced draw per tone per city,
+  // so the 8.3d two draws become at most four — negligible against the tier budgets.
+  const byTone: Record<WindowLightTone, WindowCandidate[]> = {
+    amber: [],
+    warmWhite: [],
+    neutral: [],
+    cool: [],
+  };
+  for (const window of litWindows) {
+    byTone[window.tone].push(window);
   }
-  if (cool.length > 0) {
+  for (const tone of ['amber', 'warmWhite', 'neutral', 'cool'] as const) {
+    const windows = byTone[tone];
+    if (windows.length === 0) {
+      continue;
+    }
+    const [r, g, b] = WINDOW_TONE_COLORS[tone];
     addInstancedBoxes(
       root,
       lightGeometry,
-      createWindowMaterial([0.43, 0.66, 1.0], nightGain, 'aohara-cool-window-light'),
-      litTransforms(cool),
-      'aohara-cool-windows',
+      createWindowMaterial([r, g, b], nightGain, WINDOW_TONE_MATERIAL_NAMES[tone]),
+      litTransforms(windows),
+      WINDOW_TONE_MESH_NAMES[tone],
     );
   }
   return { illuminatedWindows: litWindows.length, facadeWindows: staticWindows.length };

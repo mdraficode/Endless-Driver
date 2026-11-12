@@ -4121,9 +4121,28 @@ frame reading crunchy or veiled. Report the verdict with the build tag
 visible. If "too much," `?contrast=` is the dial, or I retune the per-tier
 gains.
 
-**Next (still 12.4, in scope, not started):** facade/road/terrain material
-PBR quality (the rural `aohara-asphalt` is a flat albedo/roughness with no
-surface-detail node, unlike the urban asphalt and facades); urban-night
-emissive variety + light-pool hygiene; headlight/taillight quality. Each
-lands as implement → deterministic test → full check → push → report, and
-re-extends the 12.4a fixture.
+**12.4c — urban-night emissive variety (windows).**
+
+- The lit-window glow was binary (8.3d: per-building 'warm' `[1.0, 0.56, 0.25]`
+  or 'cool' `[0.43, 0.66, 1.0]`), which reads as a colour split rather than
+  occupancy. Phase 12.4 expands it to four temperatures — `amber` (the old
+  warm, unchanged), `warmWhite` `[1.0, 0.8, 0.55]`, `neutral` `[0.93, 0.92,
+0.88]`, `cool` (the old cool, unchanged) — keeping the 8.3d per-building
+  base tone as the dominant character: 70% of a block's windows keep it,
+  30% re-roll onto the weighted city palette (amber .45 / warmWhite .25 /
+  neutral .15 / cool .15), seeded by the window's own 10 cm build position,
+  so it is identical on every build and stable under the origin rebase.
+  Batching is per-tone instanced: the 8.3d two draws become at most four
+  per city, and the batches partition the lit budget exactly.
+- Verified: `tests/unit/urban-night.test.ts` — anchor colours unchanged,
+  palette banding, all four tone meshes present in a tier-A build with
+  instance counts summing to `illuminatedWindows`, and byte-identical
+  instance matrices across two identical tier-B builds.
+- **Not started (still 12.4):** light-pool hygiene, headlight/taillight
+  quality, and the facade micro-detail octave. Note for the record: the
+  roads/terrain half of the "materials PBR" item is already covered — rural
+  `aohara-asphalt` and the terrain splats run the CC0-scanned albedo/normal/
+  ARM maps (plus a macro tint), so no flat-material gap remains there; the
+  only surface still on two-octave procedural detail is the facade kit.
+  Each remaining item lands as implement → deterministic test → full check
+  → push → report.

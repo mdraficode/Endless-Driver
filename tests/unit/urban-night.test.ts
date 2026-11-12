@@ -38,7 +38,11 @@ import {
 import { generateAoharaAlleyFacadePlacements } from '../../src/world/urban-alley-frontages';
 import { generateAoharaAlleyPropPlacements } from '../../src/world/urban-backstreets';
 import { generateAoharaStreetFurniturePlacements } from '../../src/world/urban-furniture';
-import { buildAoharaTowerSpecs } from '../../src/world/urban-night';
+import {
+  buildAoharaTowerSpecs,
+  pickCityWindowTone,
+  WINDOW_TONE_COLORS,
+} from '../../src/world/urban-night';
 import { topTowerVolume, towerVolumes } from '../../src/world/tower-volumes';
 import { createWorldTerrainSampler } from '../../src/world/world-terrain';
 import type { RoadNetwork } from '../../src/world/road-network';
@@ -1531,5 +1535,78 @@ describe('Aohara high-rise massing (Phase 8.4c)', () => {
       }
     }
     expect(tiered).toBeGreaterThanOrEqual(10);
+  });
+});
+
+describe('Phase 12.4: window-light temperature variety', () => {
+  const windowToneMeshNames = [
+    'aohara-warm-windows',
+    'aohara-warmwhite-windows',
+    'aohara-neutral-windows',
+    'aohara-cool-windows',
+  ] as const;
+
+  it('keeps the 8.3d anchor colours unchanged and adds the two middle temperatures', () => {
+    // The anchors a block was already glowing with must not move: a warm block stays warm.
+    expect(WINDOW_TONE_COLORS.amber).toEqual([1.0, 0.56, 0.25]);
+    expect(WINDOW_TONE_COLORS.cool).toEqual([0.43, 0.66, 1.0]);
+    // The new tones sit between the anchors in colour temperature: warm white is warmer than
+    // neutral (lower blue, higher red) and neutral is warmer than cool. Relative, not absolute,
+    // so a later look-dev retune of the exact values can't break the ordering claim.
+    const warmWhite = WINDOW_TONE_COLORS.warmWhite;
+    const neutral = WINDOW_TONE_COLORS.neutral;
+    expect(warmWhite[0]).toBeGreaterThan(0.9);
+    expect(warmWhite[0]).toBeGreaterThan(neutral[0]);
+    expect(warmWhite[2]).toBeLessThan(neutral[2]);
+    expect(neutral[0]).toBeGreaterThan(0.8);
+    expect(neutral[2]).toBeGreaterThan(0.8);
+    expect(neutral[0]).toBeGreaterThan(WINDOW_TONE_COLORS.cool[0]);
+    expect(neutral[2]).toBeLessThan(WINDOW_TONE_COLORS.cool[2]);
+  });
+
+  it('maps the city palette hash into weighted bands, amber heaviest', () => {
+    expect(pickCityWindowTone(0)).toBe('amber');
+    expect(pickCityWindowTone(0.44)).toBe('amber');
+    expect(pickCityWindowTone(0.5)).toBe('warmWhite');
+    expect(pickCityWindowTone(0.69)).toBe('warmWhite');
+    expect(pickCityWindowTone(0.8)).toBe('neutral');
+    expect(pickCityWindowTone(0.84)).toBe('neutral');
+    expect(pickCityWindowTone(0.9)).toBe('cool');
+    expect(pickCityWindowTone(0.999)).toBe('cool');
+  });
+
+  it('ships all four window tones as instanced batches that account for every lit pane', () => {
+    const city = new UrbanNightWorld('A');
+    let total = 0;
+    for (const name of windowToneMeshNames) {
+      const mesh = city.root.getObjectByName(name);
+      expect(mesh, name).toBeInstanceOf(InstancedMesh);
+      if (mesh instanceof InstancedMesh) {
+        total += mesh.count;
+      }
+    }
+    // The batches must partition the lit budget exactly — no pane lost, none double-drawn.
+    expect(total).toBe(city.getContentStats().illuminatedWindows);
+  });
+
+  it('is deterministic: two identical builds light the same panes with the same tones', () => {
+    const a = new UrbanNightWorld('B');
+    const b = new UrbanNightWorld('B');
+    for (const name of windowToneMeshNames) {
+      const ma = a.root.getObjectByName(name) as InstancedMesh | null;
+      const mb = b.root.getObjectByName(name) as InstancedMesh | null;
+      expect(!!ma, name).toBe(!!mb);
+      if (ma && mb) {
+        expect(ma.count).toBe(mb.count);
+        // The instance matrices pin both positions and tone assignment: identical builds must
+        // be identical down to the buffer bytes.
+        const arrA = ma.instanceMatrix.array;
+        const arrB = mb.instanceMatrix.array;
+        expect(arrA.length).toBe(arrB.length);
+        for (let i = 0; i < arrA.length; i += 1) {
+          expect(arrA[i]).toBeCloseTo(arrB[i]!, 12);
+        }
+      }
+    }
   });
 });
