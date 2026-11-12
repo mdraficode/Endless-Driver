@@ -80,6 +80,42 @@ export async function basisuAvailable() {
   return availability;
 }
 
+/** Rounds a dimension up to the multiple of four ETC1S/UASTC are specified in. */
+const ceilTo4 = (n) => Math.ceil(n / 4) * 4;
+
+/**
+ * ETC1S and UASTC are tile-compressed and the KTX2 spec wants the *original* image dimensions
+ * to be multiples of four; three.js warns on load otherwise ("ETC1S and UASTC textures should use
+ * multiple-of-four dimensions"), which is console noise on every boot of the app. Sources do not
+ * always comply (the hero car's grille texture arrives 987×268), so the non-compliant edge is
+ * edge-padded — a nearest-neighbour step of at most three pixels that duplicates the border —
+ * before the encoder sees the image.
+ */
+async function padToMultipleOfFour(texture) {
+  const size = texture.getSize();
+  if (size === null) {
+    return null;
+  }
+  const [sourceWidth, sourceHeight] = size;
+  const width = ceilTo4(sourceWidth);
+  const height = ceilTo4(sourceHeight);
+  if (width === sourceWidth && height === sourceHeight) {
+    return null;
+  }
+  const { default: sharp } = await import('sharp');
+  const buffer = texture.getImage();
+  const format = texture.getMimeType() === 'image/png' ? 'png' : 'jpeg';
+  const padded = await sharp(buffer, { format })
+    .resize({ width, height, fit: 'fill', kernel: 'nearest' })
+    .toBuffer();
+  texture.setImage(new Uint8Array(padded));
+  return {
+    name: texture.getName() || `texture-${texture.getId?.()}`,
+    from: `${sourceWidth}×${sourceHeight}`,
+    to: `${width}×${height}`,
+  };
+}
+
 /**
  * Encodes every texture in a document to KTX2, in place.
  *
@@ -103,8 +139,15 @@ export async function encodeKtx2(document, options) {
 
   const directory = await mkdtemp(join(tmpdir(), 'endless-driver-ktx2-'));
   let encoded = 0;
+  const padded = [];
   try {
     for (const [index, texture] of textures.entries()) {
+      // A non-compliant dimension would become a three.js console warning on every boot, so the
+      // border is padded before the encoder ever sees the image.
+      const pad = await padToMultipleOfFour(texture);
+      if (pad !== null) {
+        padded.push(pad);
+      }
       const image = texture.getImage();
       if (image === null) {
         continue;
@@ -160,5 +203,5 @@ export async function encodeKtx2(document, options) {
   if (encoded > 0) {
     document.createExtension(KHRTextureBasisu).setRequired(true);
   }
-  return { document, textures: encoded };
+  return { document, textures: encoded, padded };
 }

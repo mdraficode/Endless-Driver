@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+  <body>
+    <pre id="out">step0</pre>
+    <script src="/decoders/basis/basis_transcoder.js"></script>
+    <script>
+      const out = document.getElementById('out');
+      const log = (s) => {
+        out.textContent += '\n' + s;
+      };
+      async function main() {
+        try {
+          const M = await BASIS({});
+          M.initializeBasis();
+          const t0 = performance.now();
+          const ktx2 = new Uint8Array(await (await fetch('/probe-grille.ktx2')).arrayBuffer());
+          log('fetched ' + ktx2.length + ' bytes in ' + Math.round(performance.now() - t0) + 'ms');
+          const f = new M.KTX2File(ktx2);
+          if (!f.startTranscoding()) throw new Error('transcode start failed');
+          const i = f.getImageLevelInfo(0, 0, 0);
+          const n = f.getImageTranscodedSizeInBytes(0, 0, 0, 13);
+          const d = new Uint8Array(n);
+          f.transcodeImage(d, 0, 0, 0, 13, 0, -1, -1);
+          f.close();
+          f.delete();
+          // byte-exact raw export in base64 chunks
+          let b64 = '';
+          const CHUNK = 32766; // multiple of 3: no mid-stream btoa padding
+          for (let off = 0; off < d.length; off += CHUNK) {
+            b64 += btoa(String.fromCharCode.apply(null, d.subarray(off, off + CHUNK)));
+          }
+          let rSum = 0,
+            aSum = 0,
+            rMax = 0;
+          for (let k = 0; k < d.length; k += 4) {
+            rSum += d[k];
+            aSum += d[k + 3];
+            if (d[k] > rMax) rMax = d[k];
+          }
+          window.__PROBE_RESULT__ = {
+            width: i.origWidth,
+            height: i.origHeight,
+            bytes: n,
+            rawB64: b64,
+            rSum,
+            aSum,
+            rMax,
+          };
+          log(
+            `DECODED ${i.origWidth}x${i.origHeight} Rsum=${rSum} Asum=${aSum} Rmax=${rMax} b64len=${b64.length}`,
+          );
+          log('DONE');
+        } catch (e) {
+          log('ERROR: ' + e.message);
+        }
+      }
+      main();
+    </script>
+  </body>
+</html>

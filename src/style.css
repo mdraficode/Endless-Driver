@@ -2126,6 +2126,13 @@ body.touch-enabled .nitro-gauge {
   top: calc(max(0.8rem, env(safe-area-inset-top)) + 4.3rem);
 }
 
+/* On non-touch layouts the panel stays in the top row, where the in-game pause button
+   (`.pause-toggle`, 3.15rem, pinned to the same corner) would sit over its labels — the
+   title and status render clipped behind the button. Slide the panel left of the button. */
+body:not(.touch-enabled) .nitro-gauge {
+  right: calc(max(0.8rem, env(safe-area-inset-right)) + 3.15rem + 0.5rem);
+}
+
 .nitro-gauge-tank {
   width: 2rem;
   height: 3rem;

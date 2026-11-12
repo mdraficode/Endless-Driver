@@ -163,7 +163,7 @@
           "slot": "model",
           "path": "assets/models/hero-car-mmc-generic-sport-coupe.glb",
           "bytes": 2901168,
-          "sha256": "51d192c22df2e0e8fd95d927d33b92dae3f78c09d374fc6549aa247ff6a85312",
+          "sha256": "e2b0f9b01634ce90a9ee56ef0340984a409108990d583a85edd988908bd6a76c",
           "format": "glb",
           "triangles": 114070,
           "textures": 17

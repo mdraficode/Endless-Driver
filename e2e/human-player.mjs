@@ -226,7 +226,7 @@ const readDiag = (page) =>
 const HUD_BAD = /\bNaN\b|undefined|Infinity|\bnull\b|\bError\b|NaN\s*km\/h/i;
 const readHud = (page) =>
   page
-    .evaluate(() => {
+    .evaluate({ timeout: READ_TIMEOUT_MS }, () => {
       const texts = [];
       for (const el of document.querySelectorAll('body *')) {
         if (el.children.length > 0) continue; // leaf text nodes only
@@ -252,33 +252,55 @@ async function boot(page, scenario, ctx) {
       await sleep(15000);
       if (stopSampling.current) break;
       const text = await page
-        .evaluate(() => {
+        .evaluate({ timeout: 30_000 }, () => {
           const el = document.querySelector('#loading-screen');
           if (el === null) return 'no-loading-screen';
           if (el.hidden === true) return 'loading-hidden';
           return (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 120);
         })
-        .catch(() => 'page-dead');
+        .catch(() => 'page-dead'); // a timed-out sample still proves the page is alive-ish
       ctx.lines.push(`t=${round((Date.now() - t0) / 1000, 0)}s loading: ${text}`);
     }
   })();
+  // If the renderer process dies mid-boot (OOM on the 2 GB sandbox is common), a pending
+  // waitForFunction may not reject on its own and the boot phase would stall until it is
+  // killed by hand. Fail fast when the page is gone.
+  let pageGoneResolve;
+  const pageGone = new Promise((resolve) => (pageGoneResolve = resolve));
+  const pageGoneOnce = (kind) => {
+    page.removeListener('crash', pageGoneOnce);
+    page.removeListener('close', pageGoneOnce);
+    ctx.lines.push(`page ${kind} during boot`);
+    pageGoneResolve(kind);
+  };
+  page.on('crash', pageGoneOnce);
+  page.on('close', pageGoneOnce);
   let ready = false;
   try {
     // NOTE: waitForFunction(fn, arg, options) — the options object must be the THIRD
     // argument; passing it as the second makes Playwright treat it as the page arg and
     // fall back to the 30 s default timeout (bit us on the first run).
-    await page.waitForFunction(
-      () => {
-        const el = document.querySelector('#loading-screen');
-        return (el !== null && el.hidden === true) || window.__ENDLESS_DRIVER__ !== undefined;
-      },
-      null,
-      { timeout: BOOT_SECONDS * 1000, polling: 2000 },
-    );
+    const goneError = pageGone.then((kind) => {
+      throw new Error(`page ${kind} during boot`);
+    });
+    goneError.catch(() => {}); // harmless if it settles after the race already resolved
+    await Promise.race([
+      page.waitForFunction(
+        () => {
+          const el = document.querySelector('#loading-screen');
+          return (el !== null && el.hidden === true) || window.__ENDLESS_DRIVER__ !== undefined;
+        },
+        null,
+        { timeout: BOOT_SECONDS * 1000, polling: 2000 },
+      ),
+      goneError,
+    ]);
     ready = true;
   } catch {
     ready = false;
   }
+  page.removeListener('crash', pageGoneOnce);
+  page.removeListener('close', pageGoneOnce);
   stopSampling.current = true;
   await sampler;
   ctx.bootSeconds = round((Date.now() - t0) / 1000, 1);
@@ -306,6 +328,49 @@ async function snap(page, ctx, name) {
       `${name}: L=${analysis.meanLuminance} σ=${analysis.stdLuminance} mag=${analysis.magentaFraction}`,
     );
   return { buf, analysis };
+}
+
+/**
+ * The diagnostics overlay (auto-opened by `?debug=1`) sits on top of the scene, so a
+ * screenshot taken with it visible shows the report, not the game. `cleanSnap` hides it
+ * for one shot — the frame a person actually sees — then restores it, so the surrounding
+ * telemetry frames are unaffected. The overlay is a `?debug=1` affordance, not part of
+ * the game, so toggling it changes nothing about what is being tested. It also makes the
+ * freeze check honest: with the report on screen, its live numbers change even when the
+ * 3D scene is stuck, which would mask a frozen render.
+ */
+const overlayState = (page) =>
+  page
+    .evaluate(
+      () => {
+        const p = document.querySelector('.diagnostics-panel');
+        if (p === null) return 'absent';
+        return p.hidden === false ? 'visible' : 'hidden';
+      },
+      null,
+      { timeout: READ_TIMEOUT_MS },
+    )
+    .catch(() => 'unknown');
+
+async function setOverlay(page, wantVisible) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const state = await overlayState(page);
+    if (state === 'absent' || state === 'unknown') return state;
+    if ((state === 'visible') === wantVisible) return state;
+    await page.keyboard.press('F2');
+    await sleep(1500);
+  }
+  return await overlayState(page);
+}
+
+/** A clean-scene frame: overlay hidden for one shot, the picture a human player sees. */
+async function cleanSnap(page, ctx, name) {
+  const pre = await setOverlay(page, false);
+  if (pre === 'visible')
+    ctx.lines.push(`clean-${name}: overlay still visible after F2 (main-thread pinned?)`);
+  const shot = await snap(page, ctx, `clean-${name}`);
+  await setOverlay(page, true); // restore the telemetry overlay for the next frame
+  return shot;
 }
 
 /** The person's standing checks after any action. Returns hard-fail findings. */
@@ -395,13 +460,14 @@ function assertHud(ctx, hud, label) {
 }
 
 // --------------------------------------------------------------- the drives
-async function humanDrive(page, ctx, { throttleSeconds, steer, brake, handbrake, expect }) {
+async function humanDrive(page, ctx, { throttleSeconds, steer, brake, handbrake, expect, clean }) {
   // focus the canvas like a player clicking into the game
   await page.mouse.click(Math.round(VW / 2), Math.round(VH / 2));
   await sleep(300);
 
   const before = await readDiag(page);
   const shotBefore = await snap(page, ctx, 'drive-0');
+  if (clean) await cleanSnap(page, ctx, 'drive-0');
 
   // throttle
   if (throttleSeconds > 0) {
@@ -417,6 +483,7 @@ async function humanDrive(page, ctx, { throttleSeconds, steer, brake, handbrake,
   await sleep(1200);
   const afterThrottle = await readDiag(page);
   const shotAfterThrottle = await snap(page, ctx, 'drive-1');
+  if (clean) await cleanSnap(page, ctx, 'drive-1');
   assertLive(ctx, afterThrottle, 'after-throttle', expect);
   assertHud(ctx, await readHud(page), 'after-throttle');
 
@@ -477,6 +544,7 @@ async function humanDrive(page, ctx, { throttleSeconds, steer, brake, handbrake,
     await sleep(800);
     const afterBrake = await readDiag(page);
     await snap(page, ctx, 'drive-2-brake');
+    if (clean) await cleanSnap(page, ctx, 'drive-2-brake');
     assertLive(ctx, afterBrake, 'after-brake', expect);
     if (
       typeof afterBrake === 'object' &&
@@ -509,12 +577,13 @@ async function humanDrive(page, ctx, { throttleSeconds, steer, brake, handbrake,
   }
 }
 
-async function toggleCameraCheck(page, ctx, expect) {
+async function toggleCameraCheck(page, ctx, expect, clean) {
   const before = await readDiag(page);
   await page.keyboard.press('KeyC');
   await sleep(900);
   const mid = await readDiag(page);
   await snap(page, ctx, 'camera-mid');
+  if (clean) await cleanSnap(page, ctx, 'camera-cockpit');
   await page.keyboard.press('KeyC');
   await sleep(900);
   const after = await readDiag(page);
@@ -534,7 +603,7 @@ async function toggleCameraCheck(page, ctx, expect) {
   }
 }
 
-async function resetCarCheck(page, ctx, expect) {
+async function resetCarCheck(page, ctx, expect, clean) {
   const before = await readDiag(page);
   // drive a bit off-line first so the reset has something to fix
   await page.mouse.click(Math.round(VW / 2), Math.round(VH / 2));
@@ -545,6 +614,7 @@ async function resetCarCheck(page, ctx, expect) {
   await sleep(1500);
   const after = await readDiag(page);
   await snap(page, ctx, 'after-reset');
+  if (clean) await cleanSnap(page, ctx, 'after-reset');
   assertLive(ctx, after, 'after-reset', expect);
   if (before && after && typeof before === 'object' && typeof after === 'object') {
     const p1 = before.carPos;
@@ -560,45 +630,61 @@ async function resetCarCheck(page, ctx, expect) {
   }
 }
 
-async function pauseResumeCheck(page, ctx, expect) {
+async function pauseResumeCheck(page, ctx, expect, clean) {
   await page.keyboard.press('Escape');
   await sleep(900);
-  const opened = await page.evaluate(() => {
-    const root = document.querySelector('#pause-menu-root');
-    if (root === null) return false;
-    const el = root.firstElementChild ?? root;
-    return el.getBoundingClientRect().width > 100;
-  });
+  const opened = await page
+    .evaluate({ timeout: 30_000 }, () => {
+      const root = document.querySelector('#pause-menu-root');
+      if (root === null) return false;
+      const el = root.firstElementChild ?? root;
+      return el.getBoundingClientRect().width > 100;
+    })
+    .catch(() => {
+      ctx.lines.push('pause-open probe timed out (main-thread pinned?)');
+      return false;
+    });
   await snap(page, ctx, 'pause-open');
+  if (clean) await cleanSnap(page, ctx, 'pause-open');
   if (!opened) addFinding(ctx.scenario, 'bug', 'ui', 'pause menu did not open on Escape', null);
   await page.keyboard.press('Escape');
   await sleep(800);
-  const closed = await page.evaluate(() => {
-    const root = document.querySelector('#pause-menu-root');
-    if (root === null) return true;
-    const el = root.firstElementChild ?? root;
-    return el.getBoundingClientRect().width <= 100;
-  });
+  const closed = await page
+    .evaluate({ timeout: 30_000 }, () => {
+      const root = document.querySelector('#pause-menu-root');
+      if (root === null) return true;
+      const el = root.firstElementChild ?? root;
+      return el.getBoundingClientRect().width <= 100;
+    })
+    .catch(() => {
+      ctx.lines.push('pause-close probe timed out (main-thread pinned?)');
+      return true; // an unreachable page is reported by the liveness read below
+    });
   assertLive(ctx, await readDiag(page), 'after-resume', expect);
   if (!closed)
     addFinding(ctx.scenario, 'warn', 'ui', 'pause menu did not close on second Escape', null);
 }
 
 /** The owner-reported regression: change the car model in the menu, confirm the view stays alive. */
-async function carSwapCheck(page, ctx, expect) {
+async function carSwapCheck(page, ctx, expect, clean) {
   await page.keyboard.press('Escape');
   await sleep(700);
   // open the Car Model page
-  const clicked = await page.evaluate(() => {
-    const item = Array.from(document.querySelectorAll('[data-menu-id]')).find(
-      (b) => b.dataset.menuId === 'vehicle',
-    );
-    if (item) {
-      item.click();
-      return true;
-    }
-    return false;
-  });
+  const clicked = await page
+    .evaluate({ timeout: 30_000 }, () => {
+      const item = Array.from(document.querySelectorAll('[data-menu-id]')).find(
+        (b) => b.dataset.menuId === 'vehicle',
+      );
+      if (item) {
+        item.click();
+        return true;
+      }
+      return false;
+    })
+    .catch(() => {
+      ctx.lines.push('car-model nav probe timed out (main-thread pinned?)');
+      return false;
+    });
   await sleep(900);
   await snap(page, ctx, 'carswap-page');
   if (!clicked) {
@@ -608,34 +694,41 @@ async function carSwapCheck(page, ctx, expect) {
     return;
   }
   // list the selectable car options and pick a different one
-  const options = await page.evaluate(() => {
-    const root = document.querySelector('#pause-menu-root');
-    if (!root) return [];
-    return Array.from(root.querySelectorAll('button, [role="option"], label'))
-      .map((b) => (b.textContent || '').trim())
-      .filter((t) => t.length > 0 && t.length < 40)
-      .slice(0, 40);
-  });
+  const options = await page
+    .evaluate({ timeout: 30_000 }, () => {
+      const root = document.querySelector('#pause-menu-root');
+      if (!root) return [];
+      return Array.from(root.querySelectorAll('button, [role="option"], label'))
+        .map((b) => (b.textContent || '').trim())
+        .filter((t) => t.length > 0 && t.length < 40)
+        .slice(0, 40);
+    })
+    .catch(() => []);
   ctx.lines.push('car options: ' + options.join(' , ').slice(0, 300));
-  const swapped = await page.evaluate(() => {
-    const root = document.querySelector('#pause-menu-root');
-    if (!root) return null;
-    // The currently-selected option is marked; click the first non-selected car control.
-    const controls = Array.from(root.querySelectorAll('button, [role="option"]'));
-    const selected = controls.find((c) => /is-selected|is-active|selected/i.test(c.className));
-    const target = controls.find(
-      (c) => c !== selected && !/resume|apply|back|◀|↩/i.test(c.textContent || ''),
-    );
-    if (!target) return null;
-    target.click();
-    return (target.textContent || '').trim().slice(0, 40);
-  });
+  const swapped = await page
+    .evaluate({ timeout: 30_000 }, () => {
+      const root = document.querySelector('#pause-menu-root');
+      if (!root) return null;
+      // The currently-selected option is marked; click the first non-selected car control.
+      const controls = Array.from(root.querySelectorAll('button, [role="option"]'));
+      const selected = controls.find((c) => /is-selected|is-active|selected/i.test(c.className));
+      const target = controls.find(
+        (c) => c !== selected && !/resume|apply|back|◀|↩/i.test(c.textContent || ''),
+      );
+      if (!target) return null;
+      target.click();
+      return (target.textContent || '').trim().slice(0, 40);
+    })
+    .catch(() => null);
   await sleep(2500); // the model loads + swaps live
   await snap(page, ctx, 'carswap-after');
   await page.keyboard.press('Escape'); // resume
   await sleep(1500);
   const after = await readDiag(page);
   await snap(page, ctx, 'carswap-resumed');
+  // The regression is a black/frozen *scene*, so check the clean frame (no overlay to
+  // mask it), then restore the overlay for the telemetry read.
+  if (clean) await cleanSnap(page, ctx, 'carswap-resumed');
   assertLive(ctx, after, 'after-car-swap', expect);
   if (typeof after === 'object' && after) {
     if (after.lost) {
@@ -672,11 +765,12 @@ async function scenarioCore(page, ctx) {
     steer: 'ArrowRight',
     brake: true,
     expect: {},
+    clean: true,
   });
-  await toggleCameraCheck(page, ctx, {});
-  await humanDrive(page, ctx, { throttleSeconds: 6, handbrake: true, expect: {} });
-  await resetCarCheck(page, ctx, {});
-  await pauseResumeCheck(page, ctx, {});
+  await toggleCameraCheck(page, ctx, {}, true);
+  await humanDrive(page, ctx, { throttleSeconds: 6, handbrake: true, expect: {}, clean: true });
+  await resetCarCheck(page, ctx, {}, true);
+  await pauseResumeCheck(page, ctx, {}, true);
 }
 async function scenarioDay(page, ctx) {
   // `time=12` is noon: the sun is up, isNight must be false.
@@ -685,6 +779,7 @@ async function scenarioDay(page, ctx) {
     steer: 'ArrowRight',
     brake: true,
     expect: { night: false },
+    clean: true,
   });
 }
 async function scenarioNight(page, ctx) {
@@ -693,6 +788,7 @@ async function scenarioNight(page, ctx) {
     steer: 'ArrowLeft',
     brake: true,
     expect: { night: true },
+    clean: true,
   });
 }
 async function scenarioRain(page, ctx) {
@@ -701,14 +797,21 @@ async function scenarioRain(page, ctx) {
     steer: 'ArrowRight',
     brake: true,
     expect: { weather: 'rain' },
+    clean: true,
   });
 }
 async function scenarioCarSwap(page, ctx) {
-  await humanDrive(page, ctx, { throttleSeconds: 6, expect: {} });
-  await carSwapCheck(page, ctx, {});
+  await humanDrive(page, ctx, { throttleSeconds: 6, expect: {}, clean: true });
+  await carSwapCheck(page, ctx, {}, true);
 }
 async function scenarioTierB(page, ctx) {
-  await humanDrive(page, ctx, { throttleSeconds: 10, steer: 'ArrowLeft', brake: true, expect: {} });
+  await humanDrive(page, ctx, {
+    throttleSeconds: 10,
+    steer: 'ArrowLeft',
+    brake: true,
+    expect: {},
+    clean: true,
+  });
 }
 async function scenarioSpawn(page, ctx) {
   await humanDrive(page, ctx, {
@@ -716,6 +819,7 @@ async function scenarioSpawn(page, ctx) {
     steer: 'ArrowRight',
     brake: true,
     expect: {},
+    clean: true,
   });
 }
 
@@ -803,6 +907,7 @@ async function runScenario(scenario) {
       ctx.settleSeconds = round((Date.now() - settleT0) / 1000, 1);
       ctx.lines.push(`settled(tris>50k)=${settled} after ${ctx.settleSeconds}s`);
       await snap(page, ctx, 'ready');
+      await cleanSnap(page, ctx, 'ready'); // the first clean scene a human sees
       const d = await readDiag(page);
       if (!settled && d && typeof d === 'object') {
         addFinding(

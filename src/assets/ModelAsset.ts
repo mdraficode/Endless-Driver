@@ -38,6 +38,46 @@ import { selectLodLevel, type LodLevel } from './LodSelection';
 /** Where the Basis transcoder is served from. `public/decoders/` is copied at build time. */
 export const BASIS_DECODER_PATH = `${import.meta.env.BASE_URL}decoders/basis/`;
 
+/**
+ * The one KTX2Loader the app uses, created lazily on the first model load.
+ *
+ * Every `KTX2Loader` owns a Basis transcoder instance, and three.js warns on each extra one
+ * ("Multiple active KTX2 loaders may cause performance issues. Use a single KTX2Loader instance").
+ * The engine keeps a single renderer for the whole session, so support detection runs once; the
+ * renderer reference is part of the key only so a future swap (tests, a new engine) gets a fresh
+ * loader instead of stale capability flags.
+ */
+interface SharedKtx2 {
+  readonly loader: KTX2Loader;
+  readonly renderer: object;
+  readonly transcoderPath: string;
+}
+let sharedKtx2: SharedKtx2 | null = null;
+
+/** The process-wide KTX2Loader for a renderer + transcoder path pair. */
+export function sharedKtx2Loader(
+  renderer: object,
+  transcoderPath: string = BASIS_DECODER_PATH,
+): KTX2Loader {
+  if (
+    sharedKtx2 === null ||
+    sharedKtx2.renderer !== renderer ||
+    sharedKtx2.transcoderPath !== transcoderPath
+  ) {
+    // The transcoder is only needed while decoding: releasing a replaced loader frees its WASM
+    // without touching the textures it has already produced.
+    sharedKtx2?.loader.dispose();
+    sharedKtx2 = {
+      loader: new KTX2Loader()
+        .setTranscoderPath(transcoderPath)
+        .detectSupport(renderer as Parameters<KTX2Loader['detectSupport']>[0]),
+      renderer,
+      transcoderPath,
+    };
+  }
+  return sharedKtx2.loader;
+}
+
 /** A model's identity and levels, resolved from the manifest before anything is downloaded. */
 export interface ModelAsset {
   readonly id: string;
@@ -198,16 +238,15 @@ export async function loadModelAsset(options: LoadModelOptions): Promise<LoadedM
     return null;
   }
 
-  const ktx2 = new KTX2Loader()
-    .setTranscoderPath(options.decoderPath ?? BASIS_DECODER_PATH)
-    .detectSupport(options.renderer as Parameters<KTX2Loader['detectSupport']>[0]);
+  // The shared loader is app-scoped, so a failed load must not tear it down: the next model
+  // still needs the transcoder.
+  const ktx2 = sharedKtx2Loader(options.renderer, options.decoderPath ?? BASIS_DECODER_PATH);
   const loader = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
 
   try {
     const gltf = await loadGltfFromBytesOrUrl(loader, asset.file, options.bytes);
-    return createLoadedModel(asset, gltf.scene, ktx2);
+    return createLoadedModel(asset, gltf.scene);
   } catch (error) {
-    ktx2.dispose();
     throw new Error(`failed to load model "${asset.id}" from ${asset.file}`, { cause: error });
   }
 }
@@ -272,6 +311,10 @@ function describeParseError(error: unknown): string {
  * Separate from the loading path so it can be tested without a renderer, a decoder, or a network:
  * everything below is scene-graph work on an object tree, and the tree has the same shape whether it
  * came from a real file or a stand-in built by a test.
+ *
+ * `decoder` is an optional object torn down with the model. It is deliberately **not** the shared
+ * KTX2Loader — the transcoder is app-scoped and must outlive any single model, so the loading path
+ * no longer passes it here.
  */
 export function createLoadedModel(
   asset: ModelAsset,
