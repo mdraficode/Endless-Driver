@@ -487,7 +487,7 @@ describe('Aohara facade kit', () => {
   });
 
   it('builds one instanced batch per element with matching stats', () => {
-    const kit = new FacadeKitWorld('A', fixtureBuildings(), fixtureTowers(), [0, 0, 0]);
+    const kit = new FacadeKitWorld('A', fixtureBuildings(), fixtureTowers());
     expect(kit.root.name).toBe('aohara-facade-kit');
     const meshes = kit.root.children.filter(
       (child): child is InstancedMesh => child instanceof InstancedMesh,
@@ -519,7 +519,7 @@ describe('Aohara facade kit', () => {
   });
 
   it('keeps veranda and balcony overhangs inside the shell-safe envelope', () => {
-    const kit = new FacadeKitWorld('A', fixtureBuildings(), fixtureTowers(), [0, 0, 0]);
+    const kit = new FacadeKitWorld('A', fixtureBuildings(), fixtureTowers());
     for (const placement of kit.placements) {
       if (placement.element === 'veranda') {
         // Slab extends 1.1 m in local +Z, scaled only in X: front overhang stays under 1.3 m.
@@ -533,7 +533,7 @@ describe('Aohara facade kit', () => {
   });
 
   it('disposes exactly once and detaches its root', () => {
-    const kit = new FacadeKitWorld('C', fixtureBuildings(), fixtureTowers(), [0, 0, 0]);
+    const kit = new FacadeKitWorld('C', fixtureBuildings(), fixtureTowers());
     const parent = new Object3D();
     parent.add(kit.root);
     expect(kit.root.parent).toBe(parent);

@@ -2306,11 +2306,8 @@ export class UrbanNightWorld implements SceneContent {
     if (this.#networkIntegrated) {
       this.#buildPlaza();
     }
-    this.#facadeKit = new FacadeKitWorld(tier, additionalBuildings, this.#towers, [
-      originX,
-      originY,
-      originZ,
-    ]);
+    // City-local placements; the kit root inherits the city origin offset from `this.root`.
+    this.#facadeKit = new FacadeKitWorld(tier, additionalBuildings, this.#towers);
     this.root.add(this.#facadeKit.root);
     this.#backstreetFrontages =
       this.#networkIntegrated && options.roadNetwork !== undefined

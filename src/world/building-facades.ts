@@ -1072,16 +1072,19 @@ export class FacadeKitWorld {
   readonly #stats: Readonly<Record<string, number>>;
   #disposed = false;
 
+  /**
+   * Placements are in city-local coordinates (see `FacadeKitBuildingRef` / `FacadeKitTowerRef`),
+   * so are the instance transforms here: the kit root is nested in the night world's root,
+   * which carries the city origin offset. Subtracting the origin here would displace every
+   * element by the origin vector into empty terrain (the "ghost facade kit" field).
+   */
   constructor(
     tier: TierId,
     buildings: readonly FacadeKitBuildingRef[],
     towers: readonly FacadeKitTowerRef[],
-    origin: readonly [number, number, number],
   ) {
     this.root.name = 'aohara-facade-kit';
     this.placements = generateFacadeKitPlacements(tier, buildings, towers);
-    const originX = origin[0];
-    const originZ = origin[2];
     const counts: Record<FacadeKitElement, number> = {
       balcony: 0,
       veranda: 0,
@@ -1110,7 +1113,7 @@ export class FacadeKitWorld {
       mesh.receiveShadow = true;
       const transform = new Object3D();
       instances.forEach((placement, index) => {
-        transform.position.set(placement.x - originX, placement.y, placement.z - originZ);
+        transform.position.set(placement.x, placement.y, placement.z);
         transform.rotation.set(0, placement.yaw, 0);
         transform.scale.set(...placement.scale);
         transform.updateMatrix();
