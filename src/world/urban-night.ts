@@ -3257,7 +3257,13 @@ export class UrbanNightWorld implements SceneContent {
       let instanceIndex = 0;
       for (const tower of group) {
         for (const volume of towerVolumes(tower)) {
-          transform.position.set(volume.x, WORLD_BASE_Y + volume.height / 2, volume.z);
+          // Set-back volumes (crown/tiers) sit on the volume base, not on the ground: without
+          // `volume.base` the upper walls render buried in the body while their roof caps float.
+          transform.position.set(
+            volume.x,
+            WORLD_BASE_Y + volume.base + volume.height / 2,
+            volume.z,
+          );
           transform.scale.set(volume.width, volume.height, volume.depth);
           transform.rotation.set(0, 0, 0);
           transform.updateMatrix();
@@ -3498,17 +3504,20 @@ export class UrbanNightWorld implements SceneContent {
           rank: stableUnit(towerIndex, floor, 641),
         });
       }
+      // On set-back crowns/tiers the body footprint overhangs the topmost volume: anchor the
+      // rooftop units to the top volume so they never float beside the crown.
+      const topRoofVolume = topTowerVolume(tower);
       for (const side of [-1, 1] as const) {
         rooftopCandidates.push({
-          x: tower.x + side * tower.width * 0.19,
-          y: WORLD_BASE_Y + tower.height + 0.62,
-          z: tower.z,
+          x: topRoofVolume.x + side * topRoofVolume.width * 0.19,
+          y: WORLD_BASE_Y + topRoofVolume.top + 0.62,
+          z: topRoofVolume.z,
           scale: [1.55, 1.08, 1.35],
         });
         rooftopCandidates.push({
-          x: tower.x,
-          y: WORLD_BASE_Y + tower.height + 0.55,
-          z: tower.z + side * tower.depth * 0.18,
+          x: topRoofVolume.x,
+          y: WORLD_BASE_Y + topRoofVolume.top + 0.55,
+          z: topRoofVolume.z + side * topRoofVolume.depth * 0.18,
           scale: [0.78, 1.2, 0.82],
         });
       }
