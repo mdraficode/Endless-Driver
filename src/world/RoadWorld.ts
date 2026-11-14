@@ -41,7 +41,7 @@ import { createRoadWetPatchMaskTexture, createRoadWetnessNode } from './road-wet
 import { resolveUrbanWetness, URBAN_CITY_CONFIG } from '../config/urban-city';
 import { clamp } from '../shared/math';
 import type { DaylightState } from '../environment/EnvironmentClock';
-import type { RoadEdge, RoadNetwork } from './road-network';
+import type { RoadEdge, RoadNetwork, RoadNode } from './road-network';
 import {
   buildDeckBellyGeometry,
   buildBarrierGeometry,
@@ -79,6 +79,14 @@ const HIGHWAY_BARRIER_WIDTH = 0.3;
 const ASPHALT_LIFT = 0.09;
 const PAINT_LIFT = 0.13;
 const SIDEWALK_LIFT = 0.14;
+/**
+ * Zebra band geometry: five bars at the established pitch, anchored just outside the
+ * crossing road's corner. A standard crossing width rather than the road's full width.
+ */
+const ZEBRA_STRIPE_COUNT = 5;
+const ZEBRA_CORNER_GAP_METERS = 0.4;
+/** Paved stand-off left between the crossing road's curb line and the trimmed sidewalk. */
+const SIDEWALK_JUNCTION_MARGIN_METERS = 0.3;
 
 function mergeGeometryBatch(geometries: BufferGeometry[], label: string): BufferGeometry | null {
   if (geometries.length === 0) {
@@ -177,11 +185,11 @@ function createUrbanIntersectionMarkings(
       const usableWidth = Math.max(6, axis.halfWidthMeters * 2 - 2.8);
       const normalX = axis.z;
       const normalZ = -axis.x;
-      // The zebra's inner rows meet the crossing road's corner the way the classic
-      // orthogonal layout does (2.3 m of the zone on the crossing asphalt): the approach
-      // distance is the crossing road's asphalt width projected onto this axis. Where the
-      // grand boulevard crosses at an angle that projection is longer, so the crossing
-      // moves out with it instead of landing on the avenue's asphalt.
+      // The approach distance is the crossing road's asphalt width projected onto this
+      // axis, so the band's inner edge sits just outside the crossing road's corner —
+      // the same geometry the classic orthogonal layout reads as, and the reason an
+      // angled grand-boulevard crossing moves out with the projection instead of
+      // landing on the avenue's asphalt.
       let approachMeters = 0;
       for (const other of axes) {
         if (other === axis) {
@@ -193,13 +201,14 @@ function createUrbanIntersectionMarkings(
         }
         approachMeters = Math.max(approachMeters, other.halfWidthMeters / cross);
       }
-      const offsetMeters = approachMeters + usableWidth / 2 - 2.3;
-      const stripeCount = Math.max(6, Math.floor(usableWidth / stripePitch));
-      const start = -((stripeCount - 1) * stripePitch) / 2;
+      const innerEdgeMeters = approachMeters + ZEBRA_CORNER_GAP_METERS;
       const yaw = Math.atan2(-normalZ, normalX);
       for (const side of [-1, 1] as const) {
-        for (let stripe = 0; stripe < stripeCount; stripe += 1) {
-          const along = side * offsetMeters + start + stripe * stripePitch;
+        for (let stripe = 0; stripe < ZEBRA_STRIPE_COUNT; stripe += 1) {
+          // Fixed-depth band anchored at the corner (not scaled by road width): the old
+          // variable-depth run reached into the junction box, and the four approaches'
+          // inner rows piled up into a white blob at the centre.
+          const along = side * (innerEdgeMeters + stripeWidth / 2 + stripe * stripePitch);
           markings.push({
             x: node.x + axis.x * along,
             y: node.y + PAINT_LIFT,
@@ -255,6 +264,78 @@ function createUrbanIntersectionMarkings(
   });
   mesh.instanceMatrix.needsUpdate = true;
   return { mesh, intersectionCount };
+}
+
+/**
+ * Distance (metres from `node`, measured along `edge` into it) at which the sidewalk
+ * ribbon must stop so it does not run through the crossing road's pavement at the
+ * junction. Untrimmed, the ribbon crosses the whole intersection and its band cuts
+ * across the opposite street — the zebra crossings then read as stripes bleeding onto
+ * the sidewalk. 0 when nothing crosses at that end.
+ */
+function sidewalkStopAtNode(
+  network: RoadNetwork,
+  edge: RoadEdge,
+  node: RoadNode,
+  fromStart: boolean,
+): number {
+  const points = edge.points;
+  if (points.length < 2) {
+    return 0;
+  }
+  const a = fromStart ? points[0] : points[points.length - 2]!;
+  const b = fromStart ? points[1] : points[points.length - 1]!;
+  if (a === undefined || b === undefined) {
+    return 0;
+  }
+  const tangentLength = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+  const dx = (b.x - a.x) / tangentLength;
+  const dz = (b.z - a.z) / tangentLength;
+  const ndx = -dz;
+  const ndz = dx;
+  let stop = 0;
+  for (const other of network.edges) {
+    if (other.id === edge.id || (other.from !== node.id && other.to !== node.id)) {
+      continue;
+    }
+    const of = network.nodeById(other.from);
+    const ot = network.nodeById(other.to);
+    if (of === null || ot === null) {
+      continue;
+    }
+    const intoOther = other.from === node.id;
+    const otherLength = Math.hypot(ot.x - of.x, ot.z - of.z) || 1;
+    const cx = (intoOther ? ot.x - of.x : of.x - ot.x) / otherLength;
+    const cz = (intoOther ? ot.z - of.z : of.z - ot.z) / otherLength;
+    if (Math.abs(dx * cx + dz * cz) > 0.985) {
+      continue; // collinear continuation — no corner at this end
+    }
+    const ncx = -cz;
+    const ncz = cx;
+    const dnc = dx * ncx + dz * ncz;
+    if (Math.abs(dnc) < 0.15) {
+      continue; // near-parallel — the band's edge never meets this sidewalk line
+    }
+    const ndc = ndx * ncx + ndz * ncz;
+    const sidewalkWidth = URBAN_CITY_CONFIG.sidewalk.widthMeters;
+    const centreOffset = edge.halfWidthMeters + edge.shoulderMeters + sidewalkWidth / 2;
+    // Both strip extremes on both sides: the far corner of the pavement band against
+    // each sidewalk edge line (p = alpha*d + offset*n_d meets p.n_c = +/- halfWidth).
+    for (const offset of [
+      centreOffset + sidewalkWidth / 2,
+      centreOffset - sidewalkWidth / 2,
+      -(centreOffset + sidewalkWidth / 2),
+      -(centreOffset - sidewalkWidth / 2),
+    ]) {
+      for (const side of [1, -1] as const) {
+        const alpha = (other.halfWidthMeters * side - offset * ndc) / dnc;
+        if (alpha > stop) {
+          stop = alpha;
+        }
+      }
+    }
+  }
+  return stop;
 }
 
 /**
@@ -545,15 +626,30 @@ export class RoadWorld {
         urbanSidewalkEdges += 1;
         const sidewalkOffset =
           halfWidthMeters + shoulderMeters + URBAN_CITY_CONFIG.sidewalk.widthMeters / 2;
-        for (const side of [-1, 1] as const) {
-          urbanSidewalkGeometries.push(
-            buildRibbonGeometry(
-              edge,
-              URBAN_CITY_CONFIG.sidewalk.widthMeters,
-              SIDEWALK_LIFT,
-              side * sidewalkOffset,
-            ),
-          );
+        // Stop each end where the crossing road's pavement begins (curb cut), so the
+        // ribbon does not run through the junction across the opposite street.
+        const fromNode = network.nodeById(edge.from);
+        const toNode = network.nodeById(edge.to);
+        const startTrim =
+          fromNode === null
+            ? 0
+            : sidewalkStopAtNode(network, edge, fromNode, true) + SIDEWALK_JUNCTION_MARGIN_METERS;
+        const endTrim =
+          toNode === null
+            ? 0
+            : sidewalkStopAtNode(network, edge, toNode, false) + SIDEWALK_JUNCTION_MARGIN_METERS;
+        const trimmed = trimRoadEdge(edge, startTrim, endTrim);
+        if (trimmed !== null) {
+          for (const side of [-1, 1] as const) {
+            urbanSidewalkGeometries.push(
+              buildRibbonGeometry(
+                trimmed,
+                URBAN_CITY_CONFIG.sidewalk.widthMeters,
+                SIDEWALK_LIFT,
+                side * sidewalkOffset,
+              ),
+            );
+          }
         }
       }
       const asphaltGeometry = buildRibbonGeometry(edge, halfWidthMeters * 2, ASPHALT_LIFT);
