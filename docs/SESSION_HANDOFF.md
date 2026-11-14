@@ -4050,6 +4050,14 @@ own visual check remains after the next phase lands. After Phase 12:
 
 ## Phase 12.4 — graphics pass (in progress)
 
+**Status (2026-11-14):** four increments landed — **12.4a** (deterministic
+baseline + guards), **12.4b** (tonemap/exposure + AO polish), **12.4c**
+(window emissive temperatures), **12.4d** (the facade micro-detail octave,
+`153f390`). None of them is visually accepted yet: 12.4b's contrast trim
+and 12.4d's octave both wait on the owner's device A/B (the established
+acceptance gate). Remaining 12.4 items: light-pool hygiene,
+headlight/taillight quality.
+
 **Status (2026-11-11):** 12.4 is authorized and unblocked. Two increments
 landed: **12.4a** (the deterministic baseline + guards) and **12.4b** (the
 tonemap/exposure + AO polish). Both are pushable-green; the pass is NOT
@@ -4147,6 +4155,40 @@ gains.
   Each remaining item lands as implement → deterministic test → full check
   → push → report.
 
+**12.4d — facade micro-detail octave (`153f390`, 2026-11-14).**
+
+- The facade kit was the only surface still on two-octave procedural
+  detail (a ~44 m world-space band + a ~1.6 m fine band).
+  `src/world/architectural-materials.ts` now builds every architectural
+  surface from one shared table, `FACADE_DETAIL_OCTAVES` (per-octave
+  albedo/roughness weights): broad ~44/73 m (1 / 0.055), **new mid**
+  ~9.3/10.7 m (0.4 / 0.03), fine ~1.6 m (0.22 / 0.018) — an octave
+  spread of roughly 4–6× per step. The mid octave reads as slab lines and
+  stain patches between the building-scale band and the fine grain.
+- Because the octave constants are table data (not per-material
+  literals), every facade material compiles into the same shared TSL
+  graph → **one GPU program** with the per-material values as uniforms;
+  the `program-inventory` analysis test passes unchanged.
+- `facadeSurfaceDetail()` is the CPU mirror of the same table.
+  `tests/unit/architectural-materials.test.ts` (new, 11 tests) asserts the
+  octave spread (≥2× per step), no-stripe term geometry (≥2 axes per
+  term), amplitude bounds, the roughness clamp [0.06, 0.98], every
+  octave's full swing, the mid octave's contribution at its own scale,
+  and that materials differing only in uniforms share one graph shape.
+- `?facadeDetail=<n>` is the device A/B (1 = three-octave look as
+  shipped, 0 = the pre-12.4d two-octave look), clamped to [0, 2] so a
+  typo cannot produce an unreadable surface; parsed in
+  `render.ts::readFacadeMidScale`, applied in `main.ts`
+  `resolveRenderConfig` before any world is built.
+- Verified: full `npm run check` green (1032 tests / 126 files, +11);
+  commit `153f390`, CI 3/3 (deploy/build/validate).
+- **Owner device pass:** A/B a facade wall from driving distance with
+  `?facadeDetail=1` vs `?facadeDetail=0` — the question is whether the
+  weathering now reads as continuous slab-scale variation instead of
+  flat-plus-fine-noise.
+- **Not started (still 12.4):** light-pool hygiene, headlight/taillight
+  quality.
+
 ## Human-perspective bug-hunting player (2026-11-12)
 
 The owner asked for a player that drives the game exactly like a human and
@@ -4221,8 +4263,9 @@ warnings on the fixed build. The default start time is night (23:30 at Home
 City), which is why `day`/`night` pin `?time=` explicitly.
 
 **Still open:** the remaining Phase 12.4 taste items (light-pool hygiene,
-headlight/taillight quality, facade micro-detail octave) and the 12.4b
-owner-device A/B — unchanged by this work. Re-run the player on a real
+headlight/taillight quality; the facade micro-detail octave landed in
+12.4d at `153f390`) and the 12.4b/12.4d owner-device A/B — unchanged by
+this work. Re-run the player on a real
 device/GPU for authoritative visual acceptance:
 `cd e2e && npm install && npx playwright install chromium && node
 human-player.mjs --scenarios core,day,night,rain,carswap --base-url
