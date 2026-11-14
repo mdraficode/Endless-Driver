@@ -43,6 +43,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import {
   buildLightPools,
+  lightPoolCenter,
   resolveLightPoolOpacity,
   type LightPoolHandle,
 } from '../environment/light-pool';
@@ -4392,12 +4393,12 @@ export class UrbanNightWorld implements SceneContent {
     // Night-rain light pools (Phase 10.5 pass C): one soft additive quad per pole. They
     // stay dark until the live wetness says the roads are wet, and go dark with their
     // lamp when a pole is broken (per-instance colour, updated in #updateStreetLampPoles).
+    // 12.4e: centre each pool under the light source (the bulb at the arm's tip, over the
+    // road) rather than the pole on the sidewalk, and tint it the same temperature as the
+    // lamp above (the deterministic per-bulb pick the point lights and bulb emitters use).
     const pools = buildLightPools(
-      placements.map((placement) => ({
-        x: placement.pole.x,
-        y: placement.pole.y + 0.04,
-        z: placement.pole.z,
-      })),
+      placements.map((placement) => lightPoolCenter(placement)),
+      placements.map((placement) => STREET_LAMP_PALETTE[streetLampPaletteIndex(placement.bulb)]!),
     );
     if (pools !== null) {
       this.#lightPools = pools;

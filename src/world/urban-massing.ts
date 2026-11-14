@@ -36,6 +36,7 @@ import type { TierId } from '../config/tiers';
 import type { TownCarProbe, TownHit } from './town';
 import type { MassingCitySpec, MassingPlot } from './city-content';
 import {
+  LIGHT_POOL_GROUND_LIFT,
   buildLightPools,
   resolveLightPoolOpacity,
   type LightPoolHandle,
@@ -701,12 +702,17 @@ export class MassingCityWorld {
 
       // --- Night-rain light pools (Phase 10.5 pass C): one soft additive quad per lamp,
       // dark until the live wetness says the roads are wet.
+      // 12.4e: the head is directly above the pole here (no arm offset), so the pool stays
+      // under the pole; its tint is the city lamp tone, like the point light.
       const poolPositions = lampPositions.map((lamp) => ({
         x: lamp.x,
-        y: WORLD_BASE_Y + lift(lamp.x, lamp.z) + 0.04,
+        y: WORLD_BASE_Y + lift(lamp.x, lamp.z) + LIGHT_POOL_GROUND_LIFT,
         z: lamp.z,
       }));
-      const pools = buildLightPools(poolPositions);
+      const pools = buildLightPools(
+        poolPositions,
+        lampPositions.map(() => STREET_LAMP_COLOR),
+      );
       if (pools !== null) {
         this.#track(pools.geometry, this.#geometries);
         this.#track(pools.material, this.#materials);

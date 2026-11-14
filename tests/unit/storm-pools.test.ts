@@ -1,17 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import {
+  Color,
   InstancedMesh,
+  LinearFilter,
+  LinearMipmapLinearFilter,
   Matrix4,
+  PointLight,
   Vector3,
   type BufferGeometry,
   type MeshBasicMaterial,
 } from 'three';
 import { uniform } from 'three/tsl';
 import {
+  LIGHT_POOL_DEFAULT_TINT,
+  LIGHT_POOL_GROUND_LIFT,
   LIGHT_POOL_MAX_OPACITY,
   buildLightPools,
+  lightPoolCenter,
   lightPoolTexture,
   resolveLightPoolOpacity,
+  type LightPoolSourcePlacement,
 } from '../../src/environment/light-pool';
 import { WeatherDynamics, lightningEnvelope } from '../../src/environment/weather-dynamics';
 import { MassingCityWorld } from '../../src/world/urban-massing';
@@ -153,6 +161,111 @@ describe('light pool opacity (pure)', () => {
   });
 });
 
+describe('light pool centering (12.4e, pure)', () => {
+  // Aohara's lamp arm reaches 1.88 m over the road from the pole; the bulb — the light
+  // source — sits at the arm's tip. The pool must be centred under the bulb, not the pole.
+  function placementWithArm(
+    poleX: number,
+    poleY: number,
+    poleZ: number,
+    yaw: number,
+  ): LightPoolSourcePlacement {
+    return {
+      pole: { x: poleX, y: poleY, z: poleZ },
+      bulb: [poleX + Math.cos(yaw) * 1.88, poleY + 7, poleZ - Math.sin(yaw) * 1.88],
+    };
+  }
+
+  it('centres the pool under the light source, not under the pole', () => {
+    const placement = placementWithArm(100, -0.55, 200, Math.PI / 3);
+    const center = lightPoolCenter(placement);
+    expect(center.x).toBe(placement.bulb[0]);
+    expect(center.z).toBe(placement.bulb[2]);
+    // The pool is 1.88 m off the pole — centring it on the pole (the old behaviour)
+    // would put it on the sidewalk, detached from where the light falls.
+    expect(Math.hypot(center.x - placement.pole.x, center.z - placement.pole.z)).toBeCloseTo(
+      1.88,
+      6,
+    );
+  });
+
+  it('keeps the pool on the ground: the pole base lift, whatever the bulb height', () => {
+    const center = lightPoolCenter(placementWithArm(0, -0.55, 0, 0));
+    expect(center.y).toBeCloseTo(-0.55 + LIGHT_POOL_GROUND_LIFT, 10);
+    const tall = lightPoolCenter(placementWithArm(0, -0.55, 0, 0));
+    expect(tall.y).toBeCloseTo(center.y, 10);
+  });
+
+  it('is exact for the no-arm case (the head directly above the pole)', () => {
+    const center = lightPoolCenter({ pole: { x: 5, y: -0.55, z: -9 }, bulb: [5, 6.9, -9] });
+    expect(center.x).toBe(5);
+    expect(center.z).toBe(-9);
+  });
+});
+
+describe('light pool tinting (12.4e, headless)', () => {
+  const TINTS = [0xffe7c0, 0xffdda8, 0xfff1d2, 0xffd9a0];
+
+  it('carries the lamp palette as per-instance colour; a dimmed lamp scales its own tint', () => {
+    const positions = TINTS.map((_, i) => ({ x: i * 3, y: 0.04, z: 0 }));
+    const pools = buildLightPools(positions, TINTS);
+    const color = pools!.mesh.instanceColor;
+    expect(color).not.toBeNull();
+    TINTS.forEach((hex, i) => {
+      const expected = new Color(hex);
+      expect(color!.getX(i)).toBeCloseTo(expected.r, 6);
+      expect(color!.getY(i)).toBeCloseTo(expected.g, 6);
+      expect(color!.getZ(i)).toBeCloseTo(expected.b, 6);
+    });
+
+    // Dim lamp 2 to half: its tint halves, its neighbours are untouched.
+    pools!.setLamp(2, 0.5);
+    const expected = new Color(TINTS[2]!).multiplyScalar(0.5);
+    expect(color!.getX(2)).toBeCloseTo(expected.r, 6);
+    expect(color!.getZ(2)).toBeCloseTo(expected.b, 6);
+    const untouched = new Color(TINTS[3]!);
+    expect(color!.getX(3)).toBeCloseTo(untouched.r, 6);
+
+    // A broken lamp's pool goes fully dark, tint or not.
+    pools!.setLamp(1, 0);
+    expect(color!.getX(1)).toBe(0);
+    expect(color!.getY(1)).toBe(0);
+    expect(color!.getZ(1)).toBe(0);
+  });
+
+  it('falls back to the classic halogen warm when no palette is supplied', () => {
+    const pools = buildLightPools([{ x: 0, y: 0.04, z: 0 }]);
+    const expected = new Color(LIGHT_POOL_DEFAULT_TINT);
+    expect(pools!.mesh.instanceColor!.getX(0)).toBeCloseTo(expected.r, 6);
+    expect(pools!.mesh.instanceColor!.getZ(0)).toBeCloseTo(expected.b, 6);
+    // The material colour is white by construction: the instance tint is the single
+    // source of temperature (no double tinting through the material).
+    expect(pools!.material.color).toEqual(new Color(0xffffff));
+  });
+
+  it('keeps the falloff texture neutral and linearly filtered (no baked tint, no 7 cm steps)', () => {
+    const texture = lightPoolTexture();
+    expect(texture.magFilter).toBe(LinearFilter);
+    expect(texture.minFilter).toBe(LinearMipmapLinearFilter);
+    expect(texture.generateMipmaps).toBe(true);
+    const data = texture.image.data as Uint8Array;
+    const size = texture.image.width;
+    expect(size).toBe(128);
+    const half = size / 2;
+    for (let y = 0; y < size; y += 7) {
+      for (let x = 0; x < size; x += 7) {
+        const o = (y * size + x) * 4;
+        // Neutral: every channel identical, so the per-instance tint is the only colour.
+        expect(data[o]!).toBe(data[o + 1]!);
+        expect(data[o + 1]!).toBe(data[o + 2]!);
+      }
+    }
+    // Core bright at the centre, feathered to the edge.
+    expect(data[(half * size + half) * 4]!).toBeGreaterThan(250);
+    expect(data[0]).toBe(0);
+  });
+});
+
 describe('light pool mesh (headless)', () => {
   it('builds one quad per position and dims single lamps via instance colour', () => {
     const positions = [
@@ -230,6 +343,20 @@ describe('streamed-city light pools (integration)', () => {
     const origin = new Vector3().setFromMatrixPosition(matrix);
     const world = origin.add(city.root.position);
     expect(world.y).toBeCloseTo(-0.55 + 0.04 + 0.57, 2);
+
+    // 12.4e: the pools carry the city lamp temperature — the same colour the point
+    // lights use (a single halogen tone in the massing cities).
+    const lampLight = city.root.children.find(
+      (child): child is PointLight => child.type === 'PointLight',
+    );
+    expect(lampLight).toBeDefined();
+    if (lampLight === undefined) throw new Error('expected a street-lamp point light');
+    expect(poolMesh.instanceColor).not.toBeNull();
+    for (let i = 0; i < poolMesh.count; i += 1) {
+      expect(poolMesh.instanceColor!.getX(i)).toBeCloseTo(lampLight.color.r, 6);
+      expect(poolMesh.instanceColor!.getY(i)).toBeCloseTo(lampLight.color.g, 6);
+      expect(poolMesh.instanceColor!.getZ(i)).toBeCloseTo(lampLight.color.b, 6);
+    }
 
     city.dispose();
   });

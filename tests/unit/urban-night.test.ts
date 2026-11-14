@@ -1,4 +1,4 @@
-import { InstancedMesh, Matrix4, Mesh, PointLight } from 'three';
+import { Color, InstancedMesh, Matrix4, Mesh, PointLight } from 'three';
 import {
   MeshBasicNodeMaterial,
   MeshPhysicalNodeMaterial,
@@ -751,6 +751,66 @@ describe('Aohara city night-lighting rules', () => {
     expect(pointLight.intensity).toBe(0);
     expect(architecturalLight.intensity).toBe(0);
     expect(city.root.getObjectByName('aohara-streetlight-gaussian-flare-1')?.visible).toBe(false);
+    city.dispose();
+  });
+
+  it('centers each night-rain light pool under its lamp light (12.4e), tinted to the lamp temperature', () => {
+    const roadNetwork = createWorldTerrainSampler(TERRAIN_CONFIG, ROAD_NETWORK_CONFIG).roadNetwork;
+    if (roadNetwork === undefined) {
+      throw new Error('the shared world sampler should expose the road graph');
+    }
+    const city = new UrbanNightWorld('B', {
+      position: [AOHARA_DISTRICT_CONFIG.centerX, 0, AOHARA_DISTRICT_CONFIG.centerZ],
+      roadNetwork,
+      networkIntegrated: true,
+    });
+    const poles = city.root.getObjectByName('aohara-street-lamp-poles');
+    const pools = city.root.getObjectByName('light-pools');
+    if (
+      !(poles instanceof InstancedMesh) ||
+      !(pools instanceof InstancedMesh) ||
+      poles.count === 0
+    ) {
+      city.dispose();
+      throw new Error('the network-integrated city should build street-lamp poles and light pools');
+    }
+    expect(pools.count).toBe(poles.count);
+    expect(pools.instanceColor).not.toBeNull();
+    const palette = [0xffe7c0, 0xffdda8, 0xfff1d2, 0xffd9a0].map((hex) => new Color(hex));
+    const matrix = new Matrix4();
+    for (let i = 0; i < pools.count; i += 1) {
+      poles.getMatrixAt(i, matrix);
+      const poleX = matrix.elements[12]!;
+      const poleY = matrix.elements[13]!;
+      const poleZ = matrix.elements[14]!;
+      pools.getMatrixAt(i, matrix);
+      const poolX = matrix.elements[12]!;
+      const poolY = matrix.elements[13]!;
+      const poolZ = matrix.elements[14]!;
+      // The pool sits under the bulb at the arm's tip — the arm's reach (1.88 m) from
+      // the pole, on the road side — not under the pole on the sidewalk (the 12.4e
+      // hygiene fix). Instance matrices are float32, so allow float32 slack; the
+      // discrimination against the old behaviour (distance 0) is four orders of
+      // magnitude wider than the tolerance.
+      expect(Math.hypot(poolX - poleX, poolZ - poleZ)).toBeCloseTo(1.88, 3);
+      expect(poolY).toBeCloseTo(poleY + 0.04, 4);
+      // Each pool carries one of the lamp palette temperatures (instance colour is
+      // float32, so match with float32 slack).
+      const tint = [
+        pools.instanceColor!.getX(i),
+        pools.instanceColor!.getY(i),
+        pools.instanceColor!.getZ(i),
+      ];
+      expect(
+        palette.some(
+          (c) =>
+            Math.abs(c.r - tint[0]!) < 1e-6 &&
+            Math.abs(c.g - tint[1]!) < 1e-6 &&
+            Math.abs(c.b - tint[2]!) < 1e-6,
+        ),
+        `pool ${i} tint ${tint} must match its lamp palette`,
+      ).toBe(true);
+    }
     city.dispose();
   });
 
