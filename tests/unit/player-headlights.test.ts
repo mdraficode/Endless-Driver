@@ -5,6 +5,7 @@ import {
   createPlayerHeadlightRig,
   PLAYER_HEADLIGHT_CONFIG,
   setAdaptiveHeadlightSteering,
+  setHeadlightGain,
   setPlayerHeadlightsEnabled,
 } from '../../src/vehicles/player-headlights';
 
@@ -81,6 +82,34 @@ describe('player night headlights', () => {
 
     setPlayerHeadlightsEnabled(rig, false);
     expect(rig.lights.every((light) => !light.visible)).toBe(true);
+
+    rig.root.clear();
+  });
+
+  it('fades both beams with the city night gain instead of snapping (12.4f)', () => {
+    const rig = createPlayerHeadlightRig();
+    const full = PLAYER_HEADLIGHT_CONFIG.intensityCandela;
+
+    setHeadlightGain(rig, 0);
+    expect(rig.lights.every((light) => !light.visible)).toBe(true);
+    expect(rig.lights.every((light) => light.intensity === 0)).toBe(true);
+
+    // Dusk: half the city night ramp, half the beam power.
+    setHeadlightGain(rig, 0.5);
+    expect(rig.lights.every((light) => light.visible)).toBe(true);
+    expect(rig.lights.every((light) => light.intensity === full * 0.5)).toBe(true);
+
+    // Full night: the as-shipped candela.
+    setHeadlightGain(rig, 1);
+    expect(rig.lights.every((light) => light.intensity === full)).toBe(true);
+
+    // Out-of-range and non-finite gains clamp into the [0, 1] band.
+    setHeadlightGain(rig, 99);
+    expect(rig.lights.every((light) => light.intensity === full)).toBe(true);
+    setHeadlightGain(rig, -3);
+    expect(rig.lights.every((light) => !light.visible && light.intensity === 0)).toBe(true);
+    setHeadlightGain(rig, Number.NaN);
+    expect(rig.lights.every((light) => !light.visible && light.intensity === 0)).toBe(true);
 
     rig.root.clear();
   });

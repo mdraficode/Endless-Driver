@@ -17,8 +17,6 @@ import {
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
-  BRAKE_LAMP_ACTIVE_INTENSITY,
-  BRAKE_LAMP_IDLE_INTENSITY,
   HEADLAMP_ACTIVE_EMISSIVE_INTENSITY,
   createAutomotivePaintMaterial,
   createBrakeLightMaterial,
@@ -29,6 +27,7 @@ import {
   createTintedCabinMaterial,
   createVehicleInteriorMaterial,
   createWheelMetalMaterial,
+  resolveBrakeLampIntensity,
 } from './vehicle-materials';
 import { VEHICLE_CONFIG } from '../config/vehicle';
 import type { VehiclePose } from './types';
@@ -51,7 +50,7 @@ export class CarVisual {
   readonly #wheels: WheelVisual[] = [];
   readonly #headlampMaterial: ReturnType<typeof createHeadlightMaterial>;
   readonly #brakeLightMaterial: ReturnType<typeof createBrakeLightMaterial>;
-  #headlightsEnabled = false;
+  #headlightGain = 0;
   #steeringWheel: Group | null = null;
 
   constructor() {
@@ -250,13 +249,14 @@ export class CarVisual {
     this.#mergeStaticRootMeshes();
   }
 
-  /** Switches the authored lens emission with the night-only player headlight beams. */
-  setHeadlightsEnabled(enabled: boolean): void {
-    if (this.#headlightsEnabled === enabled) {
+  /** 12.4f: the authored lens emission fades with the city night ramp (0 = day, 1 = full night). */
+  setHeadlightGain(gain: number): void {
+    const clamped = Number.isFinite(gain) ? Math.max(0, Math.min(1, gain)) : 0;
+    if (this.#headlightGain === clamped) {
       return;
     }
-    this.#headlightsEnabled = enabled;
-    this.#headlampMaterial.emissiveIntensity = enabled ? HEADLAMP_ACTIVE_EMISSIVE_INTENSITY : 0;
+    this.#headlightGain = clamped;
+    this.#headlampMaterial.emissiveIntensity = HEADLAMP_ACTIVE_EMISSIVE_INTENSITY * clamped;
   }
 
   sync(pose: VehiclePose): void {
@@ -283,8 +283,10 @@ export class CarVisual {
     if (this.#steeringWheel !== null && frontWheelCount > 0) {
       this.#steeringWheel.rotation.z = -(frontSteerTotal / frontWheelCount) * 2.1;
     }
-    this.#brakeLightMaterial.emissiveIntensity =
-      pose.brake > 0.03 ? BRAKE_LAMP_ACTIVE_INTENSITY : BRAKE_LAMP_IDLE_INTENSITY;
+    this.#brakeLightMaterial.emissiveIntensity = resolveBrakeLampIntensity(
+      pose.brake,
+      pose.reversing,
+    );
   }
 
   dispose(): void {

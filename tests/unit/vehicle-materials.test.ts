@@ -1,6 +1,9 @@
 import { MeshPhysicalNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 import {
+  BRAKE_LAMP_ACTIVE_INTENSITY,
+  BRAKE_LAMP_ACTIVE_THRESHOLD,
+  BRAKE_LAMP_IDLE_INTENSITY,
   createAutomotivePaintMaterial,
   createBrakeLightMaterial,
   createExhaustInteriorMaterial,
@@ -9,7 +12,29 @@ import {
   createTintedCabinMaterial,
   createVehicleInteriorMaterial,
   createWheelMetalMaterial,
+  resolveBrakeLampIntensity,
 } from '../../src/vehicles/vehicle-materials';
+
+describe('brake lamp intensity (12.4f, pure)', () => {
+  it('shows the bright state only for a real brake demand in forward gears', () => {
+    expect(resolveBrakeLampIntensity(0, false)).toBe(BRAKE_LAMP_IDLE_INTENSITY);
+    expect(resolveBrakeLampIntensity(0.02, false)).toBe(BRAKE_LAMP_IDLE_INTENSITY);
+    // The threshold is a strict comparison: at the threshold the lamp stays in its tail state.
+    expect(resolveBrakeLampIntensity(BRAKE_LAMP_ACTIVE_THRESHOLD, false)).toBe(
+      BRAKE_LAMP_IDLE_INTENSITY,
+    );
+    expect(resolveBrakeLampIntensity(BRAKE_LAMP_ACTIVE_THRESHOLD + 0.01, false)).toBe(
+      BRAKE_LAMP_ACTIVE_INTENSITY,
+    );
+    expect(resolveBrakeLampIntensity(1, false)).toBe(BRAKE_LAMP_ACTIVE_INTENSITY);
+  });
+
+  it('stays in the tail state while reversing, even with the brake key held (reverse throttle)', () => {
+    expect(resolveBrakeLampIntensity(1, true)).toBe(BRAKE_LAMP_IDLE_INTENSITY);
+    expect(resolveBrakeLampIntensity(0.7, true)).toBe(BRAKE_LAMP_IDLE_INTENSITY);
+    expect(resolveBrakeLampIntensity(0, true)).toBe(BRAKE_LAMP_IDLE_INTENSITY);
+  });
+});
 
 describe('vehicle node materials', () => {
   it('builds node-based paint with physical clearcoat and macro variation', () => {

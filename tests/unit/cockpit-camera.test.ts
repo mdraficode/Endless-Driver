@@ -35,6 +35,7 @@ function pose(
     rotation: { x: rotation.x, y: rotation.y, z: rotation.z, w: rotation.w },
     wheels: [],
     brake: 0,
+    reversing: false,
   };
 }
 

@@ -19,6 +19,7 @@ function pose(x = 0, y = 0.6, z = 0, yaw = 0): VehiclePose {
     rotation: yaw === 0 ? identityQuat() : quatFromYaw(yaw),
     wheels: identityWheels(),
     brake: 0,
+    reversing: false,
   };
 }
 
@@ -156,6 +157,7 @@ describe('chase camera', () => {
       rotation: { x: 0, y: 0, z: 0, w: 1 },
       wheels: identityWheels(),
       brake: 0,
+      reversing: false,
     };
     advance(camera, 2, steep);
     expect(camera.camera.position.y).toBeGreaterThanOrEqual(0.5);

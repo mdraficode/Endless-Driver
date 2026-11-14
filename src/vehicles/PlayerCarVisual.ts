@@ -15,14 +15,14 @@ import { WHEEL_INDEX, type VehiclePose } from './types';
 import {
   createPlayerHeadlightRig,
   setAdaptiveHeadlightSteering,
-  setPlayerHeadlightsEnabled,
+  setHeadlightGain as applyHeadlightGain,
 } from './player-headlights';
 import {
-  BRAKE_LAMP_ACTIVE_INTENSITY,
   BRAKE_LAMP_EMISSIVE_COLOR,
   BRAKE_LAMP_IDLE_INTENSITY,
   HEADLAMP_ACTIVE_EMISSIVE_INTENSITY,
   HEADLAMP_EMISSIVE_COLOR,
+  resolveBrakeLampIntensity,
 } from './vehicle-materials';
 
 export const PLAYER_HERO_CAR_ASSET_ID = 'hero-car-mmc-generic-sport-coupe';
@@ -71,7 +71,7 @@ export class PlayerCarVisual {
   #loadAttempted = false;
   #fallbackDisposed = false;
   #disposed = false;
-  #headlightsEnabled = false;
+  #headlightGain = 0;
   readonly #selectedModel: PlayerCarModel;
 
   /**
@@ -112,18 +112,24 @@ export class PlayerCarVisual {
     return this.#loaded !== null;
   }
 
-  /** Applies the resolved night state to both the beam pair and the authored fallback lenses. */
-  setHeadlightsEnabled(enabled: boolean): void {
-    if (this.#headlightsEnabled === enabled) {
+  /**
+   * 12.4f: applies the resolved city night gain (0 = day … 1 = full night) to both the beam
+   * pair and the lens emission, so the hero car fades in with the rest of Aohara's lights
+   * instead of snapping on at the hard isNight threshold.
+   */
+  setHeadlightGain(gain: number): void {
+    const clamped = Number.isFinite(gain) ? Math.max(0, Math.min(1, gain)) : 0;
+    if (this.#headlightGain === clamped) {
       return;
     }
-    this.#headlightsEnabled = enabled;
-    setPlayerHeadlightsEnabled(this.#headlightRig, enabled);
+    this.#headlightGain = clamped;
+    applyHeadlightGain(this.#headlightRig, clamped);
     if (!this.#fallbackDisposed) {
-      this.#fallback.setHeadlightsEnabled(enabled);
+      this.#fallback.setHeadlightGain(clamped);
     }
-    const lensIntensity =
-      this.#lampBlackout.front || !enabled ? 0 : HEADLAMP_ACTIVE_EMISSIVE_INTENSITY;
+    const lensIntensity = this.#lampBlackout.front
+      ? 0
+      : HEADLAMP_ACTIVE_EMISSIVE_INTENSITY * clamped;
     for (const material of this.#headlampMaterials) {
       material.emissiveIntensity = lensIntensity;
     }
@@ -160,7 +166,7 @@ export class PlayerCarVisual {
       }
       const lodNodes = resolveLodNodes(model);
       const brakeLampMaterials = resolveBrakeLampMaterials(model);
-      const headlampMaterials = resolveHeadlampMaterials(model, this.#headlightsEnabled);
+      const headlampMaterials = resolveHeadlampMaterials(model, this.#headlightGain);
       this.root.add(model.object);
       // The lamp rig and damage overlay move from the fallback chassis to the
       // loaded car's physics-pose root.
@@ -224,11 +230,11 @@ export class PlayerCarVisual {
     this.root.position.set(pose.position.x, pose.position.y, pose.position.z);
     this.root.quaternion.set(pose.rotation.x, pose.rotation.y, pose.rotation.z, pose.rotation.w);
 
+    // 12.4f: while reversing the brake input is the reverse throttle, so the lamp
+    // stays in its tail state (resolveBrakeLampIntensity carries that rule).
     const brakeLampIntensity = this.#lampBlackout.rear
       ? 0
-      : pose.brake > 0.03
-        ? BRAKE_LAMP_ACTIVE_INTENSITY
-        : BRAKE_LAMP_IDLE_INTENSITY;
+      : resolveBrakeLampIntensity(pose.brake, pose.reversing);
     for (const material of this.#brakeLampMaterials) {
       if (material.emissiveIntensity !== brakeLampIntensity) {
         material.emissiveIntensity = brakeLampIntensity;
@@ -291,9 +297,7 @@ export class PlayerCarVisual {
     for (const material of this.#headlampMaterials) {
       material.emissiveIntensity = this.#lampBlackout.front
         ? 0
-        : this.#headlightsEnabled
-          ? HEADLAMP_ACTIVE_EMISSIVE_INTENSITY
-          : 0;
+        : HEADLAMP_ACTIVE_EMISSIVE_INTENSITY * this.#headlightGain;
     }
     for (const material of this.#brakeLampMaterials) {
       if (this.#lampBlackout.rear) {
@@ -353,14 +357,14 @@ export class PlayerCarVisual {
  */
 function resolveHeadlampMaterials(
   model: LoadedModel,
-  enabled: boolean,
+  gain: number,
 ): readonly MeshStandardMaterial[] {
   const headlampMaterials: MeshStandardMaterial[] = [];
   const modelRoot = model.object;
   modelRoot.updateWorldMatrix(true, true);
   const modelWorldInverse = modelRoot.matrixWorld.clone().invert();
   const frontLampZ = -VEHICLE_CONFIG.chassis.halfExtents[2] * 0.72;
-  const lensIntensity = enabled ? HEADLAMP_ACTIVE_EMISSIVE_INTENSITY : 0;
+  const lensIntensity = HEADLAMP_ACTIVE_EMISSIVE_INTENSITY * Math.max(0, Math.min(1, gain));
 
   modelRoot.traverse((object) => {
     if (!(object instanceof Mesh)) return;

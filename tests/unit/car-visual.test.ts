@@ -5,11 +5,12 @@ import { VEHICLE_CONFIG } from '../../src/config/vehicle';
 import { CarVisual } from '../../src/vehicles/CarVisual';
 import type { VehiclePose } from '../../src/vehicles/types';
 
-function makePose(brake: number): VehiclePose {
+function makePose(brake: number, reversing = false): VehiclePose {
   return {
     position: { x: 2, y: 0.7, z: -3 },
     rotation: { x: 0, y: 0, z: 0, w: 1 },
     brake,
+    reversing,
     wheels: [
       { isFront: true, steerAngle: 0.2, spinAngle: 1.1, suspensionLength: 0.24 },
       { isFront: true, steerAngle: 0.4, spinAngle: -0.8, suspensionLength: 0.31 },
@@ -112,6 +113,11 @@ describe('in-house Kaminari GT player visual', () => {
     expect(brakeLamp.material.map).toBeNull();
 
     car.sync({ ...pose, brake: 0 });
+    expect(brakeLamp.material.emissiveIntensity).toBeCloseTo(0.24, 6);
+
+    // 12.4f: while reversing the brake key is the reverse throttle — the lamp must not
+    // read as a full brake to traffic behind.
+    car.sync(makePose(1, true));
     expect(brakeLamp.material.emissiveIntensity).toBeCloseTo(0.24, 6);
     car.dispose();
   });

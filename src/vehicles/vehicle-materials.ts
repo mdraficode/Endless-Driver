@@ -16,6 +16,20 @@ export const HEADLAMP_ACTIVE_EMISSIVE_INTENSITY = 2.4;
 export const BRAKE_LAMP_IDLE_INTENSITY = 0.24;
 export const BRAKE_LAMP_ACTIVE_INTENSITY = 2.1;
 export const BRAKE_LAMP_EMISSIVE_COLOR = 0x5e090e;
+/** Brake input above which the rear lamp shows its bright (brake) state. */
+export const BRAKE_LAMP_ACTIVE_THRESHOLD = 0.03;
+
+/**
+ * 12.4f — the rear lamp state, as one pure rule for both the authored fallback and the
+ * imported hero. While reverse gear is engaged the brake input doubles as the reverse
+ * throttle (keyboard contract), so it describes the reverse demand — the lamp must stay
+ * in its idle (tail) state instead of reading as a full brake to traffic behind.
+ */
+export function resolveBrakeLampIntensity(brake: number, reversing: boolean): number {
+  return !reversing && brake > BRAKE_LAMP_ACTIVE_THRESHOLD
+    ? BRAKE_LAMP_ACTIVE_INTENSITY
+    : BRAKE_LAMP_IDLE_INTENSITY;
+}
 
 /** Project-authored metallic paint response: TSL macro-flake modulation and physical clearcoat. */
 export function createAutomotivePaintMaterial(colorHex = PAINT_COLOR): MeshPhysicalNodeMaterial {

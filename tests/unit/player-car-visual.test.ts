@@ -1,9 +1,18 @@
-import { BoxGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Vector3 } from 'three';
+import {
+  BoxGeometry,
+  Group,
+  Mesh,
+  MeshBasicMaterial,
+  MeshStandardMaterial,
+  SpotLight,
+  Vector3,
+} from 'three';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { COCKPIT_CAMERA_CONFIG, FALLBACK_COCKPIT_EYE_ANCHOR } from '../../src/config/camera';
 import { VEHICLE_CONFIG } from '../../src/config/vehicle';
 import { PlayerCarVisual, PLAYER_HERO_CAR_ASSET_ID } from '../../src/vehicles/PlayerCarVisual';
+import { PLAYER_HEADLIGHT_CONFIG } from '../../src/vehicles/player-headlights';
 import {
   BRAKE_LAMP_ACTIVE_INTENSITY,
   BRAKE_LAMP_EMISSIVE_COLOR,
@@ -33,6 +42,7 @@ const POSE: VehiclePose = {
     { isFront: false, steerAngle: 0, spinAngle: 2.2, suspensionLength: 0.36 },
   ],
   brake: 0,
+  reversing: false,
 };
 
 function createLoadedHero(includeBrakeLamps = true): LoadedModel {
@@ -313,9 +323,16 @@ describe('PlayerCarVisual', () => {
     expect(leftBeam?.visible).toBe(false);
     expect(headlampMaterial.emissiveIntensity).toBe(0);
 
-    visual.setHeadlightsEnabled(true);
+    visual.setHeadlightGain(1);
     expect(leftBeam?.visible).toBe(true);
     expect(headlampMaterial.emissiveIntensity).toBe(HEADLAMP_ACTIVE_EMISSIVE_INTENSITY);
+
+    // 12.4f: a partial night gain scales both the beam power and the lens emission.
+    visual.setHeadlightGain(0.5);
+    expect(leftBeam?.visible).toBe(true);
+    expect((leftBeam as SpotLight).intensity).toBe(PLAYER_HEADLIGHT_CONFIG.intensityCandela * 0.5);
+    expect(headlampMaterial.emissiveIntensity).toBe(HEADLAMP_ACTIVE_EMISSIVE_INTENSITY * 0.5);
+    visual.setHeadlightGain(1);
     await expect(visual.load({})).resolves.toBe(true);
     expect(rig?.parent).toBe(visual.root);
     expect(leftBeam?.visible).toBe(true);
@@ -327,7 +344,7 @@ describe('PlayerCarVisual', () => {
       ),
     ).toBe(true);
 
-    visual.setHeadlightsEnabled(false);
+    visual.setHeadlightGain(0);
     expect(leftBeam?.visible).toBe(false);
     expect(heroHeadlamps.every((material) => material.emissiveIntensity === 0)).toBe(true);
     visual.dispose();
@@ -445,7 +462,7 @@ describe('PlayerCarVisual', () => {
       visual.sync(POSE);
       await expect(visual.load({})).resolves.toBe(true);
 
-      visual.setHeadlightsEnabled(true);
+      visual.setHeadlightGain(1);
       const headlamps = getHeroHeadlampMaterials(model);
       expect(headlamps.length).toBeGreaterThan(0);
       expect(

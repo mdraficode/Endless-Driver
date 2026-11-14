@@ -225,7 +225,13 @@ export class Car {
           previous.suspensionLength + (current.suspensionLength - previous.suspensionLength) * t,
       };
     });
-    return { position, rotation, wheels, brake: this.#telemetry.brake };
+    return {
+      position,
+      rotation,
+      wheels,
+      brake: this.#telemetry.brake,
+      reversing: this.#drivetrain.state.gear < 0,
+    };
   }
 
   /**

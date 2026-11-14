@@ -12,6 +12,7 @@ import {
   type TrafficIntensity,
 } from '../config/game-preferences';
 import { RENDER_CONFIG, type RenderConfig } from '../config/render';
+import { resolveUrbanNightGain } from '../config/urban-city';
 import { ORIGIN_CONFIG } from '../config/origin';
 import { terrainConfigForTier } from '../config/terrain';
 import { DEFAULT_TIER } from '../config/tiers';
@@ -810,7 +811,8 @@ export class Application {
     // Mid-drive switch: the player chose this, so the car stays visible (on the roadster)
     // while the new model is fetched rather than vanishing.
     const next = new PlayerCarVisual(model, { revealFallback: true });
-    next.setHeadlightsEnabled(this.#daylight?.isNight ?? false);
+    // 12.4f: the beams fade with the shared city night ramp (day = 0 when no daylight yet).
+    next.setHeadlightGain(resolveUrbanNightGain(this.#daylight?.sunElevationDegrees ?? 90));
     next.sync(pose);
     this.#scene.addObject(next.root);
     this.#carVisual = next;
@@ -1663,7 +1665,8 @@ export class Application {
     this.#rainField.setIntensity(weather.rainIntensity);
     this.#rainField.setLightning(weather.lightning);
     this.#rainField.update(delta, this.#car.position.x, this.#car.position.y, this.#car.position.z);
-    this.#carVisual.setHeadlightsEnabled(this.#daylight.isNight);
+    // 12.4f: beams fade with the shared city night ramp (sun +4°…−4°), not the hard isNight flag.
+    this.#carVisual.setHeadlightGain(resolveUrbanNightGain(this.#daylight.sunElevationDegrees));
 
     // 3. Presentation interpolates between the last two authoritative poses.
     const pose = this.#car.getInterpolatedPose(this.#physics.interpolationAlpha);
@@ -1777,7 +1780,8 @@ export class Application {
     this.#carEffects.setSurfaceWetness(settleWeather.wetness);
     this.#rainField.setIntensity(settleWeather.rainIntensity);
     this.#rainField.setLightning(settleWeather.lightning);
-    this.#carVisual.setHeadlightsEnabled(this.#daylight.isNight);
+    // 12.4f: beams fade with the shared city night ramp (sun +4°…−4°), not the hard isNight flag.
+    this.#carVisual.setHeadlightGain(resolveUrbanNightGain(this.#daylight.sunElevationDegrees));
   }
 
   #loadCarModel(visual: PlayerCarVisual): Promise<boolean> {

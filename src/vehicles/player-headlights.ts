@@ -50,8 +50,22 @@ export function createPlayerHeadlightRig(): PlayerHeadlightRig {
 
 /** Night mood and natural night-time clocks share this gate. */
 export function setPlayerHeadlightsEnabled(rig: PlayerHeadlightRig, enabled: boolean): void {
+  setHeadlightGain(rig, enabled ? 1 : 0);
+}
+
+/**
+ * 12.4f — fade the beams with the city night ramp instead of snapping them on at the hard
+ * `isNight` threshold (sun < −6°). Every other Aohara light source (window emissives,
+ * street-lamp emitters, flares, rain light pools) already fades in over the shared
+ * +4°…−4° smoothstep, and the hero car's beams were the one light that popped: for two
+ * degrees of sun set the city sat in full night while the player still drove without beams,
+ * then the pair clicked to full power at once. Feed it `resolveUrbanNightGain(elevation)`.
+ */
+export function setHeadlightGain(rig: PlayerHeadlightRig, gain: number): void {
+  const clamped = Number.isFinite(gain) ? Math.max(0, Math.min(1, gain)) : 0;
   for (const light of rig.lights) {
-    light.visible = enabled;
+    light.visible = clamped > 0;
+    light.intensity = PLAYER_HEADLIGHT_CONFIG.intensityCandela * clamped;
   }
 }
 

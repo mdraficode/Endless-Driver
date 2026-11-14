@@ -125,6 +125,12 @@ export interface VehiclePose {
   readonly wheels: readonly WheelVisualState[];
   /** Current brake input, used only for the player vehicle's local rear lamp intensity. */
   readonly brake: number;
+  /**
+   * Reverse gear engaged. The brake input doubles as the reverse throttle (keyboard contract),
+   * so while reversing it describes the reverse demand, not a service brake — the rear lamp
+   * must show its idle state, not the brake state.
+   */
+  readonly reversing: boolean;
 }
 
 export const WHEEL_INDEX = {
