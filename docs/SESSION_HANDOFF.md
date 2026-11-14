@@ -4050,15 +4050,17 @@ own visual check remains after the next phase lands. After Phase 12:
 
 ## Phase 12.4 — graphics pass (in progress)
 
-**Status (2026-11-14, 12.4e landed):** five increments — **12.4a**
-(deterministic baseline + guards), **12.4b** (tonemap/exposure + AO
-polish), **12.4c** (window emissive temperatures), **12.4d** (the facade
-micro-detail octave, `153f390`), **12.4e** (light-pool hygiene —
-pools centred under the bulb and tinted to the lamp palette,
-`1fd8903`). None of them is visually accepted yet: 12.4b's contrast
-trim, 12.4d's octave and 12.4e's pools all wait on the owner's device
-A/B (the established acceptance gate). Remaining 12.4 items:
-headlight/taillight quality.
+**Status (2026-11-14, Phase 12.4 complete):** all six increments
+landed — **12.4a** (deterministic baseline + guards), **12.4b**
+(tonemap/exposure + AO polish), **12.4c** (window emissive
+temperatures), **12.4d** (the facade micro-detail octave, `153f390`),
+**12.4e** (light-pool hygiene — pools centred under the bulb and
+tinted to the lamp palette, `1fd8903`), **12.4f** (headlight/taillight
+quality — beams fade with the city night ramp, brake lamps honest in
+reverse, `d7b2ccc`). None of the visual changes is owner-accepted
+yet: 12.4b's contrast trim, 12.4d's octave, 12.4e's pools and 12.4f's
+dusk fade all wait on the owner's device A/B (the established
+acceptance gate).
 
 **Status (2026-11-11):** 12.4 is authorized and unblocked. Two increments
 landed: **12.4a** (the deterministic baseline + guards) and **12.4b** (the
@@ -4226,6 +4228,40 @@ gains.
   and each pool's warmth should match the lamp above it.
 - **Not started (still 12.4):** headlight/taillight quality.
 
+**12.4f — headlight/taillight quality (`d7b2ccc`, 2026-11-14).**
+
+- Two defects in the hero car's lamps. (1) The player's beams snapped
+  on at the hard `isNight` flag (sun < −6°) at full power, while every
+  other Aohara light source fades in over the shared +4°…−4°
+  `resolveUrbanNightGain` smoothstep — for two degrees of sun set the
+  city sat in full night while the player drove without beams, then
+  the pair clicked on at once. (2) While reversing, the brake key
+  doubles as the reverse throttle (keyboard contract) and
+  `pose.brake` carried that reverse demand to the rear lamp — a
+  following car saw a full brake the whole time the player backed up.
+- `setHeadlightGain()` (new, `player-headlights.ts`) fades both beams
+  (0…10,500 cd) and, through the visual layer, the lens emission
+  (0…2.4); `Application` feeds it the same
+  `resolveUrbanNightGain(sunElevationDegrees)` the city lights use
+  (all three call sites: per-frame, settle, mid-drive model swap).
+  `setPlayerHeadlightsEnabled` stays as the 0/1 convenience mapping.
+- `VehiclePose` gains `reversing` (drivetrain gear < 0); the rear lamp
+  follows one pure rule, `resolveBrakeLampIntensity(brake, reversing)`
+  (`vehicle-materials.ts`), in both the authored fallback and the
+  imported hero: bright only for a real brake demand (> 0.03) in
+  forward gears, tail state while reversing.
+- Verified: +6 deterministic tests (rig gain fade + clamping, partial
+  gain scaling beam and lens on the visual, the pure brake rule, the
+  reverse case through the fallback sync) plus pose-literal updates in
+  five test files. Full `npm run check` green; commit `d7b2ccc`.
+- **Owner device pass:** drive a dusk into night — the hero's beams
+  and lens glow should fade in with the city lights rather than pop
+  at one instant; reverse through traffic and check the tail lamps
+  stay in their tail state.
+- **Phase 12.4 is complete:** 12.4a/b/c/d/e/f all landed; none of the
+  visual changes is owner-accepted yet — the device A/Bs above (plus
+  12.4b's contrast and 12.4d's octave) are the acceptance gate.
+
 ## Human-perspective bug-hunting player (2026-11-12)
 
 The owner asked for a player that drives the game exactly like a human and
@@ -4299,10 +4335,10 @@ menu all working, with no black / flat / magenta frames and zero console
 warnings on the fixed build. The default start time is night (23:30 at Home
 City), which is why `day`/`night` pin `?time=` explicitly.
 
-**Still open:** the remaining Phase 12.4 taste items (light-pool hygiene,
-headlight/taillight quality; the facade micro-detail octave landed in
-12.4d at `153f390`) and the 12.4b/12.4d owner-device A/B — unchanged by
-this work. Re-run the player on a real
+**Still open:** the Phase 12.4 owner-device A/Bs (12.4b contrast, 12.4d
+facade octave, 12.4e pools, 12.4f dusk fade — all increments landed;
+see the Phase 12.4 section) — unchanged by this work. Re-run the
+player on a real
 device/GPU for authoritative visual acceptance:
 `cd e2e && npm install && npx playwright install chromium && node
 human-player.mjs --scenarios core,day,night,rain,carswap --base-url
