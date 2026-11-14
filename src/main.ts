@@ -1,6 +1,12 @@
 import './style.css';
 import { Application, type ApplicationOptions } from './core/Application';
-import { RENDER_CONFIG, applyRenderSwitches, type RenderConfig } from './config/render';
+import {
+  RENDER_CONFIG,
+  applyRenderSwitches,
+  readFacadeMidScale,
+  type RenderConfig,
+} from './config/render';
+import { setFacadeMidScale } from './world/architectural-materials';
 import { WORLD_CONFIG } from './config/world';
 import { DEFAULT_SPAWN_ID, SPAWN_POINTS } from './config/spawns';
 import {
@@ -167,6 +173,9 @@ function resolveRenderConfig(preferences: GamePreferences = readGamePreferences(
     applyBackendOverride(applyTier(RENDER_CONFIG, tier.id), backendPreference),
     window.location.search,
   );
+  // 12.4d device A/B: scale the mid-scale facade-detail octave before any world is built
+  // (1 = as shipped, 0 = the pre-12.4d two-octave look).
+  setFacadeMidScale(readFacadeMidScale(window.location.search));
   const backendNote =
     requestedBackend !== null
       ? `, backend forced to ${requestedBackend}`

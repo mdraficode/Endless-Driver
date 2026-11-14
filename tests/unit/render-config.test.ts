@@ -1,7 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { RENDER_CONFIG, applyRenderSwitches } from '../../src/config/render';
+import { RENDER_CONFIG, applyRenderSwitches, readFacadeMidScale } from '../../src/config/render';
 import { applyTier } from '../../src/core/QualityTier';
 import { WORLD_CONFIG } from '../../src/config/world';
+
+describe('readFacadeMidScale (12.4d device A/B)', () => {
+  it('defaults to the shipped three-octave look when the switch is absent', () => {
+    expect(readFacadeMidScale('')).toBe(1);
+    expect(readFacadeMidScale('?tier=C&seed=20261013')).toBe(1);
+    expect(readFacadeMidScale('?facadeDetail=')).toBe(1);
+  });
+
+  it('passes a finite value through for the A/B', () => {
+    expect(readFacadeMidScale('?facadeDetail=0')).toBe(0);
+    expect(readFacadeMidScale('?facadeDetail=0.5')).toBe(0.5);
+    expect(readFacadeMidScale('?facadeDetail=1.25')).toBe(1.25);
+    expect(readFacadeMidScale('?facadeDetail=2')).toBe(2);
+  });
+
+  it('clamps out-of-range values to the [0, 2] taste band', () => {
+    expect(readFacadeMidScale('?facadeDetail=-3')).toBe(0);
+    expect(readFacadeMidScale('?facadeDetail=99')).toBe(2);
+  });
+
+  it('falls back to the shipped look on a non-numeric value', () => {
+    expect(readFacadeMidScale('?facadeDetail=bogus')).toBe(1);
+    // parseFloat prefix semantics: a trailing junk tail is ignored, not an error.
+    expect(readFacadeMidScale('?facadeDetail=1.2.3')).toBe(1.2);
+  });
+});
 
 describe('render configuration', () => {
   it('caps device pixel ratio at 2 for mobile GPU budgets', () => {

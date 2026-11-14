@@ -857,6 +857,20 @@ function parseBooleanSwitch(value: string | null): boolean | null {
   return null;
 }
 
+/**
+ * `?facadeDetail=<n>` trims the 12.4d mid-scale facade-detail octave for a device A/B without a
+ * rebuild: `1` is the three-octave look as shipped, `0` is the pre-12.4d two-octave look (the
+ * mid octave disabled). Out-of-range values are clamped to a taste band rather than passed
+ * through, so a typo cannot produce an unreadable surface.
+ */
+export function readFacadeMidScale(search: string): number {
+  const raw = new URLSearchParams(search).get('facadeDetail');
+  if (raw === null || raw === '') return 1;
+  const value = Number.parseFloat(raw);
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(2, Math.max(0, value));
+}
+
 export function applyRenderSwitches(config: RenderConfig, search: string): RenderConfig {
   const params = new URLSearchParams(search);
   const dof = params.get('dof');
