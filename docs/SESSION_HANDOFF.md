@@ -4050,12 +4050,14 @@ own visual check remains after the next phase lands. After Phase 12:
 
 ## Phase 12.4 — graphics pass (in progress)
 
-**Status (2026-11-14):** four increments landed — **12.4a** (deterministic
-baseline + guards), **12.4b** (tonemap/exposure + AO polish), **12.4c**
-(window emissive temperatures), **12.4d** (the facade micro-detail octave,
-`153f390`). None of them is visually accepted yet: 12.4b's contrast trim
-and 12.4d's octave both wait on the owner's device A/B (the established
-acceptance gate). Remaining 12.4 items: light-pool hygiene,
+**Status (2026-11-14, 12.4e landed):** five increments — **12.4a**
+(deterministic baseline + guards), **12.4b** (tonemap/exposure + AO
+polish), **12.4c** (window emissive temperatures), **12.4d** (the facade
+micro-detail octave, `153f390`), **12.4e** (light-pool hygiene —
+pools centred under the bulb and tinted to the lamp palette,
+`1fd8903`). None of them is visually accepted yet: 12.4b's contrast
+trim, 12.4d's octave and 12.4e's pools all wait on the owner's device
+A/B (the established acceptance gate). Remaining 12.4 items:
 headlight/taillight quality.
 
 **Status (2026-11-11):** 12.4 is authorized and unblocked. Two increments
@@ -4188,6 +4190,41 @@ gains.
   flat-plus-fine-noise.
 - **Not started (still 12.4):** light-pool hygiene, headlight/taillight
   quality.
+
+**12.4e — light-pool hygiene (`1fd8903`, 2026-11-14).**
+
+- The night-rain pools (Phase 10.5 pass C) had three hygiene defects:
+  the quad was centred on the lamp **pole**, but the light source is the
+  **bulb** at the arm's tip, 1.88 m over the road — the pool's bright
+  core sat on the sidewalk, detached from where the light falls; every
+  pool was hard-coded to one warm white while the lamps run a
+  four-temperature halogen palette (streamed cities: a single tone),
+  and the falloff texture baked a second warm tint; and the 128²
+  falloff sampled nearest-filtered, so the 9 m quad showed ~7 cm
+  contour steps at the pool edge.
+- `lightPoolCenter()` (pure, in `src/environment/light-pool.ts`) is the
+  seam: the pool is centred under the bulb (x/z) at the pole base +
+  0.04 m lift. The home city passes its lamp placements through it;
+  the massing cities keep pole-centred pools (their heads sit directly
+  above the pole — already aligned).
+- `buildLightPools(positions, tints?)` takes per-instance tints; the
+  material colour is white by construction, so the lamp palette is the
+  single source of temperature. `setLamp` scales the tint by
+  brightness (broken/flicker tracking unchanged). The shared texture is
+  neutral white with linear + trilinear-mip filtering — the sheen
+  feathers instead of stepping.
+- Verified: +7 deterministic tests — pure centering (pool under the
+  bulb, 1.88 m off the pole, ground lift independent of bulb height),
+  per-instance tint + dimming + default-tint fallback, neutral/linear
+  texture, a home-city integration test asserting every pool sits
+  1.88 m from its pole with a palette tint (float32 slack for the
+  instance buffers), and a streamed-city integration test asserting
+  pool tint == point-light colour. Full `npm run check` green
+  (**1039 tests / 126 files**, +7); commit `1fd8903`.
+- **Owner device pass:** a wet night drive through Aohara — the pools
+  should now sit under the lamp light on the road side of each pole,
+  and each pool's warmth should match the lamp above it.
+- **Not started (still 12.4):** headlight/taillight quality.
 
 ## Human-perspective bug-hunting player (2026-11-12)
 
