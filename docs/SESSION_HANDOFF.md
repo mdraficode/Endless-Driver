@@ -4343,3 +4343,76 @@ device/GPU for authoritative visual acceptance:
 `cd e2e && npm install && npx playwright install chromium && node
 human-player.mjs --scenarios core,day,night,rain,carswap --base-url
 <device or local preview>`.
+
+## 12.4 human look-acceptance run (2026-11-15)
+
+The owner asked for the 12.4 look to be checked **from a human-player
+perspective** — driving like a person and looking like one. The
+`e2e/human-player.mjs` player was extended for it (commit `d5d4fd2`):
+a `dusk` scenario (`time=18`, sun ≈ 0°, shared night ramp ≈ 60 % — the
+12.4f fade window, asserting `isNight` is still false while the beams
+must be at half power) and a `--extra-query <q>` pass-through for the
+owner's device A/B switches (`contrast=1`, `facadeDetail=0`,
+`weather=rain` on a night scenario, …) without editing the file. A
+`frame-metrics.mjs` helper prints per-frame mean luminance / magenta /
+black-fraction for side-by-side comparison.
+
+**Run matrix (SwiftShader sandbox, `--res 0.5`, seed 20261013 —
+correctness evidence only, per the standing caveat; frame-rate numbers
+are meaningless here):** 12 scenario runs (core, day, dusk, night,
+rain, carswap + the A/B variants), 11 PASS / 1 FAIL,
+**0 bug findings**. The single FAIL (first `core` run) was
+environmental: the page's main thread was pinned by SwiftShader so the
+telemetry `evaluate` calls timed out; the frames themselves show the
+game fully alive, and the "pause menu did not open" flag was a false
+positive — the captured frame shows the menu open.
+
+**Per-increment evidence (all frames in `/home/user/124-*`):**
+
+- **12.4b contrast** — night A/B (`124-ab-default` vs
+  `124-ab-contrast-off` with `contrast=1`): near-identical mean
+  luminance (82.4 vs 80.3) with a visibly flatter, faster-falling-to-
+  black distance in the off frame — a tone-redistribution, matching
+  the exposure/contrast-only (no fog) design.
+- **12.4d facade octave** — day + night A/B (`124-ab-facade-off` with
+  `facadeDetail=0`): the off look is coherent and artifact-free
+  (magenta 0.00 %); the default is slightly richer. Both acceptable;
+  0 is a valid weak-device lever.
+- **12.4e pools** — the `rain` scenario is wet night (default start
+  23:30 + `weather=rain`, 85 % wet): pools sit **under the bulbs**
+  (1.88 m inward arm) and carry the per-lamp tint (warm left, cyan
+  right) on a streaked wet surface; a second wet-night A/B
+  (`124-ab-wetnight`, `time=22&weather=rain`) confirms it, with a
+  fully clean boot console.
+- **12.4f dusk fade** — `dusk` (18:00): beams + lens + city lights at
+  half power under a sunset horizon while `isNight = false` (the old
+  binary gate had no beams at all here); the beams track steering; the
+  brake lamp reads brighter than idle at day, dusk and night; the
+  `time=22` night frame shows full power with 25.9 % true-black sky
+  (night is night — no grey fog wall).
+- **Both cars** — the imported hero (Generic Sport Coupé) is verified
+  in all regimes above; the project-authored open-top (Kaminari GT
+  Roadster) was swapped in live (pause → Car Model → select, applied
+  in place) and driven with a brake: beams, tail state and brake state
+  all correct on the fallback too. Note: the Car Model menu item must
+  be clicked with **short polled probes**, not one long `evaluate` —
+  SwiftShader pins the main thread in long bursts and a single 30 s
+  eval loses the race (the stock `carswap` check flagged this twice;
+  the companion `fallback-swap.mjs` patient driver, left in the
+  checkout, won it).
+
+**Environmental findings (not game defects):** terrain
+"startup-ring preparation timed out" on the first boots (chunks land
+by drive time — frames prove the world under the car); 8×
+`THREE.AttributeNode: Vertex attribute "uv" not found` at boot —
+identical count in day and night runs, pre-existing, none of the
+affected elements is visible in any frame; headless
+`requestFullscreen` refusal (no user gesture) logged gracefully.
+
+**Status:** sandbox correctness + consistency evidence complete for
+all six 12.4 increments on both cars. The **owner's device A/Bs remain
+the acceptance gate** (standing rule): 12.4b (`?contrast=1` off vs
+default), 12.4d (`facadeDetail=0` vs 1), 12.4e (wet-night pools under
+the bulb, lamp-tinted), 12.4f (dusk fade into night + reverse tail
+state) — all now runnable unmodified with
+`node human-player.mjs --scenarios dusk,night ... [--extra-query ...]`.
