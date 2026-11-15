@@ -22,6 +22,10 @@ import { createWorldTerrainSampler } from '../src/world/world-terrain';
 import { createTerrainSampler } from '../src/world/terrain-height';
 import { homeCityAnchor } from '../src/world/city-content';
 import { terrainConfigForTier } from '../src/config/terrain';
+import {
+  generateChunkVegetation,
+  generateChunkVegetationStratified,
+} from '../src/world/vegetation-placement';
 import type { RoadNetwork } from '../src/world/road-network';
 
 const seeds = process.argv.slice(2);
@@ -294,6 +298,47 @@ for (const seedArg of seeds) {
   }
   const comps = new Set(nodes.map((n) => find(n.id))).size;
 
+  // Phase 11.0c — vegetation acceptance in the engine world: the rural 3×3
+  // window the 11.0c harness uses (fixed offset from the home anchor, outside
+  // the city plateau) — density band vs the stratified baseline, NN CV, and a
+  // determinism spot check on one chunk.
+  const chunkSize = sampler.config.chunkSizeMeters;
+  const acx = Math.round(anchor.x / chunkSize);
+  const acz = Math.round(anchor.z / chunkSize);
+  const vegWindow: Array<[number, number]> = [];
+  for (let cz = acz - 9; cz <= acz - 7; cz += 1) {
+    for (let cx = acx - 5; cx <= acx - 3; cx += 1) vegWindow.push([cx, cz]);
+  }
+  const vegNew: Array<{ x: number; z: number }> = [];
+  const vegBase: Array<{ x: number; z: number }> = [];
+  for (const [cx, cz] of vegWindow) {
+    vegNew.push(...generateChunkVegetation(sampler, cx, cz));
+    vegBase.push(...generateChunkVegetationStratified(sampler, cx, cz));
+  }
+  const nnCv = (pts: Array<{ x: number; z: number }>): number => {
+    const n = pts.length;
+    if (n < 2) return Number.NaN;
+    let sum = 0;
+    const nn = new Array<number>(n);
+    for (let i = 0; i < n; i += 1) {
+      let best = Infinity;
+      for (let j = 0; j < n; j += 1) {
+        if (i === j) continue;
+        const d = Math.hypot(pts[i]!.x - pts[j]!.x, pts[i]!.z - pts[j]!.z);
+        if (d < best) best = d;
+      }
+      nn[i] = best;
+      sum += best;
+    }
+    const mean = sum / n;
+    const varr = nn.reduce((a, b) => a + (b - mean) ** 2, 0) / n;
+    return Math.sqrt(varr) / mean;
+  };
+  const vegRatio = vegNew.length / Math.max(1, vegBase.length);
+  const vegDet =
+    JSON.stringify(generateChunkVegetation(sampler, acx - 4, acz - 8)) ===
+    JSON.stringify(generateChunkVegetation(sampler, acx - 4, acz - 8));
+
   const overpasses = network.overpassSpans.length;
   const bridges = network.bridgeSpans.length;
   const tunnels = network.tunnelSpans.length;
@@ -333,4 +378,8 @@ for (const seedArg of seeds) {
   );
   console.log(`  rural length:   ${(ruralLen / 1000).toFixed(2)} km`);
   console.log(`  max grade:      ${gradeLine || 'n/a'}`);
+  console.log(
+    `  vegetation:     new=${vegNew.length} baseline=${vegBase.length} ratio=${vegRatio.toFixed(3)} ` +
+      `| CV new=${nnCv(vegNew).toFixed(3)} baseline=${nnCv(vegBase).toFixed(3)} | det ${vegDet ? '✓' : '✗'}`,
+  );
 }

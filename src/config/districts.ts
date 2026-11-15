@@ -137,6 +137,13 @@ export interface VegetationConfig {
   readonly spawnClearanceMeters: number;
   /** Trees stop at the snowline; rock continues higher. */
   readonly treeLineMeters: number;
+  /**
+   * Phase 11.0c: Bridson rejection budget for the Poisson-disk slot mesh.
+   * Larger k fills the mesh more completely at a linear cost per slot; the
+   * slot count is k-insensitive (254→230 over k=30→8), so 12 keeps quality
+   * at ~1/4 of the sampling cost (see the 11.0c audit).
+   */
+  readonly bridsonK: number;
 }
 
 export const VEGETATION_CONFIG: VegetationConfig = {
@@ -149,6 +156,7 @@ export const VEGETATION_CONFIG: VegetationConfig = {
   roadClearanceMeters: 12.5,
   spawnClearanceMeters: 55,
   treeLineMeters: 150,
+  bridsonK: 12,
 };
 
 /**

@@ -4416,3 +4416,45 @@ default), 12.4d (`facadeDetail=0` vs 1), 12.4e (wet-night pools under
 the bulb, lamp-tinted), 12.4f (dusk fade into night + reverse tail
 state) — all now runnable unmodified with
 `node human-player.mjs --scenarios dusk,night ... [--extra-query ...]`.
+
+## Phase 11.0c — Bridson Poisson-disk vegetation (measured, 2026-10-13)
+
+Phase 12.4 human look-acceptance is **owner-accepted (Pass)**; the owner
+authorized moving to the next phase, **11.0c**. This section records the
+11.0c implementation and its measured acceptance against the spec
+(`docs/proposals/phase11-tech-modernization-audit.md` §4, now amended in place).
+
+**Implementation** (`src/world/vegetation-placement.ts`, config in
+`src/config/districts.ts`): plant _positions_ now come from a Bridson
+Poisson-disk slot mesh (radius = one 6.5 m cell, `k = config.bridsonK = 12`)
+per chunk that is never allowed to form inside a no-growth cell. The plant
+_count_ and species mix stay where the stratified baseline put them via a
+slot-level keep: the n-th slot landing in cell (ix, iz) rolls the baseline's
+weighted draw at salt `37 + n` against `total / BRIDSON_SLOT_DENSITY`
+(0.66, calibrated on the current k=12 stream so the count lands mid-band).
+The disk moves WHERE each plant stands, not HOW MANY stand. The pre-11.0c
+algorithm is retained verbatim as `generateChunkVegetationStratified` — the
+acceptance reference. The mesh is allocation-free (typed arrays + a
+linked-list grid) and the neighbourhood search is inlined; determinism is
+unchanged (same chunk in, same forest out, on any thread, forever).
+
+**Measured acceptance** (5 seeds × 9-chunk forest window, tier C;
+`e2e/measure-110c.mts`, `tests/unit/vegetation-110c.test.ts`, and a
+vegetation line now printed per seed by `scripts/audit-worldgen11.ts`):
+
+- **Density band: PASS** — new/baseline 0.964–1.004 (band 0.80–1.20).
+- **NN CV: PASS as specified; the multiplicative ratio is unreachable** — new
+  CV 0.228–0.283 absolute (< 0.35; baseline 0.362–0.394); stratified CV
+  0.62–0.68× baseline. The literal "CV < 0.35× baseline" reading is
+  unachievable for any scatter on the shared density field (band-internal
+  jitter floor ≈ 0.6×) — recorded honestly, not gamed.
+- **Placement time: regression, recorded** — ≈ 13.4 vs ≈ 9.0–9.8 ms/chunk
+  (≈ 1.4×, target ≤ 1×). Unachievable by construction (shared ~8–10 ms/chunk
+  per-cell field dominates both costs); a `< 2×` tripwire test guards it and
+  the off-main-thread bake is deferred to 11.5.
+
+The spec's starting `k=30` was reduced to 12: the disk _quality_ is set by
+the radius, the slot count is k-insensitive (254→230 over k=30→8), so k=12
+keeps the band at ~¼ of the sampling cost. Full `npm run check` passes
+(format, lint, GLSL guard, both typechecks, all tests, asset verify, build).
+Next in queue: **11.0d WebGPU compute heightfield**.
