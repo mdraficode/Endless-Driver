@@ -33,13 +33,18 @@
  *   node human-player.mjs --scenarios core,night,rain,carswap \
  *        [--base-url http://localhost:4173] [--seed 20261013] \
  *        [--viewport 960x540] [--boot 480] [--settle 90] [--res 0.5] \
- *        [--play 70] [--out /tmp/human-bug-report]
+ *        [--extra-query 'contrast=1&facadeDetail=0'] [--play 70] [--out /tmp/human-bug-report]
  *   --res <scale>  pass the game's own `?res=` render-resolution switch through to every
  *                  scenario (a weak-device lever; sandboxes use it to fit their memory).
+ *   --extra-query <q>  extra game query switches (e.g. 'contrast=1' or
+ *                  'facadeDetail=0'), appended to every scenario — the owner's
+ *                  12.4 device A/Bs without editing this file.
  *
- * `--scenarios` is a comma list from: core day night rain carswap tierB spawn
+ * `--scenarios` is a comma list from: core day dusk night rain carswap tierB spawn
  *   core    the full human session (drive, corner, camera toggle, handbrake, reset, pause)
  *   day     noon drive (time=12) — sun up, isNight must be false
+ *   dusk    pre-sunset drive (time=18, sun ≈ 0°, night ramp ~60%) — the 12.4f fade:
+ *           half-power city lights and hero beams while isNight is still false
  *   night   night drive (time=22) — street lights, window glow, headlights
  *   rain    wet drive (weather=rain) — sheen + grip change
  *   carswap owner's regression path: pause → Car Model → swap → view must stay alive
@@ -78,19 +83,24 @@ const SCENARIOS = arg('scenarios', 'core,night,rain,carswap')
 // without changing what is being tested (same scene, same shaders, smaller framebuffer).
 const RES = arg('res', '');
 const RES_QUERY = RES === '' ? '' : `&res=${RES}`;
+// Extra game query switches (the 12.4 device A/Bs: contrast, facadeDetail, ...),
+// appended to every scenario so one run can be compared against another.
+const EXTRA_QUERY = (arg('extra-query', '') || '').replace(/^&+/, '');
+const EXTRA = EXTRA_QUERY === '' ? '' : `&${EXTRA_QUERY}`;
 
 mkdirSync(OUT, { recursive: true });
 
 // `debug=1` installs `window.__ENDLESS_DRIVER__` in production builds (the capture
 // scripts' convention) — the player's ground-truth handle. It changes no visuals.
 const SCENARIO_URL = {
-  core: `${BASE}?tier=C&backend=webgl2&seed=${SEED}&debug=1${RES_QUERY}`,
-  day: `${BASE}?tier=C&backend=webgl2&seed=${SEED}&time=12&debug=1${RES_QUERY}`,
-  night: `${BASE}?tier=C&backend=webgl2&seed=${SEED}&time=22&debug=1${RES_QUERY}`,
-  rain: `${BASE}?tier=C&backend=webgl2&seed=${SEED}&weather=rain&debug=1${RES_QUERY}`,
-  carswap: `${BASE}?tier=C&backend=webgl2&seed=${SEED}&debug=1${RES_QUERY}`,
-  tierB: `${BASE}?tier=B&backend=webgl2&seed=${SEED}&debug=1${RES_QUERY}`,
-  spawn: `${BASE}?tier=C&backend=webgl2&debug=1${RES_QUERY}`,
+  core: `${BASE}?tier=C&backend=webgl2&seed=${SEED}&debug=1${RES_QUERY}${EXTRA}`,
+  day: `${BASE}?tier=C&backend=webgl2&seed=${SEED}&time=12&debug=1${RES_QUERY}${EXTRA}`,
+  dusk: `${BASE}?tier=C&backend=webgl2&seed=${SEED}&time=18&debug=1${RES_QUERY}${EXTRA}`,
+  night: `${BASE}?tier=C&backend=webgl2&seed=${SEED}&time=22&debug=1${RES_QUERY}${EXTRA}`,
+  rain: `${BASE}?tier=C&backend=webgl2&seed=${SEED}&weather=rain&debug=1${RES_QUERY}${EXTRA}`,
+  carswap: `${BASE}?tier=C&backend=webgl2&seed=${SEED}&debug=1${RES_QUERY}${EXTRA}`,
+  tierB: `${BASE}?tier=B&backend=webgl2&seed=${SEED}&debug=1${RES_QUERY}${EXTRA}`,
+  spawn: `${BASE}?tier=C&backend=webgl2&debug=1${RES_QUERY}${EXTRA}`,
 };
 
 // ------------------------------------------------------------------ findings
@@ -782,6 +792,18 @@ async function scenarioDay(page, ctx) {
     clean: true,
   });
 }
+async function scenarioDusk(page, ctx) {
+  // `time=18` is ~3 minutes before sunset (sun ≈ 0°, the shared night ramp at ~60%):
+  // the 12.4f fade should read as half-power city lights and hero beams while
+  // isNight is still false — the old binary gate had no beams at all here.
+  await humanDrive(page, ctx, {
+    throttleSeconds: 12,
+    steer: 'ArrowRight',
+    brake: true,
+    expect: { night: false },
+    clean: true,
+  });
+}
 async function scenarioNight(page, ctx) {
   await humanDrive(page, ctx, {
     throttleSeconds: 12,
@@ -826,6 +848,7 @@ async function scenarioSpawn(page, ctx) {
 const SCENARIO_FN = {
   core: scenarioCore,
   day: scenarioDay,
+  dusk: scenarioDusk,
   night: scenarioNight,
   rain: scenarioRain,
   carswap: scenarioCarSwap,
