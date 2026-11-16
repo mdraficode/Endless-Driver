@@ -1,7 +1,12 @@
 import type { TerrainConfig } from '../config/terrain';
 import type { RoadNetworkConfig } from '../config/roads';
 import { AOHARA_DISTRICT_CONFIG } from '../config/urban-district';
-import { createTerrainSampler, terrainNormalAt, type TerrainSampler } from './terrain-height';
+import {
+  createTerrainSampler,
+  naturalHeightAt,
+  terrainNormalAt,
+  type TerrainSampler,
+} from './terrain-height';
 import { buildRoadNetwork, roadInfluence, type RoadSample } from './road-network';
 
 /** Phase 10 pass 2: the flat deck shelf extends this many metres past the shoulder. */
@@ -12,6 +17,46 @@ export interface CityPlateau {
   readonly z: number;
   readonly flatRadiusMeters: number;
   readonly blendRadiusMeters: number;
+}
+
+/**
+ * The exact inputs of `worldBaseHeightAt`. Carried on the world sampler as `baseSpec` so the
+ * GPU heightfield rasteriser (Phase 11.0d) can mirror the base function without rebuilding
+ * the world.
+ */
+export interface HeightfieldBaseSpec {
+  /** The terrain config with `elevationFadeCenter` set to the plateau (as the sampler uses). */
+  readonly config: TerrainConfig;
+  readonly plateau: CityPlateau;
+  /** Natural height at the plateau centre (computed once, float64, deterministic). */
+  readonly cityElevation: number;
+}
+
+/**
+ * The pre-carve base heightfield at (x, z): the seeded natural height (noise + ridges +
+ * volcano + floor + spawn pad) with the city plateau blended in. One pure function of the
+ * spec, so the CPU sampler and the GPU rasteriser (Phase 11.0d) evaluate the same thing —
+ * the GPU pass mirrors this function to within 1 cm on a 512² grid.
+ */
+export function worldBaseHeightAt(
+  terrainConfig: TerrainConfig,
+  plateau: CityPlateau,
+  cityElevation: number,
+  x: number,
+  z: number,
+): number {
+  const distance = Math.hypot(x - plateau.x, z - plateau.z);
+  if (distance <= plateau.flatRadiusMeters) {
+    return cityElevation;
+  }
+  const naturalHeight = naturalHeightAt(terrainConfig, x, z);
+  if (distance >= plateau.blendRadiusMeters) {
+    return naturalHeight;
+  }
+  const t =
+    (distance - plateau.flatRadiusMeters) / (plateau.blendRadiusMeters - plateau.flatRadiusMeters);
+  const blend = t * t * (3 - 2 * t);
+  return cityElevation + (naturalHeight - cityElevation) * blend;
 }
 
 /**
@@ -50,28 +95,16 @@ export function createWorldTerrainSampler(
   };
   // The country elevation fades out around the city anchor so the plateau blend never meets
   // a cliff ring; the base sampler is rebuilt with the fade centred on the real city.
-  const base = createTerrainSampler({
+  const fadeConfig: TerrainConfig = {
     ...terrainConfig,
     elevationFadeCenter: [plateau.x, plateau.z],
-  });
+  };
+  const base = createTerrainSampler(fadeConfig);
   const cityElevation = base.heightAt(plateau.x, plateau.z);
   // The city core is a bounded graded plain, not a second terrain/physics surface. A smooth
   // radial transition restores the original seeded heightfield before the district edge.
-  const baseHeightAt = (x: number, z: number): number => {
-    const distance = Math.hypot(x - plateau.x, z - plateau.z);
-    if (distance <= plateau.flatRadiusMeters) {
-      return cityElevation;
-    }
-    const naturalHeight = base.heightAt(x, z);
-    if (distance >= plateau.blendRadiusMeters) {
-      return naturalHeight;
-    }
-    const t =
-      (distance - plateau.flatRadiusMeters) /
-      (plateau.blendRadiusMeters - plateau.flatRadiusMeters);
-    const blend = t * t * (3 - 2 * t);
-    return cityElevation + (naturalHeight - cityElevation) * blend;
-  };
+  const baseHeightAt = (x: number, z: number): number =>
+    worldBaseHeightAt(fadeConfig, plateau, cityElevation, x, z);
   let network = buildRoadNetwork(roadConfig, baseHeightAt);
 
   const pitDepthAt = (x: number, z: number): number => {
@@ -204,11 +237,12 @@ export function createWorldTerrainSampler(
     return false;
   };
 
-  const heightAt = (x: number, z: number): number => {
+  // Phase 11.0d: the carve, separated from the base. It takes the base height as a
+  // parameter so the GPU rasteriser's read-back base can flow through the identical carve.
+  const carveFromBase = (x: number, z: number, natural: number): number => {
     // Phase 10 pass 4: the garage pits are part of the base (the aisle roads run on the
     // pit floor); the hideout bowls are still subtracted after the carve (roads pass
     // over them as causeways).
-    const natural = baseHeightAt(x, z);
     const baseHeight = natural - garagePitDepthAt(x, z, natural);
     // Phase 10 pass 4: garage surfaces are authoritative. The entrance ramp runs
     // alongside its street in the grid cities, so where a garage edge overlaps a
@@ -360,6 +394,11 @@ export function createWorldTerrainSampler(
     return height;
   };
 
+  // The world height: the base heightfield (CPU today; the GPU rasteriser supplies the
+  // base in 11.0d) flowing through this single carve — both base sources reach the
+  // identical carve output.
+  const heightAt = (x: number, z: number): number => carveFromBase(x, z, baseHeightAt(x, z));
+
   // Phase 10 pass 3 fix: the tunnel cap's edges must sit on the VISIBLE (carved)
   // terrain. The solver sampled the pre-carve natural at each cap edge, but at the
   // edge the carve's lateral blend is not always fully faded (on a curve the
@@ -384,6 +423,8 @@ export function createWorldTerrainSampler(
     heightAt,
     normalAt: (x: number, z: number) => terrainNormalAt(heightAt, x, z),
     config: terrainConfig,
+    carveFromBase,
+    baseSpec: { config: fadeConfig, plateau, cityElevation },
     roadAt: (x: number, z: number) => network.sample(x, z),
     roadNetwork: network,
     plateau,

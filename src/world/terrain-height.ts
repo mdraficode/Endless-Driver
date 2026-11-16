@@ -1,6 +1,6 @@
 import type { TerrainConfig } from '../config/terrain';
 import type { RoadNetwork, RoadSample } from './road-network';
-import type { CityPlateau, TerrainPit } from './world-terrain';
+import type { CityPlateau, HeightfieldBaseSpec, TerrainPit } from './world-terrain';
 import { terrainOctave, terrainOctaveGrad } from './noise';
 
 /**
@@ -23,6 +23,14 @@ export interface TerrainSampler {
   /** Unit surface normal at (x, z), from central differences of `heightAt`. */
   normalAt(x: number, z: number): { x: number; y: number; z: number };
   readonly config: TerrainConfig;
+  /**
+   * Phase 11.0d: the road/garage/pit carve against a known base height (`world-terrain.ts`).
+   * The GPU heightfield rasteriser feeds its read-back base through this, so a GPU base and
+   * the CPU base reach the identical carve output.
+   */
+  carveFromBase?(x: number, z: number, natural: number): number;
+  /** Phase 11.0d: the exact inputs of the pre-carve base heightfield, for the GPU rasteriser. */
+  readonly baseSpec?: HeightfieldBaseSpec;
   /**
    * Road influence at (x, z) when this sampler has the road network carved in
    * (`world-terrain.ts`): the surface query turns it into asphalt/gravel responses.
@@ -246,118 +254,139 @@ function countryElevationGrad(
   };
 }
 
-export function createTerrainSampler(config: TerrainConfig): TerrainSampler {
+/**
+ * The layered noise field + volcano (pre-floor, pre-pad), with the config explicit so the
+ * same function serves the sampler, the world sampler's base, and the 11.0d GPU reference.
+ */
+function rawHeightOf(config: TerrainConfig, x: number, z: number): number {
   const { seed } = config;
   const [vx, vz] = config.volcano.position;
+  let height =
+    fbm(x, z, config.hillWavelengthMeters, seed) * config.hillAmplitudeMeters +
+    fbm(x + 3917.3, z - 2718.1, config.hillWavelengthMeters * 2.7, seed + 77) *
+      config.hillAmplitudeMeters *
+      1.6;
+  height += countryElevationAt(x, z, config, seed);
+  // Ridged detail: fBm alone reads as dunes. One-minus-absolute noise makes crests and
+  // broken skylines; squared, it stays quiet in the valleys and speaks on the ridges.
+  const ridgeBroad = 1 - Math.abs(terrainOctave(x, z, 210, seed + 303));
+  const ridgeFine = 1 - Math.abs(terrainOctave(x - 1173.9, z + 941.2, 96, seed + 404));
+  height += ridgeBroad * ridgeBroad * 6.5 + ridgeFine * ridgeFine * 2.1;
+  // Hinode-dake: a broad cone with a softened rim, broken up by the same hills and an
+  // extra share of ridge noise so its silhouette is a mountain and not a party hat.
+  const dx = x - vx;
+  const dz = z - vz;
+  const distance = Math.sqrt(dx * dx + dz * dz);
+  const t = Math.min(1, distance / config.volcano.radiusMeters);
+  const cone = (1 - t) * (1 - t) * (1 + 2 * t);
+  height += cone * (config.volcano.heightMeters + ridgeBroad * 26);
+  return height;
+}
 
-  const rawHeight = (x: number, z: number): number => {
-    let height =
-      fbm(x, z, config.hillWavelengthMeters, seed) * config.hillAmplitudeMeters +
-      fbm(x + 3917.3, z - 2718.1, config.hillWavelengthMeters * 2.7, seed + 77) *
-        config.hillAmplitudeMeters *
-        1.6;
-    height += countryElevationAt(x, z, config, seed);
-    // Ridged detail: fBm alone reads as dunes. One-minus-absolute noise makes crests and
-    // broken skylines; squared, it stays quiet in the valleys and speaks on the ridges.
-    const ridgeBroad = 1 - Math.abs(terrainOctave(x, z, 210, seed + 303));
-    const ridgeFine = 1 - Math.abs(terrainOctave(x - 1173.9, z + 941.2, 96, seed + 404));
-    height += ridgeBroad * ridgeBroad * 6.5 + ridgeFine * ridgeFine * 2.1;
-    // Hinode-dake: a broad cone with a softened rim, broken up by the same hills and an
-    // extra share of ridge noise so its silhouette is a mountain and not a party hat.
-    const dx = x - vx;
-    const dz = z - vz;
-    const distance = Math.sqrt(dx * dx + dz * dz);
-    const t = Math.min(1, distance / config.volcano.radiusMeters);
-    const cone = (1 - t) * (1 - t) * (1 + 2 * t);
-    height += cone * (config.volcano.heightMeters + ridgeBroad * 26);
-    return height;
-  };
+/**
+ * `rawHeightOf` with its analytic gradient (Phase 11.0b). Every layer is
+ * differentiated: hills pass straight through; the country layer carries its
+ * domain-warp Jacobian (see `countryElevationGrad`); the ridged terms use
+ * d(1−|n|)/dx = −sign(n)·n′ with sign(0) = 0 — a documented kink exactly where
+ * the old finite differences were undefined too; the volcano cone
+ * d/dt[(1−t)²(1+2t)] = −6t(1−t) along the radial direction, zero past the rim;
+ * the floor clamp and the spawn pad are applied by the caller (see
+ * `normalAt`).
+ */
+function rawHeightGradOf(
+  config: TerrainConfig,
+  x: number,
+  z: number,
+): { value: number; gradX: number; gradZ: number } {
+  const { seed } = config;
+  const [vx, vz] = config.volcano.position;
+  const hillsA = fbmGrad(x, z, config.hillWavelengthMeters, seed);
+  const hillsB = fbmGrad(x + 3917.3, z - 2718.1, config.hillWavelengthMeters * 2.7, seed + 77);
+  const hillScaleA = config.hillAmplitudeMeters;
+  const hillScaleB = config.hillAmplitudeMeters * 1.6;
+  let height = hillsA.value * hillScaleA + hillsB.value * hillScaleB;
+  let gradX = hillsA.gradX * hillScaleA + hillsB.gradX * hillScaleB;
+  let gradZ = hillsA.gradZ * hillScaleA + hillsB.gradZ * hillScaleB;
 
-  /**
-   * `rawHeight` with its analytic gradient (Phase 11.0b). Every layer is
-   * differentiated: hills pass straight through; the country layer carries its
-   * domain-warp Jacobian (see `countryElevationGrad`); the ridged terms use
-   * d(1−|n|)/dx = −sign(n)·n′ with sign(0) = 0 — a documented kink exactly where
-   * the old finite differences were undefined too; the volcano cone
-   * d/dt[(1−t)²(1+2t)] = −6t(1−t) along the radial direction, zero past the rim;
-   * the floor clamp and the spawn pad are applied by the caller (see
-   * `normalAt`).
-   */
-  const rawHeightGrad = (x: number, z: number): { value: number; gradX: number; gradZ: number } => {
-    const hillsA = fbmGrad(x, z, config.hillWavelengthMeters, seed);
-    const hillsB = fbmGrad(x + 3917.3, z - 2718.1, config.hillWavelengthMeters * 2.7, seed + 77);
-    const hillScaleA = config.hillAmplitudeMeters;
-    const hillScaleB = config.hillAmplitudeMeters * 1.6;
-    let height = hillsA.value * hillScaleA + hillsB.value * hillScaleB;
-    let gradX = hillsA.gradX * hillScaleA + hillsB.gradX * hillScaleB;
-    let gradZ = hillsA.gradZ * hillScaleA + hillsB.gradZ * hillScaleB;
+  const country = countryElevationGrad(x, z, config, seed);
+  height += country.value;
+  gradX += country.gradX;
+  gradZ += country.gradZ;
 
-    const country = countryElevationGrad(x, z, config, seed);
-    height += country.value;
-    gradX += country.gradX;
-    gradZ += country.gradZ;
+  const nBroad = terrainOctaveGrad(x, z, 210, seed + 303);
+  const nFine = terrainOctaveGrad(x - 1173.9, z + 941.2, 96, seed + 404);
+  const sBroad = nBroad.value > 0 ? 1 : nBroad.value < 0 ? -1 : 0;
+  const sFine = nFine.value > 0 ? 1 : nFine.value < 0 ? -1 : 0;
+  const ridgeBroad = 1 - Math.abs(nBroad.value);
+  const ridgeFine = 1 - Math.abs(nFine.value);
+  const dRidgeBroadX = -sBroad * nBroad.gradX;
+  const dRidgeBroadZ = -sBroad * nBroad.gradZ;
+  const dRidgeFineX = -sFine * nFine.gradX;
+  const dRidgeFineZ = -sFine * nFine.gradZ;
+  height += ridgeBroad * ridgeBroad * 6.5 + ridgeFine * ridgeFine * 2.1;
+  gradX += 2 * ridgeBroad * dRidgeBroadX * 6.5 + 2 * ridgeFine * dRidgeFineX * 2.1;
+  gradZ += 2 * ridgeBroad * dRidgeBroadZ * 6.5 + 2 * ridgeFine * dRidgeFineZ * 2.1;
 
-    const nBroad = terrainOctaveGrad(x, z, 210, seed + 303);
-    const nFine = terrainOctaveGrad(x - 1173.9, z + 941.2, 96, seed + 404);
-    const sBroad = nBroad.value > 0 ? 1 : nBroad.value < 0 ? -1 : 0;
-    const sFine = nFine.value > 0 ? 1 : nFine.value < 0 ? -1 : 0;
-    const ridgeBroad = 1 - Math.abs(nBroad.value);
-    const ridgeFine = 1 - Math.abs(nFine.value);
-    const dRidgeBroadX = -sBroad * nBroad.gradX;
-    const dRidgeBroadZ = -sBroad * nBroad.gradZ;
-    const dRidgeFineX = -sFine * nFine.gradX;
-    const dRidgeFineZ = -sFine * nFine.gradZ;
-    height += ridgeBroad * ridgeBroad * 6.5 + ridgeFine * ridgeFine * 2.1;
-    gradX += 2 * ridgeBroad * dRidgeBroadX * 6.5 + 2 * ridgeFine * dRidgeFineX * 2.1;
-    gradZ += 2 * ridgeBroad * dRidgeBroadZ * 6.5 + 2 * ridgeFine * dRidgeFineZ * 2.1;
+  const dx = x - vx;
+  const dz = z - vz;
+  const distance = Math.sqrt(dx * dx + dz * dz);
+  const t = Math.min(1, distance / config.volcano.radiusMeters);
+  const cone = (1 - t) * (1 - t) * (1 + 2 * t);
+  const dConeDt = -6 * t * (1 - t);
+  const radialScale =
+    t < 1 && distance > 1e-9 ? dConeDt / (config.volcano.radiusMeters * distance) : 0;
+  const dConeX = radialScale * dx;
+  const dConeZ = radialScale * dz;
+  const volcanoScale = config.volcano.heightMeters + ridgeBroad * 26;
+  height += cone * volcanoScale;
+  gradX += dConeX * volcanoScale + cone * 26 * dRidgeBroadX;
+  gradZ += dConeZ * volcanoScale + cone * 26 * dRidgeBroadZ;
 
-    const dx = x - vx;
-    const dz = z - vz;
-    const distance = Math.sqrt(dx * dx + dz * dz);
-    const t = Math.min(1, distance / config.volcano.radiusMeters);
-    const cone = (1 - t) * (1 - t) * (1 + 2 * t);
-    const dConeDt = -6 * t * (1 - t);
-    const radialScale =
-      t < 1 && distance > 1e-9 ? dConeDt / (config.volcano.radiusMeters * distance) : 0;
-    const dConeX = radialScale * dx;
-    const dConeZ = radialScale * dz;
-    const volcanoScale = config.volcano.heightMeters + ridgeBroad * 26;
-    height += cone * volcanoScale;
-    gradX += dConeX * volcanoScale + cone * 26 * dRidgeBroadX;
-    gradZ += dConeZ * volcanoScale + cone * 26 * dRidgeBroadZ;
+  return { value: height, gradX, gradZ };
+}
 
-    return { value: height, gradX, gradZ };
-  };
+/**
+ * The natural (pre-road, pre-pit) height of the world at (x, z): the layered noise
+ * field, the volcano, the gameplay floor and the spawn pad. `createTerrainSampler`
+ * exposes this as `heightAt` for road-free samplers; `world-terrain.ts` composes the
+ * city plateau and the road carve on top of it.
+ *
+ * Phase 11.0d: also the canonical reference the GPU heightfield rasteriser
+ * (`terrain-heightfield-gpu.ts`) mirrors — the WGSL kernel must agree with this
+ * function to within 1 cm on a 512² grid (the 11.0d acceptance).
+ */
+export function naturalHeightAt(config: TerrainConfig, x: number, z: number): number {
+  let raw = rawHeightOf(config, x, z);
+  // The gameplay floor: below `floorMeters` the ground flattens out instead of falling
+  // past the vehicle's out-of-bounds reset line.
+  if (raw < config.floorMeters) {
+    raw = config.floorMeters;
+  }
+  const distance = Math.sqrt(x * x + z * z);
+  const pad = smoothstep(
+    config.spawnPad.flatRadiusMeters,
+    config.spawnPad.blendRadiusMeters,
+    distance,
+  );
+  const height = raw * pad;
+  // Normalise -0 (negative raw x zero pad) so the plateau is exactly +0 everywhere:
+  // spawn math and tests compare against literal zero.
+  return height === 0 ? 0 : height;
+}
 
-  const heightAt = (x: number, z: number): number => {
-    let raw = rawHeight(x, z);
-    // The gameplay floor: below `floorMeters` the ground flattens out instead of falling
-    // past the vehicle's out-of-bounds reset line.
-    if (raw < config.floorMeters) {
-      raw = config.floorMeters;
-    }
-    const distance = Math.sqrt(x * x + z * z);
-    const pad = smoothstep(
-      config.spawnPad.flatRadiusMeters,
-      config.spawnPad.blendRadiusMeters,
-      distance,
-    );
-    const height = raw * pad;
-    // Normalise -0 (negative raw x zero pad) so the plateau is exactly +0 everywhere:
-    // spawn math and tests compare against literal zero.
-    return height === 0 ? 0 : height;
-  };
+export function createTerrainSampler(config: TerrainConfig): TerrainSampler {
+  const heightAt = (x: number, z: number): number => naturalHeightAt(config, x, z);
 
   /**
    * Analytic surface normal (Phase 11.0b): the old central-difference normal
    * cost five full `heightAt` evaluations (≈ 125 noise samples) per call — this
-   * is one `rawHeightGrad` plus the same clamp/pad rules `heightAt` applies:
+   * is one `rawHeightGradOf` plus the same clamp/pad rules `heightAt` applies:
    * below the floor the surface is flat except for the spawn-pad blend (the
    * clamped value is constant, so only the pad factor differentiates), and the
    * pad multiplies the height radially.
    */
   const normalAt = (x: number, z: number): { x: number; y: number; z: number } => {
-    const field = rawHeightGrad(x, z);
+    const field = rawHeightGradOf(config, x, z);
     let raw = field.value;
     let dRawX = field.gradX;
     let dRawZ = field.gradZ;

@@ -179,13 +179,19 @@ const GRAD2D: readonly [number, number][] = [
   [-2.3810536861419678, 18.085899353027344],
 ];
 
-const GRADIENTS: ReadonlyArray<readonly [number, number]> = (() => {
+/**
+ * The 128-entry gradient-pair table the OS2S lattice hash indexes (24 pairs cycled).
+ * Exported so the GPU heightfield rasteriser (`terrain-heightfield-gpu.ts`) feeds its
+ * compute kernel the identical table.
+ */
+export const OS2S_GRADIENTS_2D: ReadonlyArray<readonly [number, number]> = (() => {
   const table: [number, number][] = [];
   for (let k = 0; k < 128; k += 1) {
     table.push(GRAD2D[k % 24]!);
   }
   return table;
 })();
+const GRADIENTS = OS2S_GRADIENTS_2D;
 
 function fastFloor(x: number): number {
   const xi = Math.trunc(x);
