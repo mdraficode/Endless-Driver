@@ -28,6 +28,12 @@ export interface TerrainGenerationRequest {
   readonly chunkX: number;
   readonly chunkZ: number;
   readonly segments: number;
+  /**
+   * Phase 11.0d: the pre-carve base heights for the chunk's halo grid (row-major
+   * `(segments+3)²`, float32) rasterised on the GPU. The worker applies its own carve on
+   * top of them — the identical carve the CPU path uses, fed from a different base.
+   */
+  readonly base?: Float32Array;
 }
 
 export interface TerrainGenerationResult {
@@ -63,8 +69,19 @@ export function handleGenerationRequest(
     chunkX: request.chunkX,
     chunkZ: request.chunkZ,
     segments: request.segments,
-    data: buildChunkGeometryData(sampler, request.chunkX, request.chunkZ, request.segments),
+    data: buildChunkGeometryData(
+      sampler,
+      request.chunkX,
+      request.chunkZ,
+      request.segments,
+      request.base,
+    ),
   };
+}
+
+/** Transferable buffers of a request (the GPU base grid, when present; zero-copy post). */
+export function requestTransferables(request: TerrainGenerationRequest): ArrayBuffer[] {
+  return request.base === undefined ? [] : [request.base.buffer as ArrayBuffer];
 }
 
 /** Transferable buffers of a result (zero-copy post). */

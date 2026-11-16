@@ -3,7 +3,11 @@ import type { TerrainConfig } from '../config/terrain';
 import type { TerrainSampler } from './terrain-height';
 import type { CityPlateau, TerrainPit } from './world-terrain';
 import { chunkKey } from './terrain-chunks';
-import type { TerrainGenerationResult } from './terrain-generation';
+import {
+  requestTransferables,
+  type TerrainGenerationRequest,
+  type TerrainGenerationResult,
+} from './terrain-generation';
 
 /**
  * Main-thread side of the generation worker pool.
@@ -26,6 +30,8 @@ export interface GenerationJob {
   readonly cx: number;
   readonly cz: number;
   readonly segments: number;
+  /** Phase 11.0d: GPU-rasterised pre-carve base heights; the worker carves on top. */
+  readonly base?: Float32Array;
 }
 
 interface WorkerSlot {
@@ -124,6 +130,14 @@ export class ChunkGenerator {
       return;
     }
     this.#desired = new Map(jobs.map((job) => [job.key, job]));
+    // In-flight jobs keep their standing: a reconciliation that does not list them (Phase
+    // 11.0d hands chunks over only once their GPU base has landed) must not make their
+    // results stale the moment they finish.
+    for (const job of this.#inFlight.values()) {
+      if (!this.#desired.has(job.key)) {
+        this.#desired.set(job.key, job);
+      }
+    }
     // Drop completed results nobody wants anymore (LOD changed under them).
     for (const [key, result] of this.#completed) {
       const want = this.#desired.get(key);
@@ -186,13 +200,24 @@ export class ChunkGenerator {
       this.#nextId += 1;
       slot.busyId = id;
       this.#inFlight.set(id, { ...job, sinceMs: now });
-      slot.worker.postMessage({
-        type: 'generate',
-        id,
-        chunkX: job.cx,
-        chunkZ: job.cz,
-        segments: job.segments,
-      });
+      const request: TerrainGenerationRequest =
+        job.base !== undefined
+          ? {
+              type: 'generate',
+              id,
+              chunkX: job.cx,
+              chunkZ: job.cz,
+              segments: job.segments,
+              base: job.base,
+            }
+          : {
+              type: 'generate',
+              id,
+              chunkX: job.cx,
+              chunkZ: job.cz,
+              segments: job.segments,
+            };
+      slot.worker.postMessage(request, requestTransferables(request));
     }
   }
 

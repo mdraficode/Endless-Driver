@@ -1,5 +1,5 @@
 import { Group, Mesh, RepeatWrapping, type Texture } from 'three';
-import { MeshStandardNodeMaterial, type Node } from 'three/webgpu';
+import { MeshStandardNodeMaterial, type Node, type WebGPURenderer } from 'three/webgpu';
 import {
   attribute,
   cameraPosition,
@@ -43,6 +43,16 @@ import {
   type ChunkCoord,
   type PlannedChunk,
 } from './terrain-chunks';
+import { HeightfieldRasterizer } from './terrain-heightfield-gpu';
+
+/**
+ * Phase 11.0d: how long a chunk may wait on a GPU base read-back before the CPU path takes
+ * the chunk. The rasteriser's own 1 s stall reject fires first on a live device; this is
+ * the net for the pathologies it cannot see (a device that neither resolves nor rejects).
+ */
+const GPU_BASE_TIMEOUT_MS = 4_000;
+/** Consecutive GPU base failures before the rasteriser is retired for the session. */
+const GPU_BASE_MAX_FAILURES = 8;
 
 interface LoadedChunk {
   readonly mesh: Mesh;
@@ -57,6 +67,13 @@ export interface TerrainWorldOptions {
   readonly enableParallaxOcclusion?: boolean;
   /** Override the number of rings that must be ready before the first frame (default 1 → 9 chunks). */
   readonly initialReadyRing?: number;
+  /**
+   * Enable the Phase 11.0d GPU base rasteriser on WebGPU backends (default true). The GPU
+   * rasterises the pre-carve base heightfield; the carve still runs on the CPU on top of it.
+   * The CPU path stays the fallback — off here, on a non-WebGPU backend, or whenever the
+   * rasteriser fails.
+   */
+  readonly enableHeightfieldGpu?: boolean;
 }
 
 /*
@@ -152,6 +169,19 @@ export class TerrainWorld implements SceneContent {
   readonly #sampler: TerrainSampler;
   readonly #config: TerrainConfig;
   readonly #generator: ChunkGenerator;
+  /** Phase 11.0d: GPU base rasteriser (WebGPU backends only; null on the CPU path). */
+  #rasterizer: HeightfieldRasterizer | null = null;
+  /** Chunks whose GPU base is in flight: key → request time (ms). */
+  #gpuPending = new Map<string, number>();
+  /** Chunks whose GPU base has arrived and awaits the worker: key → base grid. */
+  #gpuBase = new Map<string, Float32Array>();
+  /** Chunks the GPU gave up on (read-back budget blown); the CPU path takes them. */
+  #gpuGaveUp = new Set<string>();
+  /** Consecutive GPU base failures (circuit breaker → the CPU path for the session). */
+  #gpuFails = 0;
+  /** Last frame's gpuLive, to detect the live→dead transition (it re-arms the CPU path). */
+  #gpuLivePrev = false;
+  #gpuEnabled: boolean;
   readonly #material: MeshStandardNodeMaterial;
   readonly #nearMaterial: MeshStandardNodeMaterial;
   readonly #enableParallaxOcclusion: boolean;
@@ -176,6 +206,7 @@ export class TerrainWorld implements SceneContent {
     this.#config = sampler.config;
     this.#enableParallaxOcclusion = options.enableParallaxOcclusion ?? true;
     this.#initialReadyRing = options.initialReadyRing ?? INITIAL_TERRAIN_READY_RING;
+    this.#gpuEnabled = options.enableHeightfieldGpu ?? true;
     // Generation runs in a worker pool when the platform allows it and falls back to
     // this same sampler on the main thread otherwise; either way chunks are
     // bit-identical (one height function, two hosts).
@@ -199,6 +230,89 @@ export class TerrainWorld implements SceneContent {
     nearMaterial.roughnessNode = float(0.96);
     nearMaterial.metalnessNode = float(0);
     this.#nearMaterial = nearMaterial;
+  }
+
+  /**
+   * Phase 11.0d: the GPU base rasteriser hookup, driven by the engine's backend once it is
+   * known (`Application` calls this after renderer init). It engages only on a WebGPU
+   * backend, with a world sampler that carries the base spec AND the carve — everything
+   * else keeps the CPU path bit-for-bit. The rasteriser is an accelerator, never a
+   * requirement: a failed configure leaves the CPU path in place, and repeated read-back
+   * failures retire it for the session.
+   */
+  configureRenderer(backend: 'webgpu' | 'webgl2', renderer: unknown): void {
+    this.#disposeRasterizer();
+    if (this.#disposed || !this.#gpuEnabled || backend !== 'webgpu') {
+      return;
+    }
+    const spec = this.#sampler.baseSpec;
+    if (spec === undefined || this.#sampler.carveFromBase === undefined) {
+      return;
+    }
+    const gpuRenderer = renderer as WebGPURenderer | null;
+    if (gpuRenderer === null || typeof gpuRenderer.compute !== 'function') {
+      return;
+    }
+    try {
+      const rasterizer = new HeightfieldRasterizer();
+      rasterizer.configure(gpuRenderer, spec);
+      this.#rasterizer = rasterizer;
+    } catch {
+      console.warn('terrain: GPU heightfield rasteriser unavailable; using the CPU base');
+    }
+  }
+
+  /**
+   * Requests the GPU base grid for one chunk: the chunk's halo grid
+   * (`(segments+3)²` at `chunkSize/segments` pitch from one step before the chunk origin —
+   * exactly the coordinates `buildChunkGeometryData` samples). The read-back lands on a
+   * LATER frame into `#gpuBase`; the worker (or the sync path) carves on top of it.
+   */
+  #requestGpuBase(chunk: PlannedChunk): void {
+    const rasterizer = this.#rasterizer;
+    if (rasterizer === null) {
+      return;
+    }
+    const key = chunkKey(chunk.cx, chunk.cz);
+    const step = this.#config.chunkSizeMeters / chunk.segments;
+    this.#gpuPending.set(key, performance.now());
+    rasterizer
+      .request(
+        chunk.cx * this.#config.chunkSizeMeters - step,
+        chunk.cz * this.#config.chunkSizeMeters - step,
+        step,
+        chunk.segments + 3,
+      )
+      .then((base) => {
+        this.#gpuPending.delete(key);
+        if (!this.#disposed) {
+          this.#gpuFails = 0;
+          this.#gpuBase.set(key, base);
+        }
+      })
+      .catch(() => {
+        this.#gpuPending.delete(key);
+        this.#gpuFails += 1;
+        if (this.#gpuFails >= GPU_BASE_MAX_FAILURES && this.#rasterizer !== null) {
+          console.warn('terrain: GPU heightfield keeps failing; falling back to the CPU base');
+          this.#disposeRasterizer();
+        }
+      });
+    // The net: a read-back that neither lands nor rejects must not hold the chunk.
+    setTimeout(() => {
+      if (this.#gpuPending.delete(key)) {
+        this.#gpuGaveUp.add(key);
+      }
+    }, GPU_BASE_TIMEOUT_MS);
+  }
+
+  #disposeRasterizer(): void {
+    this.#rasterizer?.dispose();
+    this.#rasterizer = null;
+    this.#gpuPending.clear();
+    this.#gpuBase.clear();
+    this.#gpuGaveUp.clear();
+    this.#gpuFails = 0;
   }
 
   /**
@@ -445,6 +559,14 @@ export class TerrainWorld implements SceneContent {
           this.#chunks.delete(key);
         }
       }
+      // Evicted chunks take their GPU base state with them (a revisit re-requests fresh).
+      for (const key of [...this.#gpuPending.keys(), ...this.#gpuBase.keys(), ...this.#gpuGaveUp]) {
+        if (!this.#desiredChunks.has(key)) {
+          this.#gpuPending.delete(key);
+          this.#gpuBase.delete(key);
+          this.#gpuGaveUp.delete(key);
+        }
+      }
     }
 
     const plan = this.#plan;
@@ -497,18 +619,64 @@ export class TerrainWorld implements SceneContent {
       this.#triangles += triangles;
       this.#buildsLastFrame += 1;
       this.#totalBuilds += 1;
+      // A built chunk takes its GPU base state with it (the base was consumed into the
+      // job; gave-up chunks stop re-arming the per-frame worker re-sync once applied).
+      this.#gpuBase.delete(key);
+      this.#gpuPending.delete(key);
+      this.#gpuGaveUp.delete(key);
     };
 
+    // Phase 11.0d: the GPU rasterises the pre-carve base of every queued chunk. Poll the
+    // read-backs (next-frame copies), then request the base of each queued chunk that has
+    // neither a landed base nor a request in flight. The carve stays on the CPU either way.
+    const rasterizer = this.#rasterizer;
+    const gpuLive = rasterizer !== null && rasterizer.ready;
+    const gpuLiveChanged = this.#gpuLivePrev !== gpuLive;
+    this.#gpuLivePrev = gpuLive;
+    if (gpuLive) {
+      rasterizer.poll();
+      for (const chunk of queue) {
+        const key = chunkKey(chunk.cx, chunk.cz);
+        if (this.#gpuGaveUp.has(key) || this.#gpuBase.has(key) || this.#gpuPending.has(key)) {
+          continue;
+        }
+        this.#requestGpuBase(chunk);
+      }
+    }
+
     if (this.#generator.mode === 'worker') {
-      if (centerChanged) {
-        this.#generator.syncQueue(
-          queue.map((chunk) => ({
-            key: chunkKey(chunk.cx, chunk.cz),
-            cx: chunk.cx,
-            cz: chunk.cz,
-            segments: chunk.segments,
-          })),
-        );
+      // Worker jobs carry the GPU base when it has landed; a chunk still waiting on its
+      // read-back is handed over on the frame it lands (its job goes out then). Without a
+      // live rasteriser the jobs are baseless — the worker builds the base on the CPU,
+      // exactly as before Phase 11.0d. Re-sync on a re-plan, when bases or CPU-fallback
+      // chunks (gave-up) appear, and on the live→dead transition (the whole queue
+      // re-arms for the CPU path at once).
+      if (
+        centerChanged ||
+        gpuLiveChanged ||
+        (gpuLive && (this.#gpuBase.size > 0 || this.#gpuGaveUp.size > 0))
+      ) {
+        const jobs: {
+          key: string;
+          cx: number;
+          cz: number;
+          segments: number;
+          base?: Float32Array;
+        }[] = [];
+        for (const chunk of queue) {
+          const key = chunkKey(chunk.cx, chunk.cz);
+          if (gpuLive && this.#gpuGaveUp.has(key) === false) {
+            const base = this.#gpuBase.get(key);
+            if (base === undefined) {
+              continue; // read-back in flight: the chunk is handed over when it lands
+            }
+            this.#gpuBase.delete(key);
+            jobs.push({ key, cx: chunk.cx, cz: chunk.cz, segments: chunk.segments, base });
+            continue;
+          }
+          jobs.push({ key, cx: chunk.cx, cz: chunk.cz, segments: chunk.segments });
+        }
+        this.#generator.syncQueue(jobs);
       }
       for (const result of this.#generator.takeCompleted(this.#config.maxBuildsPerFrame)) {
         const want = desired.get(chunkKey(result.chunkX, result.chunkZ));
@@ -517,12 +685,27 @@ export class TerrainWorld implements SceneContent {
         }
       }
     } else {
-      for (const chunk of queue.slice(0, this.#config.maxBuildsPerFrame)) {
+      // Sync fallback: build within the per-frame budget. A chunk waits for its GPU base
+      // (when the rasteriser is live) instead of burning the main thread on noise; the CPU
+      // path builds it as soon as the base lands, or immediately when the rasteriser is
+      // retired or the GPU gave up on that chunk.
+      for (const chunk of queue) {
+        if (this.#buildsLastFrame >= this.#config.maxBuildsPerFrame) {
+          break;
+        }
+        const key = chunkKey(chunk.cx, chunk.cz);
+        const base = this.#gpuBase.get(key);
+        if (gpuLive && this.#gpuGaveUp.has(key) === false && base === undefined) {
+          continue; // read-back in flight (or not yet requested this frame)
+        }
+        if (base !== undefined) {
+          this.#gpuBase.delete(key);
+        }
         applyChunk(
           chunk.cx,
           chunk.cz,
           chunk.segments,
-          buildChunkGeometryData(this.#sampler, chunk.cx, chunk.cz, chunk.segments),
+          buildChunkGeometryData(this.#sampler, chunk.cx, chunk.cz, chunk.segments, base),
         );
       }
     }
@@ -597,6 +780,12 @@ export class TerrainWorld implements SceneContent {
       terrainGeneratorMode: this.#generator.mode === 'worker' ? 1 : 0,
       terrainWorkerBacklog: this.#generator.backlog,
       terrainWorkerBuilds: this.#generator.workerBuilds,
+      // Phase 11.0d: the GPU base rasteriser's state (1 = live; jobs = grids it has
+      // rasterised; ms = cumulative dispatch→read-back; pending = chunks awaiting it).
+      terrainGpuHeightfield: this.#rasterizer !== null && this.#rasterizer.ready ? 1 : 0,
+      terrainGpuHeightfieldJobs: this.#rasterizer?.rasterizedJobs ?? 0,
+      terrainGpuHeightfieldMs: Math.round(this.#rasterizer?.cumulativeMs ?? 0),
+      terrainGpuHeightfieldPending: this.#gpuPending.size,
     };
   }
 
@@ -605,6 +794,7 @@ export class TerrainWorld implements SceneContent {
       return;
     }
     this.#disposed = true;
+    this.#disposeRasterizer();
     this.#generator.dispose();
     for (const loaded of this.#chunks.values()) {
       loaded.mesh.geometry.dispose();

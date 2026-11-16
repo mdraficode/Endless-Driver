@@ -46,12 +46,23 @@ export interface ChunkGeometryData {
   readonly indices: Uint32Array;
 }
 
-/** Pure chunk construction: sampler in, arrays out. No three.js, so it can run in a worker. */
+/**
+ * Pure chunk construction: sampler in, arrays out. No three.js, so it can run in a worker.
+ *
+ * Phase 11.0d: `baseHeights` optionally supplies the pre-carve BASE heightfield at exactly
+ * the halo-grid coordinates (row-major `(segments+3)²`, float32 — the GPU rasteriser's
+ * read-back, `terrain-heightfield-gpu.ts`). The road/garage/pit carve is then applied
+ * CPU-side on top of that base, so the CPU-sampled base and the GPU-rasterised base reach
+ * the identical carve output; the two bases differ by float32 rounding of the noise only
+ * (parity ≤ 1 cm, measured in `e2e/heightfield-parity.mjs`). Omitted (the CPU path), the
+ * heights come from `sampler.heightAt` exactly as before — bit-identical.
+ */
 export function buildChunkGeometryData(
   sampler: TerrainSampler,
   chunkX: number,
   chunkZ: number,
   segments: number,
+  baseHeights?: Float32Array,
 ): ChunkGeometryData {
   const { config } = sampler;
   const size = config.chunkSizeMeters;
@@ -66,13 +77,19 @@ export function buildChunkGeometryData(
   // Height grid with a one-cell halo, so border normals use the same central differences
   // the neighbouring chunk computes for its interior.
   const haloEdge = vertsPerEdge + 2;
+  const carve = sampler.carveFromBase;
   const heights = new Float32Array(haloEdge * haloEdge);
   for (let j = 0; j < haloEdge; j += 1) {
     for (let i = 0; i < haloEdge; i += 1) {
-      heights[j * haloEdge + i] = sampler.heightAt(
-        originX + (i - 1) * step,
-        originZ + (j - 1) * step,
-      );
+      const x = originX + (i - 1) * step;
+      const z = originZ + (j - 1) * step;
+      const base = baseHeights === undefined ? undefined : baseHeights[j * haloEdge + i];
+      heights[j * haloEdge + i] =
+        base === undefined || baseHeights === undefined
+          ? sampler.heightAt(x, z)
+          : carve === undefined
+            ? base
+            : carve(x, z, base);
     }
   }
   const heightAtCell = (i: number, j: number): number => heights[(j + 1) * haloEdge + (i + 1)] ?? 0;

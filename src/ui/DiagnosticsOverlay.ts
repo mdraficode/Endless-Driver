@@ -427,7 +427,13 @@ const ROW_DEFINITIONS: readonly RowDefinition[] = [
       if (loaded === undefined) {
         return '—';
       }
-      return `${loaded}/${stats.terrainChunksDesired ?? 0} chunks · ${stats.terrainBuildsPending ?? 0} queued · ${((stats.terrainTriangles ?? 0) / 1000).toFixed(0)}k tris`;
+      // Phase 11.0d: when the GPU base rasteriser is live, how many chunk bases it has
+      // rasterised and how many chunks are still awaiting their read-back.
+      const gpu =
+        stats.terrainGpuHeightfield === 1
+          ? ` · GPU base ${stats.terrainGpuHeightfieldJobs ?? 0} · ${stats.terrainGpuHeightfieldPending ?? 0} pending`
+          : '';
+      return `${loaded}/${stats.terrainChunksDesired ?? 0} chunks · ${stats.terrainBuildsPending ?? 0} queued · ${((stats.terrainTriangles ?? 0) / 1000).toFixed(0)}k tris${gpu}`;
     },
   },
   {

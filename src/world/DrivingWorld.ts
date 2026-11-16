@@ -327,6 +327,8 @@ export function createDrivingWorld(context: SceneContentContext): SceneContent {
     },
     configureRenderer: (backend, renderer) => {
       gpuTraffic?.configureBackend(backend, renderer as never);
+      // Phase 11.0d: the terrain's GPU base rasteriser engages on WebGPU backends.
+      terrain.configureRenderer(backend, renderer);
     },
     consumeImpulses: () => {
       const out = gpuTraffic === null ? [] : gpuTraffic.consumeImpulses();

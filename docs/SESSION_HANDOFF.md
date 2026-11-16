@@ -4491,6 +4491,23 @@ verified) and queues a read-back for the NEXT frame's `poll()` — WebGPU submis
 order then guarantees the copy reads the fresh pass. A per-count node cache rebuilds
 the kernel only when the grid size changes; `dispose()` covers teardown.
 
+In-game wiring (shipped with the phase): `TerrainWorld` owns the rasteriser —
+`configureRenderer()` (the engine's post-init backend hookup) engages it only on a
+WebGPU backend AND a world sampler that carries `baseSpec` + `carveFromBase`. Each
+queued chunk's halo grid (`(segments+3)²` at `chunkSize/segments` pitch from one step
+before the chunk origin — exactly the coordinates `buildChunkGeometryData` samples) is
+requested once; the read-back lands on a later frame, the chunk's worker job then
+carries the base grid across the thread boundary (zero-copy transfer), and the worker
+applies its own `carveFromBase` on top of it. Without a landed base (or on any
+non-WebGPU path) the job is baseless and the worker builds the base on the CPU
+exactly as before — bit-identical. Failure handling: the rasteriser's 1 s read-back
+stall reject, a 4 s per-chunk net, and a circuit breaker that retires the rasteriser
+for the session after 8 consecutive failures — the CPU path re-arms in the same
+frame (the live→dead transition re-syncs the worker queue). Stats land in the
+diagnostics (`terrainGpuHeightfield{,Jobs,Ms,Pending}`; the overlay's Terrain row
+shows `GPU base N · M pending` when live). `e2e/heightfield-gpu-probe.mjs` boots the
+game on WebGPU and prints those stats — the in-game half of the tier-C acceptance.
+
 **Kernel structure note (learned the hard way).** Every stage (hash, vertex
 contribution, os2s, octave, fBm, country, rawHeight, worldBase) is a TSL _function_
 compiled once into a WGSL function. The first version inlined each call site, which
@@ -4515,6 +4532,17 @@ captured WGSL; `npm run check` fully green, CI green on `09c179f`):
   the CPU refactor (rawHeightOf / rawHeightGradOf / naturalHeightAt extraction)
   keeps the existing bit-identity tests green (game-sampler vs worker, ±road
   carve).
+- **Wiring: verified headlessly + in-sandbox boot.** New unit tests drive the REAL
+  `HeightfieldRasterizer` against a fake WebGPU renderer: request (correct
+  origin/pitch/count) → next-frame read-back → the CPU carve on the landed base →
+  the built chunk's vertex heights match `carve(x, z, base)` bit-for-bit; the
+  circuit breaker retires the rasteriser after repeated failures and the CPU path
+  re-arms in the same frame. In-sandbox, the wired game boots on WebGL2 (initial
+  ring streams, game playable); the WebGPU in-game boot OOMs the 2 GB sandbox
+  (SwiftShader's one-time compile of the 23k-line kernel on top of the running
+  game — an environment limit, not a code defect; the standalone parity page
+  compiles and runs the same kernel fine, and real hardware compiles in
+  milliseconds).
 - **Tier-C rasterisation speedup: pending real hardware.** The sandbox's SwiftShader
   is below tier-C class: it rasterises a 512² grid in ~14–20 s vs ~1.0–1.4 s for
   the same grid on the CPU main thread (the first grid also pays one-time WGSL

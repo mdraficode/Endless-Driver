@@ -154,7 +154,12 @@ so GPU and CPU noise agree to float32 rounding, not to a different hash. The car
 factored out as `carveFromBase` on the world sampler — both base sources (CPU sampler
 and GPU read-back) flow through the identical carve, so the carve output is
 structurally identical. CPU remains the fallback (non-WebGPU backends, device loss,
-1 s read-back stall).
+1 s read-back stall, or 8 consecutive failures — the circuit breaker retires the
+rasteriser for the session). The game wires it in `TerrainWorld`: each queued chunk's
+halo grid is rasterised on the GPU, the read-back's base grid travels with the
+worker job (zero-copy), and the worker carves on top of it; the per-frame stats
+(`terrainGpuHeightfield*`) surface in the diagnostics overlay, and
+`e2e/heightfield-gpu-probe.mjs` prints them from a WebGPU boot of the game.
 
 Measured acceptance (sandbox: Chromium headless + SwiftShader, no GPU;
 `e2e/heightfield-parity.mjs`, committed result + captured WGSL):
@@ -166,8 +171,11 @@ Measured acceptance (sandbox: Chromium headless + SwiftShader, no GPU;
   seam/bit-identity unit tests still pass against the refactored CPU path).
 - **Tier-C speedup: measurement pending on real hardware** — the sandbox has no GPU
   (SwiftShader rasterises a 512² grid in ~14–20 s vs ~1.0–1.4 s CPU main thread, i.e.
-  the software renderer is below tier-C class). The same one-command harness on a
-  tier-C WebGPU device produces the acceptance figure (see the handoff §Phase 11.0d).
+  the software renderer is below tier-C class). Two one-command tools produce the
+  acceptance figure on a tier-C WebGPU device: `node e2e/heightfield-parity.mjs`
+  (GPU vs CPU rasterisation time on identical grids) and
+  `node e2e/heightfield-gpu-probe.mjs` (the in-game stats). See the handoff
+  §Phase 11.0d.
 
 Kernel note: the stages are TSL _functions_ (one WGSL function each, called from many
 sites). Per-site inlining duplicated the OS2S subgraph ~45 times and produced an
