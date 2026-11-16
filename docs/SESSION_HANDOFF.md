@@ -4458,3 +4458,71 @@ the radius, the slot count is k-insensitive (254→230 over k=30→8), so k=12
 keeps the band at ~¼ of the sampling cost. Full `npm run check` passes
 (format, lint, GLSL guard, both typechecks, all tests, asset verify, build).
 Next in queue: **11.0d WebGPU compute heightfield**.
+
+## Phase 11.0d — WebGPU compute heightfield (measured, 2026-11-16)
+
+The 12.4 look-acceptance was **owner-accepted (Pass)** on 2026-11-15; the owner
+authorized the next phase, **11.0d**, on 2026-11-16. This section records the 11.0d
+implementation and its measured acceptance against the spec
+(`docs/proposals/phase11-tech-modernization-audit.md` §4, 11.0d — now amended in
+place with the shipped status).
+
+**Implementation.** The base heightfield — noise fBm + domain warp + country
+elevation + ridges + volcano + gameplay floor + spawn pad + city plateau
+(`worldBaseHeightAt`) — now also runs as a TSL compute pass:
+`src/world/terrain-heightfield-gpu.ts` (`HeightfieldRasterizer` + kernel). What does
+NOT move: the carve (road union, garage ramps/aisles, pits) — it is data-driven by
+the road network and stays on the CPU until 11.3/11.5. It is factored out of the
+world sampler as `carveFromBase(x, z, natural)`; both base sources (the CPU sampler
+and the GPU read-back) flow through this one carve, so the carve output is
+structurally identical whichever base feeds it. The CPU path is untouched as the
+fallback (WebGL2 backends, device loss, or a 1 s read-back stall all route to it).
+
+Determinism: the WGSL kernel ports the CPU's OpenSimplex2S lattice hash to exact
+u32-limb 64-bit-emulated math (the CPU emulates the reference's 64-bit primes in
+32-bit halves; the kernel does the same with `u32` limbs — `mulHi32S`, `mul64Lo`,
+arithmetic `>> 26` via top-six-bit extraction). GPU and CPU therefore agree to
+float32 rounding (~1e-4 m), not to a different hash; the per-octave fBm seed step
+(+101) is mirrored literally. Same grid in, same heights out, on every WebGPU
+device.
+
+Scheduling: `request()` records the pass through `renderer.compute()` (immediate,
+verified) and queues a read-back for the NEXT frame's `poll()` — WebGPU submission
+order then guarantees the copy reads the fresh pass. A per-count node cache rebuilds
+the kernel only when the grid size changes; `dispose()` covers teardown.
+
+**Kernel structure note (learned the hard way).** Every stage (hash, vertex
+contribution, os2s, octave, fBm, country, rawHeight, worldBase) is a TSL _function_
+compiled once into a WGSL function. The first version inlined each call site, which
+duplicated the OS2S subgraph ~45 times across the kernel — an 81k-line WGSL module
+that SwiftShader's compiler cannot chew (the WebGPU device dies mid-compile under
+memory pressure). Restructured as functions, the module is ~23k lines and compiles
+on software devices. The fBm octave loop uses a `toVar()` counter (this three
+version exports no loop-index node). TSL `bitcast()` targets take TSL type names
+(`'uint'`/`'int'`), not WGSL names — a WGSL name breaks downstream type resolution
+(`iundefined` in the generated WGSL).
+
+**Measured acceptance** (sandbox: Chromium 158 headless + SwiftShader — no GPU;
+`e2e/heightfield-parity.mjs` + `e2e/heightfield-parity/`, committed result.json +
+captured WGSL; `npm run check` fully green, CI green on `09c179f`):
+
+- **Parity ≤ 1 cm on 512²: PASS** — four 512² grids crossing every branch of the
+  base (Aohara plateau blend ring, Hinode-dake cone, spawn pad + floor, open far
+  field), 1,048,576 samples vs the CPU `worldBaseHeightAt` at identical (x, z):
+  max |Δ| = **1.24 mm**, 0 samples over the 1 cm tolerance on any grid (per-grid
+  max 0.16–1.24 mm, p99 0.06–0.34 mm).
+- **Identical carve output: PASS by construction** — one shared `carveFromBase`;
+  the CPU refactor (rawHeightOf / rawHeightGradOf / naturalHeightAt extraction)
+  keeps the existing bit-identity tests green (game-sampler vs worker, ±road
+  carve).
+- **Tier-C rasterisation speedup: pending real hardware.** The sandbox's SwiftShader
+  is below tier-C class: it rasterises a 512² grid in ~14–20 s vs ~1.0–1.4 s for
+  the same grid on the CPU main thread (the first grid also pays one-time WGSL
+  compilation). The same one-command harness
+  (`node e2e/heightfield-parity.mjs`, needs Chromium with WebGPU) on the owner's
+  tier-C device produces the acceptance figure; that is the outstanding step before
+  11.0d is declared fully accepted. The harness grid size is tunable
+  (`?count=N`, default 512).
+
+**Next in queue: 11.2** (terrain roads — the road network onto the streamed
+terrain), then 11.3 composition → 11.4 urban → 11.5 efficiency.

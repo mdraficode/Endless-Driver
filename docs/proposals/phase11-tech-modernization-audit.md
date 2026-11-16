@@ -145,6 +145,35 @@ to a TSL compute pass; CPU path remains the fallback. Acceptance: parity ≤1 cm
 CPU sampler on a 512² grid + measurable rasterisation speedup on tier-C hardware +
 identical carve output (the carve itself stays CPU until 11.3/11.5).
 
+**Shipped (2026-11-16, `09c179f`).** The base heightfield (`worldBaseHeightAt`:
+noise fBm + domain warp + country elevation + ridges + volcano + floor + spawn pad +
+city plateau) now also runs as a TSL compute pass (`src/world/terrain-heightfield-gpu.ts`,
+`HeightfieldRasterizer`): the OS2S lattice hash is ported to exact u32-limb WGSL math,
+so GPU and CPU noise agree to float32 rounding, not to a different hash. The carve
+(road union, garage ramps/aisles, pits) stays on the CPU until 11.3/11.5 and is
+factored out as `carveFromBase` on the world sampler — both base sources (CPU sampler
+and GPU read-back) flow through the identical carve, so the carve output is
+structurally identical. CPU remains the fallback (non-WebGPU backends, device loss,
+1 s read-back stall).
+
+Measured acceptance (sandbox: Chromium headless + SwiftShader, no GPU;
+`e2e/heightfield-parity.mjs`, committed result + captured WGSL):
+
+- **Parity ≤ 1 cm on 512²: PASS** — four 512² grids crossing every branch (plateau
+  blend ring, volcano cone, spawn pad + floor, open far field), 1,048,576 samples vs
+  the CPU `worldBaseHeightAt`: max |Δ| = 1.24 mm, 0 samples over tolerance on any grid.
+- **Identical carve output: PASS by construction** (shared `carveFromBase`; the
+  seam/bit-identity unit tests still pass against the refactored CPU path).
+- **Tier-C speedup: measurement pending on real hardware** — the sandbox has no GPU
+  (SwiftShader rasterises a 512² grid in ~14–20 s vs ~1.0–1.4 s CPU main thread, i.e.
+  the software renderer is below tier-C class). The same one-command harness on a
+  tier-C WebGPU device produces the acceptance figure (see the handoff §Phase 11.0d).
+
+Kernel note: the stages are TSL _functions_ (one WGSL function each, called from many
+sites). Per-site inlining duplicated the OS2S subgraph ~45 times and produced an
+81k-line shader that software GPU compilers cannot chew — the restructure is what lets
+the rasteriser run on low-end devices at all.
+
 ## 5. Non-goals (deliberate)
 
 - Rivers/erosion/hydrology → 11.3 (world composition).
