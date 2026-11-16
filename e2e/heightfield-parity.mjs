@@ -18,7 +18,12 @@ const repoRoot = join(here, '..');
 // dev server's transform pipeline is too heavy for the 2 GB sandbox alongside SwiftShader.
 const build = spawn(
   process.execPath,
-  [join(repoRoot, 'node_modules', 'vite', 'bin', 'vite.js'), '--config', 'e2e/heightfield-parity/vite.config.mjs', 'build'],
+  [
+    join(repoRoot, 'node_modules', 'vite', 'bin', 'vite.js'),
+    '--config',
+    'e2e/heightfield-parity/vite.config.mjs',
+    'build',
+  ],
   { cwd: repoRoot, stdio: ['ignore', 'pipe', 'pipe'] },
 );
 let buildLog = '';
@@ -37,7 +42,15 @@ if (buildExit !== 0) {
 
 const server = spawn(
   'python3',
-  ['-m', 'http.server', '4199', '--bind', '127.0.0.1', '--directory', join(here, 'heightfield-parity', 'dist')],
+  [
+    '-m',
+    'http.server',
+    '4199',
+    '--bind',
+    '127.0.0.1',
+    '--directory',
+    join(here, 'heightfield-parity', 'dist'),
+  ],
   { stdio: ['ignore', 'pipe', 'pipe'] },
 );
 let serverLog = '';
@@ -48,7 +61,8 @@ server.stderr.on('data', (d) => {
   serverLog += d;
 });
 
-const url = 'http://127.0.0.1:4199/';
+const COUNT = process.argv[2] ?? '';
+const url = `http://127.0.0.1:4199/${COUNT ? `?count=${COUNT}` : ''}`;
 async function waitForServer() {
   for (let i = 0; i < 100; i += 1) {
     try {

@@ -18,7 +18,13 @@ import { ROAD_NETWORK_CONFIG } from '../../src/config/roads';
 import { createWorldTerrainSampler, worldBaseHeightAt } from '../../src/world/world-terrain';
 import { baseSpecOf, HeightfieldRasterizer } from '../../src/world/terrain-heightfield-gpu';
 
-const COUNT = 512;
+// Grid size: 512 by default (the 11.0d acceptance); ?count=N for smaller runs (the
+// sandbox's SwiftShader can only rasterise 512² under severe memory pressure, so the
+// in-sandbox correctness run uses a coarser grid over the same regions).
+const COUNT = Math.min(
+  512,
+  Math.max(16, Number(new URLSearchParams(location.search).get('count')) || 512),
+);
 const TOLERANCE_M = 0.01; // the 11.0d acceptance: ≤ 1 cm
 
 /**
@@ -29,6 +35,7 @@ const TOLERANCE_M = 0.01; // the 11.0d acceptance: ≤ 1 cm
  *  - far:     open hills high enough to engage the floor clamp and the country fade-out.
  * Each spans `COUNT * pitch` metres from its origin.
  */
+// Each grid spans `span` metres centred on its focus, at COUNT×COUNT samples.
 const GRIDS: Array<{ name: string; originX: number; originZ: number; pitch: number }> = [
   { name: 'plateau', originX: 1250 - 800, originZ: -430 - 800, pitch: (2 * 800) / COUNT },
   { name: 'volcano', originX: -1500 - 1200, originZ: -2100 - 1200, pitch: (2 * 1200) / COUNT },
@@ -61,13 +68,17 @@ async function main(): Promise<void> {
   }
 
   // DEBUG: capture every WGSL source the renderer tries to compile (dev-time aid).
-  const gpu = (navigator as unknown as {
-    gpu: { requestAdapter: () => Promise<unknown> };
-  }).gpu;
+  const gpu = (
+    navigator as unknown as {
+      gpu: { requestAdapter: () => Promise<unknown> };
+    }
+  ).gpu;
   const originalRequestAdapter = gpu.requestAdapter.bind(gpu);
   gpu.requestAdapter = async () => {
     const adapter = (await originalRequestAdapter()) as {
-      requestDevice: (o?: unknown) => Promise<{ createShaderModule: (d: { code: string }) => unknown }>;
+      requestDevice: (
+        o?: unknown,
+      ) => Promise<{ createShaderModule: (d: { code: string }) => unknown }>;
     };
     const originalRequestDevice = adapter.requestDevice.bind(adapter);
     adapter.requestDevice = (o?: unknown) =>
@@ -88,10 +99,10 @@ async function main(): Promise<void> {
   await renderer.init();
 
   const isWebGPU =
-    (renderer as unknown as { backend?: { isWebGPU?: boolean; isWebGPUBackend?: boolean } })
-      .backend?.isWebGPU === true ||
-    (renderer as unknown as { backend?: { isWebGPUBackend?: boolean } }).backend?.isWebGPUBackend ===
-      true;
+    (renderer as unknown as { backend?: { isWebGPU?: boolean; isWebGPUBackend?: boolean } }).backend
+      ?.isWebGPU === true ||
+    (renderer as unknown as { backend?: { isWebGPUBackend?: boolean } }).backend
+      ?.isWebGPUBackend === true;
 
   // Adapter identity, for the record (SwiftShader vs a real GPU).
   let adapter = 'unknown';
@@ -140,7 +151,9 @@ async function main(): Promise<void> {
       for (let col = 0; col < COUNT; col += 1) {
         const x = grid.originX + col * grid.pitch;
         const i = row * COUNT + col;
-        const d = Math.abs(gpu[i]! - worldBaseHeightAt(spec.config, spec.plateau, spec.cityElevation, x, z));
+        const d = Math.abs(
+          gpu[i]! - worldBaseHeightAt(spec.config, spec.plateau, spec.cityElevation, x, z),
+        );
         diffs[i] = d;
         if (d > max) {
           max = d;

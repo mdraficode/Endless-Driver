@@ -1,0 +1,59 @@
+{
+  "adapter": "{}",
+  "count": 512,
+  "toleranceM": 0.01,
+  "pass": true,
+  "globalMaxDiffM": 0.00124,
+  "globalMaxAt": {
+    "grid": "far",
+    "x": 4308.59375,
+    "z": 6757.8125
+  },
+  "rasterizedJobs": 4,
+  "grids": [
+    {
+      "grid": "plateau",
+      "samples": 262144,
+      "maxDiffM": 0.000204,
+      "p99M": 0.000086,
+      "p999M": 0.000129,
+      "overTolerance": 0,
+      "gpuMs": 20455.1,
+      "cpuMs": 1008.6,
+      "speedup": 0.05
+    },
+    {
+      "grid": "volcano",
+      "samples": 262144,
+      "maxDiffM": 0.00043,
+      "p99M": 0.000154,
+      "p999M": 0.000227,
+      "overTolerance": 0,
+      "gpuMs": 15644.2,
+      "cpuMs": 1360.6,
+      "speedup": 0.09
+    },
+    {
+      "grid": "spawn",
+      "samples": 262144,
+      "maxDiffM": 0.000155,
+      "p99M": 0.000062,
+      "p999M": 0.000091,
+      "overTolerance": 0,
+      "gpuMs": 13501.8,
+      "cpuMs": 972.9,
+      "speedup": 0.07
+    },
+    {
+      "grid": "far",
+      "samples": 262144,
+      "maxDiffM": 0.00124,
+      "p99M": 0.000338,
+      "p999M": 0.000557,
+      "overTolerance": 0,
+      "gpuMs": 14049.8,
+      "cpuMs": 969.5,
+      "speedup": 0.07
+    }
+  ]
+}

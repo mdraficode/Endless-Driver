@@ -30,6 +30,7 @@
 import { StorageBufferAttribute, type WebGPURenderer } from 'three/webgpu';
 import {
   Fn,
+  Loop,
   bitcast,
   floor,
   float,
@@ -173,20 +174,26 @@ function createKernelNodes(grads: TSLAny) {
   const UNSKEW_F = float(UNSKEW);
   const C_F = float(C_LAT);
 
+  // Every stage is a TSL *function*: compiled once into a WGSL function and called from
+  // many sites. Inlined per call site instead, the fBm octaves would duplicate the whole
+  // OS2S subgraph ~45 times across the kernel, and software GPU compilers (SwiftShader)
+  // cannot chew that.
+  const hashFn = Fn(([seed, xsb, ysb]: TSLAny[]): TSLAny => os2sHash2D(seed, xsb, ysb));
+
   /** One vertex contribution (value-only, support-guarded — the CPU hot path). */
-  const v = (seed: TSLAny, lx: TSLAny, ly: TSLAny, dx: TSLAny, dy: TSLAny): TSLAny => {
+  const vertexFn = Fn(([seed, lx, ly, dx, dy]: TSLAny[]): TSLAny => {
     const a = float(2.0 / 3.0).sub(dx.mul(dx).add(dy.mul(dy)));
-    const pair = os2sHash2D(seed, lx, ly);
+    const pair = hashFn(seed, lx, ly);
     const gi = toI32(pair.mul(uint(2)));
     const gx = grads.element(gi);
     const gy = grads.element(gi.add(int(1)));
     const gd = gx.mul(dx).add(gy.mul(dy));
     const a2 = a.mul(a);
     return select(a.lessThanEqual(float(0)), float(0), a2.mul(a2).mul(gd));
-  };
+  });
 
   /** OpenSimplex2S 2D value (mirrors `openSimplex2S2DValue`). */
-  const os2sValue = (seed: TSLAny, X: TSLAny, Z: TSLAny): TSLAny => {
+  const os2sFn = Fn(([seed, X, Z]: TSLAny[]): TSLAny => {
     const s = SKEW_F.mul(X.add(Z));
     const xs = X.add(s);
     const zs = Z.add(s);
@@ -201,57 +208,59 @@ function createKernelNodes(grads: TSLAny) {
     const t = xi.add(yi).mul(UNSKEW_F);
     const dx0 = xi.add(t);
     const dy0 = yi.add(t);
-    const value = v(seed, xsb, ysb, dx0, dy0).add(
-      v(seed, xsb.add(int(1)), ysb.add(int(1)), dx0.sub(C_F), dy0.sub(C_F)),
+    const value = vertexFn(seed, xsb, ysb, dx0, dy0).add(
+      vertexFn(seed, xsb.add(int(1)), ysb.add(int(1)), dx0.sub(C_F), dy0.sub(C_F)),
     );
     const xmyi = xi.sub(yi);
     const branchA = select(
       xi.add(xmyi).greaterThan(float(1)),
-      v(seed, xsb.add(int(2)), ysb.add(int(1)), dx0.sub(float(U3)), dy0.sub(float(U2))),
-      v(seed, xsb, ysb.add(int(1)), dx0.sub(UNSKEW_F), dy0.sub(float(U1))),
+      vertexFn(seed, xsb.add(int(2)), ysb.add(int(1)), dx0.sub(float(U3)), dy0.sub(float(U2))),
+      vertexFn(seed, xsb, ysb.add(int(1)), dx0.sub(UNSKEW_F), dy0.sub(float(U1))),
     );
     const branchB = select(
       yi.sub(xmyi).greaterThan(float(1)),
-      v(seed, xsb.add(int(1)), ysb.add(int(2)), dx0.sub(float(U2)), dy0.sub(float(U3))),
-      v(seed, xsb.add(int(1)), ysb, dx0.sub(float(U1)), dy0.sub(UNSKEW_F)),
+      vertexFn(seed, xsb.add(int(1)), ysb.add(int(2)), dx0.sub(float(U2)), dy0.sub(float(U3))),
+      vertexFn(seed, xsb.add(int(1)), ysb, dx0.sub(float(U1)), dy0.sub(UNSKEW_F)),
     );
     const branchC = select(
       xi.add(xmyi).lessThan(float(0)),
-      v(seed, xsb.sub(int(1)), ysb, dx0.add(float(U1)), dy0.add(UNSKEW_F)),
-      v(seed, xsb.add(int(1)), ysb, dx0.sub(float(U1)), dy0.sub(UNSKEW_F)),
+      vertexFn(seed, xsb.sub(int(1)), ysb, dx0.add(float(U1)), dy0.add(UNSKEW_F)),
+      vertexFn(seed, xsb.add(int(1)), ysb, dx0.sub(float(U1)), dy0.sub(UNSKEW_F)),
     );
     const branchD = select(
       yi.lessThan(xmyi),
-      v(seed, xsb, ysb.sub(int(1)), dx0.add(UNSKEW_F), dy0.add(float(U1))),
-      v(seed, xsb, ysb.add(int(1)), dx0.sub(UNSKEW_F), dy0.sub(float(U1))),
+      vertexFn(seed, xsb, ysb.sub(int(1)), dx0.add(UNSKEW_F), dy0.add(float(U1))),
+      vertexFn(seed, xsb, ysb.add(int(1)), dx0.sub(UNSKEW_F), dy0.sub(float(U1))),
     );
     return value.add(select(t.lessThan(UNSKEW_F), branchA.add(branchB), branchC.add(branchD)));
-  };
+  });
 
   /** `terrainOctave` = OS2S_TERRAIN_SCALE × os2s at (x/cell, z/cell). */
-  const terrainOctave = (x: TSLAny, z: TSLAny, cell: TSLAny, seed: TSLAny): TSLAny =>
-    float(OS2S_TERRAIN_SCALE).mul(os2sValue(seed, x.div(cell), z.div(cell)));
+  const octaveFn = Fn(([x, z, cell, seed]: TSLAny[]): TSLAny =>
+    float(OS2S_TERRAIN_SCALE).mul(os2sFn(seed, x.div(cell), z.div(cell))),
+  );
 
   /**
    * `fbm` — five octaves, amplitude 0.55, cell halving, seed stepped by 101 per octave
-   * (mirrors terrain-height.ts exactly). Unrolled at the TS level: each octave is a
-   * separate node-graph branch with a compile-time seed offset, so the per-octave hash
-   * input is a literal — no runtime loop index needed.
+   * (mirrors terrain-height.ts exactly). The octave counter is a loop variable (TSL has
+   * no built-in loop index in this version).
    */
-  const fbm = (x: TSLAny, z: TSLAny, baseCell: TSLAny, seed: TSLAny): TSLAny => {
-    let sum: TSLAny = float(0);
-    let amplitude: TSLAny = float(0.55);
-    let cell: TSLAny = baseCell;
-    for (let octave = 0; octave < 5; octave += 1) {
-      sum = sum.add(amplitude.mul(terrainOctave(x, z, cell, seed.add(int(octave * 101)))));
-      cell = cell.mul(float(0.5));
-      amplitude = amplitude.mul(float(0.55));
-    }
+  const fbmFn = Fn(([x, z, baseCell, seed]: TSLAny[]): TSLAny => {
+    const sum = float(0).toVar();
+    const amplitude = float(0.55).toVar();
+    const cell = baseCell.toVar();
+    const k = int(0).toVar();
+    Loop(5, () => {
+      sum.addAssign(amplitude.mul(octaveFn(x, z, cell, seed.add(k.mul(int(101))))));
+      cell.mulAssign(float(0.5));
+      amplitude.mulAssign(float(0.55));
+      k.addAssign(int(1));
+    });
     return sum;
-  };
+  });
 
   /** `countryElevationAt` (mirrors terrain-height.ts, value path). */
-  const countryElevationAt = (x: TSLAny, z: TSLAny, cfg: TSLAny, seed: TSLAny): TSLAny => {
+  const countryFn = Fn(([x, z, cfg, seed]: TSLAny[]): TSLAny => {
     const wl = cfg.element(CFG.elevWavelength);
     const dCity = sqrt(
       x
@@ -263,51 +272,51 @@ function createKernelNodes(grads: TSLAny) {
       smoothstep(cfg.element(CFG.elevFadeInner), cfg.element(CFG.elevFadeOuter), dCity),
     );
     const strength = float(1).sub(cityFade).mul(cfg.element(CFG.elevAmplitude));
-    const body = (): TSLAny => {
-      const warpX = fbm(x, z, wl.mul(float(0.8)), seed.add(int(505))).mul(
-        cfg.element(CFG.elevWarp),
-      );
-      const warpZ = fbm(
-        x.add(float(4471.2)),
-        z.sub(float(2903.7)),
-        wl.mul(float(0.8)),
-        seed.add(int(606)),
-      ).mul(cfg.element(CFG.elevWarp));
-      const warped = fbm(x.add(warpX), z.add(warpZ), wl, seed.add(int(707)))
-        .mul(float(0.5))
-        .add(float(0.5));
-      const shaped = warped.mul(warped).mul(float(3).sub(warped.mul(float(2))));
-      const gorge = terrainOctave(
-        x.sub(float(913.4)),
-        z.add(float(1757.1)),
-        wl.mul(float(0.42)),
-        seed.add(int(808)),
-      );
-      const gorgeCut = smoothstep(float(0.42), float(0.18), gorge).mul(
-        smoothstep(float(0.02), float(0.3), warped),
-      );
-      const relief = shaped.mul(float(1).sub(gorgeCut.mul(float(0.62))));
-      return relief.sub(float(0.42)).mul(strength).mul(float(1.8));
-    };
-    // The early-out (strength ≤ 0.01 → 0) as a select; the amplitude gate is a CPU-side
-    // node-graph branch (config constant).
-    return select(strength.lessThanEqual(float(0.01)) as TSLAny, float(0), body());
-  };
+    const warpX = fbmFn(x, z, wl.mul(float(0.8)), seed.add(int(505))).mul(
+      cfg.element(CFG.elevWarp),
+    );
+    const warpZ = fbmFn(
+      x.add(float(4471.2)),
+      z.sub(float(2903.7)),
+      wl.mul(float(0.8)),
+      seed.add(int(606)),
+    ).mul(cfg.element(CFG.elevWarp));
+    const warped = fbmFn(x.add(warpX), z.add(warpZ), wl, seed.add(int(707)))
+      .mul(float(0.5))
+      .add(float(0.5));
+    const shaped = warped.mul(warped).mul(float(3).sub(warped.mul(float(2))));
+    const gorge = octaveFn(
+      x.sub(float(913.4)),
+      z.add(float(1757.1)),
+      wl.mul(float(0.42)),
+      seed.add(int(808)),
+    );
+    const gorgeCut = smoothstep(float(0.42), float(0.18), gorge).mul(
+      smoothstep(float(0.02), float(0.3), warped),
+    );
+    const relief = shaped.mul(float(1).sub(gorgeCut.mul(float(0.62))));
+    // The early-out (strength ≤ 0.01 → 0, amplitude ≤ 0 → 0) as a select.
+    return select(
+      strength.lessThanEqual(float(0.01)) as TSLAny,
+      float(0),
+      relief.sub(float(0.42)).mul(strength).mul(float(1.8)),
+    );
+  });
 
   /** `rawHeightOf` (mirrors terrain-height.ts). */
-  const rawHeight = (x: TSLAny, z: TSLAny, cfg: TSLAny, seed: TSLAny): TSLAny => {
+  const rawHeightFn = Fn(([x, z, cfg, seed]: TSLAny[]): TSLAny => {
     const hillWl = cfg.element(CFG.hillWavelength);
     const hillAmp = cfg.element(CFG.hillAmplitude);
-    let height = fbm(x, z, hillWl, seed)
+    let height = fbmFn(x, z, hillWl, seed)
       .mul(hillAmp)
       .add(
-        fbm(x.add(float(3917.3)), z.sub(float(2718.1)), hillWl.mul(float(2.7)), seed.add(int(77)))
+        fbmFn(x.add(float(3917.3)), z.sub(float(2718.1)), hillWl.mul(float(2.7)), seed.add(int(77)))
           .mul(hillAmp)
           .mul(float(1.6)),
       );
-    height = height.add(countryElevationAt(x, z, cfg, seed));
-    const rBroadRaw = terrainOctave(x, z, float(210), seed.add(int(303)));
-    const rFineRaw = terrainOctave(
+    height = height.add(countryFn(x, z, cfg, seed));
+    const rBroadRaw = octaveFn(x, z, float(210), seed.add(int(303)));
+    const rFineRaw = octaveFn(
       x.sub(float(1173.9)),
       z.add(float(941.2)),
       float(96),
@@ -327,14 +336,14 @@ function createKernelNodes(grads: TSLAny) {
       .mul(float(1).sub(t))
       .mul(float(1).add(t.mul(float(2))));
     return height.add(cone.mul(cfg.element(CFG.volcanoHeight).add(ridgeBroad.mul(float(26)))));
-  };
+  });
 
   /**
    * `worldBaseHeightAt` (mirrors world-terrain.ts): raw height + floor + spawn pad,
    * then the plateau blend.
    */
-  const worldBaseAt = (x: TSLAny, z: TSLAny, cfg: TSLAny, seed: TSLAny): TSLAny => {
-    let height = rawHeight(x, z, cfg, seed);
+  const worldBaseFn = Fn(([x, z, cfg, seed]: TSLAny[]): TSLAny => {
+    let height = rawHeightFn(x, z, cfg, seed);
     height = height.max(cfg.element(CFG.floorMeters));
     const dOrigin = sqrt(x.mul(x).add(z.mul(z)));
     const pad = smoothstep(cfg.element(CFG.padFlatR), cfg.element(CFG.padBlendR), dOrigin);
@@ -353,9 +362,9 @@ function createKernelNodes(grads: TSLAny) {
       cityElev,
       select(pdist.greaterThanEqual(blend) as TSLAny, natural, blended),
     );
-  };
+  });
 
-  return { worldBaseAt };
+  return { worldBaseAt: worldBaseFn };
 }
 
 // --- the rasteriser ------------------------------------------------------------
