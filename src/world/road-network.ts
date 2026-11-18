@@ -64,7 +64,22 @@ export interface RoadSample {
   readonly shoulderMeters: number;
   /** Phase 10 pass 2: the deck of a bridge span — the terrain holds the deck height. */
   readonly onBridge: boolean;
+  /**
+   * Phase 11.2: the deck of a CROSSING span — a road over another road. Valley
+   * bridges (onBridge without this) are not crossings: the union carve's
+   * crossing-ownership rule must not fire for them.
+   */
+  readonly onCrossingDeck: boolean;
 }
+
+/**
+ * Phase 11.2 — the vertical separation (m) at which a road crossing becomes a
+ * grade-separated crossing: the higher road is spanned as a deck (piers to the
+ * lower road's surface) and the lower road owns the ground at the crossing.
+ * Shared by the span passes below and the union carve (world-terrain) — one
+ * literal, one meaning.
+ */
+export const CROSSING_SPAN_CLEARANCE_METERS = 4.5;
 
 /**
  * A bridge span (Phase 10 pass 2): the solved profile holds a deck this many metres above
@@ -2323,6 +2338,435 @@ export function buildRoadNetwork(
     }
   }
 
+  // Phase 11.2 — grade-separated crossing spans. A routed detour (or a chord the
+  // vertical solver lifted onto an embankment) can cross another road's ribbon in
+  // the open field, several metres above it: the two profiles were solved
+  // independently (no shared node), the union carve hands the crossing band to
+  // one ribbon, and the other floats 4–8 m over the ground — the worst D1/D2/D3
+  // class the 13-seed audit measures. The higher road is a deck over the lower
+  // one, so span it like a bridge: piers down to the lower road's surface,
+  // barriers, and the span stations leave the D1/D3 envelope. The companion
+  // carve rule (world-terrain) keeps the LOWER ribbon as the ground owner at
+  // the crossing, so the under road runs on its own surface, not buried under
+  // the deck's embankment.
+  //
+  // Only crossings that no junction already handles: edges sharing a node meet
+  // at the node's solved elevation (profiles agree), and the 11.2 layout pass
+  // junctionised the block-city mid-segment crossings. What remains are the
+  // open-field crossings of routed trunks and rural lines.
+  const CROSSING_SPAN_MIN_ANGLE_DEGREES = 25; // transverse crossings, not near-parallel runs
+  const CROSSING_SPAN_ENDPOINT_GAP_METERS = 6; // not "at" a junction
+  const CROSSING_SPAN_DECK_EXTRA_METERS = 10; // deck shelf past the lower road's shoulder
+  const CROSSING_CELL_METERS = 32;
+  // Layout edges are always `${from}->${to}`; the garage pass adds its ramp and
+  // aisle edges under explicit ids (`g0-ramp`, `g0-a` — no `->`). Exclude the
+  // hand-authored kit (grade separation is its design language) and the garage
+  // edges (their ramp corridors are severed, not spanned).
+  const isSpanCandidateEdge = (edge: (typeof edges)[number]): boolean =>
+    edge.id.includes('->') && !edge.id.startsWith('aohara-');
+  const crossingSegGrid = new Map<string, { edge: number; seg: number }[]>();
+  for (let edgeIndex = 0; edgeIndex < edges.length; edgeIndex += 1) {
+    const edge = edges[edgeIndex]!;
+    if (!isSpanCandidateEdge(edge)) continue;
+    const pts = edge.points;
+    for (let seg = 0; seg < pts.length - 1; seg += 1) {
+      const a = pts[seg]!;
+      const b = pts[seg + 1]!;
+      const minCx = Math.floor(Math.min(a.x, b.x) / CROSSING_CELL_METERS);
+      const maxCx = Math.floor(Math.max(a.x, b.x) / CROSSING_CELL_METERS);
+      const minCz = Math.floor(Math.min(a.z, b.z) / CROSSING_CELL_METERS);
+      const maxCz = Math.floor(Math.max(a.z, b.z) / CROSSING_CELL_METERS);
+      for (let cx = minCx; cx <= maxCx; cx += 1) {
+        for (let cz = minCz; cz <= maxCz; cz += 1) {
+          const key = `${cx},${cz}`;
+          let list = crossingSegGrid.get(key);
+          if (list === undefined) {
+            list = [];
+            crossingSegGrid.set(key, list);
+          }
+          list.push({ edge: edgeIndex, seg });
+        }
+      }
+    }
+  }
+  // The tunnel floor is a structure, never a deck: its ranges stay exempt.
+  const tunnelRanges = new Map<string, { start: number; end: number }[]>();
+  for (const dip of tunnelDips) {
+    const list = tunnelRanges.get(dip.edgeId) ?? [];
+    list.push({ start: dip.startIndex, end: dip.endIndex });
+    tunnelRanges.set(dip.edgeId, list);
+  }
+  const inTunnelRange = (edgeId: string, pointIndex: number): boolean =>
+    (tunnelRanges.get(edgeId) ?? []).some((r) => pointIndex >= r.start && pointIndex <= r.end);
+  const nearestProfileYAt = (edge: (typeof edges)[number], x: number, z: number): number => {
+    const pts = edge.points;
+    let best = Infinity;
+    let bestY = pts[0]!.y;
+    for (let i = 0; i < pts.length - 1; i += 1) {
+      const a = pts[i]!;
+      const b = pts[i + 1]!;
+      const abx = b.x - a.x;
+      const abz = b.z - a.z;
+      const len2 = abx * abx + abz * abz;
+      if (len2 < 1e-9) continue;
+      const t = Math.max(0, Math.min(1, ((x - a.x) * abx + (z - a.z) * abz) / len2));
+      const d = Math.hypot(x - (a.x + abx * t), z - (a.z + abz * t));
+      if (d < best) {
+        best = d;
+        bestY = a.y + (b.y - a.y) * t;
+      }
+    }
+    return bestY;
+  };
+  const crossingDeckPoints = new Map<string, Set<number>>();
+  const seenCrossingSpans = new Set<string>();
+  for (let edgeIndex = 0; edgeIndex < edges.length; edgeIndex += 1) {
+    const e1 = edges[edgeIndex]!;
+    if (!isSpanCandidateEdge(e1)) continue;
+    const p1 = e1.points;
+    for (let s1 = 0; s1 < p1.length - 1; s1 += 1) {
+      const a1 = p1[s1]!;
+      const b1 = p1[s1 + 1]!;
+      const minCx = Math.floor(a1.x / CROSSING_CELL_METERS);
+      const maxCx = Math.floor(b1.x / CROSSING_CELL_METERS);
+      const minCz = Math.floor(a1.z / CROSSING_CELL_METERS);
+      const maxCz = Math.floor(b1.z / CROSSING_CELL_METERS);
+      const [loCx, hiCx] = minCx <= maxCx ? [minCx, maxCx] : [maxCx, minCx];
+      const [loCz, hiCz] = minCz <= maxCz ? [minCz, maxCz] : [maxCz, minCz];
+      for (let cx = loCx; cx <= hiCx; cx += 1) {
+        for (let cz = loCz; cz <= hiCz; cz += 1) {
+          for (const { edge: e2Index, seg: s2 } of crossingSegGrid.get(`${cx},${cz}`) ?? []) {
+            if (e2Index <= edgeIndex) continue; // each unordered pair once
+            const e2 = edges[e2Index]!;
+            // Note: pairs sharing a node are NOT skipped — a detour can leave its
+            // shared junction, swing around a wall, and re-cross its neighbour in
+            // the open field, far from the junction. The endpoint-gap guard below
+            // keeps junction-local crossings (where the solver's pins already
+            // agree) out of the span set.
+            const a2 = e2.points[s2]!;
+            const b2 = e2.points[s2 + 1]!;
+            const abx = b1.x - a1.x;
+            const abz = b1.z - a1.z;
+            const cdx = b2.x - a2.x;
+            const cdz = b2.z - a2.z;
+            const denom = abx * cdz - abz * cdx;
+            if (Math.abs(denom) < 1e-9) continue;
+            // A small tolerance: grid-aligned roads cross on the 32 m routing
+            // lattice, so a crossing can land exactly on a profile VERTEX — then
+            // both of that edge's segments see t=0/t=1 and the strict test loses
+            // the crossing. The rounded-P dedupe below absorbs the double hit.
+            const T_EPS = 1e-3;
+            const tRaw = ((a2.x - a1.x) * cdz - (a2.z - a1.z) * cdx) / denom;
+            const sRaw = ((a2.x - a1.x) * abz - (a2.z - a1.z) * abx) / denom;
+            if (tRaw < -T_EPS || tRaw > 1 + T_EPS || sRaw < -T_EPS || sRaw > 1 + T_EPS) continue;
+            const t = Math.max(0, Math.min(1, tRaw));
+            const s = Math.max(0, Math.min(1, sRaw));
+            const px = a1.x + abx * t;
+            const pz = a1.z + abz * t;
+            const spanKey = `${e1.id}|${e2.id}|${Math.round(px)}:${Math.round(pz)}`;
+            if (seenCrossingSpans.has(spanKey)) continue;
+            seenCrossingSpans.add(spanKey);
+            const len1 = Math.hypot(abx, abz);
+            const len2 = Math.hypot(cdx, cdz);
+            if (len1 < 1e-9 || len2 < 1e-9) continue;
+            const cosAngle = Math.abs(abx * cdx + abz * cdz) / (len1 * len2);
+            if (
+              (Math.acos(Math.min(1, cosAngle)) * 180) / Math.PI < CROSSING_SPAN_MIN_ANGLE_DEGREES
+            ) {
+              continue;
+            }
+            const p1EndA = p1[0]!;
+            const p1EndB = p1[p1.length - 1]!;
+            const p2EndA = e2.points[0]!;
+            const p2EndB = e2.points[e2.points.length - 1]!;
+            if (
+              Math.hypot(px - p1EndA.x, pz - p1EndA.z) < CROSSING_SPAN_ENDPOINT_GAP_METERS ||
+              Math.hypot(px - p1EndB.x, pz - p1EndB.z) < CROSSING_SPAN_ENDPOINT_GAP_METERS ||
+              Math.hypot(px - p2EndA.x, pz - p2EndA.z) < CROSSING_SPAN_ENDPOINT_GAP_METERS ||
+              Math.hypot(px - p2EndB.x, pz - p2EndB.z) < CROSSING_SPAN_ENDPOINT_GAP_METERS
+            ) {
+              continue;
+            }
+            const y1 = a1.y + (b1.y - a1.y) * t;
+            const y2 = a2.y + (b2.y - a2.y) * s;
+            const dy = Math.abs(y1 - y2);
+            if (dy <= CROSSING_SPAN_CLEARANCE_METERS) continue;
+            const [upper, lower, upperSeg] =
+              y1 > y2 ? ([e1, e2, s1] as const) : ([e2, e1, s2] as const);
+            const spanHalf =
+              lower.halfWidthMeters + lower.shoulderMeters + CROSSING_SPAN_DECK_EXTRA_METERS;
+            const upperPts = upper.points;
+            // Cumulative arc length along the upper profile, and the crossing's
+            // position on it (P lies inside segment upperSeg).
+            const cum: number[] = [0];
+            for (let i = 1; i < upperPts.length; i += 1) {
+              const a = upperPts[i - 1]!;
+              const b = upperPts[i]!;
+              cum.push(cum[i - 1]! + Math.hypot(b.x - a.x, b.z - a.z));
+            }
+            const uA = upperPts[upperSeg]!;
+            const alongP =
+              cum[upperSeg]! + Math.hypot(px - uA.x, pz - uA.z);
+            let lo = 1;
+            while (lo < upperPts.length - 1 && cum[lo]! < alongP - spanHalf) lo += 1;
+            let hi = upperPts.length - 2;
+            while (hi > 1 && cum[hi]! > alongP + spanHalf) hi -= 1;
+            if (hi - lo < 2) continue; // the footprint is narrower than a deck run
+            // The deck must be one unbroken run: a point already deck (a valley
+            // bridge) or a tunnel floor would split it — skip the span instead.
+            let usable = true;
+            const run: (RoadPoint & { baseY: number })[] = [];
+            for (let i = lo; i <= hi; i += 1) {
+              if (bridgePoints.get(upper.id)?.has(i)) {
+                usable = false;
+                break;
+              }
+              if (inTunnelRange(upper.id, i)) {
+                usable = false;
+                break;
+              }
+              const p = upperPts[i]!;
+              const baseY = nearestProfileYAt(lower, p.x, p.z);
+              if (p.y - baseY < 3) {
+                usable = false; // the deck must clear its base
+                break;
+              }
+              run.push({ ...p, baseY });
+            }
+            if (!usable || run.length < 3) continue;
+            bridgeSpans.push({
+              edgeId: upper.id,
+              roadClass: upper.roadClass,
+              halfWidthMeters: upper.halfWidthMeters,
+              shoulderMeters: upper.shoulderMeters,
+              points: run,
+            });
+            let flags = bridgePoints.get(upper.id);
+            if (flags === undefined) {
+              flags = new Set<number>();
+              bridgePoints.set(upper.id, flags);
+            }
+            let deckFlags = crossingDeckPoints.get(upper.id);
+            if (deckFlags === undefined) {
+              deckFlags = new Set<number>();
+              crossingDeckPoints.set(upper.id, deckFlags);
+            }
+            for (let i = lo; i <= hi; i += 1) {
+              flags.add(i);
+              deckFlags.add(i);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Phase 11.2b — near-approach crossing spans. The true-crossing test above
+  // needs a segment crossing; a grade-separated crossing can instead come
+  // within a metre of the other road's centreline without crossing it (the
+  // centreline ends just short of the other line, or a junction node sits a
+  // couple of metres off it — routine on the 32 m block-city lattice). Then
+  // the carve's nearest-owns semantics puts a 10 m step on the under road's
+  // own pavement. Same treatment as a true crossing: the upper run over the
+  // lower pavement becomes a deck, and the carve rule (gated on
+  // onCrossingDeck) hands the under road its own surface back. The guards are
+  // geometric, not junction-based: the endpoint-gap filter of the pass above
+  // would reject exactly this shape, and same-elevation junctions are kept out
+  // by the clearance test (shared nodes pin both profiles to one y).
+  {
+    const nearSeen = new Set<string>();
+    const pointToPolyline = (edge: (typeof edges)[number], px: number, pz: number): number => {
+      const pts = edge.points;
+      let best = Infinity;
+      for (let i = 0; i < pts.length - 1; i += 1) {
+        const a = pts[i]!;
+        const b = pts[i + 1]!;
+        const abx = b.x - a.x;
+        const abz = b.z - a.z;
+        const len2 = abx * abx + abz * abz;
+        if (len2 < 1e-9) continue;
+        const t = Math.max(0, Math.min(1, ((px - a.x) * abx + (pz - a.z) * abz) / len2));
+        const d = Math.hypot(px - (a.x + abx * t), pz - (a.z + abz * t));
+        if (d < best) best = d;
+      }
+      return best;
+    };
+    for (let edgeIndex = 0; edgeIndex < edges.length; edgeIndex += 1) {
+      const e1 = edges[edgeIndex]!;
+      if (!isSpanCandidateEdge(e1)) continue;
+      const p1 = e1.points;
+      for (let s1 = 0; s1 < p1.length - 1; s1 += 1) {
+        const a1 = p1[s1]!;
+        const b1 = p1[s1 + 1]!;
+        const minCx = Math.floor(a1.x / CROSSING_CELL_METERS);
+        const maxCx = Math.floor(b1.x / CROSSING_CELL_METERS);
+        const minCz = Math.floor(a1.z / CROSSING_CELL_METERS);
+        const maxCz = Math.floor(b1.z / CROSSING_CELL_METERS);
+        const [loCx, hiCx] = minCx <= maxCx ? [minCx, maxCx] : [maxCx, minCx];
+        const [loCz, hiCz] = minCz <= maxCz ? [minCz, maxCz] : [maxCz, minCz];
+        for (let cx = loCx; cx <= hiCx; cx += 1) {
+          for (let cz = loCz; cz <= hiCz; cz += 1) {
+            for (const { edge: e2Index, seg: s2 } of crossingSegGrid.get(`${cx},${cz}`) ?? []) {
+              if (e2Index <= edgeIndex) continue;
+              const e2 = edges[e2Index]!;
+              const a2 = e2.points[s2]!;
+              const b2 = e2.points[s2 + 1]!;
+              // Cheap bbox pre-filter: the approach of interest is inside the
+              // lower road's pavement (<= ~10 m) plus a vertex-spacing margin.
+              const bxGap = Math.max(
+                Math.min(a1.x, b1.x) - Math.max(a2.x, b2.x),
+                Math.min(a2.x, b2.x) - Math.max(a1.x, b1.x),
+                0,
+              );
+              const bzGap = Math.max(
+                Math.min(a1.z, b1.z) - Math.max(a2.z, b2.z),
+                Math.min(a2.z, b2.z) - Math.max(a1.z, b1.z),
+                0,
+              );
+              if (bxGap * bxGap + bzGap * bzGap > 18 * 18) continue;
+              // Local closest approach. The minimum distance between two
+              // non-crossing segments sits on an endpoint (parallel segments
+              // are a constant offset, also achieved by an endpoint), so
+              // vertices of each segment — plus one each side, so the test is
+              // at polyline level — against the other's extended segments is
+              // exact for this cell neighbourhood.
+              let sep = Infinity;
+              let sepX = 0;
+              let sepZ = 0;
+              let y1c = 0;
+              let y2c = 0;
+              for (let vi = s1 - 1; vi <= s1 + 1; vi += 1) {
+                if (vi < 0 || vi >= p1.length) continue;
+                const vp = p1[vi]!;
+                for (let sj = s2 - 1; sj <= s2 + 1; sj += 1) {
+                  if (sj < 0 || sj >= e2.points.length - 1) continue;
+                  const qa = e2.points[sj]!;
+                  const qb = e2.points[sj + 1]!;
+                  const abx = qb.x - qa.x;
+                  const abz = qb.z - qa.z;
+                  const len2 = abx * abx + abz * abz;
+                  const t =
+                    len2 < 1e-9 ? 0 : Math.max(0, Math.min(1, ((vp.x - qa.x) * abx + (vp.z - qa.z) * abz) / len2));
+                  const qx = qa.x + abx * t;
+                  const qz = qa.z + abz * t;
+                  const d = Math.hypot(vp.x - qx, vp.z - qz);
+                  if (d < sep) {
+                    sep = d;
+                    sepX = vp.x;
+                    sepZ = vp.z;
+                    y1c = vp.y;
+                    y2c = qa.y + (qb.y - qa.y) * t;
+                  }
+                }
+              }
+              for (let vi = s2 - 1; vi <= s2 + 1; vi += 1) {
+                if (vi < 0 || vi >= e2.points.length) continue;
+                const vp = e2.points[vi]!;
+                for (let sj = s1 - 1; sj <= s1 + 1; sj += 1) {
+                  if (sj < 0 || sj >= p1.length - 1) continue;
+                  const qa = p1[sj]!;
+                  const qb = p1[sj + 1]!;
+                  const abx = qb.x - qa.x;
+                  const abz = qb.z - qa.z;
+                  const len2 = abx * abx + abz * abz;
+                  const t =
+                    len2 < 1e-9 ? 0 : Math.max(0, Math.min(1, ((vp.x - qa.x) * abx + (vp.z - qa.z) * abz) / len2));
+                  const qx = qa.x + abx * t;
+                  const qz = qa.z + abz * t;
+                  const d = Math.hypot(vp.x - qx, vp.z - qz);
+                  if (d < sep) {
+                    sep = d;
+                    sepX = vp.x;
+                    sepZ = vp.z;
+                    y1c = qa.y + (qb.y - qa.y) * t;
+                    y2c = vp.y;
+                  }
+                }
+              }
+              if (sep === Infinity) continue;
+              if (Math.abs(y1c - y2c) <= CROSSING_SPAN_CLEARANCE_METERS) continue;
+              const upper = y1c > y2c ? e1 : e2;
+              const lower = y1c > y2c ? e2 : e1;
+              // The upper centreline must actually enter the lower PAVEMENT —
+              // that is the region where the carve's ownership is contested.
+              // A parallel road farther apart keeps the 11.1b nearest-owns
+              // behaviour (no deck, no piers).
+              if (sep > lower.halfWidthMeters + lower.shoulderMeters) continue;
+              const nearKey = `${e1.id}|${e2.id}|${Math.round(sepX / 2)}:${Math.round(sepZ / 2)}`;
+              if (nearSeen.has(nearKey)) continue;
+              nearSeen.add(nearKey);
+              // The run of upper points whose pavement overlaps the lower's:
+              // within (lower radius + upper radius) of the lower centreline.
+              const runRadius =
+                lower.halfWidthMeters + lower.shoulderMeters +
+                upper.halfWidthMeters + upper.shoulderMeters;
+              const up = upper.points;
+              let anchor = 0;
+              let anchorD = Infinity;
+              for (let i = 0; i < up.length; i += 1) {
+                const d = Math.hypot(up[i]!.x - sepX, up[i]!.z - sepZ);
+                if (d < anchorD) {
+                  anchorD = d;
+                  anchor = i;
+                }
+              }
+              if (anchorD > runRadius) continue;
+              let lo = anchor;
+              while (lo > 0 && pointToPolyline(lower, up[lo - 1]!.x, up[lo - 1]!.z) < runRadius) lo -= 1;
+              let hi = anchor;
+              while (hi < up.length - 1 && pointToPolyline(lower, up[hi + 1]!.x, up[hi + 1]!.z) < runRadius) hi += 1;
+              if (hi - lo < 1) continue; // at least one full segment must be deck
+              // The run may touch points that are already deck — a NEIGHBOURING
+              // lower road can span a stretch just before this approach (one
+              // trunk passing over two roads in quick succession) — or tunnel
+              // floor. Split into sub-runs and span each; rejecting the whole
+              // approach would leave the unspanned tail floating over the
+              // under road's pavement.
+              const subRuns: { idx: number; point: RoadPoint & { baseY: number } }[][] = [];
+              let current: { idx: number; point: RoadPoint & { baseY: number } }[] = [];
+              for (let i = lo; i <= hi; i += 1) {
+                const p = up[i]!;
+                const blocked =
+                  bridgePoints.get(upper.id)?.has(i) === true || inTunnelRange(upper.id, i);
+                const baseY = blocked ? 0 : nearestProfileYAt(lower, p.x, p.z);
+                if (blocked || p.y - baseY < 3) {
+                  if (current.length >= 2) subRuns.push(current);
+                  current = [];
+                  continue;
+                }
+                current.push({ idx: i, point: { ...p, baseY } });
+              }
+              if (current.length >= 2) subRuns.push(current);
+              for (const run of subRuns) {
+                bridgeSpans.push({
+                  edgeId: upper.id,
+                  roadClass: upper.roadClass,
+                  halfWidthMeters: upper.halfWidthMeters,
+                  shoulderMeters: upper.shoulderMeters,
+                  points: run.map((r) => r.point),
+                });
+                let flags = bridgePoints.get(upper.id);
+                if (flags === undefined) {
+                  flags = new Set<number>();
+                  bridgePoints.set(upper.id, flags);
+                }
+                let deckFlags = crossingDeckPoints.get(upper.id);
+                if (deckFlags === undefined) {
+                  deckFlags = new Set<number>();
+                  crossingDeckPoints.set(upper.id, deckFlags);
+                }
+                for (const r of run) {
+                  flags.add(r.idx);
+                  deckFlags.add(r.idx);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Spatial index over segments, expanded by the blend width so `sample` finds every
   // segment that could influence a query point.
   interface Segment {
@@ -2337,6 +2781,7 @@ export function buildRoadNetwork(
     readonly halfWidthMeters: number;
     readonly shoulderMeters: number;
     readonly onBridge: boolean;
+    readonly onCrossingDeck: boolean;
   }
   const segments: Segment[] = [];
   const index = new Map<string, number[]>();
@@ -2360,6 +2805,9 @@ export function buildRoadNetwork(
         onBridge:
           (bridgePoints.get(edge.id)?.has(indexOfPoint) ?? false) &&
           (bridgePoints.get(edge.id)?.has(indexOfPoint + 1) ?? false),
+        onCrossingDeck:
+          (crossingDeckPoints.get(edge.id)?.has(indexOfPoint) ?? false) &&
+          (crossingDeckPoints.get(edge.id)?.has(indexOfPoint + 1) ?? false),
       });
       const expand = config.blendWidthMeters;
       const minCx = Math.floor((Math.min(a.x, b.x) - expand) / INDEX_CELL_METERS);
@@ -2409,6 +2857,7 @@ export function buildRoadNetwork(
           halfWidthMeters: segment.halfWidthMeters,
           shoulderMeters: segment.shoulderMeters,
           onBridge: segment.onBridge,
+          onCrossingDeck: segment.onCrossingDeck,
         };
       }
     }
@@ -2450,6 +2899,7 @@ export function buildRoadNetwork(
         halfWidthMeters: segment.halfWidthMeters,
         shoulderMeters: segment.shoulderMeters,
         onBridge: segment.onBridge,
+        onCrossingDeck: segment.onCrossingDeck,
       });
     }
     return result;

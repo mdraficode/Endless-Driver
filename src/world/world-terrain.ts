@@ -7,7 +7,12 @@ import {
   terrainNormalAt,
   type TerrainSampler,
 } from './terrain-height';
-import { buildRoadNetwork, roadInfluence, type RoadSample } from './road-network';
+import {
+  buildRoadNetwork,
+  roadInfluence,
+  CROSSING_SPAN_CLEARANCE_METERS,
+  type RoadSample,
+} from './road-network';
 
 /** Phase 10 pass 2: the flat deck shelf extends this many metres past the shoulder. */
 const BRIDGE_DECK_SHOULDER_EXTRA = 5;
@@ -333,9 +338,46 @@ export function createWorldTerrainSampler(
       if (kept === undefined || r.distance < kept.distance) byEdge.set(r.edgeId, r);
     }
     const candidates = [...byEdge.values()];
+    // Phase 11.2 — ownership of a grade-separated crossing. Two ribbons both
+    // on their own pavement at the query can coexist where they CROSS — or
+    // where one merely passes close under another (the 11.1b close-pair class,
+    // where the nearest-owns semantics must stay in force). The discriminator
+    // is the CROSSING span: the network's crossing pass spans a TRUE
+    // grade-separated crossing (higher road onCrossingDeck); a near-miss, and
+    // a valley bridge with a road under its deck, are not spanned as
+    // crossings. Only for a spanned crossing does the LOWER ribbon own the
+    // ground (the higher one is a deck above it, piers to this road's
+    // surface), switching ownership at the lower road's pavement edge — its
+    // shoulder blend, not a cliff.
     let primary: RoadSample | null = null;
-    for (const r of candidates) {
-      if (primary === null || r.distance < primary.distance) primary = r;
+    {
+      const onPavement: RoadSample[] = [];
+      for (const r of candidates) {
+        const deckExtra2 = r.onBridge ? BRIDGE_DECK_SHOULDER_EXTRA : 0;
+        if (r.distance <= r.halfWidthMeters + r.shoulderMeters + deckExtra2) {
+          onPavement.push(r);
+        }
+      }
+      // Any one flagged deck is enough: a junction can throw several ribbons
+      // over the same road (the span only flags the ribbon it ran along), and
+      // the ground owner is the lowest one regardless of which ribbon is the
+      // actual deck.
+      const lowest = Math.min(...onPavement.map((r) => r.elevation));
+      if (
+        onPavement.length >= 2 &&
+        onPavement.some(
+          (r) => r.onCrossingDeck && r.elevation - lowest > CROSSING_SPAN_CLEARANCE_METERS,
+        )
+      ) {
+        for (const r of onPavement) {
+          if (primary === null || r.elevation < primary.elevation) primary = r;
+        }
+      }
+    }
+    if (primary === null) {
+      for (const r of candidates) {
+        if (primary === null || r.distance < primary.distance) primary = r;
+      }
     }
     let height = baseHeight;
     if (primary !== null) {
