@@ -1877,6 +1877,10 @@ export function buildRoadNetwork(
       // when the feasible corridor sits behind the waypoint (a 135° kink at the
       // junction instead of a gentle detour).
       biasToChord: 0.02,
+      // Length cap against the chord: a rural meander may wander 1.5× the chord,
+      // a trunk detour 2.0× — beyond that the "road" is no longer that road
+      // (route/chord 11.33× on seed 4 before this cap).
+      maxRouteChordRatio: (edge.roadClass ?? 'rural') === 'rural' ? 1.5 : 2.0,
     });
     if (route !== null) {
       const pts = route.points.map((p) => [p[0], p[1]] as [number, number]);

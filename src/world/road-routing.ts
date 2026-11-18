@@ -78,6 +78,13 @@ export interface RouteOptions {
    * axis when the terrain allows it, detouring only where the grade forces it. 0 = off.
    */
   readonly biasToChord?: number;
+  /**
+   * Phase 11.2: length cap — route length may not exceed this multiple of the
+   * start→goal chord. Measured on the smoothed pre-meander corridor; over the cap
+   * the corridor is cut at its first half with the goal appended, and if the cut
+   * still breaks the grade cap the route is refused (null).
+   */
+  readonly maxRouteChordRatio?: number;
 }
 
 export interface GradeRouteResult {
@@ -409,6 +416,43 @@ export function routeGradeConstrained(
   // turn from ~90° to ~20°, then the caller resamples linearly at 8 m.
   let finalCorners = chaikinSmooth(corners, 3);
   let measured = polylineStats(finalCorners, cellHeight);
+
+  // Phase 11.2 (Fix A): the length cap, measured on the smoothed PRE-MEANDER
+  // corridor (the meander is decorative; the cap governs the proven corridor).
+  // Uncapped, A* detours around infeasible terrain became 11×-the-chord meanders
+  // (route/chord 11.33×, seed 4 baseline) — the "road" is no longer that road.
+  // Over the cap: cut the corridor at its first half and append the goal — the
+  // road follows the feasible corridor half-way, then cuts across; the cut must
+  // still meet the grade cap or the route is refused (null; the caller keeps
+  // the chord and caches the refusal).
+  const ratio = opts.maxRouteChordRatio;
+  if (ratio !== undefined) {
+    const chord = Math.hypot(goalX - startX, goalZ - startZ);
+    if (chord > 1 && measured.length > chord * ratio) {
+      let acc = 0;
+      let cutIndex = finalCorners.length - 1;
+      for (let i = 1; i < finalCorners.length; i += 1) {
+        const a = finalCorners[i - 1]!;
+        const b = finalCorners[i]!;
+        acc += Math.hypot(b[0] - a[0], b[1] - a[1]);
+        if (acc >= measured.length / 2) {
+          cutIndex = i;
+          break;
+        }
+      }
+      const cut: [number, number][] = [
+        ...finalCorners.slice(0, cutIndex + 1),
+        [goalX, goalZ] as [number, number],
+      ];
+      const cutStats = polylineStats(cut, cellHeight);
+      if (cutStats.maxGrade <= maxGrade * 1.04 + 0.004) {
+        finalCorners = cut;
+        measured = cutStats;
+      } else {
+        return null; // cap refusal
+      }
+    }
+  }
 
   // Seeded meander (rural upgrade): a gentle lateral sine on the corner path, then
   // grade-verified. If the meander breaks the cap, halve the amplitude once; if it still
