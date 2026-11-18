@@ -214,6 +214,17 @@ export function buildRoadLayout(
     const ez = az + dirz * t1;
     const xx = ax + dirx * t2;
     const xz = az + dirz * t2;
+    // When the clamped entry/exit sits INSIDE the arcR circle (a short chord
+    // deep on the flank — both endpoints already outside the steep zone), a
+    // full arcR sample flies (arcR - d) metres past the chord: a degenerate
+    // needle spike whose control [A, apex, C] kinks at the 8 m resample. The
+    // flank contour at the chord's OWN radius is the right detour there: it is
+    // nearly straight (sagitta ~ chord²/8R), and the profile solver takes the
+    // residual flank grade. Non-clamped crossings (endpoints on the circle)
+    // are unchanged: max(rE, rX) === arcR there exactly.
+    const rE = Math.hypot(ex - cx, ez - cz);
+    const rX = Math.hypot(xx - cx, xz - cz);
+    const arcRadius = Math.max(rE, rX);
     const fx = px - cx;
     const fz = pz - cz;
     const fLen = Math.hypot(fx, fz) || 1;
@@ -231,11 +242,11 @@ export function buildRoadLayout(
     const sign = d1 >= 0 ? 1 : -1;
     const d2s = d2 !== 0 && Math.sign(d2) !== sign ? d2 + 2 * Math.PI * sign : d2;
     const total = d1 + d2s;
-    const n = Math.max(2, Math.min(10, Math.round((Math.abs(total) * arcR) / 300)));
+    const n = Math.max(2, Math.min(10, Math.round((Math.abs(total) * arcRadius) / 300)));
     const pts: [number, number][] = [];
     for (let i = 1; i < n; i += 1) {
       const phi = phiE + (i / n) * total;
-      pts.push([cx + Math.cos(phi) * arcR, cz + Math.sin(phi) * arcR]);
+      pts.push([cx + Math.cos(phi) * arcRadius, cz + Math.sin(phi) * arcRadius]);
     }
     return [[ax, az], ...pts, [bx, bz]];
   };
@@ -737,6 +748,243 @@ export function buildRoadLayout(
           edges[ei] = { ...edge, via: newPath.slice(1, -1), doglegged: true };
         }
       }
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // 4. Phase 11.2: junctionise transverse interior crossings of the generated
+  //    road graph.
+  // ---------------------------------------------------------------------
+  // The district centre is jittered off the cell centre (world-plan), so a
+  // block-city street grid can spill past its cell's lattice line: a ring
+  // segment then crosses a skeleton (spine) edge at a mid-segment point where
+  // the two profiles are solved independently. The same shape happens INSIDE
+  // the blocks: an alley connector and a sub-division road cross mid-segment
+  // (the layout never puts a node at that point), and on a hillside block the
+  // two profiles disagree by several metres. The solver pins shared NODES,
+  // not mid-segment points, so the crossing pair disagrees in elevation: the
+  // higher ribbon's embankment mounds the ground above the lower ribbon
+  // (the D2/D3 crossing-slot class), and the union carve's nearest-owns hands
+  // the crossing band to one ribbon or the other.
+  //
+  // The fix is structural: at each qualifying crossing, split BOTH edges at a
+  // new SHARED node `xcN`. A shared node pins both profiles to one solved
+  // elevation (the crossing streets meet at one level, like every other
+  // junction), and the overpass pass (road-network, phase 10 pass 3) can then
+  // lift the through-street at the seeded few of these new junctions.
+  // Hand-authored kit (aohara) edges are untouched — grade separation is its
+  // design language.
+  {
+    const MIN_ENDPOINT_METERS = 25; // same clearance as the grid's capSplits
+    const MIN_ANGLE_DEGREES = 25; // transverse, not a near-parallel overlap
+    const T_EPS = 1e-3; // a crossing at a polyline vertex is still interior
+    const JCT_CELL_METERS = 32;
+    const nodeById = new Map(nodes.map((n) => [n.id, n] as const));
+    const edgePoly = (e: RoadEdgeConfig): [number, number][] => {
+      const a = nodeById.get(e.from)!;
+      const b = nodeById.get(e.to)!;
+      return [
+        [a.x, a.z] as [number, number],
+        ...(e.via ?? []).map((p) => [p[0], p[1]] as [number, number]),
+        [b.x, b.z] as [number, number],
+      ];
+    };
+    // Only STRAIGHT (via-free) edges are junctionised. Shaped edges — rural
+    // meanders, touge switchbacks, dogleg arcs — are routed detours: a shared
+    // node mid-shape pins the router's smoothing and kinks the detour, and the
+    // network's crossing-span pass (phase 10/11.2) already owns their
+    // crossings (span + carve).
+    // City-access spurs are excluded too: splitting one at a ring crossing makes
+    // its halves re-route on fresh A* corridors that can run alongside a
+    // neighbour's routed ribbon (a shallow parallel run the chords never show),
+    // and the wider lower ribbon's fill then swallows the higher one's
+    // centreline — a small embankment step the baseline corridor did not have.
+    // The spurs' crossings stay at the baseline behaviour (the accepted state).
+    const eligible: boolean[] = edges.map(
+      (e) =>
+        !e.from.startsWith('aohara-') &&
+        !e.to.startsWith('aohara-') &&
+        (e.via?.length ?? 0) === 0 &&
+        e.roadClass !== 'city-access',
+    );
+    // Spatial index over candidate segments (same pattern as the network's
+    // crossing pass): a crossing pair shares at least one cell.
+    const jctSegGrid = new Map<string, { edge: number; seg: number }[]>();
+    for (let ei = 0; ei < edges.length; ei += 1) {
+      if (!eligible[ei]) continue;
+      const poly = edgePoly(edges[ei]!);
+      for (let s = 0; s < poly.length - 1; s += 1) {
+        const a = poly[s]!;
+        const b = poly[s + 1]!;
+        const minCx = Math.floor(Math.min(a[0], b[0]) / JCT_CELL_METERS);
+        const maxCx = Math.floor(Math.max(a[0], b[0]) / JCT_CELL_METERS);
+        const minCz = Math.floor(Math.min(a[1], b[1]) / JCT_CELL_METERS);
+        const maxCz = Math.floor(Math.max(a[1], b[1]) / JCT_CELL_METERS);
+        for (let cx = minCx; cx <= maxCx; cx += 1) {
+          for (let cz = minCz; cz <= maxCz; cz += 1) {
+            const key = `${cx},${cz}`;
+            let list = jctSegGrid.get(key);
+            if (list === undefined) {
+              list = [];
+              jctSegGrid.set(key, list);
+            }
+            list.push({ edge: ei, seg: s });
+          }
+        }
+      }
+    }
+    interface EdgeSplit {
+      readonly seg: number;
+      readonly u: number;
+      readonly px: number;
+      readonly pz: number;
+      /** The crossing's shared node — ONE node per crossing, pinned on BOTH edges. */
+      readonly node: RoadNodeConfig;
+    }
+    const edgeSplits = new Map<number, EdgeSplit[]>();
+    const seenJct = new Set<string>();
+    let xcCounter = 0;
+    const xcCreated: RoadNodeConfig[] = [];
+    const farFromEnds = (poly: [number, number][], px: number, pz: number): boolean => {
+      const a = poly[0]!;
+      const b = poly[poly.length - 1]!;
+      return (
+        Math.hypot(px - a[0], pz - a[1]) >= MIN_ENDPOINT_METERS &&
+        Math.hypot(px - b[0], pz - b[1]) >= MIN_ENDPOINT_METERS
+      );
+    };
+    for (let ei = 0; ei < edges.length; ei += 1) {
+      if (!eligible[ei]) continue;
+      const polyA = edgePoly(edges[ei]!);
+      for (let sA = 0; sA < polyA.length - 1; sA += 1) {
+        const a1 = polyA[sA]!;
+        const b1 = polyA[sA + 1]!;
+        const abx = b1[0] - a1[0];
+        const abz = b1[1] - a1[1];
+        const len1 = Math.hypot(abx, abz);
+        if (len1 < 1e-9) continue;
+        const minCx = Math.floor(a1[0] / JCT_CELL_METERS);
+        const maxCx = Math.floor(b1[0] / JCT_CELL_METERS);
+        const minCz = Math.floor(a1[1] / JCT_CELL_METERS);
+        const maxCz = Math.floor(b1[1] / JCT_CELL_METERS);
+        const [loCx, hiCx] = minCx <= maxCx ? [minCx, maxCx] : [maxCx, minCx];
+        const [loCz, hiCz] = minCz <= maxCz ? [minCz, maxCz] : [maxCz, minCz];
+        for (let cx = loCx; cx <= hiCx; cx += 1) {
+          for (let cz = loCz; cz <= hiCz; cz += 1) {
+            for (const { edge: ei2, seg: sB } of jctSegGrid.get(`${cx},${cz}`) ?? []) {
+              if (ei2 <= ei) continue; // each unordered edge pair once
+              const polyB = edgePoly(edges[ei2]!);
+              const a2 = polyB[sB]!;
+              const b2 = polyB[sB + 1]!;
+              const cdx = b2[0] - a2[0];
+              const cdz = b2[1] - a2[1];
+              const len2 = Math.hypot(cdx, cdz);
+              if (len2 < 1e-9) continue;
+              const denom = abx * cdz - abz * cdx;
+              if (Math.abs(denom) < 1e-9) continue;
+              const t = ((a2[0] - a1[0]) * cdz - (a2[1] - a1[1]) * cdx) / denom;
+              const s = ((a2[0] - a1[0]) * abz - (a2[1] - a1[1]) * abx) / denom;
+              if (t < T_EPS || t > 1 - T_EPS || s < T_EPS || s > 1 - T_EPS) continue;
+              const px = a1[0] + abx * t;
+              const pz = a1[1] + abz * t;
+              const cosAngle = Math.abs(abx * cdx + abz * cdz) / (len1 * len2);
+              if ((Math.acos(Math.min(1, cosAngle)) * 180) / Math.PI < MIN_ANGLE_DEGREES) {
+                continue;
+              }
+              const jctKey = `${ei}|${ei2}|${Math.round(px)}:${Math.round(pz)}`;
+              if (seenJct.has(jctKey)) continue;
+              seenJct.add(jctKey);
+              // Coincident with an existing node: the junction is already
+              // there (the profiles agree at the pinned node) — nothing to do.
+              let atNode = false;
+              for (const p of polyA) {
+                if (Math.hypot(px - p[0], pz - p[1]) < 1) {
+                  atNode = true;
+                  break;
+                }
+              }
+              if (!atNode) {
+                for (const p of polyB) {
+                  if (Math.hypot(px - p[0], pz - p[1]) < 1) {
+                    atNode = true;
+                    break;
+                  }
+                }
+              }
+              if (atNode) continue;
+              if (!farFromEnds(polyA, px, pz) || !farFromEnds(polyB, px, pz)) continue;
+              // One node per crossing, shared by both edges: the solver pins
+              // every edge at a shared node to one solved elevation, so the
+              // crossing streets meet at one level. (Two coincident per-edge
+              // nodes would be solved independently — the very disagreement
+              // this pass exists to remove.) A second crossing within 2 m
+              // reuses the first's node instead of stranding a sub-edge
+              // between twins.
+              let node: RoadNodeConfig | undefined;
+              for (const n of xcCreated) {
+                if (Math.hypot(n.x - px, n.z - pz) < 2) {
+                  node = n;
+                  break;
+                }
+              }
+              if (node === undefined) {
+                node = addNode(`xc${xcCounter}`, px, pz);
+                xcCounter += 1;
+                xcCreated.push(node);
+              }
+              const addSplit = (edgeIndex: number, seg: number, u: number): void => {
+                const list = edgeSplits.get(edgeIndex) ?? [];
+                list.push({ seg, u, px, pz, node: node! });
+                edgeSplits.set(edgeIndex, list);
+              };
+              addSplit(ei, sA, t);
+              addSplit(ei2, sB, s);
+            }
+          }
+        }
+      }
+    }
+    // Apply: each split edge is re-emitted as a chain of same-attribute edges
+    // through the crossing's shared node (in polyline order). The via points
+    // are carried across as the sub-edges' via — the polyline is unchanged
+    // except for the inserted nodes.
+    const buildChain = (e: RoadEdgeConfig, splits: EdgeSplit[]): RoadEdgeConfig[] => {
+      const poly = edgePoly(e);
+      splits.sort((a, b) => a.seg - b.seg || a.u - b.u);
+      const chain: RoadEdgeConfig[] = [];
+      let fromNode = e.from;
+      let pendingVia: [number, number][] = [];
+      let polyCursor = 1; // poly[0] is the from node
+      for (const sp of splits) {
+        while (polyCursor <= sp.seg) {
+          pendingVia.push(poly[polyCursor] as [number, number]);
+          polyCursor += 1;
+        }
+        chain.push({ ...e, from: fromNode, to: sp.node.id, via: [...pendingVia] });
+        fromNode = sp.node.id;
+        pendingVia = [];
+      }
+      chain.push({
+        ...e,
+        from: fromNode,
+        to: e.to,
+        via: [...pendingVia, ...poly.slice(polyCursor, poly.length - 1) as [number, number][]],
+      });
+      return chain;
+    };
+    if (edgeSplits.size > 0) {
+      const replacements = new Map<number, RoadEdgeConfig[]>();
+      for (const [edgeIndex, splits] of edgeSplits) {
+        replacements.set(edgeIndex, buildChain(edges[edgeIndex]!, splits));
+      }
+      const rebuilt: RoadEdgeConfig[] = [];
+      for (let i = 0; i < edges.length; i += 1) {
+        const rep = replacements.get(i);
+        if (rep !== undefined) rebuilt.push(...rep);
+        else rebuilt.push(edges[i]!);
+      }
+      edges.length = 0;
+      edges.push(...rebuilt);
     }
   }
 

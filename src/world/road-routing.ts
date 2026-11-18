@@ -153,6 +153,59 @@ export function maxStepGrade(
 }
 
 /**
+ * Phase 11.3 (Fix B-2): shortcut residual wobble in a corner path.
+ *
+ * A sharp chevron (a short edge doglegged far around the cone) or an A* detour
+ * around a pinched corridor can leave a short N-shaped notch that three
+ * Chaikin passes keep: the inner corner's two cut points sit tens of metres
+ * apart, and the passes subdivide the connector between them without ever
+ * removing the direction change. The network's linear 8 m resample then
+ * carries that notch into the final ribbon as a hard kink.
+ *
+ * Each candidate — an interior point where the path turns more than 60°
+ * between two legs of at most `maxLegMeters` — is shortcut (the point is
+ * removed) when the chord is grade-legal on the true surface (the chord is
+ * resampled at 8 m and its worst step grade is tested against `gradeCap`);
+ * otherwise the wobble is grade-forced and stays. Repeats until stable; a
+ * 32-removal guard caps pathological spirals.
+ */
+export function shortcutWobble(
+  corners: [number, number][],
+  heightAt: (x: number, z: number) => number,
+  gradeCap: number,
+  maxLegMeters = 40,
+): [number, number][] {
+  // gradeCap <= 0 disables the chord grade test (the vertical solver clamps
+  // the profile against the cap either way; used where the notch sits on a
+  // flank whose base slope is grade-forced but the profile is clampable).
+  const checkGrade = gradeCap > 0;
+  const turnCos = Math.cos((60 * Math.PI) / 180);
+  let removals = 0;
+  for (;;) {
+    let removed = -1;
+    for (let i = 1; i < corners.length - 1; i += 1) {
+      const p0 = corners[i - 1]!;
+      const p1 = corners[i]!;
+      const p2 = corners[i + 1]!;
+      const l0 = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
+      const l1 = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
+      if (l0 < 2 || l1 < 2 || l0 > maxLegMeters || l1 > maxLegMeters) continue;
+      const cos =
+        ((p1[0] - p0[0]) * (p2[0] - p1[0]) + (p1[1] - p0[1]) * (p2[1] - p1[1])) /
+        (l0 * l1);
+      if (cos >= turnCos) continue; // turn under 60°
+      if (checkGrade && polylineStats([p0, p2], heightAt).maxGrade > gradeCap) continue;
+      removed = i;
+      break;
+    }
+    if (removed < 0) break;
+    corners.splice(removed, 1);
+    if (++removals >= 32) break; // pathological-spiral guard
+  }
+  return corners;
+}
+
+/**
  * Routes start→goal over the grid with a hard per-step grade cap.
  *
  * Cost model: travel distance × (1 + 3·grade²) (steep but legal steps are allowed, steep
@@ -486,6 +539,12 @@ export function routeGradeConstrained(
         break;
       }
     }
+  }
+  // Phase 11.3 (Fix B-2): shortcut residual wobble in the proven corridor.
+  const preKinkLength = finalCorners.length;
+  finalCorners = shortcutWobble(finalCorners, cellHeight, maxGrade * 1.04 + 0.004);
+  if (finalCorners.length !== preKinkLength) {
+    measured = polylineStats(finalCorners, cellHeight);
   }
   return {
     points: finalCorners,
