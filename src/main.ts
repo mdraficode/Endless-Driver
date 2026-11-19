@@ -509,6 +509,8 @@ async function startDrivingScene(restarting = false): Promise<void> {
             };
           },
         });
+        // Milestone 4b: fixed hide-out markers (light up while hunted).
+        minimap.setHideSpots(activeApplication.hideSpotPositions);
         drivingMinimap = minimap;
       } catch (error) {
         console.warn('minimap unavailable:', (error as Error).message);

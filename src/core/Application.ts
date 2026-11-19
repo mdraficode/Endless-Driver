@@ -70,8 +70,9 @@ import {
   stepBounty,
   type BountySettleResult,
 } from '../most-wanted/BountyModel';
+import { initialHideSpotState, stepHideSpot } from '../most-wanted/HideSpotModel';
 import type { BountyState, PursuitHudData } from '../most-wanted/types';
-import { MW_TIER_CAPS } from '../config/most-wanted';
+import { EVADE_CONFIG, MW_TIER_CAPS } from '../config/most-wanted';
 import { PlayerCarVisual } from '../vehicles/PlayerCarVisual';
 import { resolveHighSpeedMotionBlurIntensity } from '../vehicles/vehicle-effects';
 import type { VehiclePose, VehicleTelemetry } from '../vehicles/types';
@@ -357,6 +358,9 @@ export class Application {
   #impoundStrikes = 0;
   /** 'none' = no pursuit; 'active' = in a chase (unsettled); 'settled' = busted/evaded, cooling out. */
   #bountyPhase: 'none' | 'active' | 'settled' = 'none';
+  // Milestone 4b — hide-spot evasion (D5 uses-per-pursuit).
+  #hideSpotState = initialHideSpotState();
+  #wasInHideSpot = false;
   readonly #onMostWanted: ((state: HeatState, message: RadioMessage | null) => void) | null;
   readonly #onBountySettled: ((result: BountySettleResult) => void) | null;
   readonly #onPursuit: ((data: PursuitHudData) => void) | null;
@@ -771,6 +775,11 @@ export class Application {
   /** The world's volcano anchor (Phase 10 tail); the minimap points at it. */
   get worldVolcano(): { readonly x: number; readonly z: number; readonly radiusMeters: number } {
     return this.#worldPlan.volcano;
+  }
+
+  /** World hide-out positions (Milestone 4b) — the minimap's "duck in" markers. */
+  get hideSpotPositions(): { readonly x: number; readonly z: number }[] {
+    return this.#hideouts.map((h) => ({ x: h.x, z: h.z }));
   }
 
   get terrainSampler(): TerrainSampler {
@@ -1549,10 +1558,12 @@ export class Application {
     const level = this.#heatState.level;
     const engaged = level > 0 || debug;
 
-    // Milestone 4a: a new pursuit starts as heat rises from 0 — begin a fresh bounty accumulator.
+    // Milestone 4a: a new pursuit starts as heat rises from 0 — begin a fresh bounty accumulator
+    // (and fresh hide-spot charges, D5).
     if (level > 0 && this.#bountyPhase === 'none') {
       this.#bountyPhase = 'active';
       this.#bountyState = { ...this.#bountyState, currentPursuit: 0 };
+      this.#hideSpotState = initialHideSpotState();
     }
 
     // Player pose (world position + heading) drives the tactical layer.
@@ -1564,6 +1575,26 @@ export class Application {
       yaw: yawFromQuat(pose.rotation),
       speedMps: telemetry.speedMps,
     };
+
+    // Milestone 4b: hide-spot evasion. A world hideout within range hides the player (spending a
+    // D5 charge on entry); while hidden the brain's detection is suppressed so the squad loses sight.
+    // Only advances during an active pursuit, so a charge is never "spent" while you aren't hunted.
+    const hideRadius = EVADE_CONFIG.hideSpotRadiusMeters;
+    const inHideSpotZone = this.#hideouts.some(
+      (h) => Math.hypot(h.x - player.x, h.z - player.z) <= hideRadius,
+    );
+    let hideInHideSpot = false;
+    let hideUsed = false;
+    if (engaged) {
+      const hide = stepHideSpot(this.#hideSpotState, {
+        inSpot: inHideSpotZone,
+        wasInSpot: this.#wasInHideSpot,
+      });
+      this.#hideSpotState = hide.state;
+      this.#wasInHideSpot = inHideSpotZone;
+      hideInHideSpot = hide.inHideSpot;
+      hideUsed = hide.used;
+    }
 
     // Pursuit stack (gated): tactical targets + the visible squad + the brain, with real feedback.
     let policeDetected = false;
@@ -1592,7 +1623,7 @@ export class Application {
         maxHelicopters: caps.maxHelicopters,
         dt: delta,
         playerSpeedMps: telemetry.speedMps,
-        inHideSpot: false,
+        inHideSpot: hideInHideSpot,
         nearestUnitMeters: plan.nearestUnitMeters,
         playerBoxed: plan.playerBoxed,
         disabledUnitKind: null,
@@ -1616,6 +1647,17 @@ export class Application {
       policeDetected = pursuit.signals.policeDetected;
       ramedCop = pursuit.signals.ramed;
       message = pursuit.signals.message;
+      // Hide-spot charge spent: a distinct call (kept under an escalation/bust call on the same tick).
+      if (hideUsed && message === null) {
+        const left = EVADE_CONFIG.hideUsesPerPursuit - this.#hideSpotState.usesUsed;
+        message = {
+          kind: 'hide',
+          text:
+            left > 0
+              ? `Dispatch: 10-83, the racer has ducked into cover — ${left} hide charge${left === 1 ? '' : 's'} left.`
+              : 'Dispatch: 10-83, the racer has ducked into cover — no hide charges left.',
+        };
+      }
     } else {
       this.#policeUnits?.clear();
     }

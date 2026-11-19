@@ -72,6 +72,8 @@ export class Minimap {
   #frameHandle = 0;
   #disposed = false;
   #pursuitBlips: readonly { readonly x: number; readonly z: number; readonly heli: boolean }[] = [];
+  /** World hideouts (Milestone 4b) — the places a hunted player can duck to break the chase. */
+  #hideSpots: readonly { readonly x: number; readonly z: number }[] = [];
 
   constructor(options: MinimapOptions) {
     this.#sampler = options.sampler;
@@ -139,6 +141,11 @@ export class Minimap {
     blips: readonly { readonly x: number; readonly z: number; readonly heli: boolean }[],
   ): void {
     this.#pursuitBlips = blips;
+  }
+
+  /** Set the fixed world hide-out markers (Milestone 4b). */
+  setHideSpots(spots: readonly { readonly x: number; readonly z: number }[]): void {
+    this.#hideSpots = spots;
   }
 
   #pickNearestTarget(): void {
@@ -326,6 +333,24 @@ export class Minimap {
       ctx.arc(bx, by, blip.heli ? 4 : 3.2, 0, Math.PI * 2);
       ctx.fillStyle = blip.heli ? 'rgba(120, 170, 255, 0.95)' : 'rgba(255, 66, 66, 0.95)';
       ctx.fill();
+    }
+
+    // Hide-out markers (Milestone 4b): light up only while you are being hunted, so they read as
+    // "a place to duck in" at the moment you need them.
+    if (this.#pursuitBlips.length > 0) {
+      for (const spot of this.#hideSpots) {
+        const [hx, hy] = toScreen(spot.x, spot.z);
+        if (hx < -12 || hy < -12 || hx > size + 12 || hy > size + 12) continue;
+        ctx.beginPath();
+        ctx.arc(hx, hy, 6, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(96, 255, 190, 0.95)';
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(hx, hy, 2.2, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(96, 255, 190, 0.95)';
+        ctx.fill();
+      }
     }
 
     // Visit check: any place the car stands in counts as visited (not just the

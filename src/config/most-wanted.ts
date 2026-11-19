@@ -114,6 +114,12 @@ export const EVADE_CONFIG = {
   hideHoldSeconds: 3,
   /** D5: hide spots have this many uses per pursuit (anti-camping). */
   hideUsesPerPursuit: 2,
+  /**
+   * A player within this radius of a world hideout is "hidden" from the police. Hideouts sit
+   * ~65 m off the road centrelines, so 80 m is the nearest-road reach: driving to a hideout's
+   * access makes the squad lose visual lock.
+   */
+  hideSpotRadiusMeters: 80,
   /** D5: pursuit-breaker uses per pursuit. */
   breakerUsesPerPursuit: 2,
   /** How many pursuing units a pursuit-breaker sheds. */

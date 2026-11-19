@@ -66,7 +66,9 @@ export type RadioKind =
   | 'backup'
   | 'unitDown'
   | 'busted'
-  | 'reacquired';
+  | 'reacquired'
+  // hide-spot evasion (Milestone 4b)
+  | 'hide';
 
 /** A radio dispatch toast the model emits this tick. */
 export interface RadioMessage {
