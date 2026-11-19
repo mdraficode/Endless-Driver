@@ -261,6 +261,30 @@ export const PURSUIT_CONFIG = {
   spikeIntervalSeconds: 12,
 } as const;
 
+/**
+ * Tactical geometry (Milestone 3b): where each unit aims and where roadblocks / spike strips /
+ * the heli go, in metres along the road ahead of the player. Feeds the pure `PursuitTactics`
+ * layer that turns the pursuit roster into concrete per-unit targets.
+ */
+export const PURSUIT_TACTICS = {
+  /** A rhino aims this far ahead of the player (head-on ram). */
+  ramLeadMeters: 12,
+  /** A P.I.T. unit shunts this far behind the player's rear. */
+  pitGapMeters: 4,
+  /** Box-in units flank this far to the side of the player. */
+  boxOffsetMeters: 3,
+  /** Roadblock distance ahead of the player (placed across the road). */
+  roadblockDistMeters: 40,
+  /** Spike strip placed this far beyond the roadblock. */
+  spikeGapMeters: 15,
+  /** Heli hovers this far ahead of the player. */
+  heliForwardMeters: 30,
+  /** Heli hover height above the player. */
+  heliHeightMeters: 40,
+  /** A unit within this radius counts toward "boxed in". */
+  boxRadiusMeters: 15,
+} as const;
+
 /** The per-tier cap on how much heat the police can field (C < B < A). */
 export interface MwTierCap {
   readonly maxUnits: number;
@@ -372,6 +396,7 @@ export const MOST_WANTED_CONFIG = {
   policeUnits: POLICE_UNITS,
   police: POLICE_CONFIG,
   pursuit: PURSUIT_CONFIG,
+  pursuitTactics: PURSUIT_TACTICS,
   tierCaps: MW_TIER_CAPS,
   bossHeatMaxUnitsA: MW_BOSS_HEAT_MAX_UNITS_A,
   placement: MW_PLACEMENT,
