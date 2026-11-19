@@ -13,6 +13,7 @@
  */
 import * as THREE from 'three';
 
+import { POLICE_UNITS } from '../config/most-wanted';
 import type { SceneManager } from '../core/SceneManager';
 import type { PoliceUnitKind } from './types';
 import type { UnitCommand, UnitPose } from './PursuitTactics';
@@ -41,6 +42,8 @@ export interface PoliceUnitsFrame {
 export interface PoliceUnitsResult {
   /** True if a ram-type unit (rhino / Cross) is within ram distance of the player this frame. */
   readonly rammed: boolean;
+  /** The first cop the player plows through at speed this frame (null otherwise). */
+  readonly destroyed: { readonly id: number; readonly kind: PoliceUnitKind } | null;
   /** World positions of all visible units, for the minimap. */
   readonly blips: readonly { readonly id: number; readonly x: number; readonly z: number }[];
 }
@@ -67,6 +70,27 @@ function unitSpeed(kind: PoliceUnitKind): number {
 }
 
 const RAM_DISTANCE_METERS = 5;
+
+/** Player must be moving at least this fast (m/s) to plow through a cop. */
+const DESTROY_SPEED_METERS = 18;
+/** The player is "on" a cop within this distance (m). */
+const DESTROY_RADIUS_METERS = 4.5;
+/** Units tougher than this damageResist survive being plowed through (armoured / air). */
+const DESTROY_MAX_RESIST = 0.65;
+
+/**
+ * Can the player destroy this unit by plowing through it? A soft unit (cruiser-class) at speed
+ * is wrecked; an armoured rhino / Cross / SUV, a van, or a helicopter is not. Pure + unit-tested.
+ */
+export function canPlayerDestroyUnit(
+  speedMps: number,
+  distanceMeters: number,
+  kind: PoliceUnitKind,
+): boolean {
+  if (kind === 'heli') return false;
+  if (POLICE_UNITS[kind].damageResist > DESTROY_MAX_RESIST) return false;
+  return speedMps >= DESTROY_SPEED_METERS && distanceMeters <= DESTROY_RADIUS_METERS;
+}
 
 /** Move `current` toward `target` by at most `maxSpeed * dt` (pure, unit-tested). */
 export function stepChasePos(
@@ -142,6 +166,7 @@ export class PoliceUnits {
 
     // Spawn new units + steer existing ones.
     let rammed = false;
+    let destroyed: { id: number; kind: PoliceUnitKind } | null = null;
     const blips: { id: number; x: number; z: number }[] = [];
     for (const entry of roster) {
       const cmd = commands.find((c) => c.id === entry.id);
@@ -166,14 +191,16 @@ export class PoliceUnits {
       const faceYaw = Math.atan2(-(targetX - unit.x), -(targetZ - unit.z));
       this.#place(unit, player.y, faceYaw);
       blips.push({ id: entry.id, x: unit.x, z: unit.z });
-      if (
-        (entry.kind === 'rhino' || entry.kind === 'cross') &&
-        Math.hypot(unit.x - player.x, unit.z - player.z) <= RAM_DISTANCE_METERS
-      ) {
+      const distance = Math.hypot(unit.x - player.x, unit.z - player.z);
+      if ((entry.kind === 'rhino' || entry.kind === 'cross') && distance <= RAM_DISTANCE_METERS) {
         rammed = true;
       }
+      // The player plows through a soft cop at speed → it's destroyed (first one this frame).
+      if (destroyed === null && canPlayerDestroyUnit(player.speedMps, distance, entry.kind)) {
+        destroyed = { id: entry.id, kind: entry.kind };
+      }
     }
-    return { rammed, blips };
+    return { rammed, destroyed, blips };
   }
 
   #spawn(id: number, kind: PoliceUnitKind, player: PoliceUnitsPlayer): UnitVisual {

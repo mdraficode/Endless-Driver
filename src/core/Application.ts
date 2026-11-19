@@ -74,7 +74,7 @@ import { initialHideSpotState, stepHideSpot } from '../most-wanted/HideSpotModel
 import { PursuitTraps } from '../most-wanted/PursuitTraps';
 import { initialTrapState, stepTraps } from '../most-wanted/PursuitTrapsModel';
 import type { TrapState } from '../most-wanted/PursuitTrapsModel';
-import type { BountyState, PursuitHudData } from '../most-wanted/types';
+import type { BountyState, PoliceUnitKind, PursuitHudData } from '../most-wanted/types';
 import { EVADE_CONFIG, MW_TIER_CAPS, PURSUIT_TRAPS } from '../config/most-wanted';
 import { PlayerCarVisual } from '../vehicles/PlayerCarVisual';
 import { resolveHighSpeedMotionBlurIntensity } from '../vehicles/vehicle-effects';
@@ -1620,6 +1620,7 @@ export class Application {
     let message: RadioMessage | null = null;
     let rammedPlayer = false;
     let roadblockCrashed = false;
+    let destroyedKind: PoliceUnitKind | null = null;
     if (engaged) {
       const plan = computePursuitTactics({
         units: this.#policeUnits ? this.#policeUnits.poses() : [],
@@ -1628,12 +1629,14 @@ export class Application {
         level,
       });
       if (this.#policeUnits) {
-        rammedPlayer = this.#policeUnits.sync({
+        const unitResult = this.#policeUnits.sync({
           roster: this.#pursuitState.units,
           commands: plan.commands,
           player,
           dt: delta,
-        }).rammed;
+        });
+        rammedPlayer = unitResult.rammed;
+        destroyedKind = unitResult.destroyed?.kind ?? null;
       }
       const caps = MW_TIER_CAPS[this.#tier.id];
       const pursuit = stepPursuit(this.#pursuitState, {
@@ -1645,7 +1648,7 @@ export class Application {
         inHideSpot: hideInHideSpot,
         nearestUnitMeters: plan.nearestUnitMeters,
         playerBoxed: plan.playerBoxed,
-        disabledUnitKind: null,
+        disabledUnitKind: destroyedKind,
         debugPolice: debug,
         engaged,
       });
@@ -1656,7 +1659,7 @@ export class Application {
           inPursuit: true,
           level,
           dt: delta,
-          disabledUnit: null, // disabling cops (10-25) is a later increment
+          disabledUnit: destroyedKind, // plowed-through cop → its bounty joins the take (D6)
         }).state;
       }
       if (pursuit.signals.busted) {
