@@ -64,7 +64,13 @@ import {
 import { initialPursuitState, stepPursuit, type PursuitState } from '../most-wanted/PursuitModel';
 import { computePursuitTactics } from '../most-wanted/PursuitTactics';
 import { PoliceUnits } from '../most-wanted/PoliceUnits';
-import type { PursuitHudData } from '../most-wanted/types';
+import {
+  initialBountyState,
+  settleBounty,
+  stepBounty,
+  type BountySettleResult,
+} from '../most-wanted/BountyModel';
+import type { BountyState, PursuitHudData } from '../most-wanted/types';
 import { MW_TIER_CAPS } from '../config/most-wanted';
 import { PlayerCarVisual } from '../vehicles/PlayerCarVisual';
 import { resolveHighSpeedMotionBlurIntensity } from '../vehicles/vehicle-effects';
@@ -206,6 +212,11 @@ export interface ApplicationOptions {
    * frame — Milestone 3b's visible chase.
    */
   readonly onPursuit?: (data: PursuitHudData) => void;
+  /**
+   * Fired once when a pursuit ends (bust or evade) with the settled outcome (fine / bounty kept
+   * or forfeited / impound strike / career total) — Milestone 4a.
+   */
+  readonly onBountySettled?: (result: BountySettleResult) => void;
 }
 
 type StatusTone = 'info' | 'error';
@@ -341,7 +352,13 @@ export class Application {
   #pursuitState: PursuitState = initialPursuitState();
   /** Visible police squad (Milestone 3b) — spawned/steered during an active pursuit. */
   #policeUnits: PoliceUnits | null = null;
+  // Milestone 4a — bounty + busted resolution.
+  #bountyState: BountyState = initialBountyState();
+  #impoundStrikes = 0;
+  /** 'none' = no pursuit; 'active' = in a chase (unsettled); 'settled' = busted/evaded, cooling out. */
+  #bountyPhase: 'none' | 'active' | 'settled' = 'none';
   readonly #onMostWanted: ((state: HeatState, message: RadioMessage | null) => void) | null;
+  readonly #onBountySettled: ((result: BountySettleResult) => void) | null;
   readonly #onPursuit: ((data: PursuitHudData) => void) | null;
   /**
    * TEMPORARY dev trigger (until pursuit AI detects the player in Milestone 3): when true the heat
@@ -434,6 +451,7 @@ export class Application {
     this.#onBoostState = options.onBoostState ?? null;
     this.#onMostWanted = options.onMostWanted ?? null;
     this.#onPursuit = options.onPursuit ?? null;
+    this.#onBountySettled = options.onBountySettled ?? null;
     this.#buildTag = options.buildTag ?? null;
     this.#surfaceState = resolveSurfaceState(options.weather ?? 'clear');
 
@@ -1531,6 +1549,12 @@ export class Application {
     const level = this.#heatState.level;
     const engaged = level > 0 || debug;
 
+    // Milestone 4a: a new pursuit starts as heat rises from 0 — begin a fresh bounty accumulator.
+    if (level > 0 && this.#bountyPhase === 'none') {
+      this.#bountyPhase = 'active';
+      this.#bountyState = { ...this.#bountyState, currentPursuit: 0 };
+    }
+
     // Player pose (world position + heading) drives the tactical layer.
     const pose = this.#car.getInterpolatedPose(this.#physics.interpolationAlpha);
     const player = {
@@ -1576,7 +1600,19 @@ export class Application {
         engaged,
       });
       this.#pursuitState = pursuit.state;
-      if (pursuit.signals.busted) this.#policeUnits?.clear(); // a bust stands the squad down
+      // Accrue the bounty for this tick while in an active, unsettled chase.
+      if (this.#bountyPhase === 'active' && this.#pursuitState.phase === 'pursuit') {
+        this.#bountyState = stepBounty(this.#bountyState, {
+          inPursuit: true,
+          level,
+          dt: delta,
+          disabledUnit: null, // disabling cops (10-25) is a later increment
+        }).state;
+      }
+      if (pursuit.signals.busted) {
+        this.#policeUnits?.clear(); // a bust stands the squad down
+        if (this.#bountyPhase === 'active') this.#settlePursuit('busted', level);
+      }
       policeDetected = pursuit.signals.policeDetected;
       ramedCop = pursuit.signals.ramed;
       message = pursuit.signals.message;
@@ -1601,6 +1637,9 @@ export class Application {
 
     // Fully cleared: reset the pursuit + drop the squad + hide the meter.
     if (this.#heatState.level <= 0 && !debug) {
+      // Milestone 4a: if the player broke out of a chase (not a bust), the bounty is kept (D3).
+      if (this.#bountyPhase === 'active') this.#settlePursuit('evaded', level);
+      this.#bountyPhase = 'none';
       this.#heatState = initialHeatState();
       this.#pursuitState = initialPursuitState();
       this.#policeUnits?.clear();
@@ -1612,6 +1651,20 @@ export class Application {
     // Prefer a pursuit escalation call (rhino / heli / spike / backup / busted) over the heat's.
     this.#emitPursuitData();
     this.#onMostWanted?.(heatResult.state, message ?? heatResult.message);
+  }
+
+  /**
+   * Settle the bounty for a pursuit that just ended (Milestone 4a). A **bust** forfeits the
+   * accrued bounty, pays a fine, and takes an impound strike (D4 — the car is never removed);
+   * an **evade** keeps the bounty into the career total (D3). The outcome is surfaced via
+   * `onBountySettled` so the HUD can show the fine / result.
+   */
+  #settlePursuit(outcome: 'busted' | 'evaded', level: number): void {
+    const result = settleBounty(this.#bountyState, outcome, level, this.#impoundStrikes);
+    this.#bountyState = result.state;
+    this.#impoundStrikes = result.impoundStrikes;
+    this.#bountyPhase = 'settled';
+    this.#onBountySettled?.(result);
   }
 
   /** Push the per-frame pursuit payload (squad blips + pursuit-bar state) to the HUD. */
@@ -1626,6 +1679,8 @@ export class Application {
       busted: this.#pursuitState.busted,
       bustMeter: this.#pursuitState.bustMeter,
       heliActive: this.#pursuitState.heliActive,
+      bounty: this.#bountyState.currentPursuit,
+      careerBounty: this.#bountyState.careerTotal,
       blips: this.#policeUnits
         ? this.#policeUnits.poses().map((p) => ({ x: p.x, z: p.z, heli: p.kind === 'heli' }))
         : [],

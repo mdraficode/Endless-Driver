@@ -185,5 +185,9 @@ export interface PursuitHudData {
   /** 0..1 bust meter (how cornered the player is). */
   readonly bustMeter: number;
   readonly heliActive: boolean;
+  /** Bounty accrued this pursuit (Milestone 4a) — kept on evade, forfeited on bust. */
+  readonly bounty: number;
+  /** Lifetime career-total bounty (gates Blacklist rivals, D3). */
+  readonly careerBounty: number;
   readonly blips: readonly PursuitBlip[];
 }

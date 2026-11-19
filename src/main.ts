@@ -458,6 +458,7 @@ async function startDrivingScene(restarting = false): Promise<void> {
         minimap?.setPursuitBlips(data.blips);
         drivingWantedHud?.updatePursuit(data);
       },
+      onBountySettled: (result) => drivingWantedHud?.settle(result),
     };
 
     const activeApplication = new Application(options);

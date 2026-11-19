@@ -2367,6 +2367,13 @@ body:not(.touch-enabled) .nitro-gauge {
   font-variant-numeric: tabular-nums;
   color: rgb(255 255 255 / 80%);
 }
+.pursuit-bounty {
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: #ffd27a;
+  margin-left: auto;
+}
 .wanted-hud-pursuit[data-state='busted'] .pursuit-status {
   color: #ff5a5a;
 }

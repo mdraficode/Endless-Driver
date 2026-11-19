@@ -7,10 +7,14 @@
  * The display *math* lives in `src/most-wanted/WantedHudModel.ts` (pure + unit-tested). This class
  * is a thin DOM renderer over it, built to mirror `BoostGauge` (owns its DOM, `update`, `dispose`).
  */
-import { HEAT_LEVELS } from '../config/most-wanted';
+import { BUST_CONFIG, HEAT_LEVELS } from '../config/most-wanted';
 import { TIER_COLOR, computeWantedDisplay } from '../most-wanted/WantedHudModel';
+import type { BountySettleResult } from '../most-wanted/BountyModel';
 import type { HeatState, RadioMessage } from '../most-wanted/HeatModel';
 import type { PursuitHudData } from '../most-wanted/types';
+
+/** Format a bounty/fine value as whole dollars, e.g. 12500 -> "$12,500". */
+const fmt = (v: number): string => `$${Math.round(v).toLocaleString('en-US')}`;
 
 /** How long a dispatch line stays on screen (ms). */
 const TOAST_MS = 3400;
@@ -24,6 +28,7 @@ export class WantedHud {
   readonly #pursuitStatus: HTMLElement;
   readonly #pursuitBustFill: HTMLElement;
   readonly #pursuitCount: HTMLElement;
+  readonly #pursuitBounty: HTMLElement;
   readonly #segments: HTMLElement[] = [];
   #toastDeadline = 0;
 
@@ -70,10 +75,12 @@ export class WantedHud {
     this.#pursuitBustFill.className = 'pursuit-bust-fill';
     this.#pursuitCount = document.createElement('span');
     this.#pursuitCount.className = 'pursuit-count';
+    this.#pursuitBounty = document.createElement('span');
+    this.#pursuitBounty.className = 'pursuit-bounty';
     const pursuitBust = document.createElement('span');
     pursuitBust.className = 'pursuit-bust';
     pursuitBust.append(this.#pursuitBustFill);
-    this.#pursuit.append(this.#pursuitStatus, pursuitBust, this.#pursuitCount);
+    this.#pursuit.append(this.#pursuitStatus, pursuitBust, this.#pursuitCount, this.#pursuitBounty);
 
     this.#radio = document.createElement('p');
     this.#radio.className = 'wanted-hud-radio';
@@ -134,6 +141,28 @@ export class WantedHud {
         : 'PURSUIT';
     this.#pursuitBustFill.style.width = `${Math.round(Math.max(0, Math.min(1, data.bustMeter)) * 100)}%`;
     this.#pursuitCount.textContent = `×${data.activeUnits}`;
+    this.#pursuitBounty.textContent = `${fmt(data.bounty)} · career ${fmt(data.careerBounty)}`;
+  }
+
+  /**
+   * Milestone 4a: show the pursuit's settled outcome on the dispatch line. A bust reports the
+   * fine + impound strike; an evade reports the bounty kept (D3). Reuses the toast fade from
+   * `update`, which manages the same `#radio` line.
+   */
+  settle(result: BountySettleResult): void {
+    const now = typeof performance !== 'undefined' ? performance.now() : 0;
+    const parts: string[] = [];
+    if (result.outcome === 'busted') {
+      parts.push(`BUSTED — fine ${fmt(result.fine)}`);
+      parts.push(`impound strike ${result.impoundStrikes}/${BUST_CONFIG.impoundStrikesMax}`);
+    } else {
+      parts.push(`ESCAPED — kept ${fmt(result.bountyKept)} bounty`);
+    }
+    this.#radio.textContent = parts.join('  ·  ');
+    this.#radio.dataset['shown'] = 'true';
+    // Settlements stay up a touch longer than a routine radio call.
+    this.#toastDeadline = now + (TOAST_MS + 1600);
+    this.#root.hidden = false;
   }
 
   dispose(): void {
