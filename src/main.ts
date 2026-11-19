@@ -40,6 +40,7 @@ import { FullscreenOnStart } from './ui/FullscreenOnStart';
 import { urlForSpawn } from './ui/StartLocationSelector';
 import { PauseMenu } from './ui/PauseMenu';
 import { BoostGauge } from './ui/BoostGauge';
+import { WantedHud } from './ui/WantedHud';
 import { yawFromQuat } from './shared/vector';
 import { readWeatherPresetOverride } from './environment/SurfaceState';
 import { readSeasonRequest } from './environment/seasons';
@@ -244,12 +245,25 @@ const creditsPanel = creditsRoot === null ? null : new CreditsPanel(creditsRoot)
 if (creditsPanel !== null) void creditsPanel.load();
 const statusElement = document.querySelector<HTMLElement>('#scene-status');
 const boostGaugeRoot = document.querySelector<HTMLElement>('#boost-gauge');
+const wantedHudRoot = document.querySelector<HTMLElement>('#wanted-hud');
 
 let drivingApplication: Application | null = null;
 let drivingMinimap: Minimap | null = null;
 let drivingBoostGauge: BoostGauge | null = null;
+let drivingWantedHud: WantedHud | null = null;
 let drivingPauseMenu: PauseMenu | null = null;
 let driveRestartTask: Promise<void> | null = null;
+
+// TEMP (Phase 10, Milestone 2): "V" toggles a "police are on you" state so the wanted meter can be
+// demonstrated before real pursuit AI lands (Milestone 3). Press V, then speed up to build heat
+// (a 911 pulls and the meter rises); release V to lose the police and cool down.
+let debugPoliceWanted = false;
+window.addEventListener('keydown', (event) => {
+  if (event.repeat || drivingApplication === null) return;
+  if (event.key !== 'v' && event.key !== 'V') return;
+  debugPoliceWanted = !debugPoliceWanted;
+  drivingApplication.setDebugPoliceWanted(debugPoliceWanted);
+});
 
 function setStatus(message: string | null, tone: 'info' | 'error' = 'info'): void {
   if (!statusElement) {
@@ -317,6 +331,8 @@ async function restartDriveInPlace(
       drivingMinimap = null;
       drivingBoostGauge?.dispose();
       drivingBoostGauge = null;
+      drivingWantedHud?.dispose();
+      drivingWantedHud = null;
       const previousApplication = drivingApplication;
       drivingApplication = null;
       previousApplication?.stop();
@@ -377,6 +393,8 @@ async function startDrivingScene(restarting = false): Promise<void> {
     let activeTouchControlScalePercent = preferences.touchControlScalePercent;
     drivingBoostGauge?.dispose();
     drivingBoostGauge = boostGaugeRoot === null ? null : new BoostGauge(boostGaugeRoot);
+    drivingWantedHud?.dispose();
+    drivingWantedHud = wantedHudRoot === null ? null : new WantedHud(wantedHudRoot);
     const startHour = readTimeRequest(window.location.search);
     const nightMood = startHour === null && preferences.nightMood;
     const menuNightMood =
@@ -435,6 +453,7 @@ async function startDrivingScene(restarting = false): Promise<void> {
       steeringSensitivity: preferences.steeringSensitivity,
       vehicleTuning: preferences.carTuning,
       onBoostState: (state) => drivingBoostGauge?.update(state),
+      onMostWanted: (state, message) => drivingWantedHud?.update(state, message),
     };
 
     const activeApplication = new Application(options);
@@ -570,6 +589,8 @@ async function startDrivingScene(restarting = false): Promise<void> {
     drivingPauseMenu = null;
     drivingBoostGauge?.dispose();
     drivingBoostGauge = null;
+    drivingWantedHud?.dispose();
+    drivingWantedHud = null;
     minimap?.dispose();
     drivingMinimap = null;
     if (application !== null) {

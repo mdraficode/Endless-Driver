@@ -55,6 +55,12 @@ import { PLAYER_HERO_CAR_ASSET_ID } from '../vehicles/PlayerCarVisual';
 import { Car } from '../vehicles/Car';
 import { CarEffects } from '../vehicles/CarEffects';
 import { NitroBoost, type NitroBoostState } from '../vehicles/NitroBoost';
+import {
+  initialHeatState,
+  stepHeat,
+  type HeatState,
+  type RadioMessage,
+} from '../most-wanted/HeatModel';
 import { PlayerCarVisual } from '../vehicles/PlayerCarVisual';
 import { resolveHighSpeedMotionBlurIntensity } from '../vehicles/vehicle-effects';
 import type { VehiclePose, VehicleTelemetry } from '../vehicles/types';
@@ -185,6 +191,11 @@ export interface ApplicationOptions {
   readonly vehicleTuning?: CarTuning;
   /** Receives the live N₂O tank level for the on-screen boost gauge. */
   readonly onBoostState?: (state: NitroBoostState) => void;
+  /**
+   * Receives the Most Wanted heat state (and a one-shot dispatch toast, if any) each frame for the
+   * on-screen wanted meter.
+   */
+  readonly onMostWanted?: (state: HeatState, message: RadioMessage | null) => void;
 }
 
 type StatusTone = 'info' | 'error';
@@ -315,6 +326,16 @@ export class Application {
   readonly #boostTank = new NitroBoost();
   readonly #onBoostState: ((state: NitroBoostState) => void) | null;
 
+  // Phase 10 Most Wanted — the heat (wanted) state machine, advanced each frame.
+  #heatState: HeatState = initialHeatState();
+  readonly #onMostWanted: ((state: HeatState, message: RadioMessage | null) => void) | null;
+  /**
+   * TEMPORARY dev trigger (until pursuit AI detects the player in Milestone 3): when true the heat
+   * model treats the player as being chased, so speeding pulls a 911 and the meter rises. Toggled
+   * with the "V" key for in-engine demonstration.
+   */
+  #debugPoliceWanted = false;
+
   #touchActive = false;
   readonly #chaseCamera: ChaseCamera;
   readonly #cockpitCamera: CockpitCamera;
@@ -397,6 +418,7 @@ export class Application {
     this.#steeringSensitivity = options.steeringSensitivity ?? 'standard';
     this.#vehicleTuning = options.vehicleTuning ?? { ...DEFAULT_CAR_TUNING };
     this.#onBoostState = options.onBoostState ?? null;
+    this.#onMostWanted = options.onMostWanted ?? null;
     this.#buildTag = options.buildTag ?? null;
     this.#surfaceState = resolveSurfaceState(options.weather ?? 'clear');
 
@@ -1474,6 +1496,39 @@ export class Application {
     this.#engine.dispose();
   }
 
+  /** TEMP dev toggle — Milestone 3's pursuit AI replaces this with real police detection. */
+  setDebugPoliceWanted(on: boolean): void {
+    this.#debugPoliceWanted = on;
+  }
+
+  /**
+   * Advance the Most Wanted heat state machine for this frame. Gated behind the dev trigger so
+   * ordinary driving stays clean until pursuit AI exists (Milestone 3); while on, a speeding crime
+   * pulls a 911 and the meter rises, and releasing the trigger cools it back down.
+   */
+  #stepMostWanted(delta: number): void {
+    const telemetry = this.#car.telemetry;
+    if (this.#debugPoliceWanted) {
+      const heatResult = stepHeat(
+        this.#heatState,
+        {
+          speedMps: telemetry.speedMps,
+          stationary: telemetry.speedMps < 1.5,
+          ramed: false, // police-ram heat arrives with pursuit AI (Milestone 3)
+          collided: false,
+          policeDetected: true,
+          rivalsBusted: 0,
+        },
+        delta,
+      );
+      this.#heatState = heatResult.state;
+      this.#onMostWanted?.(heatResult.state, heatResult.message);
+    } else if (this.#heatState.level > 0) {
+      this.#heatState = initialHeatState();
+      this.#onMostWanted?.(this.#heatState, null);
+    }
+  }
+
   #renderFrame(frame: FrameState): void {
     const delta = frame.delta;
 
@@ -1482,6 +1537,7 @@ export class Application {
     const actions = this.#input.actions;
     const boostState = this.#boostTank.update(delta, actions.boost, this.#car.telemetry.gear > 0);
     this.#onBoostState?.(boostState);
+    this.#stepMostWanted(delta);
     this.#car.setActions({
       ...actions,
       boost: boostState.active,
