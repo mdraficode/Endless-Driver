@@ -191,8 +191,7 @@ export function shortcutWobble(
       const l1 = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
       if (l0 < 2 || l1 < 2 || l0 > maxLegMeters || l1 > maxLegMeters) continue;
       const cos =
-        ((p1[0] - p0[0]) * (p2[0] - p1[0]) + (p1[1] - p0[1]) * (p2[1] - p1[1])) /
-        (l0 * l1);
+        ((p1[0] - p0[0]) * (p2[0] - p1[0]) + (p1[1] - p0[1]) * (p2[1] - p1[1])) / (l0 * l1);
       if (cos >= turnCos) continue; // turn under 60°
       if (checkGrade && polylineStats([p0, p2], heightAt).maxGrade > gradeCap) continue;
       removed = i;

@@ -793,10 +793,10 @@ export class RoadWorld {
       centerlineMaterial,
       'road-urban-centerlines',
     );
-    // Phase 10 pass 2+3: the deck spans — real ravine bridges plus overpass decks.
-    // Barrier walls on both deck edges and concrete piers from the deck down to the
-    // ground below; both merge into the single barrier batch.
-    const deckSpans = [...network.bridgeSpans, ...network.overpassSpans];
+    // Phase 10 pass 2+3 / 11.2: the deck spans — real ravine bridges, overpass decks and
+    // grade-separated crossings. Barrier walls on both deck edges and concrete piers from
+    // the deck down to the ground below; both merge into the single barrier batch.
+    const deckSpans = [...network.bridgeSpans, ...network.overpassSpans, ...network.crossingSpans];
     for (const span of deckSpans) {
       const subEdge: RoadEdge = {
         id: `${span.edgeId}-span`,

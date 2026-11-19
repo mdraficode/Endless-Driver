@@ -192,6 +192,13 @@ export interface RoadNetwork {
    */
   readonly overpassSpans: readonly BridgeSpan[];
   /**
+   * Phase 11.2: grade-separated crossing spans — an open-field road spanning another road
+   * a few metres up (piers to the lower road's surface). Not a ravine, so like overpasses
+   * it stays out of `bridgeSpans` to keep the >12 m ravine contract exact; it renders
+   * through the same deck pass (`RoadWorld` deckSpans).
+   */
+  readonly crossingSpans: readonly BridgeSpan[];
+  /**
    * Phase 10 pass 3: the lifted street's edge ids. At an overpass junction the lifted
    * street crosses the junction on its deck, so its junction-side end sits
    * `OVERPASS_CLEARANCE` above the node — the one place a road end is not at node
@@ -2316,6 +2323,12 @@ export function buildRoadNetwork(
   for (const edge of edges) {
     if (!liftedEdgeIds.has(edge.id)) continue;
     const bridgeFlags = bridgePoints.get(edge.id);
+    // A lifted through-street is one deck structure, but terrain-following on a long
+    // edge can split its elevated region into several > roof runs (the street dips to
+    // near grade mid-run, then climbs again). Keep only the dominant (longest) run per
+    // edge so the span count tracks the lifted street, not terrain fragments — bounding
+    // overpassSpans by the lifted-edge count (≤ OVERPASS_MAX_PER_WORLD · 2 = 4).
+    const runs: Array<[number, number]> = [];
     let runStart = -1;
     for (let i = 0; i <= edge.points.length; i += 1) {
       const point = edge.points[i];
@@ -2327,21 +2340,27 @@ export function buildRoadNetwork(
       if (isDeck) {
         if (runStart < 0) runStart = i;
       } else if (runStart >= 0) {
-        const run = edge.points.slice(runStart, i);
-        if (run.length >= OVERPASS_SPAN_MIN_RUN) {
-          overpassSpans.push({
-            edgeId: edge.id,
-            roadClass: edge.roadClass,
-            halfWidthMeters: edge.halfWidthMeters,
-            shoulderMeters: edge.shoulderMeters,
-            points: run.map((p) => ({ ...p, baseY: baseHeightAt(p.x, p.z) })),
-          });
-        }
+        if (i - runStart >= OVERPASS_SPAN_MIN_RUN) runs.push([runStart, i]);
         runStart = -1;
       }
     }
+    let best: [number, number] | undefined;
+    for (const r of runs) {
+      if (best === undefined || r[1] - r[0] > best[1] - best[0]) best = r;
+    }
+    if (best !== undefined) {
+      const run = edge.points.slice(best[0], best[1]);
+      overpassSpans.push({
+        edgeId: edge.id,
+        roadClass: edge.roadClass,
+        halfWidthMeters: edge.halfWidthMeters,
+        shoulderMeters: edge.shoulderMeters,
+        points: run.map((p) => ({ ...p, baseY: baseHeightAt(p.x, p.z) })),
+      });
+    }
   }
 
+  const crossingSpans: BridgeSpan[] = [];
   // Phase 11.2 — grade-separated crossing spans. A routed detour (or a chord the
   // vertical solver lifted onto an embankment) can cross another road's ribbon in
   // the open field, several metres above it: the two profiles were solved
@@ -2475,7 +2494,8 @@ export function buildRoadNetwork(
             if (len1 < 1e-9 || len2 < 1e-9) continue;
             const cosAngle = Math.abs(abx * cdx + abz * cdz) / (len1 * len2);
             if (
-              (Math.acos(Math.min(1, cosAngle)) * 180) / Math.PI < CROSSING_SPAN_MIN_ANGLE_DEGREES
+              (Math.acos(Math.min(1, cosAngle)) * 180) / Math.PI <
+              CROSSING_SPAN_MIN_ANGLE_DEGREES
             ) {
               continue;
             }
@@ -2509,8 +2529,7 @@ export function buildRoadNetwork(
               cum.push(cum[i - 1]! + Math.hypot(b.x - a.x, b.z - a.z));
             }
             const uA = upperPts[upperSeg]!;
-            const alongP =
-              cum[upperSeg]! + Math.hypot(px - uA.x, pz - uA.z);
+            const alongP = cum[upperSeg]! + Math.hypot(px - uA.x, pz - uA.z);
             let lo = 1;
             while (lo < upperPts.length - 1 && cum[lo]! < alongP - spanHalf) lo += 1;
             let hi = upperPts.length - 2;
@@ -2538,7 +2557,7 @@ export function buildRoadNetwork(
               run.push({ ...p, baseY });
             }
             if (!usable || run.length < 3) continue;
-            bridgeSpans.push({
+            crossingSpans.push({
               edgeId: upper.id,
               roadClass: upper.roadClass,
               halfWidthMeters: upper.halfWidthMeters,
@@ -2650,7 +2669,12 @@ export function buildRoadNetwork(
                   const abz = qb.z - qa.z;
                   const len2 = abx * abx + abz * abz;
                   const t =
-                    len2 < 1e-9 ? 0 : Math.max(0, Math.min(1, ((vp.x - qa.x) * abx + (vp.z - qa.z) * abz) / len2));
+                    len2 < 1e-9
+                      ? 0
+                      : Math.max(
+                          0,
+                          Math.min(1, ((vp.x - qa.x) * abx + (vp.z - qa.z) * abz) / len2),
+                        );
                   const qx = qa.x + abx * t;
                   const qz = qa.z + abz * t;
                   const d = Math.hypot(vp.x - qx, vp.z - qz);
@@ -2674,7 +2698,12 @@ export function buildRoadNetwork(
                   const abz = qb.z - qa.z;
                   const len2 = abx * abx + abz * abz;
                   const t =
-                    len2 < 1e-9 ? 0 : Math.max(0, Math.min(1, ((vp.x - qa.x) * abx + (vp.z - qa.z) * abz) / len2));
+                    len2 < 1e-9
+                      ? 0
+                      : Math.max(
+                          0,
+                          Math.min(1, ((vp.x - qa.x) * abx + (vp.z - qa.z) * abz) / len2),
+                        );
                   const qx = qa.x + abx * t;
                   const qz = qa.z + abz * t;
                   const d = Math.hypot(vp.x - qx, vp.z - qz);
@@ -2702,8 +2731,10 @@ export function buildRoadNetwork(
               // The run of upper points whose pavement overlaps the lower's:
               // within (lower radius + upper radius) of the lower centreline.
               const runRadius =
-                lower.halfWidthMeters + lower.shoulderMeters +
-                upper.halfWidthMeters + upper.shoulderMeters;
+                lower.halfWidthMeters +
+                lower.shoulderMeters +
+                upper.halfWidthMeters +
+                upper.shoulderMeters;
               const up = upper.points;
               let anchor = 0;
               let anchorD = Infinity;
@@ -2716,9 +2747,14 @@ export function buildRoadNetwork(
               }
               if (anchorD > runRadius) continue;
               let lo = anchor;
-              while (lo > 0 && pointToPolyline(lower, up[lo - 1]!.x, up[lo - 1]!.z) < runRadius) lo -= 1;
+              while (lo > 0 && pointToPolyline(lower, up[lo - 1]!.x, up[lo - 1]!.z) < runRadius)
+                lo -= 1;
               let hi = anchor;
-              while (hi < up.length - 1 && pointToPolyline(lower, up[hi + 1]!.x, up[hi + 1]!.z) < runRadius) hi += 1;
+              while (
+                hi < up.length - 1 &&
+                pointToPolyline(lower, up[hi + 1]!.x, up[hi + 1]!.z) < runRadius
+              )
+                hi += 1;
               if (hi - lo < 1) continue; // at least one full segment must be deck
               // The run may touch points that are already deck — a NEIGHBOURING
               // lower road can span a stretch just before this approach (one
@@ -2742,7 +2778,7 @@ export function buildRoadNetwork(
               }
               if (current.length >= 2) subRuns.push(current);
               for (const run of subRuns) {
-                bridgeSpans.push({
+                crossingSpans.push({
                   edgeId: upper.id,
                   roadClass: upper.roadClass,
                   halfWidthMeters: upper.halfWidthMeters,
@@ -2916,6 +2952,7 @@ export function buildRoadNetwork(
     totalLengthMeters: edges.reduce((sum, edge) => sum + edge.lengthMeters, 0),
     bridgeSpans,
     overpassSpans,
+    crossingSpans,
     overpassEdgeIds: liftedEdgeIds,
     tunnelSpans,
     garages: garagePlan.garages,

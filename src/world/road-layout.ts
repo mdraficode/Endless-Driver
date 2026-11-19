@@ -968,7 +968,7 @@ export function buildRoadLayout(
         ...e,
         from: fromNode,
         to: e.to,
-        via: [...pendingVia, ...poly.slice(polyCursor, poly.length - 1) as [number, number][]],
+        via: [...pendingVia, ...(poly.slice(polyCursor, poly.length - 1) as [number, number][])],
       });
       return chain;
     };
