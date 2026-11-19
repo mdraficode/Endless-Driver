@@ -62,6 +62,8 @@ import {
   type RadioMessage,
 } from '../most-wanted/HeatModel';
 import { initialPursuitState, stepPursuit, type PursuitState } from '../most-wanted/PursuitModel';
+import { computePursuitTactics } from '../most-wanted/PursuitTactics';
+import { PoliceUnits } from '../most-wanted/PoliceUnits';
 import { MW_TIER_CAPS } from '../config/most-wanted';
 import { PlayerCarVisual } from '../vehicles/PlayerCarVisual';
 import { resolveHighSpeedMotionBlurIntensity } from '../vehicles/vehicle-effects';
@@ -331,6 +333,8 @@ export class Application {
   // Phase 10 Most Wanted — the heat (wanted) state machine and the pursuit brain, advanced each frame.
   #heatState: HeatState = initialHeatState();
   #pursuitState: PursuitState = initialPursuitState();
+  /** Visible police squad (Milestone 3b) — spawned/steered during an active pursuit. */
+  #policeUnits: PoliceUnits | null = null;
   readonly #onMostWanted: ((state: HeatState, message: RadioMessage | null) => void) | null;
   /**
    * TEMPORARY dev trigger (until pursuit AI detects the player in Milestone 3): when true the heat
@@ -548,6 +552,8 @@ export class Application {
 
     this.#carVisual = new PlayerCarVisual(options.carModel ?? 'generic-sport-coupe');
     this.#scene.addObject(this.#carVisual.root);
+
+    this.#policeUnits = new PoliceUnits(this.#scene);
 
     this.#chaseCamera = new ChaseCamera(CHASE_CAMERA_CONFIG, this.#engine.viewport.aspect);
     this.#restoreCameraView();
@@ -1492,6 +1498,8 @@ export class Application {
     this.#carEffects.dispose();
     this.#scene.removeObject(this.#carVisual.root);
     this.#carVisual.dispose();
+    this.#policeUnits?.dispose();
+    this.#policeUnits = null;
     this.#chaseCamera.dispose();
     this.#overlay?.dispose();
     this.#scene.dispose();
@@ -1512,43 +1520,82 @@ export class Application {
   #stepMostWanted(delta: number): void {
     const telemetry = this.#car.telemetry;
     const debug = this.#debugPoliceWanted;
-    // Nothing to run until a pursuit exists (no debug trigger, heat cooled, brain idle).
-    if (!debug && this.#heatState.level <= 0 && this.#pursuitState.phase === 'inactive') return;
+    const level = this.#heatState.level;
+    const engaged = level > 0 || debug;
+    // Nothing to run until a pursuit is in play.
+    if (!engaged && this.#pursuitState.phase === 'inactive') {
+      this.#policeUnits?.clear();
+      return;
+    }
 
-    // Run the pursuit brain. Stand-in detection via the V toggle (nearestUnit=20m) until real
-    // units report distance; real nearestUnitMeters / playerBoxed / disabledUnitKind land in the
-    // unit-spawning layer (Milestone 3b). Intensity comes from the resolved quality tier.
+    // Player pose (world position + heading) drives the tactical layer.
+    const pose = this.#car.getInterpolatedPose(this.#physics.interpolationAlpha);
+    const player = {
+      x: pose.position.x,
+      y: pose.position.y,
+      z: pose.position.z,
+      yaw: yawFromQuat(pose.rotation),
+      speedMps: telemetry.speedMps,
+    };
+
+    // Tactical layer: per-unit targets + the real nearest/boxed feedback, from current unit poses.
+    const plan = computePursuitTactics({
+      units: this.#policeUnits ? this.#policeUnits.poses() : [],
+      player,
+      road: { forwardX: -Math.sin(player.yaw), forwardZ: -Math.cos(player.yaw) },
+      level,
+    });
+
+    // Visible squad: spawn/despawn/steer to the brain's roster + commands.
+    let rammedPlayer = false;
+    if (this.#policeUnits && engaged) {
+      rammedPlayer = this.#policeUnits.sync({
+        roster: this.#pursuitState.units,
+        commands: plan.commands,
+        player,
+        dt: delta,
+      }).rammed;
+    } else {
+      this.#policeUnits?.clear();
+    }
+
+    // Run the pursuit brain with the real feedback (replaces the V stand-in) + engagement.
     const caps = MW_TIER_CAPS[this.#tier.id];
     const pursuit = stepPursuit(this.#pursuitState, {
-      level: this.#heatState.level,
+      level,
       maxUnits: caps.maxUnits,
       maxHelicopters: caps.maxHelicopters,
       dt: delta,
       playerSpeedMps: telemetry.speedMps,
       inHideSpot: false,
-      nearestUnitMeters: debug ? 20 : Number.POSITIVE_INFINITY,
-      playerBoxed: false,
+      nearestUnitMeters: plan.nearestUnitMeters,
+      playerBoxed: plan.playerBoxed,
       disabledUnitKind: null,
       debugPolice: debug,
+      engaged,
     });
     this.#pursuitState = pursuit.state;
 
-    // Fully cleared: reset and hide the meter.
+    // Fully cleared: reset, drop the squad, hide the meter.
     if (this.#heatState.level <= 0 && !debug) {
       this.#heatState = initialHeatState();
       this.#pursuitState = initialPursuitState();
+      this.#policeUnits?.clear();
       this.#onMostWanted?.(this.#heatState, null);
       return;
     }
 
-    // Feed the brain's detection + ram signals into the heat model.
+    // Busted: the squad has cornered the player — clear the chase (heat then cools back down).
+    if (pursuit.signals.busted) this.#policeUnits?.clear();
+
+    // Feed the brain's signals + the kamikaze-ram impact into the heat model.
     const heatResult = stepHeat(
       this.#heatState,
       {
         speedMps: telemetry.speedMps,
         stationary: telemetry.speedMps < 1.5,
         ramed: pursuit.signals.ramed,
-        collided: false,
+        collided: rammedPlayer,
         policeDetected: pursuit.signals.policeDetected,
         rivalsBusted: 0,
       },

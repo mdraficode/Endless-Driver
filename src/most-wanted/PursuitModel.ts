@@ -72,6 +72,12 @@ export interface PursuitFrame {
   readonly disabledUnitKind: PoliceUnitKind | null;
   /** Stand-in detection (the "V" dev toggle) until real units report distance. */
   readonly debugPolice: boolean;
+  /**
+   * A pursuit is in play (heat raised) even before any cop is in detect range. Starts an
+   * `inactive` pursuit (so units can spawn and close in) without re-acquiring from cooldown —
+   * the evade mechanic is still driven purely by `nearestUnitMeters` / `inHideSpot`.
+   */
+  readonly engaged?: boolean;
 }
 
 /** What the brain reports back this tick (feeds the heat model + HUD). */
@@ -268,6 +274,11 @@ export function stepPursuit(prev: PursuitState, frame: PursuitFrame): PursuitSte
       phase = 'pursuit';
     }
     lostTimer = 0;
+  } else if (phase === 'inactive' && (frame.engaged ?? false)) {
+    // Bootstrap: heat is raised (pursuit engaged) but no cop is in detect range yet — start the
+    // pursuit so units spawn and close in. Deliberately NOT `detected`, so this neither resets the
+    // "lost" timer nor re-acquires from cooldown (evading still works).
+    phase = 'pursuit';
   } else if (phase === 'pursuit') {
     lostTimer += dt;
     if (lostTimer >= EVADE_CONFIG.lostHoldSeconds) {

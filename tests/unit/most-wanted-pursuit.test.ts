@@ -58,6 +58,29 @@ describe('Most Wanted pursuit brain (Phase 10, Milestone 3)', () => {
     expect(signal.policeDetected).toBe(false);
   });
 
+  it('bootstraps a pursuit when engaged (heat raised) even before a cop is in detect range', () => {
+    // Heat is up, no cop within the 90 m radius yet, not hiding — the pursuit should still start
+    // so units can spawn and close in.
+    const { state } = run(
+      initialPursuitState(),
+      { level: 3, nearestUnitMeters: Number.POSITIVE_INFINITY, engaged: true },
+      0.1,
+    );
+    expect(state.phase).toBe('pursuit');
+  });
+
+  it('engaged does not re-acquire from cooldown (evading still works)', () => {
+    // Already evading (in cooldown); engaged heat must not yank the pursuit back — only a real
+    // re-detection (proximity) re-acquires.
+    const cooldown: PursuitState = { ...initialPursuitState(), phase: 'cooldown' };
+    const { state } = run(
+      cooldown,
+      { level: 3, nearestUnitMeters: Number.POSITIVE_INFINITY, engaged: true },
+      0.1,
+    );
+    expect(state.phase).toBe('cooldown');
+  });
+
   it('starts a pursuit, ramps the roster toward the level-1 target, and reports detection', () => {
     const { state, signal } = run(initialPursuitState(), { level: 1 }, 6);
     expect(state.phase).toBe('pursuit');
