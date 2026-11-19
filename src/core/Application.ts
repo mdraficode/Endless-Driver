@@ -71,8 +71,11 @@ import {
   type BountySettleResult,
 } from '../most-wanted/BountyModel';
 import { initialHideSpotState, stepHideSpot } from '../most-wanted/HideSpotModel';
+import { PursuitTraps } from '../most-wanted/PursuitTraps';
+import { initialTrapState, stepTraps } from '../most-wanted/PursuitTrapsModel';
+import type { TrapState } from '../most-wanted/PursuitTrapsModel';
 import type { BountyState, PursuitHudData } from '../most-wanted/types';
-import { EVADE_CONFIG, MW_TIER_CAPS } from '../config/most-wanted';
+import { EVADE_CONFIG, MW_TIER_CAPS, PURSUIT_TRAPS } from '../config/most-wanted';
 import { PlayerCarVisual } from '../vehicles/PlayerCarVisual';
 import { resolveHighSpeedMotionBlurIntensity } from '../vehicles/vehicle-effects';
 import type { VehiclePose, VehicleTelemetry } from '../vehicles/types';
@@ -361,6 +364,13 @@ export class Application {
   // Milestone 4b — hide-spot evasion (D5 uses-per-pursuit).
   #hideSpotState = initialHideSpotState();
   #wasInHideSpot = false;
+  // Milestone 4b-2 — physical roadblocks + spike strips.
+  #traps: PursuitTraps | null = null;
+  #trapsState: TrapState = initialTrapState();
+  /** (s) the player's tyres are spike-deflated (slowed, can't recover). */
+  #spikeDeflateSeconds = 0;
+  /** (s) the player just smashed a roadblock (brakes slammed). */
+  #roadblockCrashSeconds = 0;
   readonly #onMostWanted: ((state: HeatState, message: RadioMessage | null) => void) | null;
   readonly #onBountySettled: ((result: BountySettleResult) => void) | null;
   readonly #onPursuit: ((data: PursuitHudData) => void) | null;
@@ -584,6 +594,7 @@ export class Application {
     this.#scene.addObject(this.#carVisual.root);
 
     this.#policeUnits = new PoliceUnits(this.#scene);
+    this.#traps = new PursuitTraps(this.#scene);
 
     this.#chaseCamera = new ChaseCamera(CHASE_CAMERA_CONFIG, this.#engine.viewport.aspect);
     this.#restoreCameraView();
@@ -1535,6 +1546,8 @@ export class Application {
     this.#carVisual.dispose();
     this.#policeUnits?.dispose();
     this.#policeUnits = null;
+    this.#traps?.dispose();
+    this.#traps = null;
     this.#chaseCamera.dispose();
     this.#overlay?.dispose();
     this.#scene.dispose();
@@ -1557,6 +1570,11 @@ export class Application {
     const debug = this.#debugPoliceWanted;
     const level = this.#heatState.level;
     const engaged = level > 0 || debug;
+
+    // Milestone 4b-2: the spike-deflate and roadblock-crash slowdowns tick down every frame
+    // (they persist through cooldown / stand-down until fully elapsed).
+    this.#spikeDeflateSeconds = Math.max(0, this.#spikeDeflateSeconds - delta);
+    this.#roadblockCrashSeconds = Math.max(0, this.#roadblockCrashSeconds - delta);
 
     // Milestone 4a: a new pursuit starts as heat rises from 0 — begin a fresh bounty accumulator
     // (and fresh hide-spot charges, D5).
@@ -1601,6 +1619,7 @@ export class Application {
     let ramedCop = false;
     let message: RadioMessage | null = null;
     let rammedPlayer = false;
+    let roadblockCrashed = false;
     if (engaged) {
       const plan = computePursuitTactics({
         units: this.#policeUnits ? this.#policeUnits.poses() : [],
@@ -1644,9 +1663,36 @@ export class Application {
         this.#policeUnits?.clear(); // a bust stands the squad down
         if (this.#bountyPhase === 'active') this.#settlePursuit('busted', level);
       }
+      // Milestone 4b-2: physical roadblocks + spike strips. Committed to fixed positions from the
+      // tactical plan; a hit slams the brakes (roadblock) or deflates the tyres (spike strip).
+      const pursuing = this.#pursuitState.phase === 'pursuit' && !this.#pursuitState.busted;
+      const trapResult = stepTraps(this.#trapsState, {
+        pursuing,
+        playerX: player.x,
+        playerZ: player.z,
+        dt: delta,
+        roadblockPlacement: plan.roadblock,
+        spikePlacement: plan.spikeStrip,
+      });
+      this.#trapsState = trapResult.state;
+      this.#traps?.sync(this.#trapsState, pose.position.y);
+      if (trapResult.events.roadblockHit) {
+        roadblockCrashed = true;
+        this.#roadblockCrashSeconds = PURSUIT_TRAPS.roadblockCrashBrakeSeconds;
+      }
+      if (trapResult.events.spikeHit) {
+        this.#spikeDeflateSeconds = PURSUIT_TRAPS.spikeDeflateSeconds;
+      }
       policeDetected = pursuit.signals.policeDetected;
       ramedCop = pursuit.signals.ramed;
       message = pursuit.signals.message;
+      // Spike strip struck: a distinct call (kept under an escalation/bust call on the same tick).
+      if (trapResult.events.spikeHit && message === null) {
+        message = {
+          kind: 'deflated',
+          text: 'Dispatch: 10-73, the racer has driven over the spike strip — tyres are shot.',
+        };
+      }
       // Hide-spot charge spent: a distinct call (kept under an escalation/bust call on the same tick).
       if (hideUsed && message === null) {
         const left = EVADE_CONFIG.hideUsesPerPursuit - this.#hideSpotState.usesUsed;
@@ -1660,6 +1706,8 @@ export class Application {
       }
     } else {
       this.#policeUnits?.clear();
+      this.#traps?.clear();
+      this.#trapsState = initialTrapState();
     }
 
     // Heat model: always runs — catches the 911 that starts a pursuit and the cool-down that ends it.
@@ -1670,6 +1718,7 @@ export class Application {
         stationary: telemetry.speedMps < 1.5,
         ramed: ramedCop,
         collided: rammedPlayer,
+        roadblockCrash: roadblockCrashed,
         policeDetected,
         rivalsBusted: 0,
       },
@@ -1738,9 +1787,25 @@ export class Application {
     const boostState = this.#boostTank.update(delta, actions.boost, this.#car.telemetry.gear > 0);
     this.#onBoostState?.(boostState);
     this.#stepMostWanted(delta);
+    // Milestone 4b-2: a spike-deflated tyre or a roadblock smash slows the car by shaping its
+    // actions (flat tyres can't accelerate; a crash slams the brakes). No physics changes needed.
+    const deflated = this.#spikeDeflateSeconds > 0;
+    const crashing = this.#roadblockCrashSeconds > 0;
+    let throttle = actions.throttle;
+    let brake = actions.brake;
+    if (deflated) {
+      throttle *= PURSUIT_TRAPS.spikeDeflateThrottleScale;
+      brake = Math.max(brake, PURSUIT_TRAPS.spikeDeflateBrake);
+    }
+    if (crashing) {
+      throttle = Math.min(throttle, 0.15);
+      brake = Math.max(brake, 0.9);
+    }
     this.#car.setActions({
       ...actions,
-      boost: boostState.active,
+      throttle,
+      brake,
+      boost: boostState.active && !deflated && !crashing,
       steer: Math.max(
         -1,
         Math.min(1, actions.steer * STEERING_SENSITIVITY_SCALE[this.#steeringSensitivity]),

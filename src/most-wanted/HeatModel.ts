@@ -26,6 +26,8 @@ export interface HeatInput {
   readonly ramed: boolean;
   /** True this tick if the player had a (non-police) collision. */
   readonly collided: boolean;
+  /** True this tick if the player smashed through a police roadblock (Milestone 4b-2). */
+  readonly roadblockCrash: boolean;
   /** True if any police unit is currently detecting / chasing the player. */
   readonly policeDetected: boolean;
   /** Rivals busted so far (drives the ceiling — D2). */
@@ -68,7 +70,9 @@ export type RadioKind =
   | 'busted'
   | 'reacquired'
   // hide-spot evasion (Milestone 4b)
-  | 'hide';
+  | 'hide'
+  // physical traps (Milestone 4b-2)
+  | 'deflated';
 
 /** A radio dispatch toast the model emits this tick. */
 export interface RadioMessage {
@@ -116,7 +120,7 @@ export function stepHeat(state: HeatState, input: HeatInput, dtSeconds: number):
   const c = HEAT_CONFIG;
   const ceiling = computeCeiling(input.rivalsBusted);
   const speeding = input.speedMps > c.speedCrimeThresholdMps;
-  const crime = speeding || input.ramed || input.collided;
+  const crime = speeding || input.ramed || input.collided || input.roadblockCrash;
 
   let level = state.level;
   let heat = state.heat;
@@ -132,6 +136,10 @@ export function stepHeat(state: HeatState, input: HeatInput, dtSeconds: number):
   }
   if (input.collided) {
     heat += c.collisionCrimeHeat;
+    recentCrimeSeconds = Math.max(recentCrimeSeconds, c.recentCrimeWindowSeconds);
+  }
+  if (input.roadblockCrash) {
+    heat += c.roadblockCrimeHeat;
     recentCrimeSeconds = Math.max(recentCrimeSeconds, c.recentCrimeWindowSeconds);
   }
 

@@ -152,6 +152,7 @@ function tick(sim: Sim, dt: number, driver: PlayerDriver, t: number): void {
       stationary: speed < 1.5,
       ramed: ramedCop,
       collided: rammedPlayer,
+      roadblockCrash: false,
       policeDetected,
       rivalsBusted: RIVALS_BUSTED,
     },

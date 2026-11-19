@@ -48,6 +48,8 @@ export const HEAT_CONFIG = {
   ramCrimeHeat: 0.25,
   /** Discrete heat added by a (non-police) collision. */
   collisionCrimeHeat: 0.12,
+  /** Discrete heat added by smashing through a police roadblock (a hard, obvious violation). */
+  roadblockCrimeHeat: 0.22,
   /** Cooldown: heat drained per second (the level falls as this crosses below 0). */
   coolDownFillPerSecond: 0.06,
   /** Below this level, cooldown is faster. */
@@ -291,6 +293,26 @@ export const PURSUIT_TACTICS = {
   boxRadiusMeters: 15,
 } as const;
 
+/** Physical roadblock / spike-strip tuning (Milestone 4b-2). */
+export const PURSUIT_TRAPS = {
+  /** (m) the player is "at" a roadblock within this distance of its centre. */
+  roadblockHitRadiusMeters: 4.5,
+  /** (m) the player is over a spike strip within this distance of its centre. */
+  spikeHitRadiusMeters: 3.5,
+  /** (s) a laid trap lingers on the road this long before it's cleared (if never hit). */
+  trapLingerSeconds: 14,
+  /** (s) after a trap is hit, how long it stays (broken) before being removed. */
+  trapHitLingerSeconds: 1.6,
+  /** (s) how long spike-deflated tyres keep the player slow. */
+  spikeDeflateSeconds: 12,
+  /** Throttle fraction while deflated (flat tyres can't accelerate). */
+  spikeDeflateThrottleScale: 0.35,
+  /** Constant brake applied while deflated (the car bleeds off speed). */
+  spikeDeflateBrake: 0.32,
+  /** (s) a roadblock smash slams the brakes for this long. */
+  roadblockCrashBrakeSeconds: 0.7,
+} as const;
+
 /** The per-tier cap on how much heat the police can field (C < B < A). */
 export interface MwTierCap {
   readonly maxUnits: number;
@@ -403,6 +425,7 @@ export const MOST_WANTED_CONFIG = {
   police: POLICE_CONFIG,
   pursuit: PURSUIT_CONFIG,
   pursuitTactics: PURSUIT_TACTICS,
+  pursuitTraps: PURSUIT_TRAPS,
   tierCaps: MW_TIER_CAPS,
   bossHeatMaxUnitsA: MW_BOSS_HEAT_MAX_UNITS_A,
   placement: MW_PLACEMENT,

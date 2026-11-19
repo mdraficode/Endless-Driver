@@ -14,6 +14,7 @@ const BASE: HeatInput = {
   stationary: false,
   ramed: false,
   collided: false,
+  roadblockCrash: false,
   policeDetected: false,
   rivalsBusted: 0,
 };
@@ -99,6 +100,23 @@ describe('Most Wanted heat model (Phase 10, Milestone 2)', () => {
     // Same time, same level: committing a crime fills the meter faster than cruising clean.
     expect(withCrime.heat).toBeGreaterThan(clean.heat);
     expect(clean.heat).toBeGreaterThan(0); // it still creeps, just slowly (a stall, not a freeze)
+  });
+
+  it('a roadblock smash is a crime that spikes heat harder than a fender-bender (4b-2)', () => {
+    const mid = (): HeatState => ({
+      level: 3,
+      heat: 0,
+      ceiling: 15,
+      active: true,
+      evading: false,
+      recentCrimeSeconds: 0,
+    });
+    const crashed = tick(mid(), { roadblockCrash: true, policeDetected: true }, 0).state;
+    const bumped = tick(mid(), { collided: true, policeDetected: true }, 0).state;
+    const clean = tick(mid(), { policeDetected: true }, 0).state;
+    expect(crashed.heat).toBe(HEAT_CONFIG.roadblockCrimeHeat);
+    expect(crashed.heat).toBeGreaterThan(bumped.heat);
+    expect(bumped.heat).toBeGreaterThan(clean.heat);
   });
 
   it('cools down once the police lose the player, and stands down at level 0', () => {
