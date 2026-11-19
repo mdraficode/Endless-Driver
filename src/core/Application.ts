@@ -61,6 +61,8 @@ import {
   type HeatState,
   type RadioMessage,
 } from '../most-wanted/HeatModel';
+import { initialPursuitState, stepPursuit, type PursuitState } from '../most-wanted/PursuitModel';
+import { MW_TIER_CAPS } from '../config/most-wanted';
 import { PlayerCarVisual } from '../vehicles/PlayerCarVisual';
 import { resolveHighSpeedMotionBlurIntensity } from '../vehicles/vehicle-effects';
 import type { VehiclePose, VehicleTelemetry } from '../vehicles/types';
@@ -326,8 +328,9 @@ export class Application {
   readonly #boostTank = new NitroBoost();
   readonly #onBoostState: ((state: NitroBoostState) => void) | null;
 
-  // Phase 10 Most Wanted — the heat (wanted) state machine, advanced each frame.
+  // Phase 10 Most Wanted — the heat (wanted) state machine and the pursuit brain, advanced each frame.
   #heatState: HeatState = initialHeatState();
+  #pursuitState: PursuitState = initialPursuitState();
   readonly #onMostWanted: ((state: HeatState, message: RadioMessage | null) => void) | null;
   /**
    * TEMPORARY dev trigger (until pursuit AI detects the player in Milestone 3): when true the heat
@@ -1508,25 +1511,52 @@ export class Application {
    */
   #stepMostWanted(delta: number): void {
     const telemetry = this.#car.telemetry;
-    if (this.#debugPoliceWanted) {
-      const heatResult = stepHeat(
-        this.#heatState,
-        {
-          speedMps: telemetry.speedMps,
-          stationary: telemetry.speedMps < 1.5,
-          ramed: false, // police-ram heat arrives with pursuit AI (Milestone 3)
-          collided: false,
-          policeDetected: true,
-          rivalsBusted: 0,
-        },
-        delta,
-      );
-      this.#heatState = heatResult.state;
-      this.#onMostWanted?.(heatResult.state, heatResult.message);
-    } else if (this.#heatState.level > 0) {
+    const debug = this.#debugPoliceWanted;
+    // Nothing to run until a pursuit exists (no debug trigger, heat cooled, brain idle).
+    if (!debug && this.#heatState.level <= 0 && this.#pursuitState.phase === 'inactive') return;
+
+    // Run the pursuit brain. Stand-in detection via the V toggle (nearestUnit=20m) until real
+    // units report distance; real nearestUnitMeters / playerBoxed / disabledUnitKind land in the
+    // unit-spawning layer (Milestone 3b). Intensity comes from the resolved quality tier.
+    const caps = MW_TIER_CAPS[this.#tier.id];
+    const pursuit = stepPursuit(this.#pursuitState, {
+      level: this.#heatState.level,
+      maxUnits: caps.maxUnits,
+      maxHelicopters: caps.maxHelicopters,
+      dt: delta,
+      playerSpeedMps: telemetry.speedMps,
+      inHideSpot: false,
+      nearestUnitMeters: debug ? 20 : Number.POSITIVE_INFINITY,
+      playerBoxed: false,
+      disabledUnitKind: null,
+      debugPolice: debug,
+    });
+    this.#pursuitState = pursuit.state;
+
+    // Fully cleared: reset and hide the meter.
+    if (this.#heatState.level <= 0 && !debug) {
       this.#heatState = initialHeatState();
+      this.#pursuitState = initialPursuitState();
       this.#onMostWanted?.(this.#heatState, null);
+      return;
     }
+
+    // Feed the brain's detection + ram signals into the heat model.
+    const heatResult = stepHeat(
+      this.#heatState,
+      {
+        speedMps: telemetry.speedMps,
+        stationary: telemetry.speedMps < 1.5,
+        ramed: pursuit.signals.ramed,
+        collided: false,
+        policeDetected: pursuit.signals.policeDetected,
+        rivalsBusted: 0,
+      },
+      delta,
+    );
+    this.#heatState = heatResult.state;
+    // Prefer a pursuit escalation call (rhino / heli / spike / backup / busted) over the heat's.
+    this.#onMostWanted?.(heatResult.state, pursuit.signals.message ?? heatResult.message);
   }
 
   #renderFrame(frame: FrameState): void {

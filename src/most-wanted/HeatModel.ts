@@ -47,9 +47,30 @@ export interface HeatState {
   readonly recentCrimeSeconds: number;
 }
 
-/** A radio dispatch toast the heat model emits this tick. */
+/**
+ * A police-radio dispatch toast. Shared by the heat model (911 / level / evade) and the pursuit
+ * brain (escalation / busted / backup), so the HUD has one shape for every radio call.
+ */
+export type RadioKind =
+  // heat model
+  | 'alert911'
+  | 'levelUp'
+  | 'evading'
+  | 'evaded'
+  // pursuit brain (NFS MW radio codes)
+  | 'roadblock'
+  | 'rhino'
+  | 'heli'
+  | 'spike'
+  | 'cross'
+  | 'backup'
+  | 'unitDown'
+  | 'busted'
+  | 'reacquired';
+
+/** A radio dispatch toast the model emits this tick. */
 export interface RadioMessage {
-  readonly kind: 'alert911' | 'levelUp' | 'evading' | 'evaded';
+  readonly kind: RadioKind;
   readonly text: string;
 }
 

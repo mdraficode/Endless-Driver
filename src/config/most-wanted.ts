@@ -138,50 +138,100 @@ export const POLICE_UNITS = {
 
 /** The unit roster, tactics and boss for a given heat level (NFS MW's escalation). */
 export interface PoliceMix {
+  /** Target count of each unit kind at this level (absent kinds are 0). */
+  readonly counts: Readonly<Record<PoliceUnitKind, number>>;
+  /** The set of unit kinds present at this level (convenience). */
   readonly units: readonly PoliceUnitKind[];
   readonly tactics: readonly PoliceTactic[];
   /** The heavy/boss unit for this level (NFS MW's per-tier "boss"). */
   readonly boss: PoliceUnitKind;
+  /** Total ground units targeted (excludes the helicopter, which is capped separately). */
+  readonly totalUnits: number;
+  /** Whether roadblocks are deployed at this level (L2+). */
+  readonly roadblocks: boolean;
+  /** Whether spike strips are deployed at this level (L4+). */
+  readonly spikeStrips: boolean;
+  /** Whether a police helicopter is on station at this level (L4+). */
+  readonly helicopter: boolean;
 }
 
-/** Build the police mix for a heat level (clamped to 1..HEAT_LEVELS). */
-export function policeMixForLevel(level: number): PoliceMix {
-  const n = Math.max(1, Math.min(HEAT_LEVELS, Math.round(level)));
-  const units: PoliceUnitKind[] = ['sedan'];
-  const tactics: PoliceTactic[] = ['pursuit'];
-  let boss: PoliceUnitKind = 'sedan';
-  const add = (kind: PoliceUnitKind): void => {
-    if (!units.includes(kind)) units.push(kind);
+const ZERO_COUNTS: Record<PoliceUnitKind, number> = {
+  sedan: 0,
+  unmarked: 0,
+  motorcycle: 0,
+  van: 0,
+  muscle: 0,
+  suv: 0,
+  rhino: 0,
+  heli: 0,
+  cross: 0,
+};
+
+function buildMix(
+  partial: Partial<Record<PoliceUnitKind, number>>,
+  tactics: PoliceTactic[],
+  boss: PoliceUnitKind,
+  flags: { roadblocks?: boolean; spikeStrips?: boolean; helicopter?: boolean },
+): PoliceMix {
+  const counts = { ...ZERO_COUNTS, ...partial };
+  const units = (Object.keys(counts) as PoliceUnitKind[]).filter((kind) => counts[kind] > 0);
+  const totalUnits = units
+    .filter((kind) => kind !== 'heli')
+    .reduce((sum, kind) => sum + counts[kind], 0);
+  return {
+    counts,
+    units,
+    tactics,
+    boss,
+    totalUnits,
+    roadblocks: !!flags.roadblocks,
+    spikeStrips: !!flags.spikeStrips,
+    helicopter: !!flags.helicopter,
   };
-  if (n >= 2) {
-    add('unmarked');
-    tactics.push('ram', 'roadblock');
-  }
-  if (n >= 3) {
-    add('suv');
-    tactics.push('pit');
-    boss = 'rhino';
-  }
-  if (n >= 4) {
-    add('muscle');
-    tactics.push('spike', 'lock');
-    boss = 'muscle';
-  }
-  if (n >= 5) {
-    add('heli');
-    add('cross');
-    tactics.push('searchlight', 'cross');
-    boss = 'cross';
-  }
-  if (n >= 6) {
-    add('van');
-    if (!tactics.includes('roadblock')) tactics.push('roadblock');
-  }
-  if (n >= 8) add('van');
-  if (n >= 10) add('motorcycle');
-  if (n >= 11) add('rhino');
-  if (n >= 13) add('muscle');
-  return { units, tactics, boss };
+}
+
+/**
+ * The per-level escalation (NFS MW 2005). Six profiles — the real game caps at 6 (7 in the
+ * Black Edition) — levels 7..15 reuse the level-6 profile so our 1–15 scale plateaus at "max".
+ *   L1 district cruisers · L2 + unmarked + roadblocks · L3 + state cruisers + Light Rhino + P.I.T.
+ *   L4 + Heavy Rhino + spike strips + helicopter · L5 + Corvette/Cross + full escalation
+ *   L6 Cross's Street Racing Unit leads.
+ */
+const LEVEL_PROFILES: Record<number, PoliceMix> = {
+  1: buildMix({ sedan: 3 }, ['pursuit'], 'sedan', {}),
+  2: buildMix({ sedan: 2, unmarked: 3 }, ['pursuit', 'ram', 'roadblock'], 'unmarked', {
+    roadblocks: true,
+  }),
+  3: buildMix(
+    { sedan: 1, unmarked: 2, muscle: 2, rhino: 1 },
+    ['pursuit', 'ram', 'roadblock', 'pit', 'rhino'],
+    'rhino',
+    { roadblocks: true },
+  ),
+  4: buildMix(
+    { unmarked: 3, muscle: 2, rhino: 1, heli: 1 },
+    ['pursuit', 'ram', 'roadblock', 'pit', 'spike', 'searchlight'],
+    'rhino',
+    { roadblocks: true, spikeStrips: true, helicopter: true },
+  ),
+  5: buildMix(
+    { unmarked: 2, muscle: 3, rhino: 2, heli: 1, cross: 1 },
+    ['pursuit', 'ram', 'roadblock', 'pit', 'spike', 'searchlight', 'cross'],
+    'cross',
+    { roadblocks: true, spikeStrips: true, helicopter: true },
+  ),
+  6: buildMix(
+    { muscle: 3, rhino: 2, heli: 1, cross: 2 },
+    ['pursuit', 'ram', 'roadblock', 'pit', 'spike', 'searchlight', 'cross', 'lock'],
+    'cross',
+    { roadblocks: true, spikeStrips: true, helicopter: true },
+  ),
+};
+
+/** Build the police mix for a heat level (1..6; 7+ reuse the level-6 "max" profile). */
+export function policeMixForLevel(level: number): PoliceMix {
+  const n = Math.max(1, Math.min(6, Math.round(level)));
+  return LEVEL_PROFILES[n]!;
 }
 
 /** Base pursuit behaviour (spawning, reinforcement). */
@@ -191,6 +241,24 @@ export const POLICE_CONFIG = {
   spawnIntervalSeconds: 2.5,
   /** Below this many units, reinforcements kick in (NFS MW backup scaling). */
   reinforceMinUnits: 2,
+} as const;
+
+/**
+ * Pursuit-brain timing (the decision layer; the unit-spawning/steering layer reads these too).
+ * Faithful feel, tuned for playability: the roster ramps up gradually, backup is called when you
+ * nearly escape, and roadblocks / spike strips re-deploy on a cadence.
+ */
+export const PURSUIT_CONFIG = {
+  /** Seconds between individual unit spawns (so the roster ramps up rather than appearing at once). */
+  spawnIntervalSeconds: 1.2,
+  /** Max units spawned in a single tick. */
+  spawnPerTick: 1,
+  /** Below this many active units (and still being chased), backup is called. */
+  reinforceMinUnits: 2,
+  /** How often (s) a roadblock can be (re)deployed ahead of the player. */
+  roadblockIntervalSeconds: 9,
+  /** How often (s) a spike strip can be (re)deployed. */
+  spikeIntervalSeconds: 12,
 } as const;
 
 /** The per-tier cap on how much heat the police can field (C < B < A). */
@@ -303,6 +371,7 @@ export const MOST_WANTED_CONFIG = {
   evade: EVADE_CONFIG,
   policeUnits: POLICE_UNITS,
   police: POLICE_CONFIG,
+  pursuit: PURSUIT_CONFIG,
   tierCaps: MW_TIER_CAPS,
   bossHeatMaxUnitsA: MW_BOSS_HEAT_MAX_UNITS_A,
   placement: MW_PLACEMENT,
