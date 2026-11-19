@@ -359,6 +359,7 @@ export function stepPursuit(prev: PursuitState, frame: PursuitFrame): PursuitSte
     heliActive = target.heli > 0 && units.some((u) => u.kind === 'heli');
   } else {
     spawnTimer = p.spawnIntervalSeconds;
+    if (busted) units = []; // a bust ends the chase — the squad stands down
     if (phase !== 'pursuit') {
       roadblockArmed = false;
       spikeArmed = false;

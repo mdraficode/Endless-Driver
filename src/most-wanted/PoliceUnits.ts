@@ -53,12 +53,17 @@ interface UnitVisual {
   readonly group: THREE.Group;
 }
 
-/** Max approach speed (m/s) per unit kind. */
+/**
+ * Max approach speed (m/s) per unit kind. Crucially the cruisers must out-run the speed-crime
+ * threshold (34 m/s) so a speeding racer can actually sustain a chase — otherwise the player
+ * outruns the squad, "loses" them, and the heat cools before it can escalate (see the
+ * player-perspective simulation test).
+ */
 function unitSpeed(kind: PoliceUnitKind): number {
-  if (kind === 'heli') return 24;
-  if (kind === 'rhino') return 42; // kamikaze
-  if (kind === 'cross') return 38;
-  return 30; // cruisers
+  if (kind === 'heli') return 30; // hovers ahead, doesn't really chase
+  if (kind === 'rhino') return 58; // kamikaze, fastest
+  if (kind === 'cross') return 50;
+  return 42; // cruisers
 }
 
 const RAM_DISTANCE_METERS = 5;
@@ -197,8 +202,12 @@ export class PoliceUnits {
     group.add(bar);
     this.scene.addObject(group);
 
-    // Spawn a bit behind the player's current heading (so they close in, not teleport on top).
-    const spawnDist = 18;
+    // Spawn behind the player's heading from a realistic *response* distance. Crucially this is
+    // beyond the evade detect radius (90 m): a player faster than the squad can pull past it and
+    // break the chase, while a slower player gets caught as units close in. (If it were ~18 m the
+    // squad would always be in detect range and the player could never lose them — see the
+    // player-perspective simulation test.)
+    const spawnDist = 100;
     const backX = player.x + Math.sin(player.yaw) * spawnDist;
     const backZ = player.z + Math.cos(player.yaw) * spawnDist;
     return { id, kind, x: backX, z: backZ, group };
