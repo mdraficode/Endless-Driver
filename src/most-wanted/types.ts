@@ -162,3 +162,28 @@ export interface MostWantedSystem {
   load(save: MostWantedSave): void;
   dispose(): void;
 }
+
+/** A single police unit's world position for the minimap blips (Milestone 3b). */
+export interface PursuitBlip {
+  readonly x: number;
+  readonly z: number;
+  /** True for the helicopter (drawn a different colour from the ground cars). */
+  readonly heli: boolean;
+}
+
+/**
+ * Per-frame pursuit HUD payload (Milestone 3b): the visible squad's blips for the minimap and the
+ * state a pursuit bar renders (level / units / taken-out / bust meter / status). Emitted by the
+ * `Application`'s `onPursuit` callback.
+ */
+export interface PursuitHudData {
+  readonly phase: 'inactive' | 'pursuit' | 'cooldown';
+  readonly level: number;
+  readonly activeUnits: number;
+  readonly takenOut: number;
+  readonly busted: boolean;
+  /** 0..1 bust meter (how cornered the player is). */
+  readonly bustMeter: number;
+  readonly heliActive: boolean;
+  readonly blips: readonly PursuitBlip[];
+}

@@ -454,6 +454,10 @@ async function startDrivingScene(restarting = false): Promise<void> {
       vehicleTuning: preferences.carTuning,
       onBoostState: (state) => drivingBoostGauge?.update(state),
       onMostWanted: (state, message) => drivingWantedHud?.update(state, message),
+      onPursuit: (data) => {
+        minimap?.setPursuitBlips(data.blips);
+        drivingWantedHud?.updatePursuit(data);
+      },
     };
 
     const activeApplication = new Application(options);

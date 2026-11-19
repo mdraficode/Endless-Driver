@@ -71,6 +71,7 @@ export class Minimap {
   #baseReady = false;
   #frameHandle = 0;
   #disposed = false;
+  #pursuitBlips: readonly { readonly x: number; readonly z: number; readonly heli: boolean }[] = [];
 
   constructor(options: MinimapOptions) {
     this.#sampler = options.sampler;
@@ -131,6 +132,13 @@ export class Minimap {
 
   get target(): PointOfInterest | null {
     return this.#targetIndex >= 0 ? (this.#pois[this.#targetIndex] ?? null) : null;
+  }
+
+  /** Set the police pursuit blips to render (empty when no pursuit). Cleared each frame. */
+  setPursuitBlips(
+    blips: readonly { readonly x: number; readonly z: number; readonly heli: boolean }[],
+  ): void {
+    this.#pursuitBlips = blips;
   }
 
   #pickNearestTarget(): void {
@@ -308,6 +316,16 @@ export class Minimap {
       ctx.fillStyle = isTarget ? 'rgba(255, 236, 190, 0.9)' : 'rgba(255, 255, 255, 0.55)';
       ctx.textAlign = 'center';
       ctx.fillText(poi.label, sx, sy + 16);
+    }
+
+    // Police pursuit blips: red dots for ground cars, blue for the heli (relative to the player).
+    for (const blip of this.#pursuitBlips) {
+      const [bx, by] = toScreen(blip.x, blip.z);
+      if (bx < -10 || by < -10 || bx > size + 10 || by > size + 10) continue;
+      ctx.beginPath();
+      ctx.arc(bx, by, blip.heli ? 4 : 3.2, 0, Math.PI * 2);
+      ctx.fillStyle = blip.heli ? 'rgba(120, 170, 255, 0.95)' : 'rgba(255, 66, 66, 0.95)';
+      ctx.fill();
     }
 
     // Visit check: any place the car stands in counts as visited (not just the

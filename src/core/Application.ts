@@ -64,6 +64,7 @@ import {
 import { initialPursuitState, stepPursuit, type PursuitState } from '../most-wanted/PursuitModel';
 import { computePursuitTactics } from '../most-wanted/PursuitTactics';
 import { PoliceUnits } from '../most-wanted/PoliceUnits';
+import type { PursuitHudData } from '../most-wanted/types';
 import { MW_TIER_CAPS } from '../config/most-wanted';
 import { PlayerCarVisual } from '../vehicles/PlayerCarVisual';
 import { resolveHighSpeedMotionBlurIntensity } from '../vehicles/vehicle-effects';
@@ -200,6 +201,11 @@ export interface ApplicationOptions {
    * on-screen wanted meter.
    */
   readonly onMostWanted?: (state: HeatState, message: RadioMessage | null) => void;
+  /**
+   * Receives the per-frame pursuit payload (squad blips for the minimap + pursuit-bar state) each
+   * frame — Milestone 3b's visible chase.
+   */
+  readonly onPursuit?: (data: PursuitHudData) => void;
 }
 
 type StatusTone = 'info' | 'error';
@@ -336,6 +342,7 @@ export class Application {
   /** Visible police squad (Milestone 3b) — spawned/steered during an active pursuit. */
   #policeUnits: PoliceUnits | null = null;
   readonly #onMostWanted: ((state: HeatState, message: RadioMessage | null) => void) | null;
+  readonly #onPursuit: ((data: PursuitHudData) => void) | null;
   /**
    * TEMPORARY dev trigger (until pursuit AI detects the player in Milestone 3): when true the heat
    * model treats the player as being chased, so speeding pulls a 911 and the meter rises. Toggled
@@ -426,6 +433,7 @@ export class Application {
     this.#vehicleTuning = options.vehicleTuning ?? { ...DEFAULT_CAR_TUNING };
     this.#onBoostState = options.onBoostState ?? null;
     this.#onMostWanted = options.onMostWanted ?? null;
+    this.#onPursuit = options.onPursuit ?? null;
     this.#buildTag = options.buildTag ?? null;
     this.#surfaceState = resolveSurfaceState(options.weather ?? 'clear');
 
@@ -1596,12 +1604,32 @@ export class Application {
       this.#heatState = initialHeatState();
       this.#pursuitState = initialPursuitState();
       this.#policeUnits?.clear();
+      this.#emitPursuitData();
       this.#onMostWanted?.(this.#heatState, null);
       return;
     }
 
     // Prefer a pursuit escalation call (rhino / heli / spike / backup / busted) over the heat's.
+    this.#emitPursuitData();
     this.#onMostWanted?.(heatResult.state, message ?? heatResult.message);
+  }
+
+  /** Push the per-frame pursuit payload (squad blips + pursuit-bar state) to the HUD. */
+  #emitPursuitData(): void {
+    const onPursuit = this.#onPursuit;
+    if (onPursuit === null) return;
+    onPursuit({
+      phase: this.#pursuitState.phase,
+      level: this.#heatState.level,
+      activeUnits: this.#pursuitState.units.length,
+      takenOut: this.#pursuitState.takenOut,
+      busted: this.#pursuitState.busted,
+      bustMeter: this.#pursuitState.bustMeter,
+      heliActive: this.#pursuitState.heliActive,
+      blips: this.#policeUnits
+        ? this.#policeUnits.poses().map((p) => ({ x: p.x, z: p.z, heli: p.kind === 'heli' }))
+        : [],
+    });
   }
 
   #renderFrame(frame: FrameState): void {

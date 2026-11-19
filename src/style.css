@@ -2333,3 +2333,43 @@ body:not(.touch-enabled) .nitro-gauge {
 .wanted-hud-radio[data-shown='true'] {
   opacity: 1;
 }
+
+/* Milestone 3b: the pursuit bar (status + bust meter + squad size) under the wanted meter. */
+.wanted-hud-pursuit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+}
+.pursuit-status {
+  min-width: 52px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--wanted-color, #fff);
+}
+.pursuit-bust {
+  flex: 1;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 16%);
+}
+.pursuit-bust-fill {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: var(--wanted-color, #ff4444);
+  transition: width 0.15s linear;
+}
+.pursuit-count {
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+  color: rgb(255 255 255 / 80%);
+}
+.wanted-hud-pursuit[data-state='busted'] .pursuit-status {
+  color: #ff5a5a;
+}
+.wanted-hud-pursuit[data-state='evading'] .pursuit-status {
+  color: #8fd0ff;
+}

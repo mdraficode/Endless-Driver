@@ -10,6 +10,7 @@
 import { HEAT_LEVELS } from '../config/most-wanted';
 import { TIER_COLOR, computeWantedDisplay } from '../most-wanted/WantedHudModel';
 import type { HeatState, RadioMessage } from '../most-wanted/HeatModel';
+import type { PursuitHudData } from '../most-wanted/types';
 
 /** How long a dispatch line stays on screen (ms). */
 const TOAST_MS = 3400;
@@ -19,6 +20,10 @@ export class WantedHud {
   readonly #level: HTMLElement;
   readonly #bar: HTMLElement;
   readonly #radio: HTMLElement;
+  readonly #pursuit: HTMLElement;
+  readonly #pursuitStatus: HTMLElement;
+  readonly #pursuitBustFill: HTMLElement;
+  readonly #pursuitCount: HTMLElement;
   readonly #segments: HTMLElement[] = [];
   #toastDeadline = 0;
 
@@ -55,11 +60,26 @@ export class WantedHud {
       this.#segments.push(fill);
     }
 
+    // Pursuit bar (Milestone 3b): status + bust meter + squad size, shown during a chase.
+    this.#pursuit = document.createElement('div');
+    this.#pursuit.className = 'wanted-hud-pursuit';
+    this.#pursuit.hidden = true;
+    this.#pursuitStatus = document.createElement('span');
+    this.#pursuitStatus.className = 'pursuit-status';
+    this.#pursuitBustFill = document.createElement('span');
+    this.#pursuitBustFill.className = 'pursuit-bust-fill';
+    this.#pursuitCount = document.createElement('span');
+    this.#pursuitCount.className = 'pursuit-count';
+    const pursuitBust = document.createElement('span');
+    pursuitBust.className = 'pursuit-bust';
+    pursuitBust.append(this.#pursuitBustFill);
+    this.#pursuit.append(this.#pursuitStatus, pursuitBust, this.#pursuitCount);
+
     this.#radio = document.createElement('p');
     this.#radio.className = 'wanted-hud-radio';
     this.#radio.setAttribute('aria-live', 'polite');
 
-    root.append(head, this.#bar, this.#radio);
+    root.append(head, this.#bar, this.#pursuit, this.#radio);
   }
 
   update(state: HeatState, message: RadioMessage | null): void {
@@ -95,6 +115,25 @@ export class WantedHud {
     }
     // Apply the tier colour to the whole meter.
     this.#root.style.setProperty('--wanted-color', TIER_COLOR[display.tier]);
+  }
+
+  /** Milestone 3b: render the pursuit bar (status + bust meter + squad size) for a live chase. */
+  updatePursuit(data: PursuitHudData): void {
+    const active = data.phase !== 'inactive' && data.level > 0;
+    this.#pursuit.hidden = !active;
+    if (!active) return;
+    this.#pursuit.dataset['state'] = data.busted
+      ? 'busted'
+      : data.phase === 'cooldown'
+        ? 'evading'
+        : 'pursuit';
+    this.#pursuitStatus.textContent = data.busted
+      ? 'BUSTED'
+      : data.phase === 'cooldown'
+        ? 'EVADING'
+        : 'PURSUIT';
+    this.#pursuitBustFill.style.width = `${Math.round(Math.max(0, Math.min(1, data.bustMeter)) * 100)}%`;
+    this.#pursuitCount.textContent = `×${data.activeUnits}`;
   }
 
   dispose(): void {
