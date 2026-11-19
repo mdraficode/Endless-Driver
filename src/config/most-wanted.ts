@@ -24,22 +24,38 @@ export const MOST_WANTED_STORAGE_KEY = 'endless-driver:most-wanted:v1';
 /** The quality tier also selects the police intensity (how hard the heat plays). */
 export type PoliceIntensity = TierId;
 
-/** Heat ramp + cool-down tuning (crime accrual, cool-down, per-pursuit ceiling). */
+/**
+ * Heat (wanted) tuning. Faithful to NFS Most Wanted (2005): the 0..1 meter fills while you
+ * are being chased — faster at higher heat, and it stalls at high heat unless you keep
+ * committing infractions (level 1 climbs from being chased alone). A crime while clean pulls
+ * a 911. Once you lose the police you cool down: the level decays, faster at low heat and
+ * much faster when stopped. The ceiling is gated by Blacklist progress (D2).
+ */
 export const HEAT_CONFIG = {
-  /** Crime added per second of speeding above the threshold. */
-  speedCrimePerSecond: 0.05,
-  /** Speed (m/s) above which speeding accrues heat. */
+  /** Speed (m/s) above which the player is "speeding" (a continuous crime). */
   speedCrimeThresholdMps: 34,
-  /** Crime from a collision with a unit. */
-  collisionCrime: 0.12,
-  /** Crime from ramming a unit harder. */
-  ramCrime: 0.2,
-  /** Heat level decay per second of clean driving. */
-  coolDownLevelPerSecond: 0.06,
-  /** Below this level the cool-down is faster (early heat falls off quickly). */
+  /** The 0..1 meter fills at this rate/sec at level 1 (about 15 s to a level-up). */
+  baseFillRate: 0.067,
+  /** Each heat level fills this fraction faster (the higher the heat, the faster it climbs). */
+  perLevelFillBoost: 0.25,
+  /** Fill activity when committing no crime at the top heat (the rise stalls without infractions). */
+  cleanFloorActivity: 0.35,
+  /** How fast the clean-activity floor drops per level (level 1 still rises from being chased). */
+  perLevelActivityDecay: 0.07,
+  /** A ram/collision keeps fill activity at 1.0 for this many seconds. */
+  recentCrimeWindowSeconds: 2.0,
+  /** Discrete heat added by ramming a police unit. */
+  ramCrimeHeat: 0.25,
+  /** Discrete heat added by a (non-police) collision. */
+  collisionCrimeHeat: 0.12,
+  /** Cooldown: heat drained per second (the level falls as this crosses below 0). */
+  coolDownFillPerSecond: 0.06,
+  /** Below this level, cooldown is faster. */
   coolDownFastBelowLevel: 3,
   coolDownFastMultiplier: 2.0,
-  /** D2: a pursuit's ceiling = ceilingBase + rivals busted, capped at HEAT_LEVELS. */
+  /** Stopped / engine off drains cooldown much faster (a known MW tip). */
+  stationaryCoolDownMultiplier: 2.5,
+  /** D2: pursuit ceiling = ceilingBase + rivals busted, capped at HEAT_LEVELS. */
   ceilingBase: 1,
 } as const;
 
