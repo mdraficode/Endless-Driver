@@ -172,6 +172,27 @@ export interface PursuitBlip {
 }
 
 /**
+ * Per-frame Blacklist race HUD payload (Milestone 5b). Emitted by the `Application`'s `onRace`
+ * callback while a hunt-&-destroy race is live (and once more with the final `phase` when it ends;
+ * `null` clears it). The minimap reads the rival's position; the race banner reads the rest.
+ */
+export interface BlacklistRaceHud {
+  readonly phase: 'countdown' | 'racing' | 'won' | 'lost';
+  readonly rivalName: string;
+  readonly rivalRank: number;
+  /** Seconds of race clock left. */
+  readonly remainingSeconds: number;
+  /** 0..1 — the player's progress along the route. */
+  readonly playerProgress: number;
+  /** 0..1 — the rival's progress along the route. */
+  readonly rivalProgress: number;
+  readonly routeLengthMeters: number;
+  /** The rival's car world position (for the minimap blip). */
+  readonly rivalX: number;
+  readonly rivalZ: number;
+}
+
+/**
  * Per-frame pursuit HUD payload (Milestone 3b): the visible squad's blips for the minimap and the
  * state a pursuit bar renders (level / units / taken-out / bust meter / status). Emitted by the
  * `Application`'s `onPursuit` callback.

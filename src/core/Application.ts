@@ -88,6 +88,7 @@ import {
   type RaceRoute,
 } from '../most-wanted/BlacklistRoute';
 import type {
+  BlacklistRaceHud,
   BlacklistRivalConfig,
   BountyState,
   PoliceUnitKind,
@@ -246,6 +247,11 @@ export interface ApplicationOptions {
    * or forfeited / impound strike / career total) — Milestone 4a.
    */
   readonly onBountySettled?: (result: BountySettleResult) => void;
+  /**
+   * Receives the per-frame Blacklist race payload (rival + clock + progress) while a hunt-&-destroy
+   * race is live, and once more with the final phase when it ends; `null` clears it — M5b.
+   */
+  readonly onRace?: (data: BlacklistRaceHud | null) => void;
 }
 
 type StatusTone = 'info' | 'error';
@@ -412,6 +418,7 @@ export class Application {
   readonly #onMostWanted: ((state: HeatState, message: RadioMessage | null) => void) | null;
   readonly #onBountySettled: ((result: BountySettleResult) => void) | null;
   readonly #onPursuit: ((data: PursuitHudData) => void) | null;
+  readonly #onRace: ((data: BlacklistRaceHud | null) => void) | null;
   /**
    * TEMPORARY dev trigger (until pursuit AI detects the player in Milestone 3): when true the heat
    * model treats the player as being chased, so speeding pulls a 911 and the meter rises. Toggled
@@ -504,6 +511,7 @@ export class Application {
     this.#onMostWanted = options.onMostWanted ?? null;
     this.#onPursuit = options.onPursuit ?? null;
     this.#onBountySettled = options.onBountySettled ?? null;
+    this.#onRace = options.onRace ?? null;
     this.#buildTag = options.buildTag ?? null;
     this.#surfaceState = resolveSurfaceState(options.weather ?? 'clear');
 
@@ -1893,6 +1901,8 @@ export class Application {
       this.#rivalBody.position.set(rp.x, this.#terrainSampler.heightAt(rp.x, rp.z), rp.z);
       this.#rivalBody.rotation.y = rp.yaw;
     }
+    // Push the live HUD (the final frame carries the won/lost phase before cleanup nulls it).
+    this.#emitRaceHud();
     if (result.outcome === 'won') this.#resolveRaceWon();
     else if (result.outcome === 'lost') this.#resolveRaceLost();
   }
@@ -1935,6 +1945,31 @@ export class Application {
     this.#trapsState = initialTrapState();
     this.#bountyPhase = 'none';
     this.#heatState = initialHeatState();
+  }
+
+  /** Emit the live Blacklist race HUD payload (M5b-2c); the banner keeps the final frame on end. */
+  #emitRaceHud(): void {
+    const onRace = this.#onRace;
+    if (onRace === null) return;
+    const state = this.#raceState;
+    const rival = this.#activeRival;
+    const route = this.#raceRoute;
+    if (state === null || rival === null || route === null) {
+      onRace(null);
+      return;
+    }
+    const rivalPoint = pointAlongRoute(route, state.rivalProgress);
+    onRace({
+      phase: state.phase,
+      rivalName: rival.name,
+      rivalRank: rival.rank,
+      remainingSeconds: state.remainingSeconds,
+      playerProgress: state.playerProgress,
+      rivalProgress: state.rivalProgress,
+      routeLengthMeters: route.lengthMeters,
+      rivalX: rivalPoint.x,
+      rivalZ: rivalPoint.z,
+    });
   }
 
   /**

@@ -33,6 +33,7 @@ import { RouteApplication, type RouteDiagnostics } from './lab/RouteApplication'
 import { UrbanNightApplication, type UrbanNightDiagnostics } from './lab/UrbanNightApplication';
 import type { DiagnosticsSnapshot } from './ui/DiagnosticsOverlay';
 import { Minimap } from './ui/Minimap';
+import { BlacklistRaceHud } from './ui/BlacklistRaceHud';
 import { CreditsPanel } from './ui/CreditsPanel';
 import { LandscapeFallback } from './ui/LandscapeFallback';
 import { LoadingScreen } from './ui/LoadingScreen';
@@ -251,6 +252,7 @@ let drivingApplication: Application | null = null;
 let drivingMinimap: Minimap | null = null;
 let drivingBoostGauge: BoostGauge | null = null;
 let drivingWantedHud: WantedHud | null = null;
+let drivingRaceHud: BlacklistRaceHud | null = null;
 let drivingPauseMenu: PauseMenu | null = null;
 let driveRestartTask: Promise<void> | null = null;
 
@@ -338,6 +340,8 @@ async function restartDriveInPlace(
       drivingBoostGauge = null;
       drivingWantedHud?.dispose();
       drivingWantedHud = null;
+      drivingRaceHud?.dispose();
+      drivingRaceHud = null;
       const previousApplication = drivingApplication;
       drivingApplication = null;
       previousApplication?.stop();
@@ -400,6 +404,8 @@ async function startDrivingScene(restarting = false): Promise<void> {
     drivingBoostGauge = boostGaugeRoot === null ? null : new BoostGauge(boostGaugeRoot);
     drivingWantedHud?.dispose();
     drivingWantedHud = wantedHudRoot === null ? null : new WantedHud(wantedHudRoot);
+    drivingRaceHud?.dispose();
+    drivingRaceHud = appRoot === null ? null : new BlacklistRaceHud(appRoot);
     const startHour = readTimeRequest(window.location.search);
     const nightMood = startHour === null && preferences.nightMood;
     const menuNightMood =
@@ -464,6 +470,10 @@ async function startDrivingScene(restarting = false): Promise<void> {
         drivingWantedHud?.updatePursuit(data);
       },
       onBountySettled: (result) => drivingWantedHud?.settle(result),
+      onRace: (data) => {
+        drivingRaceHud?.update(data);
+        minimap?.setRivalBlip(data?.rivalX ?? null, data?.rivalZ ?? null);
+      },
     };
 
     const activeApplication = new Application(options);

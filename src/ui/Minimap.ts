@@ -74,6 +74,8 @@ export class Minimap {
   #pursuitBlips: readonly { readonly x: number; readonly z: number; readonly heli: boolean }[] = [];
   /** World hideouts (Milestone 4b) — the places a hunted player can duck to break the chase. */
   #hideSpots: readonly { readonly x: number; readonly z: number }[] = [];
+  /** The Blacklist rival's car during a race (M5b) — the one you're chasing down. */
+  #rivalBlip: { readonly x: number; readonly z: number } | null = null;
 
   constructor(options: MinimapOptions) {
     this.#sampler = options.sampler;
@@ -146,6 +148,11 @@ export class Minimap {
   /** Set the fixed world hide-out markers (Milestone 4b). */
   setHideSpots(spots: readonly { readonly x: number; readonly z: number }[]): void {
     this.#hideSpots = spots;
+  }
+
+  /** Set the Blacklist rival's car blip for the race (M5b); pass null to clear. */
+  setRivalBlip(x: number | null, z: number | null): void {
+    this.#rivalBlip = x !== null && z !== null ? { x, z } : null;
   }
 
   #pickNearestTarget(): void {
@@ -333,6 +340,22 @@ export class Minimap {
       ctx.arc(bx, by, blip.heli ? 4 : 3.2, 0, Math.PI * 2);
       ctx.fillStyle = blip.heli ? 'rgba(120, 170, 255, 0.95)' : 'rgba(255, 66, 66, 0.95)';
       ctx.fill();
+    }
+
+    // The Blacklist rival's car (M5b): a bright gold diamond — the one you're racing to the line.
+    if (this.#rivalBlip !== null) {
+      const [rx, ry] = toScreen(this.#rivalBlip.x, this.#rivalBlip.z);
+      if (rx >= -12 && ry >= -12 && rx <= size + 12 && ry <= size + 12) {
+        ctx.save();
+        ctx.translate(rx, ry);
+        ctx.rotate(Math.PI / 4);
+        ctx.fillStyle = 'rgba(255, 205, 60, 0.98)';
+        ctx.fillRect(-4.5, -4.5, 9, 9);
+        ctx.lineWidth = 1.4;
+        ctx.strokeStyle = 'rgba(255, 245, 210, 0.95)';
+        ctx.strokeRect(-4.5, -4.5, 9, 9);
+        ctx.restore();
+      }
     }
 
     // Hide-out markers (Milestone 4b): light up only while you are being hunted, so they read as
