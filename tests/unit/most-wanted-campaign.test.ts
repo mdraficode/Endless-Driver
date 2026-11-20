@@ -7,6 +7,7 @@ import {
   initialCampaignState,
   nextEligibleRival,
   raceWinReward,
+  rosterEntries,
   rivalsBustedCount,
 } from '../../src/most-wanted/BlacklistCampaign';
 
@@ -68,5 +69,21 @@ describe('Most Wanted — Blacklist campaign (M5b)', () => {
     const twice = applyRaceWin(once, 15);
     expect(twice.bustedRanks.filter((r) => r === 15)).toHaveLength(1);
     expect(rivalsBustedCount(twice)).toBe(rivalsBustedCount(once));
+  });
+
+  it('the roster lists all 15 (rank 15→1) with correct busted/unlocked/locked status', () => {
+    // Fresh career: rank 15 (threshold 0) is unlocked, everything else locked.
+    const fresh = rosterEntries(initialCampaignState(), BLACKLIST_RIVALS);
+    expect(fresh).toHaveLength(15);
+    expect(fresh[0]!.config.rank).toBe(15); // sorted 15 → 1
+    expect(fresh[0]!.status).toBe('unlocked');
+    expect(fresh[1]!.status).toBe('locked'); // rank 14 needs 5000
+    // After busting rank 15 (win → 9500): rank 15 busted, rank 14 unlocked (5000 ≤ 9500), rest locked.
+    const after = applyRaceWin(initialCampaignState(), 15);
+    const roster = rosterEntries(after, BLACKLIST_RIVALS);
+    expect(roster.find((e) => e.config.rank === 15)!.status).toBe('busted');
+    expect(roster.find((e) => e.config.rank === 14)!.status).toBe('unlocked');
+    expect(roster.find((e) => e.config.rank === 13)!.status).toBe('locked'); // 60000 > 9500
+    expect(roster.find((e) => e.config.rank === 1)!.status).toBe('locked'); // the boss
   });
 });

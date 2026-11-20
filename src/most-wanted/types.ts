@@ -72,6 +72,25 @@ export interface BlacklistRivalConfig {
   readonly challengeThreshold: number;
 }
 
+/** The roster status of a rival relative to the campaign (M5c). */
+export type RivalStatus = 'busted' | 'unlocked' | 'locked';
+
+/** One rival in the Blacklist roster, with its status. */
+export interface RosterEntry {
+  readonly config: BlacklistRivalConfig;
+  readonly status: RivalStatus;
+}
+
+/** The Blacklist roster payload for the campaign menu (M5c). */
+export interface BlacklistRosterData {
+  /** Lifetime bounty (gates the rivals, D3). */
+  readonly careerTotal: number;
+  /** The next challengeable rival (null when the career has run out / next is locked). */
+  readonly next: BlacklistRivalConfig | null;
+  /** Every rival, rank 15 → 1, with its status. */
+  readonly entries: readonly RosterEntry[];
+}
+
 /** A live Blacklist rival actor during a hunt-and-destroy race (D6). */
 export interface RivalActor {
   readonly config: BlacklistRivalConfig;

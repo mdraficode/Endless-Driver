@@ -34,6 +34,7 @@ import { UrbanNightApplication, type UrbanNightDiagnostics } from './lab/UrbanNi
 import type { DiagnosticsSnapshot } from './ui/DiagnosticsOverlay';
 import { Minimap } from './ui/Minimap';
 import { BlacklistRaceHud } from './ui/BlacklistRaceHud';
+import { BlacklistRoster } from './ui/BlacklistRoster';
 import { CreditsPanel } from './ui/CreditsPanel';
 import { LandscapeFallback } from './ui/LandscapeFallback';
 import { LoadingScreen } from './ui/LoadingScreen';
@@ -253,6 +254,8 @@ let drivingMinimap: Minimap | null = null;
 let drivingBoostGauge: BoostGauge | null = null;
 let drivingWantedHud: WantedHud | null = null;
 let drivingRaceHud: BlacklistRaceHud | null = null;
+let drivingRoster: BlacklistRoster | null = null;
+let rosterVisible = false;
 let drivingPauseMenu: PauseMenu | null = null;
 let driveRestartTask: Promise<void> | null = null;
 
@@ -262,14 +265,22 @@ let driveRestartTask: Promise<void> | null = null;
 let debugPoliceWanted = false;
 window.addEventListener('keydown', (event) => {
   if (event.repeat || drivingApplication === null) return;
-  if (event.key !== 'v' && event.key !== 'V') {
+  const key = event.key;
+  if (key === 'v' || key === 'V') {
+    debugPoliceWanted = !debugPoliceWanted;
+    drivingApplication.setDebugPoliceWanted(debugPoliceWanted);
+    return;
+  }
+  if (key === 'b' || key === 'B') {
     // Milestone 5b: "B" challenges the next eligible Blacklist rival (a hunt-&-destroy race).
-    if (event.key !== 'b' && event.key !== 'B') return;
     drivingApplication.challengeNextRival();
     return;
   }
-  debugPoliceWanted = !debugPoliceWanted;
-  drivingApplication.setDebugPoliceWanted(debugPoliceWanted);
+  if (key === 'l' || key === 'L') {
+    // Milestone 5c: "L" toggles the Blacklist roster (the campaign menu).
+    rosterVisible = !rosterVisible;
+    drivingRoster?.update(rosterVisible ? drivingApplication.blacklistRoster() : null);
+  }
 });
 
 function setStatus(message: string | null, tone: 'info' | 'error' = 'info'): void {
@@ -342,6 +353,8 @@ async function restartDriveInPlace(
       drivingWantedHud = null;
       drivingRaceHud?.dispose();
       drivingRaceHud = null;
+      drivingRoster?.dispose();
+      drivingRoster = null;
       const previousApplication = drivingApplication;
       drivingApplication = null;
       previousApplication?.stop();
@@ -406,6 +419,17 @@ async function startDrivingScene(restarting = false): Promise<void> {
     drivingWantedHud = wantedHudRoot === null ? null : new WantedHud(wantedHudRoot);
     drivingRaceHud?.dispose();
     drivingRaceHud = appRoot === null ? null : new BlacklistRaceHud(appRoot);
+    drivingRoster?.dispose();
+    drivingRoster =
+      appRoot === null
+        ? null
+        : new BlacklistRoster(appRoot, () => {
+            // Challenge the next rival, then close the menu (the race banner takes over).
+            if (drivingApplication === null) return;
+            drivingApplication.challengeNextRival();
+            rosterVisible = false;
+            drivingRoster?.update(null);
+          });
     const startHour = readTimeRequest(window.location.search);
     const nightMood = startHour === null && preferences.nightMood;
     const menuNightMood =

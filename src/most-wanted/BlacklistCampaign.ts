@@ -7,7 +7,7 @@
  * holds a live copy and the human-player simulation can drive a full campaign (challenge → win →
  * Pink Slip → next rival) without a browser.
  */
-import type { BlacklistRivalConfig } from './types';
+import type { BlacklistRivalConfig, RosterEntry } from './types';
 
 /** The campaign's career state (the Application keeps the live copy). */
 export interface BlacklistCampaignState {
@@ -22,6 +22,27 @@ export const BLACKLIST_RANKS = 15;
 
 export function initialCampaignState(): BlacklistCampaignState {
   return { bustedRanks: [], careerTotal: 0 };
+}
+
+/**
+ * The Blacklist roster (rank 15 → 1) with each rival's status: **busted** (you took their Pink
+ * Slip), **unlocked** (challengeable — the career total meets the threshold), or **locked** (the
+ * threshold isn't met yet). Pure — the Application's getter and the human simulation both use it.
+ */
+export function rosterEntries(
+  state: BlacklistCampaignState,
+  rivals: readonly BlacklistRivalConfig[],
+): RosterEntry[] {
+  return [...rivals]
+    .sort((a, b) => b.rank - a.rank)
+    .map((config) => ({
+      config,
+      status: state.bustedRanks.includes(config.rank)
+        ? 'busted'
+        : config.challengeThreshold <= state.careerTotal
+          ? 'unlocked'
+          : 'locked',
+    }));
 }
 
 /** How many rivals are busted (D2: the pursuit ceiling is 1 + this, capped at the max heat). */

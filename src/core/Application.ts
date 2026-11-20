@@ -81,7 +81,12 @@ import {
   type BlacklistRaceConfig,
   type BlacklistRaceState,
 } from '../most-wanted/BlacklistRaceModel';
-import { applyRaceWin, nextEligibleRival, raceWinReward } from '../most-wanted/BlacklistCampaign';
+import {
+  applyRaceWin,
+  nextEligibleRival,
+  raceWinReward,
+  rosterEntries,
+} from '../most-wanted/BlacklistCampaign';
 import {
   buildRaceRouteFromNetwork,
   pointAlongRoute,
@@ -91,6 +96,7 @@ import {
 import type {
   BlacklistRaceHud,
   BlacklistRivalConfig,
+  BlacklistRosterData,
   BountyState,
   PoliceUnitKind,
   PursuitHudData,
@@ -1858,6 +1864,19 @@ export class Application {
     this.#pursuitState = initialPursuitState(); // a fresh squad for the race
     this.#spawnRivalBody(route, config);
     return true;
+  }
+
+  /**
+   * The Blacklist roster (rank 15 → 1) with each rival's status (busted / unlocked / locked) and
+   * the next challengeable rival — feeds the campaign menu (M5c).
+   */
+  blacklistRoster(): BlacklistRosterData {
+    const state = { bustedRanks: this.#bustedRanks, careerTotal: this.#bountyState.careerTotal };
+    return {
+      careerTotal: this.#bountyState.careerTotal,
+      next: nextEligibleRival(state, BLACKLIST_RIVALS),
+      entries: rosterEntries(state, BLACKLIST_RIVALS),
+    };
   }
 
   /** Spawn the rival's car at the (head-start) position on the route. */
