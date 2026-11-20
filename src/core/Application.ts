@@ -1647,7 +1647,8 @@ export class Application {
         playerSpeedMps: telemetry.speedMps,
         inHideSpot: hideInHideSpot,
         nearestUnitMeters: plan.nearestUnitMeters,
-        playerBoxed: plan.playerBoxed,
+        // A hidden player can't be boxed/busted: the squad has lost visual lock, so the box breaks.
+        playerBoxed: plan.playerBoxed && !hideInHideSpot,
         disabledUnitKind: destroyedKind,
         debugPolice: debug,
         engaged,
