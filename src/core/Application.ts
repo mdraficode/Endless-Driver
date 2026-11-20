@@ -371,6 +371,9 @@ export class Application {
   #spikeDeflateSeconds = 0;
   /** (s) the player just smashed a roadblock (brakes slammed). */
   #roadblockCrashSeconds = 0;
+  // Milestone 5b — the Blacklist campaign.
+  /** Ranks busted so far (D2: the pursuit ceiling is 1 + count, capped at 15). */
+  #bustedRanks: number[] = [];
   readonly #onMostWanted: ((state: HeatState, message: RadioMessage | null) => void) | null;
   readonly #onBountySettled: ((result: BountySettleResult) => void) | null;
   readonly #onPursuit: ((data: PursuitHudData) => void) | null;
@@ -1724,7 +1727,7 @@ export class Application {
         collided: rammedPlayer,
         roadblockCrash: roadblockCrashed,
         policeDetected,
-        rivalsBusted: 0,
+        rivalsBusted: this.#bustedRanks.length, // D2: each rival busted raises the pursuit ceiling
       },
       delta,
     );

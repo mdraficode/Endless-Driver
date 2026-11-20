@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_BLACKLIST_RACE,
   initialBlacklistRaceState,
+  raceConfigForRank,
   stepBlacklistRace,
   type BlacklistRaceConfig,
   type BlacklistRaceState,
@@ -109,5 +110,27 @@ describe('Blacklist race outcome model (Milestone 5a)', () => {
     expect(DEFAULT_BLACKLIST_RACE.routeLengthMeters).toBeGreaterThan(0);
     expect(DEFAULT_BLACKLIST_RACE.timeLimitSeconds).toBeGreaterThan(0);
     expect(DEFAULT_BLACKLIST_RACE.rivalCruiseSpeedMps).toBeGreaterThan(0);
+  });
+
+  it('raceConfigForRank: rank 15 is the easiest, rank 1 (boss) the toughest', () => {
+    const easy = raceConfigForRank(15, 6000);
+    const boss = raceConfigForRank(1, 6000);
+    // The boss is faster and starts ahead; the clock stays proportional to the route.
+    expect(boss.rivalCruiseSpeedMps).toBeGreaterThan(easy.rivalCruiseSpeedMps);
+    expect(boss.rivalHeadStartMeters).toBeGreaterThan(easy.rivalHeadStartMeters);
+    expect(easy.rivalHeadStartMeters).toBe(0); // the first rival starts level
+    // Both keep the route length so progress is on the same 0..1 scale.
+    expect(easy.routeLengthMeters).toBe(6000);
+    expect(boss.routeLengthMeters).toBe(6000);
+    // The time limit scales with the route length and the rival's own run time.
+    expect(easy.timeLimitSeconds).toBeGreaterThan(6000 / easy.rivalCruiseSpeedMps);
+    expect(boss.timeLimitSeconds).toBeGreaterThan(6000 / boss.rivalCruiseSpeedMps);
+  });
+
+  it('raceConfigForRank: a shorter route gets a proportionally shorter clock', () => {
+    const long = raceConfigForRank(8, 9000);
+    const short = raceConfigForRank(8, 3000);
+    expect(short.timeLimitSeconds).toBeLessThan(long.timeLimitSeconds);
+    expect(short.rivalCruiseSpeedMps).toBeCloseTo(long.rivalCruiseSpeedMps, 6); // speed is per-rank, not per-route
   });
 });

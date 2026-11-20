@@ -63,6 +63,42 @@ export const DEFAULT_BLACKLIST_RACE: BlacklistRaceConfig = {
   countdownSeconds: 3,
 };
 
+const RANK = {
+  /** Number of heat levels = number of Blacklist ranks (1..15). */
+  count: 15,
+  /** Rival cruise speed: 34 m/s (rank 15) → 40 m/s (rank 1, the boss). */
+  rivalSpeedMin: 34,
+  rivalSpeedMax: 40,
+  /** Rival running start: 0 m (rank 15) → 250 m (rank 1). */
+  headStartMax: 250,
+  /** Time limit as a multiple of the rival's own run time (generous so a clean run wins). */
+  timeFactorMin: 1.12,
+  timeFactorMax: 1.2,
+  countdownSeconds: 3,
+} as const;
+
+/**
+ * The race config for a given rival rank, given the *actual* route length (the generated route
+ * may be shorter than the target on a dead‑end network). Rank 15 is the first/easiest rival, rank
+ * 1 the boss: higher rivals are faster, get a head start, and a tighter clock. `routeLengthMeters`
+ * must be the real route length so the rival's progress and the player's share the same 0..1 scale.
+ */
+export function raceConfigForRank(rank: number, routeLengthMeters: number): BlacklistRaceConfig {
+  // 0 at rank 15 (easiest) → 1 at rank 1 (hardest).
+  const f = Math.max(0, Math.min(1, (RANK.count - rank) / (RANK.count - 1)));
+  const rivalCruiseSpeedMps = RANK.rivalSpeedMin + (RANK.rivalSpeedMax - RANK.rivalSpeedMin) * f;
+  const rivalHeadStartMeters = RANK.headStartMax * f;
+  const timeFactor = RANK.timeFactorMin + (RANK.timeFactorMax - RANK.timeFactorMin) * f;
+  const timeLimitSeconds = (routeLengthMeters / rivalCruiseSpeedMps) * timeFactor;
+  return {
+    routeLengthMeters,
+    timeLimitSeconds,
+    rivalCruiseSpeedMps,
+    rivalHeadStartMeters,
+    countdownSeconds: RANK.countdownSeconds,
+  };
+}
+
 export function initialBlacklistRaceState(config: BlacklistRaceConfig): BlacklistRaceState {
   const headProgress = Math.min(1, config.rivalHeadStartMeters / config.routeLengthMeters);
   return {
