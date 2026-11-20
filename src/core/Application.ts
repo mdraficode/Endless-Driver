@@ -81,6 +81,7 @@ import {
   type BlacklistRaceConfig,
   type BlacklistRaceState,
 } from '../most-wanted/BlacklistRaceModel';
+import { applyRaceWin, nextEligibleRival, raceWinReward } from '../most-wanted/BlacklistCampaign';
 import {
   buildRaceRouteFromNetwork,
   pointAlongRoute,
@@ -1824,12 +1825,12 @@ export class Application {
    */
   challengeNextRival(): boolean {
     if (this.#raceState !== null) return false; // already mid-race
-    const career = this.#bountyState.careerTotal;
-    // The next rival: highest rank (15 → 1) whose threshold is met and that isn't busted yet.
-    const candidate = [...BLACKLIST_RIVALS]
-      .filter((r) => r.challengeThreshold <= career && !this.#bustedRanks.includes(r.rank))
-      .sort((a, b) => b.rank - a.rank)[0];
-    if (candidate === undefined) return false;
+    // The next rival (D3): highest rank whose career-bounty threshold is met and isn't busted yet.
+    const candidate = nextEligibleRival(
+      { bustedRanks: this.#bustedRanks, careerTotal: this.#bountyState.careerTotal },
+      BLACKLIST_RIVALS,
+    );
+    if (candidate === null) return false;
     const network = this.#terrainSampler.roadNetwork;
     if (network === undefined) return false;
     const pose = this.#car.getInterpolatedPose(this.#physics.interpolationAlpha);
@@ -1910,15 +1911,17 @@ export class Application {
   /** A win: the rival is busted (raises the D2 ceiling), the win bounty banks, Pink Slip stolen. */
   #resolveRaceWon(): void {
     const rival = this.#activeRival;
-    if (rival !== null && !this.#bustedRanks.includes(rival.rank)) {
-      this.#bustedRanks.push(rival.rank); // D2: the pursuit ceiling rises by one
+    if (rival === null) {
+      this.#cleanupRace();
+      return;
     }
-    // The win bounty grows with the rival's rank (a tougher rival is worth more).
-    const reward = rival !== null ? 8000 + (HEAT_LEVELS - rival.rank + 1) * 1500 : 8000;
-    this.#bountyState = {
-      ...this.#bountyState,
-      careerTotal: this.#bountyState.careerTotal + reward,
-    };
+    const next = applyRaceWin(
+      { bustedRanks: this.#bustedRanks, careerTotal: this.#bountyState.careerTotal },
+      rival.rank,
+      raceWinReward(rival.rank),
+    );
+    this.#bustedRanks = [...next.bustedRanks]; // D2: the pursuit ceiling rises by one
+    this.#bountyState = { ...this.#bountyState, careerTotal: next.careerTotal };
     this.#cleanupRace();
   }
 

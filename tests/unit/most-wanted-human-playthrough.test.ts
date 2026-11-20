@@ -1,14 +1,33 @@
 import { describe, expect, it } from 'vitest';
 
-import { BUST_CONFIG, EVADE_CONFIG, MW_TIER_CAPS } from '../../src/config/most-wanted';
+import {
+  BLACKLIST_RIVALS,
+  BUST_CONFIG,
+  EVADE_CONFIG,
+  MW_TIER_CAPS,
+} from '../../src/config/most-wanted';
 import { initialBountyState, settleBounty, stepBounty } from '../../src/most-wanted/BountyModel';
 import {
   initialBlacklistRaceState,
+  raceConfigForRank,
   stepBlacklistRace,
   type BlacklistRaceConfig,
 } from '../../src/most-wanted/BlacklistRaceModel';
+import { straightRoute } from '../../src/most-wanted/BlacklistRoute';
+import {
+  applyRaceWin,
+  initialCampaignState,
+  nextEligibleRival,
+  raceWinReward,
+  rivalsBustedCount,
+} from '../../src/most-wanted/BlacklistCampaign';
 import { initialHideSpotState, stepHideSpot } from '../../src/most-wanted/HideSpotModel';
-import { initialHeatState, stepHeat, type HeatState } from '../../src/most-wanted/HeatModel';
+import {
+  computeCeiling,
+  initialHeatState,
+  stepHeat,
+  type HeatState,
+} from '../../src/most-wanted/HeatModel';
 import { PoliceUnits } from '../../src/most-wanted/PoliceUnits';
 import {
   initialPursuitState,
@@ -385,6 +404,33 @@ function run(
 // The 34 m/s speed-crime threshold lives in HEAT_CONFIG; the driver floors well above it.
 const FLOOR = (): Actions => ({ throttle: 1, brake: 0 });
 
+/**
+ * Drive a Blacklist race the way a human would: accelerate to `topSpeed`, measure progress along a
+ * straight route, and step the real race model. `bustAt` (sim seconds) makes the driver get boxed
+ * and pinned at that time (the race's loss signal). Returns the race's final phase.
+ */
+function driveRace(
+  config: BlacklistRaceConfig,
+  routeLengthMeters: number,
+  opts: { readonly topSpeed: number; readonly bustAt?: number },
+): string {
+  const dt = 0.1;
+  let state = initialBlacklistRaceState(config);
+  let speed = 0;
+  let dist = 0;
+  const horizon = config.timeLimitSeconds + 60;
+  for (let t = 0; t < horizon; t += dt) {
+    const busted = opts.bustAt !== undefined && t >= opts.bustAt;
+    speed = busted ? 0 : Math.min(opts.topSpeed, speed + 8 * dt);
+    dist += speed * dt;
+    const progress = Math.min(1, dist / routeLengthMeters);
+    const result = stepBlacklistRace(config, state, { dt, playerProgress: progress, busted });
+    state = result.state;
+    if (result.outcome !== null) return state.phase;
+  }
+  return state.phase;
+}
+
 describe('Most Wanted — intensive human‑player‑perspective playthrough (Phase 10)', () => {
   it('flooring it escalates the WHOLE pursuit: squad, rhino, heli, roadblocks, spikes', () => {
     const sim = run(70, FLOOR);
@@ -488,5 +534,43 @@ describe('Most Wanted — intensive human‑player‑perspective playthrough (Ph
       return outcome;
     })();
     expect(loser).toBe('lost');
+  });
+
+  it('challenges the first rival, drives the route, and WINS → Pink Slip stolen + ceiling rises (D2/D3)', () => {
+    // A fresh career can challenge rank 15 (threshold 0).
+    const campaign = initialCampaignState();
+    const rival = nextEligibleRival(campaign, BLACKLIST_RIVALS)!;
+    expect(rival.rank).toBe(15);
+    // A real road route for the race; the rival's config scales to the actual route length.
+    const route = straightRoute(0, 0, { x: 0, z: -1 }, 6000, 50);
+    const config = raceConfigForRank(rival.rank, route.lengthMeters);
+    // The human drives hard (40 m/s) — faster than the rank-15 rival (34 m/s) → they win.
+    expect(driveRace(config, route.lengthMeters, { topSpeed: 40 })).toBe('won');
+    // Winning resolves the campaign: the rival is busted, the bounty banks, and the D2 ceiling
+    // rises from 1 to 2 (the whole point of busting Blacklist cars).
+    const after = applyRaceWin(campaign, rival.rank);
+    expect(after.bustedRanks).toContain(15);
+    expect(after.careerTotal).toBe(raceWinReward(15));
+    expect(computeCeiling(rivalsBustedCount(after))).toBe(2);
+  });
+
+  it('getting boxed (busted) mid-race → you LOSE and take no Pink Slip', () => {
+    const campaign = initialCampaignState();
+    const rival = nextEligibleRival(campaign, BLACKLIST_RIVALS)!;
+    const route = straightRoute(0, 0, { x: 0, z: -1 }, 6000, 50);
+    const config = raceConfigForRank(rival.rank, route.lengthMeters);
+    // The human drives but gets boxed and pinned well before the finish → the race is lost.
+    expect(driveRace(config, route.lengthMeters, { topSpeed: 40, bustAt: 40 })).toBe('lost');
+    // No Pink Slip: the campaign is unchanged (the rival is not busted, the ceiling stays at 1).
+    expect(campaign.bustedRanks).toEqual([]);
+    expect(computeCeiling(rivalsBustedCount(campaign))).toBe(1);
+  });
+
+  it('a player slower than the rival cannot win (the race is a real contest, not a freebie)', () => {
+    const rival = BLACKLIST_RIVALS.find((r) => r.rank === 15)!;
+    const route = straightRoute(0, 0, { x: 0, z: -1 }, 6000, 50);
+    const config = raceConfigForRank(rival.rank, route.lengthMeters);
+    // Cruising below the rival's pace (34 m/s) → the rival finishes first → loss.
+    expect(driveRace(config, route.lengthMeters, { topSpeed: 30 })).toBe('lost');
   });
 });
