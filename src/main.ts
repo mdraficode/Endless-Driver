@@ -260,7 +260,12 @@ let driveRestartTask: Promise<void> | null = null;
 let debugPoliceWanted = false;
 window.addEventListener('keydown', (event) => {
   if (event.repeat || drivingApplication === null) return;
-  if (event.key !== 'v' && event.key !== 'V') return;
+  if (event.key !== 'v' && event.key !== 'V') {
+    // Milestone 5b: "B" challenges the next eligible Blacklist rival (a hunt-&-destroy race).
+    if (event.key !== 'b' && event.key !== 'B') return;
+    drivingApplication.challengeNextRival();
+    return;
+  }
   debugPoliceWanted = !debugPoliceWanted;
   drivingApplication.setDebugPoliceWanted(debugPoliceWanted);
 });

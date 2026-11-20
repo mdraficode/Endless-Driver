@@ -74,8 +74,32 @@ import { initialHideSpotState, stepHideSpot } from '../most-wanted/HideSpotModel
 import { PursuitTraps } from '../most-wanted/PursuitTraps';
 import { initialTrapState, stepTraps } from '../most-wanted/PursuitTrapsModel';
 import type { TrapState } from '../most-wanted/PursuitTrapsModel';
-import type { BountyState, PoliceUnitKind, PursuitHudData } from '../most-wanted/types';
-import { EVADE_CONFIG, MW_TIER_CAPS, PURSUIT_TRAPS } from '../config/most-wanted';
+import {
+  initialBlacklistRaceState,
+  raceConfigForRank,
+  stepBlacklistRace,
+  type BlacklistRaceConfig,
+  type BlacklistRaceState,
+} from '../most-wanted/BlacklistRaceModel';
+import {
+  buildRaceRouteFromNetwork,
+  pointAlongRoute,
+  progressAlongRoute,
+  type RaceRoute,
+} from '../most-wanted/BlacklistRoute';
+import type {
+  BlacklistRivalConfig,
+  BountyState,
+  PoliceUnitKind,
+  PursuitHudData,
+} from '../most-wanted/types';
+import {
+  BLACKLIST_RIVALS,
+  EVADE_CONFIG,
+  HEAT_LEVELS,
+  MW_TIER_CAPS,
+  PURSUIT_TRAPS,
+} from '../config/most-wanted';
 import { PlayerCarVisual } from '../vehicles/PlayerCarVisual';
 import { resolveHighSpeedMotionBlurIntensity } from '../vehicles/vehicle-effects';
 import type { VehiclePose, VehicleTelemetry } from '../vehicles/types';
@@ -90,6 +114,7 @@ import { InputManager } from '../input/InputManager';
 import { OrbitGesture } from '../input/orbit-gesture';
 import { TouchControls } from '../input/TouchControls';
 import { PerspectiveCamera } from 'three';
+import * as THREE from 'three';
 import { DaylightController } from '../environment/DaylightController';
 import { applyNightMoodToClock } from '../environment/night-mood';
 import {
@@ -374,6 +399,16 @@ export class Application {
   // Milestone 5b — the Blacklist campaign.
   /** Ranks busted so far (D2: the pursuit ceiling is 1 + count, capped at 15). */
   #bustedRanks: number[] = [];
+  /** The live hunt-&-destroy race (null when not racing). */
+  #raceState: BlacklistRaceState | null = null;
+  #raceConfig: BlacklistRaceConfig | null = null;
+  #raceRoute: RaceRoute | null = null;
+  /** The fixed police heat level for the active race (higher rivals bring more). */
+  #raceLevel = 0;
+  /** The rival's car mesh (kinematic, driven along the route each frame). */
+  #rivalBody: THREE.Group | null = null;
+  /** The rival being raced (null when not racing). */
+  #activeRival: BlacklistRivalConfig | null = null;
   readonly #onMostWanted: ((state: HeatState, message: RadioMessage | null) => void) | null;
   readonly #onBountySettled: ((result: BountySettleResult) => void) | null;
   readonly #onPursuit: ((data: PursuitHudData) => void) | null;
@@ -1551,6 +1586,10 @@ export class Application {
     this.#policeUnits = null;
     this.#traps?.dispose();
     this.#traps = null;
+    if (this.#rivalBody !== null) {
+      this.#scene.removeObject(this.#rivalBody);
+      this.#rivalBody = null;
+    }
     this.#chaseCamera.dispose();
     this.#overlay?.dispose();
     this.#scene.dispose();
@@ -1571,8 +1610,13 @@ export class Application {
   #stepMostWanted(delta: number): void {
     const telemetry = this.#car.telemetry;
     const debug = this.#debugPoliceWanted;
-    const level = this.#heatState.level;
-    const engaged = level > 0 || debug;
+    // Milestone 5b: an active Blacklist race overrides the heat with fixed-level police + a race
+    // clock, so the squad chases at the rival's level the whole way and the heat can't cool.
+    const racing =
+      this.#raceState !== null &&
+      (this.#raceState.phase === 'countdown' || this.#raceState.phase === 'racing');
+    const level = racing ? this.#raceLevel : this.#heatState.level;
+    const engaged = level > 0 || debug || racing;
 
     // Milestone 4b-2: the spike-deflate and roadblock-crash slowdowns tick down every frame
     // (they persist through cooldown / stand-down until fully elapsed).
@@ -1580,8 +1624,9 @@ export class Application {
     this.#roadblockCrashSeconds = Math.max(0, this.#roadblockCrashSeconds - delta);
 
     // Milestone 4a: a new pursuit starts as heat rises from 0 — begin a fresh bounty accumulator
-    // (and fresh hide-spot charges, D5).
-    if (level > 0 && this.#bountyPhase === 'none') {
+    // (and fresh hide-spot charges, D5). A Blacklist race does not accrue pursuit bounty (the
+    // reward is the rival's Pink Slip), so it never opens a bounty phase.
+    if (level > 0 && !racing && this.#bountyPhase === 'none') {
       this.#bountyPhase = 'active';
       this.#bountyState = { ...this.#bountyState, currentPursuit: 0 };
       this.#hideSpotState = initialHideSpotState();
@@ -1657,8 +1702,8 @@ export class Application {
         engaged,
       });
       this.#pursuitState = pursuit.state;
-      // Accrue the bounty for this tick while in an active, unsettled chase.
-      if (this.#bountyPhase === 'active' && this.#pursuitState.phase === 'pursuit') {
+      // Accrue the bounty for this tick while in an active, unsettled chase (never during a race).
+      if (!racing && this.#bountyPhase === 'active' && this.#pursuitState.phase === 'pursuit') {
         this.#bountyState = stepBounty(this.#bountyState, {
           inPursuit: true,
           level,
@@ -1668,7 +1713,8 @@ export class Application {
       }
       if (pursuit.signals.busted) {
         this.#policeUnits?.clear(); // a bust stands the squad down
-        if (this.#bountyPhase === 'active') this.#settlePursuit('busted', level);
+        // A bust during a race is resolved by the race itself (lost → fine/impound), not here.
+        if (!racing && this.#bountyPhase === 'active') this.#settlePursuit('busted', level);
       }
       // Milestone 4b-2: physical roadblocks + spike strips. Committed to fixed positions from the
       // tactical plan; a hit slams the brakes (roadblock) or deflates the tyres (spike strip).
@@ -1717,6 +1763,16 @@ export class Application {
       this.#trapsState = initialTrapState();
     }
 
+    // Milestone 5b: a Blacklist race is a fixed-level, clocked event — the heat model is
+    // overridden (no cool-down) and the race advances with the squad's bust as its loss signal.
+    if (racing) {
+      this.#heatState = { ...this.#heatState, level: this.#raceLevel };
+      this.#stepBlacklistRace(delta, player, this.#pursuitState.busted);
+      this.#emitPursuitData();
+      this.#onMostWanted?.(this.#heatState, message ?? null);
+      return;
+    }
+
     // Heat model: always runs — catches the 911 that starts a pursuit and the cool-down that ends it.
     const heatResult = stepHeat(
       this.#heatState,
@@ -1749,6 +1805,136 @@ export class Application {
     // Prefer a pursuit escalation call (rhino / heli / spike / backup / busted) over the heat's.
     this.#emitPursuitData();
     this.#onMostWanted?.(heatResult.state, message ?? heatResult.message);
+  }
+
+  /**
+   * Begin a Blacklist hunt-&-destroy race with the next eligible rival (Milestone 5b). Eligible =
+   * not yet busted and its career-bounty threshold is met (D3). Builds a road route from the
+   * player's position, spawns the rival's car, and starts the race (fixed-level police chase the
+   * player the whole way). Returns true when a race starts, false when none is available (all
+   * busted, threshold unmet, no usable road route, or already mid-race).
+   */
+  challengeNextRival(): boolean {
+    if (this.#raceState !== null) return false; // already mid-race
+    const career = this.#bountyState.careerTotal;
+    // The next rival: highest rank (15 → 1) whose threshold is met and that isn't busted yet.
+    const candidate = [...BLACKLIST_RIVALS]
+      .filter((r) => r.challengeThreshold <= career && !this.#bustedRanks.includes(r.rank))
+      .sort((a, b) => b.rank - a.rank)[0];
+    if (candidate === undefined) return false;
+    const network = this.#terrainSampler.roadNetwork;
+    if (network === undefined) return false;
+    const pose = this.#car.getInterpolatedPose(this.#physics.interpolationAlpha);
+    const yaw = yawFromQuat(pose.rotation);
+    const heading = { x: -Math.sin(yaw), z: -Math.cos(yaw) };
+    // Longer routes for the tougher rivals; the actual length is clamped to what the roads give.
+    const targetLengthMeters = 4500 + (HEAT_LEVELS - candidate.rank) * 250;
+    const route = buildRaceRouteFromNetwork(
+      network,
+      pose.position.x,
+      pose.position.z,
+      targetLengthMeters,
+      heading,
+    );
+    if (route.lengthMeters < 400) return false; // too short to be a real race
+    const config = raceConfigForRank(candidate.rank, route.lengthMeters);
+    // Fixed police level for the race: higher rivals bring a heavier squad (3 → 6).
+    const raceLevel = Math.min(HEAT_LEVELS, 3 + Math.floor((HEAT_LEVELS - candidate.rank) / 4));
+    this.#raceRoute = route;
+    this.#raceConfig = config;
+    this.#raceState = initialBlacklistRaceState(config);
+    this.#raceLevel = raceLevel;
+    this.#activeRival = candidate;
+    this.#bountyPhase = 'none'; // no pursuit-bounty accrual during a race
+    this.#pursuitState = initialPursuitState(); // a fresh squad for the race
+    this.#spawnRivalBody(route, config);
+    return true;
+  }
+
+  /** Spawn the rival's car at the (head-start) position on the route. */
+  #spawnRivalBody(route: RaceRoute, config: BlacklistRaceConfig): void {
+    const start = pointAlongRoute(
+      route,
+      Math.min(1, config.rivalHeadStartMeters / config.routeLengthMeters),
+    );
+    const size: [number, number, number] = [2.0, 1.2, 4.4];
+    const body = new THREE.Group();
+    const box = new THREE.Mesh(
+      new THREE.BoxGeometry(size[0], size[1], size[2]),
+      new THREE.MeshStandardMaterial({ color: 0xd0202f, roughness: 0.5, metalness: 0.4 }),
+    );
+    box.position.y = size[1] / 2;
+    body.add(box);
+    body.position.set(start.x, this.#terrainSampler.heightAt(start.x, start.z), start.z);
+    body.rotation.y = start.yaw;
+    this.#scene.addObject(body);
+    this.#rivalBody = body;
+  }
+
+  /**
+   * Advance the active race by `delta`: measure the player's progress along the route, step the
+   * race outcome, drive the rival's car, and resolve a win/loss when it ends.
+   */
+  #stepBlacklistRace(delta: number, player: { x: number; z: number }, busted: boolean): void {
+    const state = this.#raceState;
+    const config = this.#raceConfig;
+    const route = this.#raceRoute;
+    if (state === null || config === null || route === null) return;
+    const progress = progressAlongRoute(route, player.x, player.z);
+    const result = stepBlacklistRace(config, state, {
+      dt: delta,
+      playerProgress: progress,
+      busted,
+    });
+    this.#raceState = result.state;
+    // Drive the rival's car along the route (it waits at the head start during the countdown).
+    if (this.#rivalBody !== null && result.state.phase !== 'countdown') {
+      const rp = pointAlongRoute(route, result.state.rivalProgress);
+      this.#rivalBody.position.set(rp.x, this.#terrainSampler.heightAt(rp.x, rp.z), rp.z);
+      this.#rivalBody.rotation.y = rp.yaw;
+    }
+    if (result.outcome === 'won') this.#resolveRaceWon();
+    else if (result.outcome === 'lost') this.#resolveRaceLost();
+  }
+
+  /** A win: the rival is busted (raises the D2 ceiling), the win bounty banks, Pink Slip stolen. */
+  #resolveRaceWon(): void {
+    const rival = this.#activeRival;
+    if (rival !== null && !this.#bustedRanks.includes(rival.rank)) {
+      this.#bustedRanks.push(rival.rank); // D2: the pursuit ceiling rises by one
+    }
+    // The win bounty grows with the rival's rank (a tougher rival is worth more).
+    const reward = rival !== null ? 8000 + (HEAT_LEVELS - rival.rank + 1) * 1500 : 8000;
+    this.#bountyState = {
+      ...this.#bountyState,
+      careerTotal: this.#bountyState.careerTotal + reward,
+    };
+    this.#cleanupRace();
+  }
+
+  /** A loss: if it came from a bust, take the normal fine + impound strike (D4: never the car). */
+  #resolveRaceLost(): void {
+    if (this.#pursuitState.busted) this.#settlePursuit('busted', this.#heatState.level);
+    this.#cleanupRace();
+  }
+
+  /** Tear the race down: drop the rival's car, stand the squad down, clear the forced heat. */
+  #cleanupRace(): void {
+    if (this.#rivalBody !== null) {
+      this.#scene.removeObject(this.#rivalBody);
+      this.#rivalBody = null;
+    }
+    this.#raceState = null;
+    this.#raceConfig = null;
+    this.#raceRoute = null;
+    this.#activeRival = null;
+    this.#raceLevel = 0;
+    this.#pursuitState = initialPursuitState();
+    this.#policeUnits?.clear();
+    this.#traps?.clear();
+    this.#trapsState = initialTrapState();
+    this.#bountyPhase = 'none';
+    this.#heatState = initialHeatState();
   }
 
   /**
