@@ -43,6 +43,8 @@ import { urlForSpawn } from './ui/StartLocationSelector';
 import { PauseMenu } from './ui/PauseMenu';
 import { BoostGauge } from './ui/BoostGauge';
 import { WantedHud } from './ui/WantedHud';
+import { AudioEngine } from './audio/AudioEngine';
+import { radioKindToStinger } from './audio/params';
 import { yawFromQuat } from './shared/vector';
 import { readWeatherPresetOverride } from './environment/SurfaceState';
 import { readSeasonRequest } from './environment/seasons';
@@ -259,6 +261,21 @@ let rosterVisible = false;
 let drivingPauseMenu: PauseMenu | null = null;
 let driveRestartTask: Promise<void> | null = null;
 
+// Phase 13 — procedural audio. A single engine instance (no per-frame allocation); the AudioContext
+// is only created inside `unlock()`, on the first user gesture, per the browser autoplay policy.
+const drivingAudio = new AudioEngine();
+let lastBoostActive = false;
+let lastRacePhase: 'countdown' | 'racing' | 'won' | 'lost' | null = null;
+{
+  const unlockAudio = () => {
+    drivingAudio.unlock();
+    window.removeEventListener('pointerdown', unlockAudio);
+    window.removeEventListener('keydown', unlockAudio);
+  };
+  window.addEventListener('pointerdown', unlockAudio);
+  window.addEventListener('keydown', unlockAudio);
+}
+
 // TEMP (Phase 10, Milestone 2): "V" toggles a "police are on you" state so the wanted meter can be
 // demonstrated before real pursuit AI lands (Milestone 3). Press V, then speed up to build heat
 // (a 911 pulls and the meter rises); release V to lose the police and cool down.
@@ -280,6 +297,13 @@ window.addEventListener('keydown', (event) => {
     // Milestone 5c: "L" toggles the Blacklist roster (the campaign menu).
     rosterVisible = !rosterVisible;
     drivingRoster?.update(rosterVisible ? drivingApplication.blacklistRoster() : null);
+    if (rosterVisible) drivingAudio.playUiOpen();
+    else drivingAudio.playUiClick();
+    return;
+  }
+  if (key === 'm' || key === 'M') {
+    // Phase 13: "M" mutes / unmutes the procedural audio.
+    drivingAudio.setMuted(!drivingAudio.isMuted);
   }
 });
 
@@ -426,10 +450,15 @@ async function startDrivingScene(restarting = false): Promise<void> {
         : new BlacklistRoster(appRoot, () => {
             // Challenge the next rival, then close the menu (the race banner takes over).
             if (drivingApplication === null) return;
+            drivingAudio.playUiClick();
             drivingApplication.challengeNextRival();
             rosterVisible = false;
             drivingRoster?.update(null);
           });
+    // Fresh audio edge-detection + menu state per session (a restart is a cold start).
+    lastBoostActive = false;
+    lastRacePhase = null;
+    rosterVisible = false;
     const startHour = readTimeRequest(window.location.search);
     const nightMood = startHour === null && preferences.nightMood;
     const menuNightMood =
@@ -487,8 +516,21 @@ async function startDrivingScene(restarting = false): Promise<void> {
       cameraMode: preferences.cameraMode,
       steeringSensitivity: preferences.steeringSensitivity,
       vehicleTuning: preferences.carTuning,
-      onBoostState: (state) => drivingBoostGauge?.update(state),
-      onMostWanted: (state, message) => drivingWantedHud?.update(state, message),
+      onDriving: (telemetry) => drivingAudio.setTelemetry(telemetry, performance.now()),
+      onBoostState: (state) => {
+        drivingBoostGauge?.update(state);
+        // A fresh nitro burn gets the whoosh (rising edge only).
+        if (state.active && !lastBoostActive) drivingAudio.playStinger('boost');
+        lastBoostActive = state.active;
+      },
+      onMostWanted: (state, message) => {
+        drivingWantedHud?.update(state, message);
+        // Big-moment radio codes get a stinger (routine chatter stays silent).
+        if (message !== null) {
+          const stinger = radioKindToStinger(message.kind);
+          if (stinger !== null) drivingAudio.playStinger(stinger);
+        }
+      },
       onPursuit: (data) => {
         minimap?.setPursuitBlips(data.blips);
         drivingWantedHud?.updatePursuit(data);
@@ -497,6 +539,13 @@ async function startDrivingScene(restarting = false): Promise<void> {
       onRace: (data) => {
         drivingRaceHud?.update(data);
         minimap?.setRivalBlip(data?.rivalX ?? null, data?.rivalZ ?? null);
+        // The race verdict gets its stinger once (the final frame carries won/lost).
+        const phase = data?.phase ?? null;
+        if (phase !== lastRacePhase && phase !== null) {
+          if (phase === 'won') drivingAudio.playStinger('won');
+          else if (phase === 'lost') drivingAudio.playStinger('lost');
+        }
+        lastRacePhase = phase;
       },
     };
 

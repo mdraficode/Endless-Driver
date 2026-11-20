@@ -259,6 +259,11 @@ export interface ApplicationOptions {
    * race is live, and once more with the final phase when it ends; `null` clears it — M5b.
    */
   readonly onRace?: (data: BlacklistRaceHud | null) => void;
+  /**
+   * Receives the live vehicle telemetry once per frame — feeds the procedural audio engine
+   * (engine pitch/gain, tyre squawk, wind, impact detection).
+   */
+  readonly onDriving?: (telemetry: VehicleTelemetry) => void;
 }
 
 type StatusTone = 'info' | 'error';
@@ -426,6 +431,7 @@ export class Application {
   readonly #onBountySettled: ((result: BountySettleResult) => void) | null;
   readonly #onPursuit: ((data: PursuitHudData) => void) | null;
   readonly #onRace: ((data: BlacklistRaceHud | null) => void) | null;
+  readonly #onDriving: ((telemetry: VehicleTelemetry) => void) | null;
   /**
    * TEMPORARY dev trigger (until pursuit AI detects the player in Milestone 3): when true the heat
    * model treats the player as being chased, so speeding pulls a 911 and the meter rises. Toggled
@@ -519,6 +525,7 @@ export class Application {
     this.#onPursuit = options.onPursuit ?? null;
     this.#onBountySettled = options.onBountySettled ?? null;
     this.#onRace = options.onRace ?? null;
+    this.#onDriving = options.onDriving ?? null;
     this.#buildTag = options.buildTag ?? null;
     this.#surfaceState = resolveSurfaceState(options.weather ?? 'clear');
 
@@ -2037,6 +2044,8 @@ export class Application {
     const boostState = this.#boostTank.update(delta, actions.boost, this.#car.telemetry.gear > 0);
     this.#onBoostState?.(boostState);
     this.#stepMostWanted(delta);
+    // Feed the procedural audio engine once per frame with the live vehicle telemetry.
+    this.#onDriving?.(this.#car.telemetry);
     // Milestone 4b-2: a spike-deflated tyre or a roadblock smash slows the car by shaping its
     // actions (flat tyres can't accelerate; a crash slams the brakes). No physics changes needed.
     const deflated = this.#spikeDeflateSeconds > 0;
