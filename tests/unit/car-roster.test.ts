@@ -78,4 +78,16 @@ describe('Phase 14 — car roster', () => {
       expect(car.stats.braking).toBeLessThanOrEqual(10);
     }
   });
+
+  it('non-sport cars present their authored silhouette, not the sport-coupe GLB (Phase 16)', () => {
+    for (const car of CAR_ROSTER) {
+      if (car.body === 'sport') continue;
+      expect(car.model).toBe('kaminari-gt-roadster');
+    }
+    // Every body archetype is genuinely drivable by the player.
+    const seen = new Set(CAR_ROSTER.map((c) => c.body));
+    for (const body of ['sport', 'muscle', 'supercar', 'sedan', 'suv'] as const) {
+      expect(seen.has(body)).toBe(true);
+    }
+  });
 });

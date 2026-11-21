@@ -138,6 +138,15 @@ export function bodyConfig(body: CarBody): VehicleConfig {
   return variant(BODIES[body] ?? {});
 }
 
+/**
+ * Phase 16 — a non-sport body must present its authored silhouette (the in-house visual),
+ * never the generic sport-coupe GLB: a coupe shape on an SUV or sedan reads as the wrong car.
+ * Sport cars keep their assigned model (the premium GLB where one was chosen).
+ */
+function modelForBody(body: CarBody, model: PlayerCarModel): PlayerCarModel {
+  return body === 'sport' ? model : 'kaminari-gt-roadster';
+}
+
 /** Scale a drivetrain's torque curve by a factor (used to differentiate Blacklist cars by rank). */
 function scaledTorque(
   curve: readonly (readonly [number, number])[],
@@ -245,11 +254,17 @@ export const CAR_ROSTER: readonly CarSpec[] = [
   ...STARTERS.map((s) => ({
     ...s,
     source: 'starter' as const,
+    model: modelForBody(s.body, s.model),
     config: bodyConfig(s.body),
   })),
   ...BLACKLIST_BODIES.map(([rank, body, model]) => {
     const rival = BLACKLIST_RIVALS.find((r) => r.rank === rank);
-    return blacklistCar(rank, `${rival?.name ?? `Rank ${rank}`} ${bodyName(body)}`, body, model);
+    return blacklistCar(
+      rank,
+      `${rival?.name ?? `Rank ${rank}`} ${bodyName(body)}`,
+      body,
+      modelForBody(body, model),
+    );
   }),
 ];
 
