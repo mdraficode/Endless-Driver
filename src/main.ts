@@ -1,5 +1,7 @@
 import './style.css';
 import { Application, type ApplicationOptions } from './core/Application';
+import { readCarCollection, saveCarCollection } from './cars/carCollectionStorage';
+import { activeSpec, unlock } from './cars/carCollection';
 import {
   RENDER_CONFIG,
   applyRenderSwitches,
@@ -435,6 +437,11 @@ async function startDrivingScene(restarting = false): Promise<void> {
     const rapier = await loadRapier();
     loadingScreen?.update(0.14, 'Physics ready — selecting the graphics profile…');
     const preferences = readGamePreferences();
+    // Phase 14: the car collection drives which car you're in (re-read fresh each (re)start,
+    // so a garage pick from the previous session takes effect). The active car's spec is passed
+    // to the Application; a Blacklist win unlocks + persists the rival's Pink Slip car.
+    let carCollection = readCarCollection();
+    const activeCar = activeSpec(carCollection);
     let activeTouchSteeringMode = preferences.touchSteeringMode;
     let activeTouchControlScalePercent = preferences.touchControlScalePercent;
     drivingBoostGauge?.dispose();
@@ -505,6 +512,7 @@ async function startDrivingScene(restarting = false): Promise<void> {
       nightMood,
       ...(spawnId === undefined ? {} : { spawnId }),
       carModel: preferences.carModel,
+      ...(activeCar === null ? {} : { activeCar }),
       trafficIntensity: preferences.trafficIntensity,
       // Phase 8 settings: a `?weather=` launch override beats the saved condition, which
       // beats the dry default — so a saved 'rain' launches already wet and rainy.
@@ -546,6 +554,11 @@ async function startDrivingScene(restarting = false): Promise<void> {
           else if (phase === 'lost') drivingAudio.playStinger('lost');
         }
         lastRacePhase = phase;
+      },
+      onBlacklistWin: (carId) => {
+        // Phase 14: a won race grants the rival's Pink Slip car to the collection.
+        carCollection = unlock(carCollection, carId);
+        saveCarCollection(carCollection);
       },
     };
 

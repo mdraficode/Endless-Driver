@@ -111,6 +111,7 @@ import {
 import { PlayerCarVisual } from '../vehicles/PlayerCarVisual';
 import { resolveHighSpeedMotionBlurIntensity } from '../vehicles/vehicle-effects';
 import type { VehiclePose, VehicleTelemetry } from '../vehicles/types';
+import type { CarSpec } from '../cars/types';
 import { ChaseCamera } from '../cameras/ChaseCamera';
 import { CockpitCamera } from '../cameras/CockpitCamera';
 import {
@@ -218,6 +219,11 @@ export interface ApplicationOptions {
   readonly spawnRandom?: () => number;
   /** Persistent player-selected visual car model. */
   readonly carModel?: PlayerCarModel;
+  /**
+   * Phase 14 — the car currently being driven from the collection. Its config drives the physics
+   * and its model the visual; when omitted the stock config + `carModel` are used.
+   */
+  readonly activeCar?: CarSpec;
   /** Player-selected Aohara traffic activity budget. */
   readonly trafficIntensity?: TrafficIntensity;
   /** Deterministic preset (`?weather=clear|rain`) drives tire response and the bounded Aohara road sheen. */
@@ -259,6 +265,11 @@ export interface ApplicationOptions {
    * race is live, and once more with the final phase when it ends; `null` clears it — M5b.
    */
   readonly onRace?: (data: BlacklistRaceHud | null) => void;
+  /**
+   * Phase 14 — fired once when a Blacklist race is won, with the car id the rival's Pink Slip
+   * grants (`mw-car-<rank>`). The owner unlocks + persists the car in the collection.
+   */
+  readonly onBlacklistWin?: (carId: string) => void;
   /**
    * Receives the live vehicle telemetry once per frame — feeds the procedural audio engine
    * (engine pitch/gain, tyre squawk, wind, impact detection).
@@ -431,7 +442,10 @@ export class Application {
   readonly #onBountySettled: ((result: BountySettleResult) => void) | null;
   readonly #onPursuit: ((data: PursuitHudData) => void) | null;
   readonly #onRace: ((data: BlacklistRaceHud | null) => void) | null;
+  readonly #onBlacklistWin: ((carId: string) => void) | null;
   readonly #onDriving: ((telemetry: VehicleTelemetry) => void) | null;
+  /** Phase 14 — the collection car being driven (its config + model resolved at construction). */
+  #activeCarId: string | null;
   /**
    * TEMPORARY dev trigger (until pursuit AI detects the player in Milestone 3): when true the heat
    * model treats the player as being chased, so speeding pulls a 911 and the meter rises. Toggled
@@ -525,7 +539,9 @@ export class Application {
     this.#onPursuit = options.onPursuit ?? null;
     this.#onBountySettled = options.onBountySettled ?? null;
     this.#onRace = options.onRace ?? null;
+    this.#onBlacklistWin = options.onBlacklistWin ?? null;
     this.#onDriving = options.onDriving ?? null;
+    this.#activeCarId = options.activeCar?.id ?? null;
     this.#buildTag = options.buildTag ?? null;
     this.#surfaceState = resolveSurfaceState(options.weather ?? 'clear');
 
@@ -625,7 +641,8 @@ export class Application {
       physics: this.#physics,
       // Phase 12.1: the saved handling mode + tuning resolve against the stock config;
       // `setCarTuning` live-swaps the same pure resolution mid-drive.
-      config: applyCarTuning(VEHICLE_CONFIG, this.#vehicleTuning),
+      // Phase 14: when a collection car is active, its config (not the stock one) is the base.
+      config: applyCarTuning(options.activeCar?.config ?? VEHICLE_CONFIG, this.#vehicleTuning),
       spawnPosition: this.#spawn.position,
       spawnYaw: this.#spawn.yaw,
       // The generator supplies the surface identity; Phase 7 conditions modify its physical
@@ -650,7 +667,9 @@ export class Application {
         terrainSampler.normalAt(x + this.#origin.offset.x, z + this.#origin.offset.z),
     });
 
-    this.#carVisual = new PlayerCarVisual(options.carModel ?? 'generic-sport-coupe');
+    this.#carVisual = new PlayerCarVisual(
+      options.activeCar?.model ?? options.carModel ?? 'generic-sport-coupe',
+    );
     this.#scene.addObject(this.#carVisual.root);
 
     this.#policeUnits = new PoliceUnits(this.#scene);
@@ -903,6 +922,11 @@ export class Application {
 
   get car(): Car {
     return this.#car;
+  }
+
+  /** Phase 14 — the id of the collection car being driven (null = the stock car). */
+  get activeCarId(): string | null {
+    return this.#activeCarId;
   }
 
   get telemetry(): VehicleTelemetry {
@@ -1948,6 +1972,8 @@ export class Application {
     );
     this.#bustedRanks = [...next.bustedRanks]; // D2: the pursuit ceiling rises by one
     this.#bountyState = { ...this.#bountyState, careerTotal: next.careerTotal };
+    // Phase 14: the win also grants the rival's Pink Slip car to the collection.
+    this.#onBlacklistWin?.(rival.pinkSlipCar);
     this.#cleanupRace();
   }
 
