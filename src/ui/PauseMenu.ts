@@ -14,6 +14,8 @@ import type {
   WeatherPreference,
 } from '../config/game-preferences';
 import { SEASONS, type SeasonId } from '../environment/seasons';
+import type { GarageEntry } from '../cars/carCollection';
+import type { CarBody } from '../cars/types';
 import type { SpawnPoint } from '../config/spawns';
 import type { TierId } from '../config/tiers';
 import {
@@ -65,6 +67,16 @@ export interface PauseMenuOptions {
   /** Clears a URL tier override only when the graphics selection was explicitly changed. */
   readonly onRestart: (clearGraphicsOverride: boolean) => void;
   readonly onApplySpawn: (spawnId: string, clearGraphicsOverride: boolean) => void;
+  /**
+   * Phase 14 — the drivable-car collection (the Garage), read fresh each time the page renders.
+   * When provided, the "Car Model" page becomes the full collection instead of the two visual models.
+   */
+  readonly garage?: () => {
+    readonly activeId: string;
+    readonly cars: readonly GarageEntry[];
+  } | null;
+  /** Selects a car from the collection (the owner persists it + restarts to drive it). */
+  readonly onSelectCar?: (carId: string) => void;
   readonly onPreferenceChange: <K extends keyof GamePreferences>(
     key: K,
     value: GamePreferences[K],
@@ -151,6 +163,15 @@ const CAR_CHOICES: readonly {
     tag: 'Open-top',
   },
 ];
+
+/** Phase 14 — body-archetype labels for the Garage (the drivable collection). */
+const GARAGE_BODY_LABEL: Record<CarBody, string> = {
+  sport: 'Sport',
+  muscle: 'Muscle',
+  supercar: 'Supercar',
+  sedan: 'Sedan',
+  suv: 'SUV',
+};
 
 /** In-game pause/home menu. Night Mood applies immediately; other options may require restart. */
 export class PauseMenu {
@@ -687,48 +708,103 @@ export class PauseMenu {
     page.append(hint, fullscreenRow, fullscreenStatus);
   }
 
-  #renderVehicle(page: HTMLElement): void {
+  /**
+   * Phase 14 — the "Car Model" page is now the drivable collection (the Garage): owned cars you
+   * can drive, plus the locked Blacklist cars. Falls back to the two visual models when a
+   * collection isn't wired.
+   */
+  #renderCarSelection(page: HTMLElement): void {
+    const garage = this.#options.garage?.() ?? null;
+    const onSelectCar = this.#options.onSelectCar;
+    if (garage === null || onSelectCar === undefined) {
+      page.append(
+        this.#sectionHeading('CHOOSE YOUR CAR', 'Car Model'),
+        this.#paragraph('Car changes apply in place without restarting the renderer.'),
+      );
+      const cards = document.createElement('div');
+      cards.className = 'pause-menu-car-cards';
+      for (const choice of CAR_CHOICES) {
+        const selected = this.#preferences.carModel === choice.value;
+        const card = document.createElement('button');
+        card.className = `pause-menu-car-card${selected ? ' is-selected' : ''}`;
+        card.type = 'button';
+        card.dataset['carModel'] = choice.value;
+        card.setAttribute('aria-pressed', String(selected));
+        const swatch = document.createElement('span');
+        swatch.className = `pause-menu-car-swatch is-${choice.value}`;
+        swatch.setAttribute('aria-hidden', 'true');
+        const tag = document.createElement('span');
+        tag.className = 'pause-menu-car-tag';
+        tag.textContent = choice.tag;
+        const title = document.createElement('strong');
+        title.textContent = choice.title;
+        const description = document.createElement('span');
+        description.textContent = choice.description;
+        const selectedLabel = document.createElement('span');
+        selectedLabel.className = 'pause-menu-car-selected';
+        selectedLabel.textContent = selected ? 'SELECTED' : 'SELECT';
+        card.append(swatch, tag, title, description, selectedLabel);
+        card.addEventListener('click', () => {
+          this.#setPreference('carModel', choice.value);
+          this.#renderPage();
+          this.#content
+            .querySelector<HTMLButtonElement>(`[data-car-model="${choice.value}"]`)
+            ?.focus();
+        });
+        cards.append(card);
+      }
+      page.append(cards);
+      return;
+    }
+
     page.append(
-      this.#sectionHeading('CHOOSE YOUR CAR', 'Car Model'),
-      this.#paragraph('Car changes apply in place without restarting the renderer.'),
+      this.#sectionHeading('YOUR CARS', 'Garage'),
+      this.#paragraph(
+        'Drive your cars. Beat a Blacklist rival to unlock their car. A pick takes effect on the next start.',
+      ),
     );
     const cards = document.createElement('div');
     cards.className = 'pause-menu-car-cards';
-    for (const choice of CAR_CHOICES) {
-      const selected = this.#preferences.carModel === choice.value;
+    let dividerAdded = false;
+    for (const entry of garage.cars) {
+      const { spec, owned, active } = entry;
+      if (spec.source === 'blacklist' && !dividerAdded) {
+        const divider = document.createElement('div');
+        divider.className = 'pause-menu-garage-divider';
+        divider.textContent = 'BLACKLIST';
+        cards.append(divider);
+        dividerAdded = true;
+      }
       const card = document.createElement('button');
-      card.className = `pause-menu-car-card${selected ? ' is-selected' : ''}`;
       card.type = 'button';
-      card.dataset['carModel'] = choice.value;
-      card.setAttribute('aria-pressed', String(selected));
-      const swatch = document.createElement('span');
-      swatch.className = `pause-menu-car-swatch is-${choice.value}`;
-      swatch.setAttribute('aria-hidden', 'true');
+      card.className = `pause-menu-car-card${active ? ' is-selected' : ''}${owned ? '' : ' is-locked'}`;
+      card.dataset['carId'] = spec.id;
+      card.setAttribute('aria-pressed', String(active));
       const tag = document.createElement('span');
       tag.className = 'pause-menu-car-tag';
-      tag.textContent = choice.tag;
+      tag.textContent = GARAGE_BODY_LABEL[spec.body];
       const title = document.createElement('strong');
-      title.textContent = choice.title;
+      title.textContent = spec.name;
       const description = document.createElement('span');
-      description.textContent = choice.description;
+      description.textContent = owned
+        ? `${spec.stats.topSpeed} km/h · acc ${spec.stats.acceleration} · han ${spec.stats.handling} · brk ${spec.stats.braking}`
+        : `Beat Rank ${spec.blacklistRank} to unlock`;
       const selectedLabel = document.createElement('span');
       selectedLabel.className = 'pause-menu-car-selected';
-      selectedLabel.textContent = selected ? 'SELECTED' : 'SELECT';
-      card.append(swatch, tag, title, description, selectedLabel);
-      card.addEventListener('click', () => {
-        this.#setPreference('carModel', choice.value);
-        this.#renderPage();
-        this.#content
-          .querySelector<HTMLButtonElement>(`[data-car-model="${choice.value}"]`)
-          ?.focus();
-      });
+      selectedLabel.textContent = active ? 'DRIVING' : owned ? 'DRIVE' : 'LOCKED';
+      card.append(tag, title, description, selectedLabel);
+      if (owned && !active) {
+        card.addEventListener('click', () => onSelectCar(spec.id));
+      } else {
+        card.disabled = true;
+      }
       cards.append(card);
     }
-    const note = this.#paragraph(
-      'The Generic Sport Coupé loads in the background; the authored roadster stays visible until it is ready or if loading fails.',
-    );
-    note.classList.add('pause-menu-subtle-copy');
-    page.append(cards, note);
+    page.append(cards);
+  }
+
+  #renderVehicle(page: HTMLElement): void {
+    this.#renderCarSelection(page);
 
     // Phase 12.1 — handling mode + tuning, all live (no restart, no renderer rebuild).
     page.append(

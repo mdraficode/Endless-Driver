@@ -676,6 +676,14 @@ async function startDrivingScene(restarting = false): Promise<void> {
         },
         onRestart: restartCurrentDrive,
         onApplySpawn: applySpawnInPlace,
+        // Phase 14: the "Car Model" page is the drivable collection (the Garage).
+        garage: () => garageView(readCarCollection()),
+        onSelectCar: (carId) => {
+          const next = select(readCarCollection(), carId);
+          saveCarCollection(next);
+          // Tears the drive (and this menu) down and rebuilds you into the chosen car.
+          restartCurrentDrive(false);
+        },
         onPreferenceChange: (key, value) => {
           const saved = persistPreference(key, value);
           if (key === 'touchSteeringMode') {

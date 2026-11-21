@@ -1279,6 +1279,26 @@ body {
   letter-spacing: 0.1em;
 }
 
+.pause-menu-garage-divider {
+  grid-column: 1 / -1;
+  color: rgb(252 211 77 / 85%);
+  font-size: 0.56rem;
+  font-weight: 740;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.15rem 0;
+}
+
+.pause-menu-car-card.is-locked {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.pause-menu-car-card.is-locked:hover {
+  border-color: rgb(148 163 184 / 20%);
+  background: rgb(13 26 37 / 84%);
+}
+
 .pause-menu-help-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
