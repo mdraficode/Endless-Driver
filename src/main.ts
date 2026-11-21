@@ -1,7 +1,8 @@
 import './style.css';
 import { Application, type ApplicationOptions } from './core/Application';
 import { readCarCollection, saveCarCollection } from './cars/carCollectionStorage';
-import { activeSpec, unlock } from './cars/carCollection';
+import { activeSpec, garageView, select, unlock } from './cars/carCollection';
+import { CarGarage } from './ui/CarGarage';
 import {
   RENDER_CONFIG,
   applyRenderSwitches,
@@ -260,6 +261,8 @@ let drivingWantedHud: WantedHud | null = null;
 let drivingRaceHud: BlacklistRaceHud | null = null;
 let drivingRoster: BlacklistRoster | null = null;
 let rosterVisible = false;
+let drivingGarage: CarGarage | null = null;
+let garageVisible = false;
 let drivingPauseMenu: PauseMenu | null = null;
 let driveRestartTask: Promise<void> | null = null;
 
@@ -302,6 +305,13 @@ window.addEventListener('keydown', (event) => {
     if (rosterVisible) drivingAudio.playUiOpen();
     else drivingAudio.playUiClick();
     return;
+  }
+  if (key === 'g' || key === 'G') {
+    // Phase 14.4: "G" toggles the Garage (the drivable-car collection).
+    garageVisible = !garageVisible;
+    drivingGarage?.update(garageVisible ? garageView(readCarCollection()) : null);
+    if (garageVisible) drivingAudio.playUiOpen();
+    else drivingAudio.playUiClick();
   }
   if (key === 'm' || key === 'M') {
     // Phase 13: "M" mutes / unmutes the procedural audio.
@@ -381,6 +391,8 @@ async function restartDriveInPlace(
       drivingRaceHud = null;
       drivingRoster?.dispose();
       drivingRoster = null;
+      drivingGarage?.dispose();
+      drivingGarage = null;
       const previousApplication = drivingApplication;
       drivingApplication = null;
       previousApplication?.stop();
@@ -461,6 +473,19 @@ async function startDrivingScene(restarting = false): Promise<void> {
             drivingApplication.challengeNextRival();
             rosterVisible = false;
             drivingRoster?.update(null);
+          });
+    // Phase 14.4: the Garage — browse owned cars, "Drive" one (persists it, restarts to get in).
+    drivingGarage?.dispose();
+    drivingGarage =
+      appRoot === null
+        ? null
+        : new CarGarage(appRoot, (carId) => {
+            const next = select(readCarCollection(), carId);
+            saveCarCollection(next);
+            garageVisible = false;
+            drivingGarage?.update(null);
+            drivingAudio.playUiClick();
+            restartCurrentDrive(false);
           });
     // Fresh audio edge-detection + menu state per session (a restart is a cold start).
     lastBoostActive = false;

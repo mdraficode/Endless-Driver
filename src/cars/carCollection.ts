@@ -1,4 +1,4 @@
-import { DEFAULT_CAR_ID, STARTER_CAR_IDS, carById } from './carRoster';
+import { CAR_ROSTER, DEFAULT_CAR_ID, STARTER_CAR_IDS, carById } from './carRoster';
 import type { CarSpec } from './types';
 
 /**
@@ -54,4 +54,29 @@ export function activeSpec(state: CarCollectionState): CarSpec | null {
 /** The number of distinct cars in the collection (owned). */
 export function ownedCount(state: CarCollectionState): number {
   return state.ownedIds.length;
+}
+
+/** One row in the garage: a roster car with whether it's owned and whether it's the active one. */
+export interface GarageEntry {
+  readonly spec: CarSpec;
+  readonly owned: boolean;
+  readonly active: boolean;
+}
+
+/**
+ * The garage's view model: every roster car (starters first, then Blacklist cars rank 15→1) with
+ * its owned/active flags. Pure — the garage UI is a plain render of this.
+ */
+export function garageView(state: CarCollectionState): {
+  readonly activeId: string;
+  readonly cars: readonly GarageEntry[];
+} {
+  return {
+    activeId: state.activeId,
+    cars: CAR_ROSTER.map((spec) => ({
+      spec,
+      owned: state.ownedIds.includes(spec.id),
+      active: state.activeId === spec.id,
+    })),
+  };
 }

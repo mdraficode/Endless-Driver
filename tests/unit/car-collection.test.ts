@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   activeSpec,
+  garageView,
   initialCollection,
   owns,
   ownedCount,
@@ -64,5 +65,30 @@ describe('Phase 14 — car collection (ownership)', () => {
       expect(state.activeId).toBe(car.id);
       expect(activeSpec(state)!.id).toBe(car.id);
     }
+  });
+
+  it('garageView lists every roster car with owned/active flags (starters owned, Blacklist locked)', () => {
+    const state = initialCollection();
+    const view = garageView(state);
+    expect(view.activeId).toBe(DEFAULT_CAR_ID);
+    expect(view.cars).toHaveLength(CAR_ROSTER.length);
+    const hero = view.cars.find((c) => c.spec.id === DEFAULT_CAR_ID)!;
+    expect(hero.owned).toBe(true);
+    expect(hero.active).toBe(true);
+    // A Blacklist car you don't own yet is locked.
+    const locked = view.cars.find((c) => c.spec.id === 'mw-car-01')!;
+    expect(locked.owned).toBe(false);
+    expect(locked.active).toBe(false);
+  });
+
+  it('garageView reflects a newly unlocked + selected car', () => {
+    let state = unlock(initialCollection(), 'mw-car-12');
+    state = select(state, 'mw-car-12');
+    const view = garageView(state);
+    const entry = view.cars.find((c) => c.spec.id === 'mw-car-12')!;
+    expect(entry.owned).toBe(true);
+    expect(entry.active).toBe(true);
+    // Exactly one car is active.
+    expect(view.cars.filter((c) => c.active)).toHaveLength(1);
   });
 });
