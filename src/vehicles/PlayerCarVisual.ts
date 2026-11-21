@@ -3,6 +3,7 @@ import { loadModelAsset, type LoadedModel } from '../assets/ModelAsset';
 import { COCKPIT_CAMERA_CONFIG, FALLBACK_COCKPIT_EYE_ANCHOR } from '../config/camera';
 import type { PlayerCarModel } from '../config/game-preferences';
 import { VEHICLE_CONFIG } from '../config/vehicle';
+import type { CarBody } from '../cars/types';
 import { CarVisual } from './CarVisual';
 import { applyCarDamage, createCarDamage, resetCarDamage, type CarDamageMap } from './CarDamage';
 import { CarDamageLayer } from './CarDamageLayer';
@@ -55,7 +56,7 @@ interface ModelLodNodes {
  */
 export class PlayerCarVisual {
   readonly root = new Group();
-  readonly #fallback = new CarVisual();
+  readonly #fallback: CarVisual;
   readonly #headlightRig = createPlayerHeadlightRig();
   readonly #impact = createVehicleImpactState();
   /** Phase 12.3 — persistent per-part damage (session-scoped; resets with the car). */
@@ -73,6 +74,7 @@ export class PlayerCarVisual {
   #disposed = false;
   #headlightGain = 0;
   readonly #selectedModel: PlayerCarModel;
+  readonly #body: CarBody;
 
   /**
    * `revealFallback: true` (a mid-drive model switch) shows the authored roadster while the
@@ -83,9 +85,11 @@ export class PlayerCarVisual {
    */
   constructor(
     selectedModel: PlayerCarModel = 'generic-sport-coupe',
-    options?: { revealFallback?: boolean },
+    options?: { revealFallback?: boolean; body?: CarBody },
   ) {
     this.#selectedModel = selectedModel;
+    this.#body = options?.body ?? 'sport';
+    this.#fallback = new CarVisual(this.#body);
     this.root.name = 'player-car-visual';
     this.root.add(this.#fallback.root);
     this.#fallback.root.add(this.#headlightRig.root);

@@ -112,7 +112,7 @@ import {
 import { PlayerCarVisual } from '../vehicles/PlayerCarVisual';
 import { resolveHighSpeedMotionBlurIntensity } from '../vehicles/vehicle-effects';
 import type { VehiclePose, VehicleTelemetry } from '../vehicles/types';
-import type { CarSpec } from '../cars/types';
+import type { CarBody, CarSpec } from '../cars/types';
 import { ChaseCamera } from '../cameras/ChaseCamera';
 import { CockpitCamera } from '../cameras/CockpitCamera';
 import {
@@ -453,6 +453,8 @@ export class Application {
   readonly #onDriving: ((telemetry: VehicleTelemetry) => void) | null;
   /** Phase 14 — the collection car being driven (its config + model resolved at construction). */
   #activeCarId: string | null;
+  /** Phase 16 — body archetype of the active car; drives the fallback visual silhouette. */
+  #playerCarBody: CarBody = 'sport';
   /**
    * TEMPORARY dev trigger (until pursuit AI detects the player in Milestone 3): when true the heat
    * model treats the player as being chased, so speeding pulls a 911 and the meter rises. Toggled
@@ -550,6 +552,7 @@ export class Application {
     this.#onCampaignComplete = options.onCampaignComplete ?? null;
     this.#onDriving = options.onDriving ?? null;
     this.#activeCarId = options.activeCar?.id ?? null;
+    this.#playerCarBody = options.activeCar?.body ?? 'sport';
     this.#buildTag = options.buildTag ?? null;
     this.#surfaceState = resolveSurfaceState(options.weather ?? 'clear');
 
@@ -677,6 +680,7 @@ export class Application {
 
     this.#carVisual = new PlayerCarVisual(
       options.activeCar?.model ?? options.carModel ?? 'generic-sport-coupe',
+      { body: this.#playerCarBody },
     );
     this.#scene.addObject(this.#carVisual.root);
 
@@ -979,7 +983,7 @@ export class Application {
     const previous = this.#carVisual;
     // Mid-drive switch: the player chose this, so the car stays visible (on the roadster)
     // while the new model is fetched rather than vanishing.
-    const next = new PlayerCarVisual(model, { revealFallback: true });
+    const next = new PlayerCarVisual(model, { revealFallback: true, body: this.#playerCarBody });
     // 12.4f: the beams fade with the shared city night ramp (day = 0 when no daylight yet).
     next.setHeadlightGain(resolveUrbanNightGain(this.#daylight?.sunElevationDegrees ?? 90));
     next.sync(pose);

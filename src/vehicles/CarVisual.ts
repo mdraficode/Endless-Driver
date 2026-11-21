@@ -30,6 +30,7 @@ import {
   resolveBrakeLampIntensity,
 } from './vehicle-materials';
 import { VEHICLE_CONFIG } from '../config/vehicle';
+import type { CarBody } from '../cars/types';
 import type { VehiclePose } from './types';
 
 const UP = new Vector3(0, 1, 0);
@@ -53,8 +54,8 @@ export class CarVisual {
   #headlightGain = 0;
   #steeringWheel: Group | null = null;
 
-  constructor() {
-    this.root.name = 'kaminari-gt-roadster';
+  constructor(body: CarBody = 'sport') {
+    this.root.name = body === 'sport' ? 'kaminari-gt-roadster' : `car-${body}`;
 
     const paint = this.#track(createAutomotivePaintMaterial());
     const glass = this.#track(createTintedCabinMaterial());
@@ -68,179 +69,195 @@ export class CarVisual {
     this.#brakeLightMaterial = this.#track(createBrakeLightMaterial());
     glass.side = DoubleSide;
 
-    const shell = this.#addMesh(
-      'kaminari-gt-roadster-body-shell',
-      createRoadsterBodyGeometry(),
-      paint,
-    );
-    shell.castShadow = true;
-    shell.receiveShadow = true;
-
-    // Long, low hood, rear deck and subtle panel forms complete the original GT silhouette.
-    this.#addRounded('kaminari-gt-hood-panel', 1.32, 0.065, 1.22, 0.025, paint, [0, 0.292, -1.12]);
-    this.#addRounded('kaminari-gt-rear-deck', 1.34, 0.07, 0.56, 0.025, paint, [0, 0.265, 1.48]);
-    this.#addRounded(
-      'kaminari-gt-hood-ridge-left',
-      0.022,
-      0.018,
-      0.84,
-      0.008,
-      paint,
-      [-0.37, 0.333, -1.12],
-    );
-    this.#addRounded(
-      'kaminari-gt-hood-ridge-right',
-      0.022,
-      0.018,
-      0.84,
-      0.008,
-      paint,
-      [0.37, 0.333, -1.12],
-    );
-
-    // The open cabin is deliberately visible from the chase camera; there is no fabricated glass map.
-    const dashboard = this.#addRounded(
-      'kaminari-gt-dashboard',
-      1.28,
-      0.18,
-      0.34,
-      0.055,
-      interior,
-      [0, 0.34, -0.46],
-    );
-    dashboard.castShadow = true;
-    this.#addRounded('kaminari-gt-center-console', 0.34, 0.14, 0.82, 0.04, trim, [0, 0.14, 0.15]);
-
-    for (const side of [-1, 1] as const) {
-      const x = side * 0.36;
-      this.#addRounded(`kaminari-gt-seat-${side}-cushion`, 0.5, 0.17, 0.51, 0.07, interior, [
-        x,
-        0.055,
-        0.44,
-      ]);
-      this.#addRounded(
-        `kaminari-gt-seat-${side}-back`,
-        0.5,
-        0.53,
-        0.18,
-        0.065,
-        interior,
-        [x, 0.38, 0.72],
-        [0.1, 0, 0],
-      );
-      this.#addRounded(`kaminari-gt-seat-${side}-headrest`, 0.34, 0.2, 0.16, 0.055, interior, [
-        x,
-        0.73,
-        0.83,
-      ]);
-    }
-
-    const windshield = this.#addMesh('kaminari-gt-windshield', createWindshieldGeometry(), glass);
-    windshield.castShadow = false;
-    windshield.receiveShadow = true;
-    this.#addRod(
-      'kaminari-gt-a-pillar-left',
-      [-0.62, 0.27, -0.53],
-      [-0.52, 0.88, -0.08],
-      0.034,
-      trim,
-    );
-    this.#addRod(
-      'kaminari-gt-a-pillar-right',
-      [0.62, 0.27, -0.53],
-      [0.52, 0.88, -0.08],
-      0.034,
-      trim,
-    );
-    this.#addRod(
-      'kaminari-gt-roll-hoop-left',
-      [-0.47, 0.27, 0.92],
-      [-0.47, 0.94, 0.97],
-      0.026,
-      trim,
-    );
-    this.#addRod(
-      'kaminari-gt-roll-hoop-right',
-      [0.47, 0.27, 0.92],
-      [0.47, 0.94, 0.97],
-      0.026,
-      trim,
-    );
-    this.#addRod(
-      'kaminari-gt-roll-hoop-crossbar',
-      [-0.47, 0.94, 0.97],
-      [0.47, 0.94, 0.97],
-      0.027,
-      trim,
-    );
-
-    for (const side of [-1, 1] as const) {
-      const mirror = this.#addRounded(
-        `kaminari-gt-side-mirror-${side}`,
-        0.17,
-        0.1,
-        0.14,
-        0.035,
+    if (body === 'sport') {
+      const shell = this.#addMesh(
+        'kaminari-gt-roadster-body-shell',
+        createRoadsterBodyGeometry(),
         paint,
-        [side * 0.81, 0.47, -0.59],
       );
-      mirror.rotation.y = side * -0.12;
-      const mirrorGlass = this.#addBox(
-        `kaminari-gt-side-mirror-glass-${side}`,
-        0.11,
-        0.06,
-        0.012,
-        glass,
-        [side * 0.81, 0.47, -0.666],
-      );
-      mirrorGlass.rotation.y = side * -0.12;
+      shell.castShadow = true;
+      shell.receiveShadow = true;
 
-      const doorSeam = this.#addMesh(
-        `kaminari-gt-door-seam-${side}`,
-        createDoorSeamGeometry(side),
+      // Long, low hood, rear deck and subtle panel forms complete the original GT silhouette.
+      this.#addRounded(
+        'kaminari-gt-hood-panel',
+        1.32,
+        0.065,
+        1.22,
+        0.025,
+        paint,
+        [0, 0.292, -1.12],
+      );
+      this.#addRounded('kaminari-gt-rear-deck', 1.34, 0.07, 0.56, 0.025, paint, [0, 0.265, 1.48]);
+      this.#addRounded(
+        'kaminari-gt-hood-ridge-left',
+        0.022,
+        0.018,
+        0.84,
+        0.008,
+        paint,
+        [-0.37, 0.333, -1.12],
+      );
+      this.#addRounded(
+        'kaminari-gt-hood-ridge-right',
+        0.022,
+        0.018,
+        0.84,
+        0.008,
+        paint,
+        [0.37, 0.333, -1.12],
+      );
+
+      // The open cabin is deliberately visible from the chase camera; there is no fabricated glass map.
+      const dashboard = this.#addRounded(
+        'kaminari-gt-dashboard',
+        1.28,
+        0.18,
+        0.34,
+        0.055,
+        interior,
+        [0, 0.34, -0.46],
+      );
+      dashboard.castShadow = true;
+      this.#addRounded('kaminari-gt-center-console', 0.34, 0.14, 0.82, 0.04, trim, [0, 0.14, 0.15]);
+
+      for (const side of [-1, 1] as const) {
+        const x = side * 0.36;
+        this.#addRounded(`kaminari-gt-seat-${side}-cushion`, 0.5, 0.17, 0.51, 0.07, interior, [
+          x,
+          0.055,
+          0.44,
+        ]);
+        this.#addRounded(
+          `kaminari-gt-seat-${side}-back`,
+          0.5,
+          0.53,
+          0.18,
+          0.065,
+          interior,
+          [x, 0.38, 0.72],
+          [0.1, 0, 0],
+        );
+        this.#addRounded(`kaminari-gt-seat-${side}-headrest`, 0.34, 0.2, 0.16, 0.055, interior, [
+          x,
+          0.73,
+          0.83,
+        ]);
+      }
+
+      const windshield = this.#addMesh('kaminari-gt-windshield', createWindshieldGeometry(), glass);
+      windshield.castShadow = false;
+      windshield.receiveShadow = true;
+      this.#addRod(
+        'kaminari-gt-a-pillar-left',
+        [-0.62, 0.27, -0.53],
+        [-0.52, 0.88, -0.08],
+        0.034,
         trim,
       );
-      doorSeam.castShadow = false;
-      this.#addRounded(`kaminari-gt-door-handle-${side}`, 0.045, 0.018, 0.12, 0.008, exhaustMetal, [
-        side * 0.794,
-        0.13,
-        0.42,
-      ]);
-    }
-
-    this.#addRounded(
-      'kaminari-gt-front-grille',
-      0.68,
-      0.13,
-      0.035,
-      0.016,
-      trim,
-      [0, 0.105, -2.034],
-    );
-    this.#addRounded(
-      'kaminari-gt-front-grille-slat',
-      0.48,
-      0.014,
-      0.012,
-      0.005,
-      exhaustMetal,
-      [0, 0.105, -2.057],
-    );
-    for (const side of [-1, 1] as const) {
-      this.#addRounded(`kaminari-gt-headlamp-${side}`, 0.34, 0.105, 0.035, 0.016, headlamp, [
-        side * 0.55,
-        0.18,
-        -2.043,
-      ]);
-      this.#addRounded(
-        `kaminari-gt-brake-lamp-${side}`,
-        0.3,
-        0.075,
-        0.035,
-        0.015,
-        this.#brakeLightMaterial,
-        [side * 0.56, 0.16, 2.04],
+      this.#addRod(
+        'kaminari-gt-a-pillar-right',
+        [0.62, 0.27, -0.53],
+        [0.52, 0.88, -0.08],
+        0.034,
+        trim,
       );
+      this.#addRod(
+        'kaminari-gt-roll-hoop-left',
+        [-0.47, 0.27, 0.92],
+        [-0.47, 0.94, 0.97],
+        0.026,
+        trim,
+      );
+      this.#addRod(
+        'kaminari-gt-roll-hoop-right',
+        [0.47, 0.27, 0.92],
+        [0.47, 0.94, 0.97],
+        0.026,
+        trim,
+      );
+      this.#addRod(
+        'kaminari-gt-roll-hoop-crossbar',
+        [-0.47, 0.94, 0.97],
+        [0.47, 0.94, 0.97],
+        0.027,
+        trim,
+      );
+
+      for (const side of [-1, 1] as const) {
+        const mirror = this.#addRounded(
+          `kaminari-gt-side-mirror-${side}`,
+          0.17,
+          0.1,
+          0.14,
+          0.035,
+          paint,
+          [side * 0.81, 0.47, -0.59],
+        );
+        mirror.rotation.y = side * -0.12;
+        const mirrorGlass = this.#addBox(
+          `kaminari-gt-side-mirror-glass-${side}`,
+          0.11,
+          0.06,
+          0.012,
+          glass,
+          [side * 0.81, 0.47, -0.666],
+        );
+        mirrorGlass.rotation.y = side * -0.12;
+
+        const doorSeam = this.#addMesh(
+          `kaminari-gt-door-seam-${side}`,
+          createDoorSeamGeometry(side),
+          trim,
+        );
+        doorSeam.castShadow = false;
+        this.#addRounded(
+          `kaminari-gt-door-handle-${side}`,
+          0.045,
+          0.018,
+          0.12,
+          0.008,
+          exhaustMetal,
+          [side * 0.794, 0.13, 0.42],
+        );
+      }
+
+      this.#addRounded(
+        'kaminari-gt-front-grille',
+        0.68,
+        0.13,
+        0.035,
+        0.016,
+        trim,
+        [0, 0.105, -2.034],
+      );
+      this.#addRounded(
+        'kaminari-gt-front-grille-slat',
+        0.48,
+        0.014,
+        0.012,
+        0.005,
+        exhaustMetal,
+        [0, 0.105, -2.057],
+      );
+      for (const side of [-1, 1] as const) {
+        this.#addRounded(`kaminari-gt-headlamp-${side}`, 0.34, 0.105, 0.035, 0.016, headlamp, [
+          side * 0.55,
+          0.18,
+          -2.043,
+        ]);
+        this.#addRounded(
+          `kaminari-gt-brake-lamp-${side}`,
+          0.3,
+          0.075,
+          0.035,
+          0.015,
+          this.#brakeLightMaterial,
+          [side * 0.56, 0.16, 2.04],
+        );
+      }
+    } else {
+      this.#buildArchetype(body, paint, glass, trim, exhaustMetal, headlamp);
     }
 
     this.#createSteeringWheel(wheelMetal);
@@ -470,6 +487,96 @@ export class CarVisual {
     mesh.receiveShadow = true;
     parent.add(mesh);
     return mesh;
+  }
+
+  /**
+   * Builds a distinct body silhouette for a non-sport archetype while reusing
+   * the shared wheels, lights, steering wheel, exhaust and `sync()` from the
+   * roadster. Each archetype owns a unique height / width / length and a
+   * characteristic panel layout so the five bodies read differently from the
+   * player's seat, not just by paint.
+   */
+  #buildArchetype(
+    body: CarBody,
+    paint: Material,
+    glass: Material,
+    trim: Material,
+    exhaustMetal: Material,
+    headlamp: Material,
+  ): void {
+    switch (body) {
+      case 'muscle': {
+        // Wide, flat and long — a front-engine muscle profile.
+        this.#addRounded('muscle-body', 1.96, 0.56, 4.7, 0.18, paint, [0, 0.62, 0.12]);
+        this.#addBox('muscle-hood', 1.72, 0.14, 1.7, paint, [0, 0.93, 1.34]);
+        this.#addRounded('muscle-cabin', 1.56, 0.52, 1.86, 0.2, glass, [0, 1.2, -0.72]);
+        this.#addBox('muscle-roof', 1.3, 0.08, 1.6, paint, [0, 1.47, -0.72]);
+        this.#addBox('muscle-front-splitter', 1.92, 0.1, 0.5, trim, [0, 0.34, 2.24]);
+        this.#addBox('muscle-rear-spoiler', 1.7, 0.06, 0.34, paint, [0, 1.0, -2.2]);
+        this.#addBox('muscle-quad-headlights-l', 0.52, 0.16, 0.06, headlamp, [-0.6, 0.78, 2.5]);
+        this.#addBox('muscle-quad-headlights-r', 0.52, 0.16, 0.06, headlamp, [0.6, 0.78, 2.5]);
+        return;
+      }
+      case 'supercar': {
+        // Ultra-low, wide and wedge-shaped — a mid-engine hypercar.
+        this.#addRounded('supercar-body', 2.0, 0.44, 4.4, 0.14, paint, [0, 0.5, 0]);
+        this.#addBox('supercar-wedge-nose', 1.6, 0.2, 1.4, paint, [0, 0.42, 1.7]);
+        this.#addRounded('supercar-cabin', 1.32, 0.42, 1.5, 0.18, glass, [0, 0.86, -0.5]);
+        this.#addRounded('supercar-diffuser', 1.7, 0.24, 0.7, 0.06, trim, [0, 0.3, -2.1]);
+        this.#addRounded('supercar-rear-wing', 1.9, 0.05, 0.4, 0.02, paint, [0, 1.02, -2.1]);
+        this.#addRod(
+          'supercar-wing-stallion-l',
+          [-0.7, 0.6, -2.1],
+          [-0.7, 1.02, -2.1],
+          0.03,
+          exhaustMetal,
+        );
+        this.#addRod(
+          'supercar-wing-stallion-r',
+          [0.7, 0.6, -2.1],
+          [0.7, 1.02, -2.1],
+          0.03,
+          exhaustMetal,
+        );
+        this.#addBox('supercar-headlight-strip-l', 0.5, 0.08, 0.06, headlamp, [-0.55, 0.56, 2.2]);
+        this.#addBox('supercar-headlight-strip-r', 0.5, 0.08, 0.06, headlamp, [0.55, 0.56, 2.2]);
+        return;
+      }
+      case 'sedan': {
+        // Taller, upright and boxier — a four-door commuter.
+        this.#addRounded('sedan-body', 1.8, 0.62, 4.5, 0.2, paint, [0, 0.66, 0]);
+        this.#addBox('sedan-hood', 1.6, 0.12, 1.5, paint, [0, 0.98, 1.45]);
+        this.#addRounded('sedan-cabin', 1.5, 0.6, 2.6, 0.22, glass, [0, 1.2, -0.5]);
+        this.#addBox('sedan-roof', 1.3, 0.08, 2.4, paint, [0, 1.5, -0.5]);
+        this.#addBox('sedan-b-pillar', 0.12, 0.6, 2.4, paint, [0, 1.2, -0.5]);
+        this.#addBox('sedan-rear-trunk', 1.6, 0.2, 0.9, paint, [0, 0.9, -1.7]);
+        this.#addBox('sedan-front-bumper', 1.76, 0.2, 0.3, trim, [0, 0.4, 2.3]);
+        this.#addBox('sedan-headlight-l', 0.46, 0.16, 0.06, headlamp, [-0.6, 0.8, 2.28]);
+        this.#addBox('sedan-headlight-r', 0.46, 0.16, 0.06, headlamp, [0.6, 0.8, 2.28]);
+        return;
+      }
+      case 'suv': {
+        // Tall, heavy and high-roofed — a full-size SUV.
+        this.#addRounded('suv-body', 2.04, 0.9, 4.7, 0.24, paint, [0, 0.85, 0]);
+        this.#addRounded('suv-cabin', 1.8, 0.7, 3.2, 0.24, glass, [0, 1.5, -0.2]);
+        this.#addBox('suv-roof', 1.7, 0.08, 3.4, paint, [0, 1.86, -0.2]);
+        this.#addBox('suv-roof-rails-l', 0.08, 0.06, 3.2, trim, [-0.82, 1.94, -0.2]);
+        this.#addBox('suv-roof-rails-r', 0.08, 0.06, 3.2, trim, [0.82, 1.94, -0.2]);
+        this.#addBox('suv-hood', 1.8, 0.16, 1.3, paint, [0, 1.34, 1.6]);
+        this.#addBox('suv-front-bumper', 2.0, 0.3, 0.4, trim, [0, 0.5, 2.35]);
+        this.#addBox('suv-rear-bumper', 2.0, 0.3, 0.4, trim, [0, 0.5, -2.35]);
+        this.#addBox('suv-headlight-l', 0.5, 0.2, 0.06, headlamp, [-0.65, 1.2, 2.34]);
+        this.#addBox('suv-headlight-r', 0.5, 0.2, 0.06, headlamp, [0.65, 1.2, 2.34]);
+        return;
+      }
+      case 'sport':
+        return;
+      default: {
+        const exhaustive: never = body;
+        void exhaustive;
+        return;
+      }
+    }
   }
 
   #addBox(

@@ -85,6 +85,62 @@ describe('in-house Kaminari GT player visual', () => {
     expect(car.root.children).toHaveLength(0);
   });
 
+  it('gives every body archetype a distinct silhouette while keeping the sport hero unchanged', () => {
+    const bodies = ['sport', 'muscle', 'supercar', 'sedan', 'suv'] as const;
+    const sizes = new Map<(typeof bodies)[number], Vector3>();
+    for (const body of bodies) {
+      const car = new CarVisual(body);
+      sizes.set(body, new Box3().setFromObject(car.root).getSize(new Vector3()));
+      car.dispose();
+    }
+
+    // Every archetype produces a sane, non-empty envelope.
+    for (const size of sizes.values()) {
+      expect(size.x).toBeGreaterThan(0.4);
+      expect(size.y).toBeGreaterThan(0.4);
+      expect(size.z).toBeGreaterThan(0.4);
+      expect(size.x).toBeLessThan(6);
+      expect(size.y).toBeLessThan(6);
+      expect(size.z).toBeLessThan(6);
+    }
+
+    // No two archetypes share the same envelope (distinct silhouettes). Width is
+    // wheel-track-bound and shared, so the distinction comes from height + length.
+    for (let i = 0; i < bodies.length; i += 1) {
+      for (let j = i + 1; j < bodies.length; j += 1) {
+        const a = sizes.get(bodies[i]!)!;
+        const b = sizes.get(bodies[j]!)!;
+        const delta = Math.abs(a.x - b.x) + Math.abs(a.y - b.y) + Math.abs(a.z - b.z);
+        expect(delta).toBeGreaterThan(0.06);
+      }
+    }
+
+    // The SUV reads as the tallest and longest profile of all five.
+    const suv = sizes.get('suv')!;
+    for (const body of bodies) {
+      if (body !== 'suv') {
+        expect(suv.y).toBeGreaterThan(sizes.get(body)!.y);
+        expect(suv.z).toBeGreaterThan(sizes.get(body)!.z);
+      }
+    }
+
+    // The sport and supercar sit below the tall muscle / sedan / suv silhouettes.
+    for (const low of ['sport', 'supercar'] as const) {
+      for (const tall of ['muscle', 'sedan', 'suv'] as const) {
+        expect(sizes.get(low)!.y).toBeLessThan(sizes.get(tall)!.y);
+      }
+    }
+
+    // The default (sport) box stays inside the documented hero range.
+    const hero = sizes.get('sport')!;
+    expect(hero.x).toBeGreaterThan(1.6);
+    expect(hero.x).toBeLessThan(2.1);
+    expect(hero.y).toBeGreaterThan(1.3);
+    expect(hero.y).toBeLessThan(2);
+    expect(hero.z).toBeGreaterThan(3.8);
+    expect(hero.z).toBeLessThan(4.6);
+  });
+
   it('syncs suspension, steering, rolling spin, and local brake-lamp intensity from the pose', () => {
     const car = new CarVisual();
     const pose = makePose(0.7);
