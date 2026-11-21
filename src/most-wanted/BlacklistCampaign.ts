@@ -50,6 +50,11 @@ export function rivalsBustedCount(state: BlacklistCampaignState): number {
   return state.bustedRanks.length;
 }
 
+/** The campaign is complete when every one of the 15 Blacklist rivals has been busted. */
+export function campaignComplete(state: BlacklistCampaignState): boolean {
+  return state.bustedRanks.length >= BLACKLIST_RANKS;
+}
+
 /**
  * The next rival to challenge (D3): the highest rank (15 → 1) whose career-bounty threshold is
  * met and that isn't already busted. Null when the career has run out of eligible rivals (all

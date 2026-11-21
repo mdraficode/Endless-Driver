@@ -53,7 +53,12 @@ export function hydrateCarCollection(raw: unknown): CarCollectionState {
     typeof raw.activeId === 'string' && ownedIds.includes(raw.activeId)
       ? raw.activeId
       : base.activeId;
-  return { ownedIds, activeId: ownedIds.includes(activeId) ? activeId : DEFAULT_CAR_ID };
+  const champion = raw.champion === true;
+  return {
+    ownedIds,
+    activeId: ownedIds.includes(activeId) ? activeId : DEFAULT_CAR_ID,
+    champion,
+  };
 }
 
 /** Read + validate the persisted collection; falls back to the starters on any problem. */

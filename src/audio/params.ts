@@ -93,13 +93,16 @@ export function detectImpact(
 }
 
 /** The one-shot stingers the player hears on big moments. */
-export type StingerKind = 'busted' | 'evaded' | 'won' | 'lost' | 'levelUp' | 'unitDown' | 'boost';
+export type StingerKind =
+  'busted' | 'evaded' | 'won' | 'lost' | 'levelUp' | 'unitDown' | 'boost' | 'champion';
 
 /** Note frequencies (Hz) for a stinger; `boost` is a noise whoosh, not a melody. */
 export function stingerNotes(kind: StingerKind): readonly number[] {
   switch (kind) {
     case 'won':
       return [392, 494, 587, 784]; // rising major — Pink Slip in hand
+    case 'champion':
+      return [523, 659, 784, 1047]; // bright ascending major — the whole Blacklist is yours
     case 'lost':
       return [330, 262, 208]; // falling minor — DNF
     case 'busted':
@@ -130,6 +133,8 @@ export function stingerNoteDurationMs(kind: StingerKind): number {
       return 150;
     case 'boost':
       return 0;
+    case 'champion':
+      return 170;
   }
 }
 

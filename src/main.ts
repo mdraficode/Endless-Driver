@@ -1,8 +1,9 @@
 import './style.css';
 import { Application, type ApplicationOptions } from './core/Application';
 import { readCarCollection, saveCarCollection } from './cars/carCollectionStorage';
-import { activeSpec, garageView, select, unlock } from './cars/carCollection';
+import { activeSpec, garageView, markChampion, select, unlock } from './cars/carCollection';
 import { CarGarage } from './ui/CarGarage';
+import { ChampionBanner } from './ui/ChampionBanner';
 import {
   RENDER_CONFIG,
   applyRenderSwitches,
@@ -263,6 +264,7 @@ let drivingRoster: BlacklistRoster | null = null;
 let rosterVisible = false;
 let drivingGarage: CarGarage | null = null;
 let garageVisible = false;
+let drivingChampionBanner: ChampionBanner | null = null;
 let drivingPauseMenu: PauseMenu | null = null;
 let driveRestartTask: Promise<void> | null = null;
 
@@ -393,6 +395,8 @@ async function restartDriveInPlace(
       drivingRoster = null;
       drivingGarage?.dispose();
       drivingGarage = null;
+      drivingChampionBanner?.dispose();
+      drivingChampionBanner = null;
       const previousApplication = drivingApplication;
       drivingApplication = null;
       previousApplication?.stop();
@@ -487,6 +491,9 @@ async function startDrivingScene(restarting = false): Promise<void> {
             drivingAudio.playUiClick();
             restartCurrentDrive(false);
           });
+    // The campaign finale banner (shown once when the last rival is busted).
+    drivingChampionBanner?.dispose();
+    drivingChampionBanner = appRoot === null ? null : new ChampionBanner(appRoot);
     // Fresh audio edge-detection + menu state per session (a restart is a cold start).
     lastBoostActive = false;
     lastRacePhase = null;
@@ -584,6 +591,13 @@ async function startDrivingScene(restarting = false): Promise<void> {
         // Phase 14: a won race grants the rival's Pink Slip car to the collection.
         carCollection = unlock(carCollection, carId);
         saveCarCollection(carCollection);
+      },
+      onCampaignComplete: () => {
+        // The finale: every rival is busted. Crown the player + celebrate (once).
+        carCollection = markChampion(carCollection);
+        saveCarCollection(carCollection);
+        drivingAudio.playStinger('champion');
+        drivingChampionBanner?.show();
       },
     };
 

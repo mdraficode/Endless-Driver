@@ -4,6 +4,7 @@ import { BLACKLIST_RIVALS } from '../../src/config/most-wanted';
 import { computeCeiling } from '../../src/most-wanted/HeatModel';
 import {
   applyRaceWin,
+  campaignComplete,
   initialCampaignState,
   nextEligibleRival,
   raceWinReward,
@@ -85,5 +86,19 @@ describe('Most Wanted — Blacklist campaign (M5b)', () => {
     expect(roster.find((e) => e.config.rank === 14)!.status).toBe('unlocked');
     expect(roster.find((e) => e.config.rank === 13)!.status).toBe('locked'); // 60000 > 9500
     expect(roster.find((e) => e.config.rank === 1)!.status).toBe('locked'); // the boss
+  });
+
+  it('the campaign is complete only when all 15 rivals are busted', () => {
+    expect(campaignComplete(initialCampaignState())).toBe(false);
+    const fourteen = {
+      bustedRanks: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+      careerTotal: 0,
+    };
+    expect(campaignComplete(fourteen)).toBe(false);
+    const fifteen = {
+      bustedRanks: [15, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+      careerTotal: 0,
+    };
+    expect(campaignComplete(fifteen)).toBe(true);
   });
 });

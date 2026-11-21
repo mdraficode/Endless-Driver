@@ -83,6 +83,7 @@ import {
 } from '../most-wanted/BlacklistRaceModel';
 import {
   applyRaceWin,
+  campaignComplete,
   nextEligibleRival,
   raceWinReward,
   rosterEntries,
@@ -271,6 +272,11 @@ export interface ApplicationOptions {
    */
   readonly onBlacklistWin?: (carId: string) => void;
   /**
+   * Fired exactly once when a race win busts the final rival and completes the whole Blacklist
+   * (all 15 busted) — the campaign finale ("Champion of Aohara").
+   */
+  readonly onCampaignComplete?: () => void;
+  /**
    * Receives the live vehicle telemetry once per frame — feeds the procedural audio engine
    * (engine pitch/gain, tyre squawk, wind, impact detection).
    */
@@ -443,6 +449,7 @@ export class Application {
   readonly #onPursuit: ((data: PursuitHudData) => void) | null;
   readonly #onRace: ((data: BlacklistRaceHud | null) => void) | null;
   readonly #onBlacklistWin: ((carId: string) => void) | null;
+  readonly #onCampaignComplete: (() => void) | null;
   readonly #onDriving: ((telemetry: VehicleTelemetry) => void) | null;
   /** Phase 14 — the collection car being driven (its config + model resolved at construction). */
   #activeCarId: string | null;
@@ -540,6 +547,7 @@ export class Application {
     this.#onBountySettled = options.onBountySettled ?? null;
     this.#onRace = options.onRace ?? null;
     this.#onBlacklistWin = options.onBlacklistWin ?? null;
+    this.#onCampaignComplete = options.onCampaignComplete ?? null;
     this.#onDriving = options.onDriving ?? null;
     this.#activeCarId = options.activeCar?.id ?? null;
     this.#buildTag = options.buildTag ?? null;
@@ -1965,15 +1973,19 @@ export class Application {
       this.#cleanupRace();
       return;
     }
-    const next = applyRaceWin(
-      { bustedRanks: this.#bustedRanks, careerTotal: this.#bountyState.careerTotal },
-      rival.rank,
-      raceWinReward(rival.rank),
-    );
+    const prevState = {
+      bustedRanks: this.#bustedRanks,
+      careerTotal: this.#bountyState.careerTotal,
+    };
+    const next = applyRaceWin(prevState, rival.rank, raceWinReward(rival.rank));
     this.#bustedRanks = [...next.bustedRanks]; // D2: the pursuit ceiling rises by one
     this.#bountyState = { ...this.#bountyState, careerTotal: next.careerTotal };
     // Phase 14: the win also grants the rival's Pink Slip car to the collection.
     this.#onBlacklistWin?.(rival.pinkSlipCar);
+    // The finale: busting the final rival completes the whole Blacklist (Champion of Aohara).
+    if (campaignComplete(next) && !campaignComplete(prevState)) {
+      this.#onCampaignComplete?.();
+    }
     this.#cleanupRace();
   }
 

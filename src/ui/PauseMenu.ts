@@ -73,6 +73,7 @@ export interface PauseMenuOptions {
    */
   readonly garage?: () => {
     readonly activeId: string;
+    readonly champion: boolean;
     readonly cars: readonly GarageEntry[];
   } | null;
   /** Selects a car from the collection (the owner persists it + restarts to drive it). */
@@ -763,6 +764,12 @@ export class PauseMenu {
         'Drive your cars. Beat a Blacklist rival to unlock their car. A pick takes effect on the next start.',
       ),
     );
+    if (garage.champion) {
+      const chip = document.createElement('div');
+      chip.className = 'pause-menu-champion';
+      chip.textContent = '🏆 Champion of Aohara — all 15 rivals busted';
+      page.append(chip);
+    }
     const cards = document.createElement('div');
     cards.className = 'pause-menu-car-cards';
     let dividerAdded = false;

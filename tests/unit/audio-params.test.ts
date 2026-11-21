@@ -107,6 +107,7 @@ describe('Audio — pure signal mapping (Phase 13)', () => {
   it('stingers are well‑formed melodies and map from the right radio codes', () => {
     for (const kind of [
       'won',
+      'champion',
       'lost',
       'busted',
       'evaded',

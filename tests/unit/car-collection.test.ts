@@ -4,6 +4,7 @@ import {
   activeSpec,
   garageView,
   initialCollection,
+  markChampion,
   owns,
   ownedCount,
   select,
@@ -90,5 +91,18 @@ describe('Phase 14 — car collection (ownership)', () => {
     expect(entry.active).toBe(true);
     // Exactly one car is active.
     expect(view.cars.filter((c) => c.active)).toHaveLength(1);
+  });
+
+  it('markChampion sets the title idempotently and it survives other transitions', () => {
+    const fresh = initialCollection();
+    expect(fresh.champion).toBe(false);
+    const champion = markChampion(fresh);
+    expect(champion.champion).toBe(true);
+    expect(markChampion(champion)).toBe(champion); // idempotent, same reference
+    // The title persists across selecting / unlocking cars.
+    expect(select(champion, 'falcon-s').champion).toBe(true);
+    expect(unlock(champion, 'mw-car-01').champion).toBe(true);
+    // The garage view surfaces the title.
+    expect(garageView(champion).champion).toBe(true);
   });
 });

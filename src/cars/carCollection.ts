@@ -12,11 +12,21 @@ export interface CarCollectionState {
   readonly ownedIds: readonly string[];
   /** The car currently being driven (always one of `ownedIds`). */
   readonly activeId: string;
+  /** True once every one of the 15 Blacklist rivals has been busted (the campaign finale). */
+  readonly champion: boolean;
 }
 
-/** A fresh career: the starter cars owned, the hero car selected. */
+/** A fresh career: the starter cars owned, the hero car selected, no title yet. */
 export function initialCollection(): CarCollectionState {
-  return { ownedIds: [...STARTER_CAR_IDS], activeId: DEFAULT_CAR_ID };
+  return { ownedIds: [...STARTER_CAR_IDS], activeId: DEFAULT_CAR_ID, champion: false };
+}
+
+/**
+ * Marks the campaign complete (all 15 rivals busted). Idempotent; a champion stays a champion.
+ */
+export function markChampion(state: CarCollectionState): CarCollectionState {
+  if (state.champion) return state;
+  return { ...state, champion: true };
 }
 
 /** Whether the collection owns a car. */
@@ -69,10 +79,12 @@ export interface GarageEntry {
  */
 export function garageView(state: CarCollectionState): {
   readonly activeId: string;
+  readonly champion: boolean;
   readonly cars: readonly GarageEntry[];
 } {
   return {
     activeId: state.activeId,
+    champion: state.champion,
     cars: CAR_ROSTER.map((spec) => ({
       spec,
       owned: state.ownedIds.includes(spec.id),

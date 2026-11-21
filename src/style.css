@@ -1279,6 +1279,17 @@ body {
   letter-spacing: 0.1em;
 }
 
+.pause-menu-champion {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.6rem;
+  border: 1px solid rgb(252 211 77 / 45%);
+  background: rgb(60 46 8 / 55%);
+  color: #fcd34d;
+  font-size: 0.72rem;
+  font-weight: 720;
+  letter-spacing: 0.03em;
+}
+
 .pause-menu-garage-divider {
   grid-column: 1 / -1;
   color: rgb(252 211 77 / 85%);
