@@ -85,11 +85,11 @@ export class PlayerCarVisual {
    */
   constructor(
     selectedModel: PlayerCarModel = 'generic-sport-coupe',
-    options?: { revealFallback?: boolean; body?: CarBody },
+    options?: { revealFallback?: boolean; body?: CarBody; paint?: number },
   ) {
     this.#selectedModel = selectedModel;
     this.#body = options?.body ?? 'sport';
-    this.#fallback = new CarVisual(this.#body);
+    this.#fallback = new CarVisual(this.#body, options?.paint ?? 0x2359a8);
     this.root.name = 'player-car-visual';
     this.root.add(this.#fallback.root);
     this.#fallback.root.add(this.#headlightRig.root);

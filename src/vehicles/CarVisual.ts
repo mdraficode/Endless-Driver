@@ -54,10 +54,10 @@ export class CarVisual {
   #headlightGain = 0;
   #steeringWheel: Group | null = null;
 
-  constructor(body: CarBody = 'sport') {
+  constructor(body: CarBody = 'sport', paintHex: number = 0x2359a8) {
     this.root.name = body === 'sport' ? 'kaminari-gt-roadster' : `car-${body}`;
 
-    const paint = this.#track(createAutomotivePaintMaterial());
+    const paint = this.#track(createAutomotivePaintMaterial(paintHex));
     const glass = this.#track(createTintedCabinMaterial());
     const interior = this.#track(createVehicleInteriorMaterial());
     const rubber = this.#track(createRubberMaterial());

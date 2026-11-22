@@ -159,7 +159,13 @@ function scaledTorque(
  * A Blacklist car for a rank: the harder the rival (lower rank), the hotter the car — more power,
  * more grip, more aero. Rank 15 (first) is a mild sport; rank 1 (the boss) is a near-supercar.
  */
-function blacklistCar(rank: number, name: string, body: CarBody, model: PlayerCarModel): CarSpec {
+function blacklistCar(
+  rank: number,
+  name: string,
+  body: CarBody,
+  model: PlayerCarModel,
+  paint: number,
+): CarSpec {
   const f = (15 - rank) / 14; // 0 (easiest) .. 1 (boss)
   const base = bodyConfig(body);
   // Scale grip/power/aero ON TOP of the body's own config so the body's identity (driven
@@ -185,6 +191,7 @@ function blacklistCar(rank: number, name: string, body: CarBody, model: PlayerCa
     model,
     source: 'blacklist',
     blacklistRank: rank,
+    paint,
     stats,
     config,
   };
@@ -195,6 +202,7 @@ interface StarterCar {
   readonly name: string;
   readonly body: CarBody;
   readonly model: PlayerCarModel;
+  readonly paint: number;
   readonly stats: CarStats;
 }
 
@@ -205,6 +213,7 @@ const STARTERS: readonly StarterCar[] = [
     name: 'Kaminari GT',
     body: 'sport',
     model: 'kaminari-gt-roadster',
+    paint: 0x2359a8,
     stats: { topSpeed: 262, acceleration: 7.5, handling: 7.5, braking: 7.5 },
   },
   {
@@ -212,6 +221,7 @@ const STARTERS: readonly StarterCar[] = [
     name: 'Aohara Falcon S',
     body: 'supercar',
     model: 'generic-sport-coupe',
+    paint: 0xc8102e,
     stats: { topSpeed: 305, acceleration: 8.8, handling: 8.2, braking: 8.0 },
   },
   {
@@ -219,6 +229,7 @@ const STARTERS: readonly StarterCar[] = [
     name: 'Blackwood M-8',
     body: 'muscle',
     model: 'generic-sport-coupe',
+    paint: 0x1a1a1a,
     stats: { topSpeed: 250, acceleration: 8.4, handling: 5.5, braking: 6.0 },
   },
   {
@@ -226,27 +237,28 @@ const STARTERS: readonly StarterCar[] = [
     name: 'Meridian 4-Door',
     body: 'sedan',
     model: 'generic-sport-coupe',
+    paint: 0x9aa0a6,
     stats: { topSpeed: 215, acceleration: 5.5, handling: 6.5, braking: 7.0 },
   },
 ];
 
-/** Which body each Blacklist rank drives, by difficulty band. */
-const BLACKLIST_BODIES: ReadonlyArray<readonly [number, CarBody, PlayerCarModel]> = [
-  [15, 'sedan', 'generic-sport-coupe'],
-  [14, 'sport', 'generic-sport-coupe'],
-  [13, 'sport', 'generic-sport-coupe'],
-  [12, 'muscle', 'generic-sport-coupe'],
-  [11, 'sport', 'generic-sport-coupe'],
-  [10, 'muscle', 'generic-sport-coupe'],
-  [9, 'supercar', 'generic-sport-coupe'],
-  [8, 'sport', 'generic-sport-coupe'],
-  [7, 'suv', 'generic-sport-coupe'],
-  [6, 'supercar', 'generic-sport-coupe'],
-  [5, 'muscle', 'generic-sport-coupe'],
-  [4, 'supercar', 'generic-sport-coupe'],
-  [3, 'suv', 'generic-sport-coupe'],
-  [2, 'supercar', 'generic-sport-coupe'],
-  [1, 'supercar', 'kaminari-gt-roadster'],
+/** Which body each Blacklist rank drives, by difficulty band (rank, body, model, paint). */
+const BLACKLIST_BODIES: ReadonlyArray<readonly [number, CarBody, PlayerCarModel, number]> = [
+  [15, 'sedan', 'generic-sport-coupe', 0x8a8f98],
+  [14, 'sport', 'generic-sport-coupe', 0x2f6fb0],
+  [13, 'sport', 'generic-sport-coupe', 0x7c2d12],
+  [12, 'muscle', 'generic-sport-coupe', 0x101010],
+  [11, 'sport', 'generic-sport-coupe', 0x3f6212],
+  [10, 'muscle', 'generic-sport-coupe', 0x9c1a4c],
+  [9, 'supercar', 'generic-sport-coupe', 0x14532d],
+  [8, 'sport', 'generic-sport-coupe', 0x5b6470],
+  [7, 'suv', 'generic-sport-coupe', 0xb07d2b],
+  [6, 'supercar', 'generic-sport-coupe', 0x5b21b6],
+  [5, 'muscle', 'generic-sport-coupe', 0x2d4d9c],
+  [4, 'supercar', 'generic-sport-coupe', 0x9f1d1d],
+  [3, 'suv', 'generic-sport-coupe', 0x1f6f6a],
+  [2, 'supercar', 'generic-sport-coupe', 0x6b7280],
+  [1, 'supercar', 'kaminari-gt-roadster', 0x0e0e0e],
 ];
 
 /** The full roster: the starter cars, then the 15 Blacklist cars (rank 15 → 1). */
@@ -257,13 +269,14 @@ export const CAR_ROSTER: readonly CarSpec[] = [
     model: modelForBody(s.body, s.model),
     config: bodyConfig(s.body),
   })),
-  ...BLACKLIST_BODIES.map(([rank, body, model]) => {
+  ...BLACKLIST_BODIES.map(([rank, body, model, paint]) => {
     const rival = BLACKLIST_RIVALS.find((r) => r.rank === rank);
     return blacklistCar(
       rank,
       `${rival?.name ?? `Rank ${rank}`} ${bodyName(body)}`,
       body,
       modelForBody(body, model),
+      paint,
     );
   }),
 ];

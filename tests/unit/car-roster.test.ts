@@ -90,4 +90,16 @@ describe('Phase 14 — car roster', () => {
       expect(seen.has(body)).toBe(true);
     }
   });
+
+  it('every car has its own paint; the Kaminari GT keeps its signature blue (Phase 16.2)', () => {
+    const paints = CAR_ROSTER.map((c) => c.paint);
+    for (const paint of paints) {
+      expect(Number.isInteger(paint)).toBe(true);
+      expect(paint).toBeGreaterThanOrEqual(0);
+      expect(paint).toBeLessThanOrEqual(0xffffff);
+    }
+    // The whole collection is color-distinct — no two cars share a paint.
+    expect(new Set(paints).size).toBe(CAR_ROSTER.length);
+    expect(carById('kaminari-gt')!.paint).toBe(0x2359a8);
+  });
 });

@@ -27,6 +27,8 @@ export interface CarSpec {
   readonly source: CarSource;
   /** For Blacklist cars: the rival rank whose bust unlocks this car (id is `mw-car-<rank>`). */
   readonly blacklistRank?: number;
+  /** Phase 16.2 — the car's paint (a hex color); distinct per car so won cars don't look identical. */
+  readonly paint: number;
   readonly stats: CarStats;
   readonly config: VehicleConfig;
 }

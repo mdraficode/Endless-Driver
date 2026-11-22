@@ -1,5 +1,5 @@
 import { Box3, Mesh, Vector3 } from 'three';
-import { MeshStandardNodeMaterial } from 'three/webgpu';
+import { MeshPhysicalNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
 import { VEHICLE_CONFIG } from '../../src/config/vehicle';
 import { CarVisual } from '../../src/vehicles/CarVisual';
@@ -139,6 +139,25 @@ describe('in-house Kaminari GT player visual', () => {
     expect(hero.y).toBeLessThan(2);
     expect(hero.z).toBeGreaterThan(3.8);
     expect(hero.z).toBeLessThan(4.6);
+  });
+
+  it('paints the body with the car-specific color (Phase 16.2)', () => {
+    const red = new CarVisual('sport', 0xff2233);
+    const blue = new CarVisual('sport', 0x2244ff);
+    const paintColors = (car: CarVisual): number[] => {
+      const out: number[] = [];
+      car.root.traverse((object) => {
+        const material = (object as Mesh).material;
+        if (material instanceof MeshPhysicalNodeMaterial) out.push(material.color.getHex());
+      });
+      return out;
+    };
+    expect(paintColors(red)).toContain(0xff2233);
+    expect(paintColors(blue)).toContain(0x2244ff);
+    expect(paintColors(red)).not.toContain(0x2244ff);
+    expect(paintColors(blue)).not.toContain(0xff2233);
+    red.dispose();
+    blue.dispose();
   });
 
   it('syncs suspension, steering, rolling spin, and local brake-lamp intensity from the pose', () => {
