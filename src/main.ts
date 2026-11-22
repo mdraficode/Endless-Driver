@@ -3,6 +3,7 @@ import { Application, type ApplicationOptions } from './core/Application';
 import { readCarCollection, saveCarCollection } from './cars/carCollectionStorage';
 import { activeSpec, garageView, markChampion, select, unlock } from './cars/carCollection';
 import { CarGarage } from './ui/CarGarage';
+import { MainMenu } from './ui/MainMenu';
 import { ChampionBanner } from './ui/ChampionBanner';
 import {
   RENDER_CONFIG,
@@ -267,6 +268,8 @@ let garageVisible = false;
 let drivingChampionBanner: ChampionBanner | null = null;
 let drivingPauseMenu: PauseMenu | null = null;
 let driveRestartTask: Promise<void> | null = null;
+// Phase 17 — the pre-drive main menu (the drive scene's composition root is shown behind it).
+let mainMenu: MainMenu | null = null;
 
 // Phase 13 — procedural audio. A single engine instance (no per-frame allocation); the AudioContext
 // is only created inside `unlock()`, on the first user gesture, per the browser autoplay policy.
@@ -435,6 +438,10 @@ async function startDrivingScene(restarting = false): Promise<void> {
     reportStartupFailure(new Error('missing #viewport-canvas element'));
     return;
   }
+
+  // The pre-drive menu is gone once the drive scene takes over (idempotent if already dismissed).
+  mainMenu?.dispose();
+  mainMenu = null;
 
   landscapeFallback?.update();
   loadingScreen?.show(restarting ? 'Restarting your drive…' : undefined);
@@ -1006,6 +1013,29 @@ async function startRoute(): Promise<void> {
   }
 }
 
+/**
+ * Phase 17 — the pre-drive main menu. Shown at boot; the player picks a car and presses DRIVE,
+ * which persists it and cold-starts the drive scene with it. A plain, browser-only composition-root
+ * step: no physics, no canvas — the drive scene is started only after the player confirms.
+ */
+function startMainMenu(): void {
+  if (appRoot === null) {
+    reportStartupFailure(new Error('missing #app element for the main menu'));
+    return;
+  }
+  mainMenu?.dispose();
+  const collection = readCarCollection();
+  mainMenu = new MainMenu(appRoot, (carId) => {
+    // Persist the chosen car, then cold-start the drive scene (which re-reads the collection).
+    const next = select(readCarCollection(), carId);
+    saveCarCollection(next);
+    mainMenu?.dispose();
+    mainMenu = null;
+    void startDrivingScene();
+  });
+  mainMenu.update(garageView(collection));
+}
+
 async function start(): Promise<void> {
   switch (readSceneRequest(window.location.search)) {
     case 'studio':
@@ -1021,7 +1051,7 @@ async function start(): Promise<void> {
       await startCityNightScene();
       return;
     default:
-      await startDrivingScene();
+      startMainMenu();
   }
 }
 
